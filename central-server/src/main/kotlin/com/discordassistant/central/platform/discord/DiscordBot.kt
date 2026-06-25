@@ -1024,15 +1024,19 @@ class DiscordBot(
         ) {
             try {
                 val messageId = event.messageIdLong
+                val speakerLabel = "user_${event.author.idLong % 100000}"
+                val contentRaw = event.message.contentRaw.trim()
                 val turn =
                     com.discordassistant.central.speech.domain.model.ConversationTurn(
-                        speakerLabel = "user_${event.author.idLong % 100000}",
-                        text =
-                            event.message.contentRaw
-                                .trim()
-                                .ifBlank { "(빈 메시지)" }
-                                .take(500),
+                        speakerLabel = speakerLabel,
+                        text = contentRaw.ifBlank { "(빈 메시지)" }.take(500),
                     )
+                // core 결정론 규칙([CoreInterventionRules])용 raw 신호: 트리거 원문(짧게)·화자 라벨·니아 발화 reply 여부.
+                // referencedMessage 가 봇 자신(니아) 메시지면 reply-to-nia(RESPOND_NOW). 없으면 보수적 기본값(false).
+                val replyToNia =
+                    event.message.referencedMessage
+                        ?.author
+                        ?.idLong == event.jda.selfUser.idLong
                 participationEmitBridge.onMessage(
                     com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
                         guildId = event.guild.idLong,
@@ -1040,6 +1044,9 @@ class DiscordBot(
                         userId = event.author.idLong,
                         mentioned = mentioned,
                         recentTurns = listOf(turn),
+                        triggerText = contentRaw.take(500),
+                        speakerLabel = speakerLabel,
+                        replyToNia = replyToNia,
                         sceneSeq = messageId,
                         contextVersion = messageId,
                         seed = messageId,

@@ -119,6 +119,96 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled).isEmpty()
     }
 
+    // ── CoreInterventionRules 통합(규칙 즉결이 정책보다 먼저) ────────────────────
+
+    @Test
+    fun `규칙이 타인 지목 질문을 SILENT 로 즉결하면 정책·emit 미진입`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                // 멘션 없이도 cooldown 미만이라 정책 단독이면 SPEAK 일 텐데, 규칙이 먼저 SILENT 로 막아야 한다.
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "준호야 너 표 있어?", speakerLabel = "user_2"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleSilent::class.java)
+        assertThat((outcome as ParticipationEmitOutcome.RuleSilent).reasonCode).isEqualTo("RULE_QUESTION_TO_OTHER")
+        assertThat(scheduler.scheduled).isEmpty() // emit 미진입
+    }
+
+    @Test
+    fun `규칙이 이어가는 연결어를 WAIT 로 즉결하면 emit 미진입`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "아니 그러니까", speakerLabel = "user_2"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleWait::class.java)
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `규칙이 니아 호명을 SPEAK 로 즉결하면 정책 우회하고 emit 된다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                // 정책은 cooldown 충족(최근 발화 5)으로 단독이면 IGNORE 인데, 규칙 호명이 먼저 SPEAK 로 즉결해야 한다.
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(mentioned = false, recentAgentBurstCount = 5, triggerText = "니아야 이거 어때?", speakerLabel = "user_2"),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(1) // 규칙 즉결 SPEAK 가 정책을 우회해 emit
+        assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+    }
+
+    @Test
+    fun `규칙이 Candidate(모호)면 기존 정책 분포로 위임한다`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                // 모호한 일상 잡담 → 규칙 Candidate → 정책(cooldown 충족)이 IGNORE 로 접는다.
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(mentioned = false, recentAgentBurstCount = 5, triggerText = "오늘 점심 뭐 먹지", speakerLabel = "user_2"),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java) // 정책 위임 결과
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
     @Test
     fun `rate limit 한도 내면 SPEAK 가 emit 된다`() {
         val scheduler = FakeScheduler()
@@ -192,6 +282,10 @@ class NexaParticipationEmitBridgeTest {
         mentioned: Boolean,
         recentAgentBurstCount: Int = 0,
         channelId: Long = 3L,
+        // 기본 트리거는 규칙상 모호한 일상 발화(Candidate) — 규칙 즉결을 거치지 않고 기존 정책 경로를 그대로 탄다.
+        triggerText: String = "안녕",
+        speakerLabel: String = "user_2",
+        replyToNia: Boolean = false,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
@@ -200,6 +294,9 @@ class NexaParticipationEmitBridgeTest {
             mentioned = mentioned,
             recentAgentBurstCount = recentAgentBurstCount,
             recentTurns = listOf(ConversationTurn("user_2", "안녕")),
+            triggerText = triggerText,
+            speakerLabel = speakerLabel,
+            replyToNia = replyToNia,
             sceneSeq = 10L,
             contextVersion = 1L,
             seed = 7L,

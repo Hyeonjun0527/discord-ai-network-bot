@@ -12,6 +12,7 @@ import com.discordassistant.central.socialmemory.domain.service.appraisal.Social
 import com.discordassistant.central.socialmemory.domain.service.emotion.EmotionEngine
 import com.discordassistant.central.socialmemory.domain.service.emotion.EmotionRenderer
 import com.discordassistant.central.socialmemory.domain.service.niarelationship.RelationshipEngine
+import org.springframework.stereotype.Service
 import java.time.Instant
 
 /**
@@ -24,6 +25,7 @@ import java.time.Instant
  * **[persist]=false(shadow)**: 상태를 계산하되 **저장하지 않는다**(예측만 — ShadowMode.SHADOW_PREDICT).
  * **[persist]=true(live/canary)**: 갱신 상태를 저장한다. 어느 경우든 발화 톤 힌트를 반환한다(호출자가 shadow 면 무시).
  */
+@Service
 class NiaSocialMindService(
     private val appraiser: AppraiserProvider,
     private val statePort: NiaSocialStatePort,

@@ -61,6 +61,10 @@ services:
       CENTRAL_OAUTH_ENABLED: ${CENTRAL_OAUTH_ENABLED:-false}
       CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:-}
       CENTRAL_DASHBOARD_ADMIN_TOKEN: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:-}
+      # NEXA participation 글로벌 기본 lane. SHADOW = 모든(+미래) 길드가 길드별 설정 없이도 자발발화 평가·기록만
+      # 동작(SHADOW_PREDICT, 실제 Discord 전송은 hard block=전송 0, 안전). 길드가 명시적으로 다른 lane 을 가지면
+      # 그게 우선. 코드 기본값(@Value)은 OFF 라 테스트/로컬은 회귀 0 — 실서버만 이 줄로 SHADOW 활성.
+      CENTRAL_NEXA_PARTICIPATION_GLOBAL_DEFAULT_LANE: SHADOW
     networks:
       default: {}
       yeon-edge:

@@ -127,7 +127,7 @@ class NexaParticipationEmitBridgeTest {
             seed = 7L,
         )
 
-    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort())
+    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")
 
     private fun emitSeam(
         candidates: List<SpeechCandidate> = listOf(SpeechCandidate("c1", listOf("좋아"))),

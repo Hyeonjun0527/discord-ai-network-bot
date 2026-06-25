@@ -62,7 +62,7 @@ class NexaInboundBridgeTest {
 
     private fun ingestWith(store: EventStorePort) = IngestDiscordEventService(AllowConsent, store)
 
-    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort())
+    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")
 
     private fun envelope(): IngestEnvelope =
         IngestEnvelope(

@@ -127,6 +127,8 @@ class DiscordBot(
     private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
     // 니아 사회기억/감정 — 채널AI 발화 경로에서 한 메시지 관찰 → 발화 톤 힌트(D2). 발화 전 호출만 연결(신규 로직 없음).
     private val niaSocialMind: NiaSocialMindService,
+    // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
+    private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -229,6 +231,7 @@ class DiscordBot(
                 pendingImagePosts,
                 adminAssistant,
                 niaSocialMind,
+                participationEmitBridge,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -301,6 +304,7 @@ class DiscordBot(
         private val pendingImagePosts: PendingImagePostStore,
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
         private val niaSocialMind: NiaSocialMindService,
+        private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -998,11 +1002,52 @@ class DiscordBot(
             val mentioned =
                 event.message.mentions.users
                     .any { it.idLong == selfId }
+            // NEXA participation 자발 발화(단계 1): flag 활성 채널에서만 평가·emit. autoRespond/멘션과 **별개 경로**다.
+            // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
+            // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
+            forwardToParticipation(event, mentioned)
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
             }
             handleAutoRespond(event)
+        }
+
+        /**
+         * NEXA participation 발화 브리지에 메시지 신호를 위임한다(단계 1 wiring). 가명화는 브리지가 하므로 raw 식별자와
+         * 가명 라벨 turn 만 만들어 넘긴다(원문 user id 미저장). 멱등·seed 는 채널·메시지 id 로 결정론 도출한다.
+         * 호출 자체도 graceful — 브리지가 흡수하지만 신호 구성 실패까지 사용자 응답을 막지 않도록 한 번 더 흡수한다.
+         */
+        private fun forwardToParticipation(
+            event: MessageReceivedEvent,
+            mentioned: Boolean,
+        ) {
+            try {
+                val messageId = event.messageIdLong
+                val turn =
+                    com.discordassistant.central.speech.domain.model.ConversationTurn(
+                        speakerLabel = "user_${event.author.idLong % 100000}",
+                        text =
+                            event.message.contentRaw
+                                .trim()
+                                .ifBlank { "(빈 메시지)" }
+                                .take(500),
+                    )
+                participationEmitBridge.onMessage(
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
+                        guildId = event.guild.idLong,
+                        channelId = event.channel.idLong,
+                        userId = event.author.idLong,
+                        mentioned = mentioned,
+                        recentTurns = listOf(turn),
+                        sceneSeq = messageId,
+                        contextVersion = messageId,
+                        seed = messageId,
+                    ),
+                )
+            } catch (e: Exception) {
+                log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
+            }
         }
 
         /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */

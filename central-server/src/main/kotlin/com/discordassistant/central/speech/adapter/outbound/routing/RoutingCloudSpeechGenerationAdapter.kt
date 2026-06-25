@@ -106,6 +106,11 @@ class RoutingCloudSpeechGenerationAdapter(
     private fun combinePrompt(request: SpeechGenerationRequest): String =
         buildString {
             appendLine(request.systemPrompt)
+            // 감정 톤 힌트(D2) — 있을 때만 *약하게* 얹는다(기본 "" 면 평소 니아 그대로, 무영향).
+            if (request.toneDirective.isNotBlank()) {
+                appendLine()
+                appendLine(request.toneDirective)
+            }
             appendLine()
             appendLine("[맥락]")
             append(request.userPrompt)

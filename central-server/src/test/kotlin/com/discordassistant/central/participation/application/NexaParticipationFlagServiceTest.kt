@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
 class NexaParticipationFlagServiceTest {
     @Test
     fun `acceptance — 아무 설정도 없으면 OFF 이고 NEXA 비활성(legacy)`() {
-        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), FakeFlagPort())
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), FakeFlagPort(), "OFF")
         assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.OFF)
         assertThat(service.isNexaActive(guildId = 7L, channelId = 100L)).isFalse()
         assertThat(service.allowsRealSend(guildId = 7L, channelId = 100L)).isFalse()
@@ -25,14 +25,14 @@ class NexaParticipationFlagServiceTest {
 
     @Test
     fun `길드 lane LIVE 이면 활성+전송 허용`() {
-        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.LIVE), FakeFlagPort())
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.LIVE), FakeFlagPort(), "OFF")
         assertThat(service.isNexaActive(guildId = 7L, channelId = 100L)).isTrue()
         assertThat(service.allowsRealSend(guildId = 7L, channelId = 100L)).isTrue()
     }
 
     @Test
     fun `길드 SHADOW 이면 활성이지만 전송은 차단`() {
-        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.SHADOW_PREDICT), FakeFlagPort())
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.SHADOW_PREDICT), FakeFlagPort(), "OFF")
         assertThat(service.isNexaActive(guildId = 7L, channelId = 100L)).isTrue()
         assertThat(service.allowsRealSend(guildId = 7L, channelId = 100L)).isFalse()
     }
@@ -40,7 +40,7 @@ class NexaParticipationFlagServiceTest {
     @Test
     fun `채널 제외(kill switch)는 길드 LIVE 여도 OFF`() {
         val flagPort = FakeFlagPort(excluded = mapOf(100L to true))
-        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.LIVE), flagPort)
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.LIVE), flagPort, "OFF")
         assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.OFF)
         // 제외 안 된 채널은 LIVE 유지.
         assertThat(service.effectiveMode(guildId = 7L, channelId = 200L)).isEqualTo(ShadowMode.LIVE)
@@ -49,7 +49,23 @@ class NexaParticipationFlagServiceTest {
     @Test
     fun `채널 override 가 길드 lane 을 이긴다`() {
         val flagPort = FakeFlagPort(override = mapOf(100L to ParticipationLane.LIVE))
-        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), flagPort)
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), flagPort, "OFF")
+        assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.LIVE)
+    }
+
+    @Test
+    fun `글로벌 기본 lane SHADOW 면 행 없는 길드(OFF)도 SHADOW_PREDICT`() {
+        // 길드 행 없음(currentMode=OFF) + 글로벌 기본 SHADOW → 평가·기록만, 전송은 차단.
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), FakeFlagPort(), "SHADOW")
+        assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.SHADOW_PREDICT)
+        assertThat(service.isNexaActive(guildId = 7L, channelId = 100L)).isTrue()
+        assertThat(service.allowsRealSend(guildId = 7L, channelId = 100L)).isFalse()
+    }
+
+    @Test
+    fun `글로벌 기본 SHADOW 여도 길드가 명시 LIVE 면 길드 설정 우선`() {
+        // 길드 행이 OFF 아닌 명시값(LIVE)을 가지면 글로벌 기본보다 우선.
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.LIVE), FakeFlagPort(), "SHADOW")
         assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.LIVE)
     }
 

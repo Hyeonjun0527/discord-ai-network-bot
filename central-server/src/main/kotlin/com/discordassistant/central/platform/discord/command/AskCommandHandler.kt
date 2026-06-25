@@ -127,6 +127,9 @@ class AskCommandHandler(
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
         requestedThinking: String? = null,
+        // 니아 사회기억/감정 톤 힌트(채널AI 발화 경로에서만 주입). 기본 "" 면 평소 니아 그대로(무영향·하위호환).
+        // 정체성·답변 길이·이름 불변(I11) — 반응 온도만 약하게 얹는다(일반 텍스트 응답 system prompt 한정).
+        toneDirective: String = "",
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
@@ -164,7 +167,16 @@ class AskCommandHandler(
         val preferLocal = !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
         if (preferLocal) {
             // 로컬 에이전트 경로는 멀티턴 기억/thinking 을 쓰지 않는다(클라우드 직결 전용 기능).
-            val local = runOrchestrator(ctx, prompt, selectedModel, responseMode, webSearch, routingPolicy.maxCandidates)
+            val local =
+                runOrchestrator(
+                    ctx,
+                    prompt,
+                    selectedModel,
+                    responseMode,
+                    webSearch,
+                    routingPolicy.maxCandidates,
+                    toneDirective = toneDirective,
+                )
             if (local.state == RequestState.COMPLETED) {
                 return completedAskReply(
                     local.text.orEmpty().withWebSources(local.sources),
@@ -197,6 +209,7 @@ class AskCommandHandler(
                 dedup = false,
                 history = history,
                 thinking = thinking,
+                toneDirective = toneDirective,
             )
         return when (cloud.state) {
             RequestState.COMPLETED -> {
@@ -229,9 +242,10 @@ class AskCommandHandler(
         dedup: Boolean = true,
         history: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
         thinking: com.discordassistant.central.routing.application.CloudThinking? = null,
+        toneDirective: String = "",
     ): com.discordassistant.central.routing.domain.model.OrchestrationResult {
         val run = startRuntimeMultiResponseObservation(ctx, prompt, responseMode, maxCandidates)
-        val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
+        val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode, toneDirective)
         val startedAtNanos = System.nanoTime()
         val result =
             orchestrator.handle(
@@ -573,6 +587,7 @@ class AskCommandHandler(
     private fun String.composeExecutionPrompt(
         ctx: CommandContext,
         responseMode: String,
+        toneDirective: String = "",
     ): String {
         val knowledgeContext =
             runCatching {
@@ -585,7 +600,7 @@ class AskCommandHandler(
             }.onFailure { log.warn("지식 컨텍스트 조회 실패(guild={}, channel={}): {}", ctx.guildId, ctx.channelId, it.message) }
                 .getOrNull()
         val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() }
-        activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it }
+        activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it.withToneHint(toneDirective) }
         // 경로②③: 채널 AI 커스텀이 없을 때도 NEXA 가드레일은 항상 주입한다. 채널 프로필이 있으면 그 정체성을,
         //   없으면 길드 전역 프롬프트셋(기본 지정된 셋, 없으면 NEXA 기본 정체성 니아)을 쓴다.
         val behaviorPrompt =
@@ -593,7 +608,7 @@ class AskCommandHandler(
                 ?: resolveGuildDefaultPersona(ctx).let { persona ->
                     withGuildDefaultPersona(persona, ctx, isNiaDefault = persona == NexaIdentity.NIA_DEFAULT_PERSONA)
                 }
-        if (contextText == null) return behaviorPrompt
+        if (contextText == null) return behaviorPrompt.withToneHint(toneDirective)
         return buildString {
             appendLine("[채널 지식 컨텍스트]")
             appendLine(contextText)
@@ -603,8 +618,24 @@ class AskCommandHandler(
             appendLine()
             appendLine("[질문 실행 입력]")
             append(behaviorPrompt)
-        }
+        }.withToneHint(toneDirective)
     }
+
+    /**
+     * 감정 톤 힌트(D2)를 일반 텍스트 응답 system prompt 뒤에 *약하게* 한 단락 얹는다(RoutingCloudSpeechGenerationAdapter
+     * .combinePrompt 패턴). 기본 "" 면 평소 니아 그대로(무영향). 정체성·답변 길이·이름 불변(I11) — 반응 온도만.
+     */
+    private fun String.withToneHint(toneDirective: String): String =
+        if (toneDirective.isBlank()) {
+            this
+        } else {
+            buildString {
+                append(this@withToneHint)
+                appendLine()
+                appendLine()
+                append(toneDirective)
+            }
+        }
 
     private fun String.activeChannelAiExecutionPrompt(
         ctx: CommandContext,

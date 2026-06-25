@@ -38,6 +38,11 @@ data class SpeechGenerationRequest(
     val reasoningMode: ReasoningMode,
     /** 출력 token 상한(T015 — 후보 1개당). */
     val maxOutputTokens: Int,
+    /**
+     * 니아 감정 톤 힌트(D2 EmotionRenderer)의 *아주 약한* 미세 지시 — 기본 "" = 평소 니아(무영향·하위호환).
+     * 비어 있지 않으면 생성 프롬프트에 약하게 얹는다. 정체성·답변 길이는 안 건드린다(I11 — 반응 온도만).
+     */
+    val toneDirective: String = "",
 ) {
     init {
         require(systemPrompt.isNotBlank()) { "systemPrompt 는 비어 있을 수 없다" }

@@ -65,3 +65,10 @@
 ## 보안 점검
 - `CENTRAL_DEV_ENABLED` 운영 false 확인(/dev/* 차단).
 - 토큰/DB 비밀이 로그·이미지에 없는지 확인.
+
+## 운영 스크립트 수정 검증
+- `central-server/scripts/ops_*.sh`를 수정하면 병합 전에 다음을 실행한다.
+  ```bash
+  shellcheck central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh
+  bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh
+  ```

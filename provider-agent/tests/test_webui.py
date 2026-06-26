@@ -404,7 +404,10 @@ async def test_start_blocked_when_another_instance_holds_lock(monkeypatch):
     try:
         await client.post("/api/setup", headers={"X-Session": KEY}, json={"token": "T", "models": ["m"]})
         d = await (await client.post("/api/start", headers={"X-Session": KEY})).json()
-        assert d["ok"] is False and "인스턴스" in d["error"]  # 중복 연결 차단
+        # 중복 연결 차단. 에러 문구는 locale(ko/en)에 따라 달라지므로 i18n 무관하게 검증한다
+        # (runner LANG=C 면 "Another instance ... already connected" 영문 — 한글 "인스턴스" 가정 금지).
+        assert d["ok"] is False
+        assert "인스턴스" in d["error"] or "instance" in d["error"].lower()
         st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
         assert st["running"] is False
     finally:

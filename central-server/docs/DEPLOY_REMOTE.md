@@ -16,7 +16,7 @@ push(central-server/**) ─▶ build (self-hosted: yeon-arm)
                               ├─ .env 렌더(CENTRAL_IMAGE/DB_PASSWORD/DISCORD_*)
                               └─ docker compose pull + up -d + 헬스(/actuator/health==UP)
 ```
-- 프로젝트명 `central-server` 로 격리 → 호스트의 dailyting 서비스와 충돌 없음.
+- Compose 프로젝트명 `central-server` 로 격리 → 같은 호스트의 다른 서비스와 컨테이너/네트워크 이름 충돌을 피한다.
 - 포트 `127.0.0.1:8085`. 토큰 없으면 Discord 만 비활성, 서버는 기동.
 
 ## GitHub Secrets

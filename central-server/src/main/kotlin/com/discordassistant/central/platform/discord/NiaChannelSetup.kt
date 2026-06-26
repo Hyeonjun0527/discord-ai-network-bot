@@ -66,6 +66,8 @@ object NiaChannelSetup {
 
     fun imageChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelImage", language)
 
+    fun memberChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelMember", language)
+
     fun voiceChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelVoice", language)
 
     /** ai채팅 고정(pin) 가이드 — 니아 톤의 사용법 + 예시 질문. */
@@ -73,4 +75,7 @@ object NiaChannelSetup {
 
     /** ai그림 고정(pin) 가이드 — /그림 사용법 + 좋은 프롬프트 팁. */
     fun imageGuide(language: String = I18n.DEFAULT): String = I18n.get("niaSetupGuideImage", language)
+
+    /** 니아수다 고정(pin) 가이드 — 사람처럼 끼어드는 참여 채널 안내. */
+    fun memberGuide(language: String = I18n.DEFAULT): String = I18n.get("niaSetupGuideMember", language)
 }

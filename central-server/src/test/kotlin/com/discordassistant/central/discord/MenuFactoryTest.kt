@@ -100,14 +100,18 @@ class MenuFactoryTest {
 
     @Test
     fun `설정 액션 버튼 — 모든 설정은 저장 버튼 한 번으로 적용한다`() {
-        val buttons = MenuFactory.settingsActionButtons()
-        assertEquals(4, buttons.size)
+        val buttons = MenuFactory.settingsActionButtons(niaMemberEnabled = false)
+        assertEquals(5, buttons.size)
         assertEquals(MenuFactory.SAVE_SETTINGS, buttons.first().id)
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label?.contains("대기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_BULK && it.label?.contains("붙여넣기") == true })
+        assertTrue(buttons.any { it.id == MenuFactory.NIA_MEMBER_TOGGLE && it.label?.contains("켜기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("저장") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CANCEL_SETTINGS && it.label?.contains("취소") == true })
         assertEquals(ButtonStyle.SUCCESS, buttons.first { it.id == MenuFactory.SAVE_SETTINGS }.style)
+
+        val enabled = MenuFactory.settingsActionButtons(niaMemberEnabled = true)
+        assertTrue(enabled.any { it.id == MenuFactory.NIA_MEMBER_TOGGLE && it.label?.contains("끄기") == true })
     }
 
     @Test

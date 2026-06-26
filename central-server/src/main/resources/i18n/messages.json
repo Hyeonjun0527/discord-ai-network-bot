@@ -131,14 +131,14 @@
     "ja": "ボットに「チャンネルの管理」権限が必要です。サーバー設定で付与してから再試行してください。"
   },
   "niaSetupAlreadyExists": {
-    "ko": "이미 만들어져 있어요. {0} 에서 니아와 대화하고, {1} 에서 그림을 만들어 보세요!",
-    "en": "Already set up. Chat with Nia in {0}, and create images in {1}!",
-    "ja": "すでに作成済みです。{0} でニアと話し、{1} で画像を作ってみましょう！"
+    "ko": "이미 만들어져 있어요. {0} 은 항상 답하는 ai채팅, {1} 은 그림, {2} 는 니아가 사람처럼 눈치 보고 끼어드는 채널이에요.",
+    "en": "Already set up. {0} is always-on AI chat, {1} is for images, and {2} is where Nia joins like a server member.",
+    "ja": "すでに作成済みです。{0} は常時応答のAIチャット、{1} は画像、{2} はニアがメンバーのように会話へ参加するチャンネルです。"
   },
   "niaSetupSuccess": {
-    "ko": "✅ 니아 채널을 만들었어요!\n💬 {0} — 니아와 대화\n🎨 {1} — 그림 만들기\n🔊 {2} — 음성 채널",
-    "en": "✅ Created Nia channels!\n💬 {0} — chat with Nia\n🎨 {1} — create images\n🔊 {2} — voice channel",
-    "ja": "✅ ニアチャンネルを作成しました！\n💬 {0} — ニアと会話\n🎨 {1} — 画像作成\n🔊 {2} — ボイスチャンネル"
+    "ko": "✅ 니아 채널을 만들었어요!\n🤖 {0} — 멘션 없이 항상 답하는 ai채팅\n🎨 {1} — 그림 만들기\n💬 {2} — 니아가 사람처럼 끼어드는 수다 채널\n🔊 {3} — 음성 채널",
+    "en": "✅ Created Nia channels!\n🤖 {0} — always-on AI chat, no mention needed\n🎨 {1} — create images\n💬 {2} — Nia joins like a server member\n🔊 {3} — voice channel",
+    "ja": "✅ ニアチャンネルを作成しました！\n🤖 {0} — メンションなしで常時応答するAIチャット\n🎨 {1} — 画像作成\n💬 {2} — ニアがメンバーのように参加する雑談チャンネル\n🔊 {3} — ボイスチャンネル"
   },
   "niaSetupFailed": {
     "ko": "채널을 만들지 못했어요. 봇 권한(채널 관리)을 확인한 뒤 다시 시도해 주세요.",
@@ -165,6 +165,11 @@
     "en": "🎨｜ai-image",
     "ja": "🎨｜ai画像"
   },
+  "niaSetupChannelMember": {
+    "ko": "💬｜니아수다",
+    "en": "💬｜nia-lounge",
+    "ja": "💬｜ニア雑談"
+  },
   "niaSetupChannelVoice": {
     "ko": "🔊｜니아-음성",
     "en": "🔊｜nia-voice",
@@ -179,6 +184,11 @@
     "ko": "🎨 **그림을 만드는 곳이에요!**\n\n`/그림`(imagine) 명령에 만들고 싶은 장면을 적으면 니아가 이미지를 만들어 줘요.\n\n**좋은 프롬프트 팁**\n• 무엇을: 주제를 구체적으로 (예: 빨간 우산을 든 소녀)\n• 어디서: 배경/장소 (예: 비 오는 도쿄 거리, 밤)\n• 분위기: 따뜻한, 몽환적인, 시네마틱한\n• 스타일: 수채화, 픽셀아트, 애니메이션풍, 사진처럼\n• 디테일: 조명·색감·구도 (예: 부드러운 역광, 클로즈업)\n\n예) `/그림 비 오는 밤 도쿄 골목에서 빨간 우산을 든 소녀, 시네마틱, 애니메이션풍, 부드러운 네온 조명`",
     "en": "🎨 **This is where you create images!**\n\nUse the `/imagine` command and describe the scene you want — Nia will generate it.\n\n**Good prompt tips**\n• What: be specific about the subject (e.g. a girl holding a red umbrella)\n• Where: background/place (e.g. a rainy Tokyo street at night)\n• Mood: warm, dreamy, cinematic\n• Style: watercolor, pixel art, anime, photorealistic\n• Details: lighting/color/composition (e.g. soft backlight, close-up)\n\ne.g. `/imagine a girl with a red umbrella in a rainy Tokyo alley at night, cinematic, anime style, soft neon lighting`",
     "ja": "🎨 **ここは画像を作る場所です！**\n\n`/画像`（imagine）コマンドに作りたいシーンを書くと、ニアが画像を作ってくれます。\n\n**良いプロンプトのコツ**\n• 何を: 主題を具体的に（例: 赤い傘を持った少女）\n• どこで: 背景/場所（例: 雨の東京の通り、夜）\n• 雰囲気: 温かい、幻想的、シネマティック\n• スタイル: 水彩、ピクセルアート、アニメ風、写真のように\n• ディテール: 照明・色・構図（例: 柔らかい逆光、クローズアップ）\n\n例) `/画像 雨の夜の東京の路地で赤い傘を持つ少女、シネマティック、アニメ風、柔らかいネオンの照明`"
+  },
+  "niaSetupGuideMember": {
+    "ko": "💬 **니아가 사람처럼 같이 있는 채널이에요.**\n\n여기는 ai채팅처럼 모든 말에 답하는 곳이 아니에요. 니아는 대화 흐름을 보고, 끼어들 타이밍이면 짧게 답하고, 둘만의 대화나 끝난 흐름이면 조용히 있어요.\n\n니아에게 확실히 말 걸고 싶으면 이름을 부르거나 답글로 불러 주세요. 민감정보(비밀번호·API 키·개인정보)는 입력하지 말아 주세요.",
+    "en": "💬 **This is where Nia hangs out like a server member.**\n\nThis is not the always-answer AI chat. Nia watches the conversation flow, replies briefly when it makes sense, and stays quiet for private back-and-forth or finished threads.\n\nMention Nia by name or reply to her when you clearly want her attention. Please don't enter sensitive info (passwords, API keys, personal data).",
+    "ja": "💬 **ニアがサーバーメンバーのようにいるチャンネルです。**\n\nここは常時応答のAIチャットではありません。ニアは会話の流れを見て、入るタイミングなら短く返し、二人だけの会話や終わった流れでは静かにしています。\n\n確実に呼びたいときは名前で呼ぶか返信してください。機密情報（パスワード・APIキー・個人情報）は入力しないでください。"
   },
   "helpTitle": {
     "ko": "**NEXA AI 네트워크 — 도움말**",

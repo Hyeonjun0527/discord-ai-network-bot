@@ -70,6 +70,26 @@ class NexaParticipationFlagService(
         channelId: Long,
     ): Boolean = effectiveMode(guildId, channelId).allowsRealSend
 
+    /** 이 채널에서 NEXA participation 을 실제 발화(LIVE)로 켠다. 채널 kill-switch 가 있으면 먼저 해제한다. */
+    fun enableChannelLive(
+        guildId: Long,
+        channelId: Long,
+    ) {
+        val pseudonym = guildPseudonym(guildId)
+        flagPort.setChannelExcluded(pseudonym, channelId, false)
+        flagPort.setChannelOverride(pseudonym, channelId, ParticipationLane.LIVE)
+    }
+
+    /** 이 채널에서 NEXA participation 을 명시적으로 끈다. 길드/글로벌 LIVE 보다 kill-switch 가 우선한다. */
+    fun disableChannel(
+        guildId: Long,
+        channelId: Long,
+    ) {
+        val pseudonym = guildPseudonym(guildId)
+        flagPort.setChannelOverride(pseudonym, channelId, null)
+        flagPort.setChannelExcluded(pseudonym, channelId, true)
+    }
+
     /** raw guildId → 저장 키 가명(MEMORY purpose, 길드 스코프). ShadowMode store 와 같은 가명 공간. */
     private fun guildPseudonym(guildId: Long): String =
         ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = guildId)

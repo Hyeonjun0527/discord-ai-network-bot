@@ -69,6 +69,20 @@ class NexaParticipationFlagServiceTest {
         assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.LIVE)
     }
 
+    @Test
+    fun `채널 LIVE 활성화와 명시 비활성화는 글로벌 기본보다 우선한다`() {
+        val flagPort = MutableFakeFlagPort()
+        val service = NexaParticipationFlagService(FakeModeStore(ShadowMode.OFF), flagPort, "LIVE")
+
+        service.disableChannel(guildId = 7L, channelId = 100L)
+
+        assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.OFF)
+
+        service.enableChannelLive(guildId = 7L, channelId = 100L)
+
+        assertThat(service.effectiveMode(guildId = 7L, channelId = 100L)).isEqualTo(ShadowMode.LIVE)
+    }
+
     private class FakeModeStore(
         private val mode: ShadowMode,
     ) : ShadowModeStorePort {
@@ -103,5 +117,37 @@ class NexaParticipationFlagServiceTest {
             channelId: Long,
             excluded: Boolean,
         ) = error("not used")
+    }
+
+    private class MutableFakeFlagPort : NexaParticipationFlagPort {
+        private val overrides = mutableMapOf<Long, ParticipationLane?>()
+        private val excluded = mutableSetOf<Long>()
+
+        override fun channelOverride(
+            guildPseudonym: String,
+            channelId: Long,
+        ): ParticipationLane? = overrides[channelId]
+
+        override fun excludedChannelIds(guildPseudonym: String): Set<Long> = excluded.toSet()
+
+        override fun setChannelOverride(
+            guildPseudonym: String,
+            channelId: Long,
+            lane: ParticipationLane?,
+        ) {
+            overrides[channelId] = lane
+        }
+
+        override fun setChannelExcluded(
+            guildPseudonym: String,
+            channelId: Long,
+            excluded: Boolean,
+        ) {
+            if (excluded) {
+                this.excluded += channelId
+            } else {
+                this.excluded -= channelId
+            }
+        }
     }
 }

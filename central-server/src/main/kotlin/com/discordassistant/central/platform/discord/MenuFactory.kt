@@ -42,6 +42,7 @@ object MenuFactory {
     const val CANCEL_SETTINGS = "set:cancel"
     const val SAVE_SETTINGS = "set:save"
     const val AUTO_APPROVE_SELECT = "set:autoapprove-select"
+    const val NIA_MEMBER_TOGGLE = "set:nia-member-toggle"
 
     // 프로바이더 참여 OS 선택(차수 19): 클릭하면 해당 OS 복붙 설치 명령을 보여준다. customId prefix "pjoin:".
     const val OS_PREFIX = "pjoin:"
@@ -164,11 +165,16 @@ object MenuFactory {
     }
 
     /** 설정 패널 저장/상태 버튼. 언어·모델·채널·자동승인을 고른 뒤 저장 하나로 반영한다. */
-    fun settingsActionButtons(): List<Button> =
+    fun settingsActionButtons(niaMemberEnabled: Boolean = false): List<Button> =
         listOf(
             Button.success(SAVE_SETTINGS, "언어·모델·채널 저장"),
             Button.secondary(CHANNEL_ALL, "모든 채널 허용 대기"),
             Button.secondary(CHANNEL_BULK, "채널 목록 붙여넣기"),
+            if (niaMemberEnabled) {
+                Button.danger(NIA_MEMBER_TOGGLE, "현재 채널 사람 니아 끄기")
+            } else {
+                Button.success(NIA_MEMBER_TOGGLE, "현재 채널 사람 니아 켜기")
+            },
             Button.secondary(CANCEL_SETTINGS, "변경 취소"),
         )
 

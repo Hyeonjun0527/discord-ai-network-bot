@@ -140,6 +140,8 @@ jobs:
             echo "❌ 헬스 실패 — 로그:"; docker compose -f compose.yml logs --tail=80 central-server; exit 1
           fi
           echo "✅ 배포 완료 + 헬스 UP (image ${IMAGE}:${GIT_SHA})"
+          echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
+          ./ops_healthcheck.sh
           echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"
           if docker compose -f compose.yml exec -T central-server printenv DISCORD_BOT_TOKEN | grep -q .; then
             DISCORD_GUILD_ID=all ./ops_policy_audit.sh

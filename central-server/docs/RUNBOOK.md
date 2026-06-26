@@ -4,6 +4,7 @@
 - 헬스: `GET /actuator/health` (`providerPool.activeProviderConnections`).
 - 메트릭: `GET /actuator/prometheus` → Prometheus 수집 → Grafana(`docs/grafana-dashboard.json` import).
 - 로그: `docker compose logs -f central-server`.
+- 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
 
 ## 장애 대응
 ### 1) 서버 다운 / health DOWN
@@ -20,6 +21,19 @@
 
 ### 4) DB 이슈
 - 마이그레이션 실패: Flyway `flyway_schema_history` 확인. 잘못된 마이그레이션은 새 V_n 으로 보정(이전 것 수정 금지).
+
+### 5) 자동응답/니아 채널이 "LLM 사용 불가"로 막힘
+- 증상: 핀 메시지는 "멘션 없이 말 걸면 답해요"라고 안내하지만 봇 응답이 `이 채널에서는 LLM 을 사용할 수 없습니다.`로 끝난다.
+- 원인 후보: `channel_ai.auto_respond=true` 또는 니아 자동 생성 채널(`ai채팅`/`ai그림`)이 guild LLM allow-list(`allowed_channel`)와 불일치.
+- 읽기 전용 감사:
+  ```bash
+  ssh ssh.yeon.world
+  cd ~/deploy/central-server
+  DISCORD_GUILD_ID=all ./ops_policy_audit.sh      # 봇이 들어간 모든 서버 대조
+  DISCORD_GUILD_ID=<guild_id> ./ops_policy_audit.sh  # 특정 서버만 볼 때
+  ```
+- 실패하면 출력된 `guild_id`/`channel_id`를 기준으로 관리자 명령(`/llm-allow-channel`) 또는 대시보드에서 해당 채널을 허용한다.
+- 감사가 통과하면 채널 정책 문제는 아니므로 provider pool, role policy, quota, cloud/provider backend 오류를 이어서 본다.
 
 ## 롤백
 - 이전 이미지 태그로 되돌리기:

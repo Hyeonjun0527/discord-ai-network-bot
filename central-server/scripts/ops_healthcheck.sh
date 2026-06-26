@@ -2,9 +2,15 @@
 # 운영 점검 자동화(차수 15 #230). actuator 헬스 + 풀 메트릭을 확인하고
 # 비정상이면 비0 종료(크론/모니터에서 사용). 의존: curl, (선택) jq.
 #
-# 사용: BASE_URL=http://localhost:8080 scripts/ops_healthcheck.sh
+# 사용: BASE_URL=http://localhost:8085 scripts/ops_healthcheck.sh
 set -euo pipefail
-BASE_URL="${BASE_URL:-http://localhost:8080}"
+if [ -z "${BASE_URL:-}" ]; then
+  if curl -fsS --max-time 2 "http://localhost:8085/actuator/health" >/dev/null 2>&1; then
+    BASE_URL="http://localhost:8085"
+  else
+    BASE_URL="http://localhost:8080"
+  fi
+fi
 MIN_PROVIDERS="${MIN_PROVIDERS:-0}"   # 이 값 미만이면 경고(기본 0=경고 안 함)
 
 fail() { echo "❌ $1" >&2; exit 1; }

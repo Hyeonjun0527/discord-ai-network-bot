@@ -78,8 +78,9 @@ jobs:
           DEST="$HOME/deploy/central-server"
           mkdir -p "$DEST"
           cp central-server/deploy/compose.remote.yml "$DEST/compose.yml"
+          cp central-server/scripts/ops_healthcheck.sh "$DEST/ops_healthcheck.sh"
           cp central-server/scripts/ops_policy_audit.sh "$DEST/ops_policy_audit.sh"
-          chmod 755 "$DEST/ops_policy_audit.sh"
+          chmod 755 "$DEST/ops_healthcheck.sh" "$DEST/ops_policy_audit.sh"
           cd "$DEST"
           umask 077
           if [ -z "${ENV_FILE:-}" ]; then

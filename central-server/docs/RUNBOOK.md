@@ -5,11 +5,18 @@
 - 메트릭: `GET /actuator/prometheus` → Prometheus 수집 → Grafana(`docs/grafana-dashboard.json` import).
 - 로그: `docker compose logs -f central-server`.
 - 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
+- 빠른 점검: 배포 위치에서 `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
 
 ## 장애 대응
 ### 1) 서버 다운 / health DOWN
 - `docker compose ps` 로 컨테이너 상태 확인 → `docker compose logs central-server` 마지막 50줄.
 - DB 연결 실패면 `db` 컨테이너 health 확인(`pg_isready`). 복구 후 `docker compose up -d`.
+- 기본 점검:
+  ```bash
+  ssh ssh.yeon.world
+  cd ~/deploy/central-server
+  ./ops_healthcheck.sh
+  ```
 
 ### 2) 풀에 프로바이더 0명(활성 연결 0)
 - `providerpool_active_connections == 0` → `/ask` 가 "처리 가능한 AI 없음" 반환.

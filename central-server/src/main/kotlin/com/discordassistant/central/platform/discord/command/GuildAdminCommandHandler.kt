@@ -1,6 +1,7 @@
 package com.discordassistant.central.platform.discord.command
 
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.ProviderOnboarding
 import com.discordassistant.central.platform.discord.Replies
@@ -27,6 +28,7 @@ class GuildAdminCommandHandler(
     private val registry: ConnectionRegistry,
     private val usage: UsageService,
     private val blocklist: com.discordassistant.central.quota.application.BlocklistService,
+    private val participationFlags: NexaParticipationFlagService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
     private val guards: SharedCommandGuards,
@@ -79,6 +81,23 @@ class GuildAdminCommandHandler(
 
     /** 현재 허용 채널 목록(패널 표시용). 비면 전체 허용. */
     fun allowedChannelIds(ctx: CommandContext): List<Long> = policy.allowedChannelIds(ctx.guildId)
+
+    /** 현재 채널에서 사람같은 니아 participation 실제 발화가 켜져 있는지(패널 표시/토글 기준). */
+    fun isNiaMemberChannelEnabled(ctx: CommandContext): Boolean = participationFlags.allowsRealSend(ctx.guildId, ctx.channelId)
+
+    /** 현재 채널을 사람같은 니아 participation 채널로 켜거나 확실히 끈다. */
+    fun setNiaMemberChannel(
+        ctx: CommandContext,
+        enabled: Boolean,
+    ): Reply {
+        guards.adminOnly(ctx)?.let { return it }
+        if (enabled) {
+            participationFlags.enableChannelLive(ctx.guildId, ctx.channelId)
+            return Replies.ok("현재 채널 <#${ctx.channelId}> 에서 니아가 대화 흐름을 보고 사람처럼 끼어듭니다.")
+        }
+        participationFlags.disableChannel(ctx.guildId, ctx.channelId)
+        return Replies.ok("현재 채널 <#${ctx.channelId}> 에서 사람같은 니아 참여를 껐습니다.")
+    }
 
     /** 설정 패널에서 임시 선택한 서버 언어/기본 모델/허용 채널/자동승인을 저장 버튼 한 번으로 적용한다. */
     fun saveGuildSettings(

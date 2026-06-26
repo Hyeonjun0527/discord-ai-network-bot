@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-push:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     permissions:
       contents: read
       packages: write

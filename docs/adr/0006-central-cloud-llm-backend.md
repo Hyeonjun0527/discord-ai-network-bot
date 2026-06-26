@@ -8,8 +8,8 @@
 
 ## 맥락 (Context)
 
-`/질문`(무료질문)은 기본적으로 무료 클라우드 모델(`glm-5.1`, z.ai)로 답하도록 설계돼 있다
-(AskCommandHandler `FREE_CLOUD_MODEL`). 그러나 현재 클라우드 추론은 **각 유저/관리자 PC의
+`/질문`(무료질문)은 기본적으로 무료 클라우드 모델(`glm-4.5-air`, z.ai)로 답하도록 설계돼 있다
+(AskCommandHandler `DEFAULT_FREE_CLOUD_MODEL`, `central.cloud.free-model` 로 오버라이드 가능). 그러나 현재 클라우드 추론은 **각 유저/관리자 PC의
 provider-agent**(`provider_agent/glm.py`)가 z.ai 키를 들고 호출하는 구조다. 즉 클라우드
 무료질문조차 풀에 **클라우드 모델을 광고하는 에이전트가 온라인**일 때만 동작한다.
 

@@ -28,33 +28,43 @@ on:
 
 jobs:
   agent:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     defaults:
       run:
         working-directory: provider-agent
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev]"
+      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
+      # uv 가 arm64 Linux prebuilt 로 3.12 를 보장(arch·tool-cache 무관).
+      # setup-uv 에 python-version 을 주면 repo root 에 .venv·VIRTUAL_ENV 를 깔아, working-directory(provider-agent)
+      # 의 .venv 와 충돌한다(uv pip 는 root, uv run 은 cwd .venv → 'No module named ruff'). 그래서 uv 바이너리만
+      # 설치하고, python 3.12 는 아래 uv venv 가 cwd(provider-agent)에 받게 한다 — 단일 .venv 로 pip/run 일치.
+      - name: uv 설치(바이너리만 — python 은 uv venv 가 cwd 에 받는다)
+        uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[dev]"
       - name: ruff (정적 분석)
-        run: python -m ruff check src tests
+        run: uv run python -m ruff check src tests
       - name: mypy (타입 검사)
-        run: python -m mypy src
+        run: uv run python -m mypy src
       - name: pytest + 커버리지 게이트(#254)
-        run: python -m pytest -q --cov=provider_agent --cov-fail-under=70
+        run: uv run python -m pytest -q --cov=provider_agent --cov-fail-under=70
 
   docs-links:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
+      # uv 가 arm64 Linux prebuilt 로 3.12 를 보장(arch·tool-cache 무관). activate-environment=true 로
+      # .venv 를 만들어 활성화 → 이후 uv run 이 그 3.12 venv 에서 동작.
+      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          activate-environment: true
       - name: 상대 링크 검증
-        run: python3 scripts/check_links.py
+        run: uv run python scripts/check_links.py
       - name: 패키지 자산명 SSOT 드리프트 검사
-        run: python3 scripts/check_packaging.py
+        run: uv run python scripts/check_packaging.py
       - name: 문구 i18n SSOT 동기/완전성 검사(ko/en/ja)
-        run: python3 scripts/gen_i18n.py --check
+        run: uv run python scripts/gen_i18n.py --check

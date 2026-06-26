@@ -1,0 +1,471 @@
+package com.discordassistant.central.platform.discord.nexa
+
+import com.discordassistant.central.actionruntime.domain.model.ActionTarget
+import com.discordassistant.central.global.crypto.ScopedPseudonymizer
+import com.discordassistant.central.participation.application.DecisionProvenance
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.port.out.FeatureValue
+import com.discordassistant.central.participation.application.port.out.FeatureVectorView
+import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
+import com.discordassistant.central.participation.application.port.out.PolicyConfigView
+import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
+import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import com.discordassistant.central.participation.domain.service.AttentionGateConstants
+import com.discordassistant.central.participation.domain.service.BanterSafetyContext
+import com.discordassistant.central.participation.domain.service.ChannelAttentionGate
+import com.discordassistant.central.participation.domain.service.CoreInterventionRules
+import com.discordassistant.central.quota.application.RateLimitStore
+import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.speech.domain.model.ConversationTurn
+import com.discordassistant.central.speech.domain.model.IdentityKernelSection
+import com.discordassistant.central.speech.domain.model.SpeechBurstShape
+import com.discordassistant.central.speech.domain.model.SpeechScenePacket
+import com.discordassistant.central.speech.domain.model.SpeechSocialAct
+import com.discordassistant.central.speech.domain.model.SpeechTarget
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Component
+import java.time.Instant
+
+/**
+ * NEXA participation **자발 발화 wiring**(NEXA participation-activation-plan 단계 1, platform/discord 어댑터).
+ *
+ * "AI 채팅 채널"(NEXA participation flag 가 활성인 (guild, channel))에서 받은 메시지에 대해, 니아가 **스스로**
+ * 발화/리액션/침묵을 판단하고 SPEAK 면 단일 보안 seam [NexaSpeechEmitService.emit] 를 호출한다. 기존 채널 무조건
+ * 답변(autoRespond)과 **완전히 별개의 추가 경로**다 — autoRespond 는 한 줄도 건드리지 않는다(회귀 0).
+ *
+ * **안전(단계 1 핵심)**:
+ *  1. **flag 가드(기본 OFF)**: [NexaParticipationFlagService.isNexaActive] 가 true 일 때만 평가/emit 한다. 기본값은
+ *     OFF([com.discordassistant.central.participation.domain.model.shadow.ShadowMode.DEFAULT]) 이라, flag 를 명시
+ *     승인하지 않은 모든 (guild, channel)에서는 **아무 것도 하지 않는다**(기존 동작 100% 보존).
+ *  2. **전송 0(SHADOW_PREDICT)**: emit 가 행동을 **예약**해도, 실제 Discord 전송은 actionruntime 전송 경계
+ *     ([com.discordassistant.central.actionruntime.application.ShadowOutboundDispatcher])가 ShadowMode 로 hard
+ *     block 한다 — SHADOW_PREDICT 는 `allowsRealSend=false` 라 전송 port 가 **호출되지 않는다**. 즉 wiring 을 켜고
+ *     SHADOW_PREDICT 로 두면 평가·기록은 되지만 사용자에게 메시지가 나가지 않는다. CANARY/LIVE 승격은 별도 단계.
+ *  3. **rate limit 안전망(토큰 폭주 방지)**: SPEAK 확정 후 emit(GLM 발화 생성) 호출 직전에 채널별/전역 **이중**
+ *     분당 빈도 게이트를 둔다. 둘 중 하나라도 거부면 emit 를 **호출하지 않는다**(GLM 토큰 0). LIVE 로 실제 전송이
+ *     일어나도 이 게이트가 과발화·토큰 폭주를 hard cap 으로 막는다.
+ *  4. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
+ *     경로가 ConsentGate(2단계 동의)·SpeechCritic·AiIdentityDisclosureCritic·LIVE 모델 검증을 **강제**한다. 이
+ *     브리지는 emit 를 호출만 하며 **우회 경로를 만들지 않는다**.
+ *  5. **graceful**: 평가/emit 실패는 흡수하고 로그만 남긴다(관찰 best-effort) — 기존 메시지 처리(autoRespond 등)에
+ *     영향 0.
+ *
+ * 순수성 경계: platform 어댑터 — participation/speech/actionruntime 의 공개 application 클래스·도메인 값 객체만
+ * 조립한다(여러 도메인 application 을 묶는 것은 adapter 의 허용 책임). JDA 전송은 참조하지 않는다.
+ */
+@Component
+class NexaParticipationEmitBridge(
+    private val flags: NexaParticipationFlagService,
+    // 같은 타입(ParticipationPolicyPort)의 다른 정책 bean(legacyAutoRespond 등)과 구분 — participation 평가 전용
+    // baseline 정책을 명시 선택한다(BaselineParticipationPolicyConfig.PARTICIPATION_EVAL_POLICY_BEAN).
+    @param:Qualifier("participationEvalPolicy") private val policy: ParticipationPolicyPort,
+    private val emit: NexaSpeechEmitService,
+    // 자발 발화 빈도 안전망(토큰 폭주 방지) — emit 직전 채널별/전역 이중 게이트. autoRespond 가 쓰는 같은 store(#242).
+    private val rateLimitStore: RateLimitStore,
+    @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
+    @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
+) {
+    private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
+
+    /**
+     * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
+     * 메시지마다 동기 평가하므로 능동 타이머 없이 이 상태로 타이밍(pingpong wake·min_gap debounce·dynamic_idle)을 낸다.
+     * 채널 수만큼만 자라는 경량 상태(가변 var 필드). 동시성: ConcurrentHashMap + 채널 상태 단위 동기화로 보호한다.
+     */
+    private val attentionStates =
+        java.util.concurrent.ConcurrentHashMap<String, ChannelAttentionGate.ChannelAttentionState>()
+
+    /**
+     * [signal] (raw Discord 메시지 신호)에 대해 NEXA participation 평가를 돌리고, 정책이 낸 분포가 SPEAK 로 접히면
+     * [NexaSpeechEmitService.emit] 를 호출한다. flag OFF 면 no-op, 실패는 흡수한다(기존 동작 보존). 무엇이 일어났는지
+     * ([ParticipationEmitOutcome])를 돌려준다(테스트·관찰용).
+     */
+    fun onMessage(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
+        if (!flags.isNexaActive(guildId = signal.guildId, channelId = signal.channelId)) {
+            return ParticipationEmitOutcome.Inactive // flag OFF(legacy) — 자발 발화 경로 미진입(기존 동작 보존)
+        }
+        return try {
+            evaluateAndEmit(signal)
+        } catch (e: Exception) {
+            // 관찰 실패는 사용자 응답(autoRespond 등)을 막지 않는다 — 흡수 후 로그만(관찰 best-effort).
+            log.warn("NEXA participation 발화 평가 실패(channel={}) — 자발 발화만 건너뜀: {}", signal.channelId, e.message)
+            ParticipationEmitOutcome.Failed
+        }
+    }
+
+    private fun evaluateAndEmit(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
+        val guildPseudonym = guildPseudonym(signal.guildId)
+        val userPseudonym = userPseudonym(signal.guildId, signal.userId)
+        val channelKey = signal.channelId.toString()
+
+        // 0) core 결정론 규칙 게이트 먼저(CoreInterventionRules — hard_policy + rules 이식). 명백하면 즉결:
+        //    SPEAK → 정책 우회하고 바로 발화(rate limit·emit 안전 게이트는 그대로 통과). SILENT → emit 안 함.
+        //    WAIT → 이번 턴 발화 안 함(burst 미완·이어가는 연결어). CANDIDATE(모호) 일 때만 아래 정책 분포로 위임한다.
+        val verdict = CoreInterventionRules.evaluate(ruleInputOf(signal))
+
+        // 0-b) attention 타이밍 게이트(ChannelAttentionGate — "언제 깨우나"). 끼어들기 **판단**(verdict)과 직교한다.
+        //      WAKE_NOW(멘션/호명/reply/continuation/pingpong) → 즉시 통과. WAIT(min_gap 연타·typing) → 이번 턴 보류
+        //      (디바운스 등가 — 능동 타이머 없이 과발화 억제). DROP/NO_WAKE → 어차피 verdict 가 SILENT/Candidate.
+        //      tsMs 미관측(0)이면 타이밍 신호가 없으므로 게이트를 건너뛴다(보수적·기존 동작 보존 — 첫 메시지/테스트).
+        if (signal.tsMs > 0) {
+            val wake = evaluateAttention(channelKey, signal, verdict)
+            if (wake == AttentionGateConstants.WAIT) {
+                return ParticipationEmitOutcome.AttentionDeferred(channelKey)
+            }
+        }
+
+        when (verdict) {
+            is CoreInterventionRules.Verdict.Silent ->
+                return ParticipationEmitOutcome.RuleSilent(verdict.reasonCode)
+            is CoreInterventionRules.Verdict.Wait ->
+                return ParticipationEmitOutcome.RuleWait(verdict.reasonCode)
+            is CoreInterventionRules.Verdict.Speak -> {
+                // 규칙이 명백한 SPEAK 라 정책 분포를 묻지 않는다 — 결정론 ALWAYS_SPEAK 분포로 emit 한다.
+                return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, ruleForcedSpeakResponse())
+            }
+            CoreInterventionRules.Verdict.Candidate -> Unit // 모호 → 아래 정책 분포로 위임.
+        }
+
+        // 1) participation 평가 — 관측 가능한 최소 신호(멘션·최근 NEXA 발화량)로 정책 분포를 얻는다.
+        val features =
+            FeatureVectorView.of(
+                version = FeatureCatalog.VERSION,
+                pairs =
+                    mapOf(
+                        FeatureCatalog.BURST_HAS_MENTION to FeatureValue.present(if (signal.mentioned) 1.0 else 0.0),
+                        FeatureCatalog.AGENT_RECENT_BURST_COUNT to FeatureValue.present(signal.recentAgentBurstCount.toDouble()),
+                    ),
+            )
+        val request =
+            PolicyDecisionRequest(
+                sceneSnapshotRef =
+                    SceneSnapshotRef(
+                        guildPseudonym = guildPseudonym,
+                        channelId = channelKey,
+                        sceneSeq = signal.sceneSeq,
+                        contextVersion = signal.contextVersion,
+                    ),
+                features = features,
+                config =
+                    PolicyConfigView(
+                        channelMode = "participation",
+                        autoRespondEnabled = false,
+                        speechAllowed = true,
+                    ),
+                modelVersion = null,
+                schemaVersion = SCHEMA_VERSION,
+                seed = signal.seed,
+            )
+        val response = policy.decide(request)
+
+        // 2) SPEAK 가 가장 유력하지 않으면 emit 를 부르지 않는다(IGNORE/REACT/WAIT 는 발화 없음). emit 가 안전 override 로
+        //    다시 한 번 접지만, 여기서 먼저 거르면 불필요한 발화 파이프라인·생성 비용을 피한다(KISS).
+        if (response.mostLikelyAction != com.discordassistant.central.participation.domain.model.action.SocialActionKind.SPEAK) {
+            return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
+        }
+        return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response)
+    }
+
+    /**
+     * 채널 attention 상태를 갱신하고 이 트리거의 깨움 action([AttentionGateConstants] WAKE_NOW/WAIT/WAKE_AFTER_IDLE)을 낸다.
+     * core verdict 를 hard_policy 로 사상한다: SPEAK(호명/reply/continuation)→RESPOND_NOW(즉시 wake), Silent→DROP,
+     * 그 외→CANDIDATE(idle 후 — 디바운스 등가). 채널 상태 단위로 동기화해 동시 메시지의 in-place 갱신 경합을 막는다.
+     */
+    private fun evaluateAttention(
+        channelKey: String,
+        signal: ParticipationMessageSignal,
+        verdict: CoreInterventionRules.Verdict,
+    ): String {
+        val hardPolicy =
+            when (verdict) {
+                is CoreInterventionRules.Verdict.Speak -> ChannelAttentionGate.HARD_RESPOND_NOW
+                is CoreInterventionRules.Verdict.Silent -> ChannelAttentionGate.HARD_DROP
+                else -> ChannelAttentionGate.HARD_CANDIDATE
+            }
+        val state = attentionStates.computeIfAbsent(channelKey) { ChannelAttentionGate.ChannelAttentionState() }
+        // 트리거 메시지는 사람 발화(니아 자기 메시지는 이 경로로 안 옴 — DiscordBot 이 봇 author 를 早期 return).
+        // isNia=false 로 평가하고, 니아 발화 앵커(last_nia_ts)는 emit 성공 시 갱신한다(pingpong wake 기준점).
+        return synchronized(state) {
+            ChannelAttentionGate.decide(tsMs = signal.tsMs, isNia = false, hardPolicy = hardPolicy, state = state).action
+        }
+    }
+
+    /** emit(니아 발화) 직후 pingpong 앵커(last_nia_ts)를 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들도록). */
+    private fun markNiaSpoke(
+        channelKey: String,
+        tsMs: Long,
+    ) {
+        if (tsMs <= 0) return
+        val state = attentionStates.computeIfAbsent(channelKey) { ChannelAttentionGate.ChannelAttentionState() }
+        synchronized(state) { state.lastNiaTsMs = tsMs }
+    }
+
+    /**
+     * [signal] 로 [CoreInterventionRules.RuleInput] 을 만든다(브리지가 가진 raw 신호 → 순수 규칙 입력).
+     * 7개 히스토리 도출 신호(continuation·중복·burst 미완·사적 핑퐁)를 그대로 매핑한다 — 호출자(DiscordBot)가 채널
+     * 최근 메시지 히스토리에서 도출해 [signal] 에 채워 넘긴다. 미관측이면 RuleInput 기본값(보수적 — 덜 발화)으로 떨어진다.
+     */
+    private fun ruleInputOf(signal: ParticipationMessageSignal): CoreInterventionRules.RuleInput =
+        CoreInterventionRules.RuleInput(
+            triggerText = signal.triggerText,
+            speakerLabel = signal.speakerLabel,
+            mentioned = signal.mentioned,
+            replyToNia = signal.replyToNia,
+            niaRecentTokens = signal.niaRecentTokens,
+            withinContinuationTtl = signal.withinContinuationTtl,
+            burstIncomplete = signal.burstIncomplete,
+            duplicateOfPrevHuman = signal.duplicateOfPrevHuman,
+            priorHumanSpeakerLabels = signal.priorHumanSpeakerLabels,
+            firstMessageText = signal.firstMessageText,
+            conversationMentionsNia = signal.conversationMentionsNia,
+        )
+
+    /**
+     * SPEAK 확정(규칙 즉결 또는 정책 분포 argmax) 후 공통 발화 경로 — rate limit 안전망 → emit 입력 조립 → emit.
+     * [response] 는 규칙 즉결이면 [ruleForcedSpeakResponse], 정책 위임이면 정책이 낸 분포다.
+     */
+    private fun emitSpeak(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        userPseudonym: String,
+        channelKey: String,
+        response: com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse,
+    ): ParticipationEmitOutcome {
+        // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
+        //    채널별/전역 이중 게이트를 둔다. **둘 중 하나라도 거부면 emit 를 호출하지 않는다(GLM 토큰 0)**. LIVE 로
+        //    실제 전송이 일어나도 이 게이트가 분당 발화 수를 hard cap 으로 묶어 과발화·토큰 폭주를 막는다.
+        if (!withinRateLimit(channelKey)) {
+            return ParticipationEmitOutcome.RateLimited(channelKey)
+        }
+
+        // 4) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
+        //    PolicyBackedConsentGate 형식(guild:user:channel)으로 맞춘다.
+        val packet =
+            SpeechScenePacket.of(
+                focusThreadKey = "discord:$guildPseudonym:$channelKey",
+                target = SpeechTarget.member(userPseudonym),
+                recentTurns = signal.recentTurns,
+                socialAct = SpeechSocialAct.ACKNOWLEDGE,
+                burstShape = SpeechBurstShape(fragmentCount = 1, maxFragmentLength = 280, reactionOnly = false),
+                identity = NIA_IDENTITY,
+            )
+        val emitRequest =
+            NexaSpeechEmitRequest(
+                provenance =
+                    DecisionProvenance(
+                        correlationId = "participation:$channelKey:${signal.sceneSeq}",
+                        guildPseudonym = guildPseudonym,
+                        channelId = channelKey,
+                        contextVersion = signal.contextVersion,
+                        featureHash = "mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}",
+                        featureVectorVersion = FeatureCatalog.VERSION,
+                        modelVersion = response.modelVersion,
+                    ),
+                rawDistribution = response.toDomain(),
+                safetyContext = BanterSafetyContext(),
+                packet = packet,
+                consentSubjectPseudonym =
+                    PolicyBackedConsentGate.pseudonymOf(
+                        guildId = signal.guildId,
+                        userId = signal.userId,
+                        channelId = signal.channelId,
+                    ),
+                actionTarget =
+                    ActionTarget(
+                        guildPseudonym = guildPseudonym,
+                        channelId = channelKey,
+                        threadId = "discord:$guildPseudonym:$channelKey",
+                    ),
+                sampledActionIndex = 0,
+                seed = signal.seed,
+                executeAfter = Instant.now(),
+            )
+        val result = emit.emit(emitRequest)
+        // 니아가 발화했으니 pingpong 앵커를 이 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들면 즉시 wake).
+        // 니아 자기 메시지는 이 브리지로 안 오므로(봇 author early-return), 발화 시점을 여기서 앵커로 삼는다.
+        markNiaSpoke(channelKey, signal.tsMs)
+        return ParticipationEmitOutcome.Emitted(result)
+    }
+
+    /**
+     * 자발 발화 빈도 이중 게이트(채널별 + 전역). **둘 다 통과해야** true. emit 호출 전에 평가하므로 거부면 GLM 토큰 0.
+     * 게이트 평가 자체가 실패(예외)해도 흡수해 발화를 막는다(fail-closed — 안전망이 오히려 폭주를 허용하지 않게).
+     */
+    private fun withinRateLimit(channelKey: String): Boolean =
+        try {
+            // 채널 한도 먼저, 통과하면 전역 한도. 둘 다 acquire 되어야 발화한다.
+            rateLimitStore.tryAcquire("nexa-speech:ch:$channelKey", perChannelPerMin, RATE_WINDOW_SECONDS) &&
+                rateLimitStore.tryAcquire("nexa-speech:global", globalPerMin, RATE_WINDOW_SECONDS)
+        } catch (e: Exception) {
+            // rate limit 체크 실패는 발화를 허용하지 않는다(토큰 폭주 안전망이 우선) — 흡수 후 로그.
+            log.warn("NEXA participation rate limit 체크 실패(channel={}) — 안전상 발화 skip: {}", channelKey, e.message)
+            false
+        }
+
+    /** raw guildId → 저장 키 가명(MEMORY purpose, 길드 스코프). ShadowMode store/flag 와 같은 가명 공간. */
+    private fun guildPseudonym(guildId: Long): String =
+        ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = guildId)
+
+    /** raw userId → 길드 스코프 가명(원문 user id 비저장 — packet/target 라벨). */
+    private fun userPseudonym(
+        guildId: Long,
+        userId: Long,
+    ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = userId)
+
+    /**
+     * core 규칙이 명백한 SPEAK 로 즉결했을 때 쓰는 결정론 분포(SPEAK=1.0). 정책 분포를 묻지 않고 바로 발화하되,
+     * emit 입력 계약([PolicyDecisionResponse])은 그대로 채워 rate limit·보안 emit 게이트를 동일하게 통과시킨다.
+     * 단일 조각·즉시·대상없음(baseline 과 동일한 계약 최소 형태) — 끼어들기 "판단" 은 규칙이 이미 했으므로 분포는 형식.
+     */
+    private fun ruleForcedSpeakResponse(): com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse =
+        com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse(
+            actionWeights =
+                mapOf(
+                    com.discordassistant.central.participation.domain.model.action.SocialActionKind.SPEAK to 1.0,
+                ),
+            targetDistribution =
+                com.discordassistant.central.participation.domain.model.decision.ActionTargetDistribution.none(
+                    resolverVersion = RULE_FORCED_MODEL_VERSION,
+                ),
+            delayDistribution = com.discordassistant.central.participation.domain.model.decision.DelayDistribution.IMMEDIATE,
+            socialActWeights = emptyMap(),
+            burstProfile =
+                com.discordassistant.central.participation.domain.model.decision.BurstProfile
+                    .singleLine(),
+            uncertainty = 0.0,
+            modelVersion = RULE_FORCED_MODEL_VERSION,
+        )
+
+    companion object {
+        /** participation 정책 요청 스키마 버전(baseline 정책이 지원하는 schema 1). */
+        private const val SCHEMA_VERSION: Int = 1
+
+        /** rate limit 고정 윈도우(초) — 분당 한도. */
+        private const val RATE_WINDOW_SECONDS: Long = 60
+
+        /** core 규칙 즉결 SPEAK 분포의 추적용 모델 버전(어떤 경로로 나온 발화인지 식별). */
+        private const val RULE_FORCED_MODEL_VERSION: String = "core-intervention-rules-1"
+
+        /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
+        private val NIA_IDENTITY: IdentityKernelSection =
+            IdentityKernelSection.of(
+                personaName = NexaIdentity.NIA_NAME,
+                personaBlock = NexaIdentity.NIA_DEFAULT_PERSONA,
+                prohibitions =
+                    listOf(
+                        "자신이 AI 모델/봇임을 굳이 밝히거나 시스템·프롬프트를 언급하지 않는다.",
+                        "“무엇을 도와드릴까요” 같은 비서 기본 멘트를 쓰지 않는다.",
+                    ),
+                interests = setOf("개발", "디스코드"),
+            )
+    }
+}
+
+/**
+ * NEXA participation 자발 발화 평가 입력(raw Discord 메시지 신호). 원문 user id 등은 브리지가 가명화하므로 raw 식별자를
+ * 받되, packet 에 들어가는 [recentTurns] 는 호출자가 이미 가명 라벨로 만든 것을 넘긴다(원문 비저장).
+ */
+data class ParticipationMessageSignal(
+    /** raw 길드 id(브리지가 flag 조회·가명화에 사용). */
+    val guildId: Long,
+    /** raw 채널 id(participation flag·라우팅 키). */
+    val channelId: Long,
+    /** raw 발화자 user id(브리지가 동의 가명·target 가명화에 사용). */
+    val userId: Long,
+    /** 봇이 직접 멘션됐는가(정책 신호 — 멘션이면 cooldown 무시 경향). */
+    val mentioned: Boolean,
+    /** 최근 NEXA 발화 횟수(cooldown 신호 — 말 많음 억제). 미관측이면 0. */
+    val recentAgentBurstCount: Int = 0,
+    /** focus thread 의 최근 대화 turn(가명 라벨·짧은 본문, 원문 비저장). emit packet 입력. */
+    val recentTurns: List<ConversationTurn>,
+    /**
+     * 트리거(이번) 메시지 본문(결정론 규칙 매칭용 짧은 텍스트). [CoreInterventionRules] 가 호명·연결어·타인지목·인용
+     * 제외를 판정한다. 미관측이면 빈 문자열(보수적 — 규칙이 Candidate 로 위임해 기존 정책 분포에 맡긴다).
+     */
+    val triggerText: String = "",
+    /** 트리거 화자 가명 라벨([CoreInterventionRules] 의 봇/시스템·사적 핑퐁 판정용). 미관측이면 빈 문자열. */
+    val speakerLabel: String = "",
+    /** 트리거가 니아의 메시지에 대한 reply 인가(core hard_policy RESPOND_NOW reply 신호). 미관측이면 false(보수적). */
+    val replyToNia: Boolean = false,
+    /**
+     * 니아 직전 발화 토큰(continuation A7 — core hard_policy continuation). 채널 히스토리에서 도출. 없으면 빈 목록
+     * (continuation 시도 안 함 — 보수적).
+     */
+    val niaRecentTokens: List<String> = emptyList(),
+    /** 니아 직전 발화 시각이 continuation TTL(90s) 내인가(continuation A7). 히스토리에서 도출. 미관측이면 false(보수적). */
+    val withinContinuationTtl: Boolean = false,
+    /** 트리거가 직전 사람 메시지와 완전 중복인가(core hard_policy DROP 중복, A4). 미관측이면 false(보수적 — 덜 침묵). */
+    val duplicateOfPrevHuman: Boolean = false,
+    /** 트리거 화자의 발화 묶음이 미완성(이어말 중)인가(rules burst_status incomplete, B1). 미관측이면 false. */
+    val burstIncomplete: Boolean = false,
+    /** 최근 대화의 사람 화자 라벨 집합(사적 핑퐁 2-인 판정, B17). 트리거 화자 제외, 히스토리에서 도출. */
+    val priorHumanSpeakerLabels: List<String> = emptyList(),
+    /** 최근 대화의 첫 메시지 본문(사적 핑퐁 호격 시작 판정, B17). 히스토리에서 도출. 없으면 null. */
+    val firstMessageText: String? = null,
+    /** 최근 대화 어디서든 니아가 호명됐는가(사적 핑퐁 예외, B17). 히스토리에서 도출. 미관측이면 false. */
+    val conversationMentionsNia: Boolean = false,
+    /**
+     * 트리거 이벤트 절대 시각(ms) — [ChannelAttentionGate] 타이밍 결정(pingpong·min_gap debounce·dynamic_idle) 주입값.
+     * Date.now 금지(결정론) — 호출자가 JDA `timeCreated` 등에서 도출해 넘긴다. 미관측이면 0.
+     */
+    val tsMs: Long = 0,
+    /** 채널 내 단조 증가 장면 순번(decision/예약 멱등 키 일부). */
+    val sceneSeq: Long,
+    /** 정책 무효화 추적 context 버전. */
+    val contextVersion: Long,
+    /** 결정론 seed(안전 override·후보 선택 재현 키). */
+    val seed: Long,
+)
+
+/** [NexaParticipationEmitBridge.onMessage] 결과 — flag OFF/비SPEAK/emit/실패를 명시 구분(관찰·테스트). */
+sealed interface ParticipationEmitOutcome {
+    /** flag OFF(legacy) 또는 비활성 — 자발 발화 경로 미진입(기존 동작 보존). */
+    data object Inactive : ParticipationEmitOutcome
+
+    /** 정책이 SPEAK 가 아님(IGNORE/REACT/WAIT) — emit 미호출(발화 없음). */
+    data class NotSpeaking(
+        val action: com.discordassistant.central.participation.domain.model.action.SocialActionKind,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * core 결정론 규칙이 즉시 SILENT 로 즉결(타인 지목·끝난 흐름·사적 핑퐁·봇/시스템·중복·빈 메시지) — 정책 미평가·emit
+     * 미호출. [reasonCode] 는 어떤 규칙이 막았는지(관찰·테스트).
+     */
+    data class RuleSilent(
+        val reasonCode: String,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * core 결정론 규칙이 WAIT 로 즉결(발화 묶음 미완·이어가는 연결어) — 이번 턴 발화 안 함. 정책 미평가·emit 미호출.
+     */
+    data class RuleWait(
+        val reasonCode: String,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * SPEAK 였지만 빈도 안전망(채널별/전역 분당 한도)에 막혀 emit 미호출 — GLM 토큰 0. 과발화·토큰 폭주 방지.
+     * [channelKey] 는 거부된 채널(관찰·테스트).
+     */
+    data class RateLimited(
+        val channelKey: String,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * attention 타이밍 게이트([ChannelAttentionGate])가 이번 턴을 보류시킴(min_gap 연타·typing 작성 중) — 디바운스
+     * 등가로 과발화를 막는다. 정책/emit 미진입(발화 없음). [channelKey] 는 보류된 채널(관찰·테스트).
+     */
+    data class AttentionDeferred(
+        val channelKey: String,
+    ) : ParticipationEmitOutcome
+
+    /** SPEAK 분포 → emit 호출됨. 그 결과(예약/안전 하강 등). 실제 전송 여부는 ShadowMode 전송 경계가 별도 결정. */
+    data class Emitted(
+        val result: NexaSpeechEmitResult,
+    ) : ParticipationEmitOutcome
+
+    /** 평가/emit 중 예외 흡수 — 사용자 응답에는 영향 없음. */
+    data object Failed : ParticipationEmitOutcome
+}

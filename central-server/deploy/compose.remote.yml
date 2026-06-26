@@ -61,6 +61,12 @@ services:
       CENTRAL_OAUTH_ENABLED: ${CENTRAL_OAUTH_ENABLED:-false}
       CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:-}
       CENTRAL_DASHBOARD_ADMIN_TOKEN: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:-}
+      # NEXA participation 글로벌 기본 lane. LIVE = 모든(+미래) 길드가 길드별 설정 없이도 자발발화를 **실제 Discord
+      # 로 전송**(allowsRealSend=true). 과발화·토큰 폭주는 NexaParticipationEmitBridge 의 rate limit 안전망(채널별
+      # central.nexa.participation.rate-limit.per-channel-per-min 기본 6 + 전역 global-per-min 기본 30, 분당)이
+      # emit(GLM 발화) 호출 직전 이중 게이트로 막는다(한도 초과 시 토큰 0). 길드가 명시적으로 다른 lane 을 가지면 그게
+      # 우선. 코드 기본값(@Value)은 OFF 라 테스트/로컬은 회귀 0 — 실서버만 이 줄로 LIVE 활성.
+      CENTRAL_NEXA_PARTICIPATION_GLOBAL_DEFAULT_LANE: LIVE
     networks:
       default: {}
       yeon-edge:

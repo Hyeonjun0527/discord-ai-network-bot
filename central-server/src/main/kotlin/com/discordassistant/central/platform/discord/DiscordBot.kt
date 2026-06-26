@@ -7,8 +7,10 @@ import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.quota.application.RateLimiter
+import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
@@ -124,6 +126,13 @@ class DiscordBot(
     private val pendingImagePosts: PendingImagePostStore,
     // AI 관리 비서: 어드민의 /질문 자연어 관리 명령을 GLM tool calling 으로 해석·실행(JDA 변경은 여기서 게이트웨이로).
     private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
+    // 니아 사회기억/감정 — 채널AI 발화 경로에서 한 메시지 관찰 → 발화 톤 힌트(D2). 발화 전 호출만 연결(신규 로직 없음).
+    private val niaSocialMind: NiaSocialMindService,
+    // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
+    private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+    private val participationFlags: NexaParticipationFlagService,
+    // 니아 채널 자동 만들기 시 ai채팅·ai그림을 LLM 채널 허용 목록에 등록(자동응답↔LLM 정책 불일치 방지). PolicyService 빈.
+    private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -225,6 +234,10 @@ class DiscordBot(
                 imaginePostConfirm,
                 pendingImagePosts,
                 adminAssistant,
+                niaSocialMind,
+                participationEmitBridge,
+                participationFlags,
+                channelAllowList,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -296,6 +309,10 @@ class DiscordBot(
         private val imaginePostConfirm: ImaginePostConfirmService,
         private val pendingImagePosts: PendingImagePostStore,
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
+        private val niaSocialMind: NiaSocialMindService,
+        private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+        private val participationFlags: NexaParticipationFlagService,
+        private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -309,7 +326,16 @@ class DiscordBot(
             ChannelProfilePanelRenderer(channelProfiles, settingsWizard::effectiveAllowedChannelIds)
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
-        private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels)
+        private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList, participationFlags)
+
+        // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
+        private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+        // NEXA participation 히스토리 신호 도출기(채널별 사람 메시지 ring buffer — 추가 JDA 조회 0). 트리거가 올 때
+        // 중복·burst 미완·사적 핑퐁(화자집합/첫메시지/니아 호명)을 이 버퍼에서 도출해 브리지로 넘긴다(graceful).
+        private val participationSignals =
+            com.discordassistant.central.platform.discord.nexa
+                .ParticipationSignalDeriver()
 
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -659,6 +685,9 @@ class DiscordBot(
             /** /ai-onboard 본문 백필 수집 상한(JDA 레이트리밋·메모리 보호). */
             private const val MAX_ONBOARD_HISTORY_LIMIT = 200
 
+            /** NEXA participation continuation 토큰화(한글/영숫자) — core hard_policy `_TOKEN_RE` 와 동일 패턴. */
+            private val NIA_TOKEN_RE = Regex("[0-9A-Za-z가-힣]+")
+
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome", "nia")
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
@@ -990,12 +1019,117 @@ class DiscordBot(
             val mentioned =
                 event.message.mentions.users
                     .any { it.idLong == selfId }
+            // NEXA participation 자발 발화(단계 1): flag 활성 채널에서만 평가·emit. autoRespond/멘션과 **별개 경로**다.
+            // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
+            // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
+            forwardToParticipation(event, mentioned)
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
             }
             handleAutoRespond(event)
         }
+
+        /**
+         * NEXA participation 발화 브리지에 메시지 신호를 위임한다(단계 1 wiring). 가명화는 브리지가 하므로 raw 식별자와
+         * 가명 라벨 turn 만 만들어 넘긴다(원문 user id 미저장). 멱등·seed 는 채널·메시지 id 로 결정론 도출한다.
+         * 호출 자체도 graceful — 브리지가 흡수하지만 신호 구성 실패까지 사용자 응답을 막지 않도록 한 번 더 흡수한다.
+         */
+        private fun forwardToParticipation(
+            event: MessageReceivedEvent,
+            mentioned: Boolean,
+        ) {
+            try {
+                val messageId = event.messageIdLong
+                val selfId = event.jda.selfUser.idLong
+                val speakerLabel = "user_${event.author.idLong % 100000}"
+                val contentRaw = event.message.contentRaw.trim()
+                val tsMs =
+                    event.message.timeCreated
+                        .toInstant()
+                        .toEpochMilli()
+                val turn =
+                    com.discordassistant.central.speech.domain.model.ConversationTurn(
+                        speakerLabel = speakerLabel,
+                        text = contentRaw.ifBlank { "(빈 메시지)" }.take(500),
+                    )
+                // core 결정론 규칙([CoreInterventionRules])용 raw 신호: 트리거 원문(짧게)·화자 라벨·니아 발화 reply 여부.
+                // referencedMessage 가 봇 자신(니아) 메시지면 reply-to-nia(RESPOND_NOW). 없으면 보수적 기본값(false).
+                // niaReply = 트리거가 reply 한 대상이 니아 메시지일 때만 그 메시지(아니면 null).
+                val niaReply = event.message.referencedMessage?.takeIf { it.author.idLong == selfId }
+                val replyToNia = niaReply != null
+
+                // continuation(A7): 트리거가 니아 발화에 대한 reply 면, 그 referencedMessage(니아 발화) 토큰을 continuation
+                // 후보로 쓴다. 니아 메시지는 봇 author 라 이 핸들러로 직접 오지 않으므로(early-return), reply 의
+                // referencedMessage 가 유일하게 신뢰할 수 있는 "니아 직전 발화" 출처다. TTL 은 그 메시지 시각과 비교.
+                // reply 가 아니면 빈 토큰(continuation 시도 안 함 — 보수적·덜 발화).
+                val niaRecentTokens: List<String>
+                val withinContinuationTtl: Boolean
+                if (niaReply != null) {
+                    val niaTsMs = niaReply.timeCreated.toInstant().toEpochMilli()
+                    niaRecentTokens = niaTokensOf(niaReply.contentRaw)
+                    withinContinuationTtl =
+                        (tsMs - niaTsMs) in
+                        0..com.discordassistant.central.participation.domain.service.CoreInterventionRules.CONTINUATION_TTL_MS
+                } else {
+                    niaRecentTokens = emptyList()
+                    withinContinuationTtl = false
+                }
+
+                // 히스토리 도출 신호(A4 중복·B1 burst 미완·B17 사적 핑퐁) — 채널별 사람 메시지 버퍼에서 도출(추가 JDA 조회 0).
+                val mentionsNiaInTrigger = mentioned || contentRaw.contains("니아")
+                val derived =
+                    participationSignals.deriveAndRecord(
+                        channelId = event.channel.idLong,
+                        trigger =
+                            com.discordassistant.central.platform.discord.nexa.ParticipationSignalDeriver
+                                .HumanMessage(
+                                    speakerLabel = speakerLabel,
+                                    text = contentRaw,
+                                    tsMs = tsMs,
+                                    mentionsNia = mentionsNiaInTrigger,
+                                ),
+                    )
+
+                participationEmitBridge.onMessage(
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
+                        guildId = event.guild.idLong,
+                        channelId = event.channel.idLong,
+                        userId = event.author.idLong,
+                        mentioned = mentioned,
+                        recentTurns = listOf(turn),
+                        triggerText = contentRaw.take(500),
+                        speakerLabel = speakerLabel,
+                        replyToNia = replyToNia,
+                        niaRecentTokens = niaRecentTokens,
+                        withinContinuationTtl = withinContinuationTtl,
+                        duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
+                        burstIncomplete = derived.burstIncomplete,
+                        priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
+                        firstMessageText = derived.firstMessageText,
+                        conversationMentionsNia = derived.conversationMentionsNia,
+                        tsMs = tsMs,
+                        sceneSeq = messageId,
+                        contextVersion = messageId,
+                        seed = messageId,
+                    ),
+                )
+            } catch (e: Exception) {
+                log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
+            }
+        }
+
+        /**
+         * 니아 직전 발화(reply 의 referencedMessage)에서 continuation 매칭용 토큰을 뽑는다 — core
+         * [CoreInterventionRules] continuation 과 같은 규칙(한글/영숫자, 최소 길이 2, 소문자). 규칙이 다시 토큰화하므로
+         * 여기선 길이 필터만 맞춰 잡음을 줄인다.
+         */
+        private fun niaTokensOf(text: String): List<String> =
+            NIA_TOKEN_RE
+                .findAll(text)
+                .map { it.value.lowercase() }
+                .filter { it.length >= 2 }
+                .toList()
 
         /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
         private fun handleMentionAsk(
@@ -1051,8 +1185,25 @@ class DiscordBot(
                 )
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.channel.sendTyping().queue({}, {})
+            // 니아 사회기억/감정 관찰 → 발화 톤 힌트(D2). 서버 격리 I7, 표시이름·원문 미저장(가명적) I10.
+            // 관찰 실패(getOrNull null)해도 발화는 그대로 진행 — graceful(톤 ""=평소 니아).
+            val scope = "discord:guild:${ctx.guildId}"
+            val speaker = "discord:${ctx.userId}"
+            val tone =
+                runCatching {
+                    niaSocialMind.observe(
+                        scope,
+                        speaker,
+                        listOf(prompt),
+                        java.time.Instant.now(),
+                        persist = true,
+                        wasToneActive = niaToneActive[scope] ?: false,
+                    )
+                }.getOrNull()
+            tone?.let { niaToneActive[scope] = it.tone.active }
+            val toneDirective = tone?.tone?.directive ?: ""
             try {
-                val reply = commands.ask(ctx, prompt)
+                val reply = commands.ask(ctx, prompt, toneDirective = toneDirective)
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))

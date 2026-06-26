@@ -11,7 +11,9 @@ import com.discordassistant.central.participation.application.port.out.Participa
 import com.discordassistant.central.participation.application.port.out.PolicyConfigView
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import com.discordassistant.central.participation.domain.service.AttentionGateConstants
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
+import com.discordassistant.central.participation.domain.service.ChannelAttentionGate
 import com.discordassistant.central.participation.domain.service.CoreInterventionRules
 import com.discordassistant.central.quota.application.RateLimitStore
 import com.discordassistant.central.shared.NexaIdentity
@@ -69,6 +71,14 @@ class NexaParticipationEmitBridge(
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
 
     /**
+     * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
+     * 메시지마다 동기 평가하므로 능동 타이머 없이 이 상태로 타이밍(pingpong wake·min_gap debounce·dynamic_idle)을 낸다.
+     * 채널 수만큼만 자라는 경량 상태(가변 var 필드). 동시성: ConcurrentHashMap + 채널 상태 단위 동기화로 보호한다.
+     */
+    private val attentionStates =
+        java.util.concurrent.ConcurrentHashMap<String, ChannelAttentionGate.ChannelAttentionState>()
+
+    /**
      * [signal] (raw Discord 메시지 신호)에 대해 NEXA participation 평가를 돌리고, 정책이 낸 분포가 SPEAK 로 접히면
      * [NexaSpeechEmitService.emit] 를 호출한다. flag OFF 면 no-op, 실패는 흡수한다(기존 동작 보존). 무엇이 일어났는지
      * ([ParticipationEmitOutcome])를 돌려준다(테스트·관찰용).
@@ -94,7 +104,20 @@ class NexaParticipationEmitBridge(
         // 0) core 결정론 규칙 게이트 먼저(CoreInterventionRules — hard_policy + rules 이식). 명백하면 즉결:
         //    SPEAK → 정책 우회하고 바로 발화(rate limit·emit 안전 게이트는 그대로 통과). SILENT → emit 안 함.
         //    WAIT → 이번 턴 발화 안 함(burst 미완·이어가는 연결어). CANDIDATE(모호) 일 때만 아래 정책 분포로 위임한다.
-        when (val verdict = CoreInterventionRules.evaluate(ruleInputOf(signal))) {
+        val verdict = CoreInterventionRules.evaluate(ruleInputOf(signal))
+
+        // 0-b) attention 타이밍 게이트(ChannelAttentionGate — "언제 깨우나"). 끼어들기 **판단**(verdict)과 직교한다.
+        //      WAKE_NOW(멘션/호명/reply/continuation/pingpong) → 즉시 통과. WAIT(min_gap 연타·typing) → 이번 턴 보류
+        //      (디바운스 등가 — 능동 타이머 없이 과발화 억제). DROP/NO_WAKE → 어차피 verdict 가 SILENT/Candidate.
+        //      tsMs 미관측(0)이면 타이밍 신호가 없으므로 게이트를 건너뛴다(보수적·기존 동작 보존 — 첫 메시지/테스트).
+        if (signal.tsMs > 0) {
+            val wake = evaluateAttention(channelKey, signal, verdict)
+            if (wake == AttentionGateConstants.WAIT) {
+                return ParticipationEmitOutcome.AttentionDeferred(channelKey)
+            }
+        }
+
+        when (verdict) {
             is CoreInterventionRules.Verdict.Silent ->
                 return ParticipationEmitOutcome.RuleSilent(verdict.reasonCode)
             is CoreInterventionRules.Verdict.Wait ->
@@ -146,13 +169,58 @@ class NexaParticipationEmitBridge(
         return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response)
     }
 
-    /** [signal] 로 [CoreInterventionRules.RuleInput] 을 만든다(브리지가 가진 raw 신호 → 순수 규칙 입력). */
+    /**
+     * 채널 attention 상태를 갱신하고 이 트리거의 깨움 action([AttentionGateConstants] WAKE_NOW/WAIT/WAKE_AFTER_IDLE)을 낸다.
+     * core verdict 를 hard_policy 로 사상한다: SPEAK(호명/reply/continuation)→RESPOND_NOW(즉시 wake), Silent→DROP,
+     * 그 외→CANDIDATE(idle 후 — 디바운스 등가). 채널 상태 단위로 동기화해 동시 메시지의 in-place 갱신 경합을 막는다.
+     */
+    private fun evaluateAttention(
+        channelKey: String,
+        signal: ParticipationMessageSignal,
+        verdict: CoreInterventionRules.Verdict,
+    ): String {
+        val hardPolicy =
+            when (verdict) {
+                is CoreInterventionRules.Verdict.Speak -> ChannelAttentionGate.HARD_RESPOND_NOW
+                is CoreInterventionRules.Verdict.Silent -> ChannelAttentionGate.HARD_DROP
+                else -> ChannelAttentionGate.HARD_CANDIDATE
+            }
+        val state = attentionStates.computeIfAbsent(channelKey) { ChannelAttentionGate.ChannelAttentionState() }
+        // 트리거 메시지는 사람 발화(니아 자기 메시지는 이 경로로 안 옴 — DiscordBot 이 봇 author 를 早期 return).
+        // isNia=false 로 평가하고, 니아 발화 앵커(last_nia_ts)는 emit 성공 시 갱신한다(pingpong wake 기준점).
+        return synchronized(state) {
+            ChannelAttentionGate.decide(tsMs = signal.tsMs, isNia = false, hardPolicy = hardPolicy, state = state).action
+        }
+    }
+
+    /** emit(니아 발화) 직후 pingpong 앵커(last_nia_ts)를 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들도록). */
+    private fun markNiaSpoke(
+        channelKey: String,
+        tsMs: Long,
+    ) {
+        if (tsMs <= 0) return
+        val state = attentionStates.computeIfAbsent(channelKey) { ChannelAttentionGate.ChannelAttentionState() }
+        synchronized(state) { state.lastNiaTsMs = tsMs }
+    }
+
+    /**
+     * [signal] 로 [CoreInterventionRules.RuleInput] 을 만든다(브리지가 가진 raw 신호 → 순수 규칙 입력).
+     * 7개 히스토리 도출 신호(continuation·중복·burst 미완·사적 핑퐁)를 그대로 매핑한다 — 호출자(DiscordBot)가 채널
+     * 최근 메시지 히스토리에서 도출해 [signal] 에 채워 넘긴다. 미관측이면 RuleInput 기본값(보수적 — 덜 발화)으로 떨어진다.
+     */
     private fun ruleInputOf(signal: ParticipationMessageSignal): CoreInterventionRules.RuleInput =
         CoreInterventionRules.RuleInput(
             triggerText = signal.triggerText,
             speakerLabel = signal.speakerLabel,
             mentioned = signal.mentioned,
             replyToNia = signal.replyToNia,
+            niaRecentTokens = signal.niaRecentTokens,
+            withinContinuationTtl = signal.withinContinuationTtl,
+            burstIncomplete = signal.burstIncomplete,
+            duplicateOfPrevHuman = signal.duplicateOfPrevHuman,
+            priorHumanSpeakerLabels = signal.priorHumanSpeakerLabels,
+            firstMessageText = signal.firstMessageText,
+            conversationMentionsNia = signal.conversationMentionsNia,
         )
 
     /**
@@ -216,6 +284,9 @@ class NexaParticipationEmitBridge(
                 executeAfter = Instant.now(),
             )
         val result = emit.emit(emitRequest)
+        // 니아가 발화했으니 pingpong 앵커를 이 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들면 즉시 wake).
+        // 니아 자기 메시지는 이 브리지로 안 오므로(봇 author early-return), 발화 시점을 여기서 앵커로 삼는다.
+        markNiaSpoke(channelKey, signal.tsMs)
         return ParticipationEmitOutcome.Emitted(result)
     }
 
@@ -319,6 +390,28 @@ data class ParticipationMessageSignal(
     val speakerLabel: String = "",
     /** 트리거가 니아의 메시지에 대한 reply 인가(core hard_policy RESPOND_NOW reply 신호). 미관측이면 false(보수적). */
     val replyToNia: Boolean = false,
+    /**
+     * 니아 직전 발화 토큰(continuation A7 — core hard_policy continuation). 채널 히스토리에서 도출. 없으면 빈 목록
+     * (continuation 시도 안 함 — 보수적).
+     */
+    val niaRecentTokens: List<String> = emptyList(),
+    /** 니아 직전 발화 시각이 continuation TTL(90s) 내인가(continuation A7). 히스토리에서 도출. 미관측이면 false(보수적). */
+    val withinContinuationTtl: Boolean = false,
+    /** 트리거가 직전 사람 메시지와 완전 중복인가(core hard_policy DROP 중복, A4). 미관측이면 false(보수적 — 덜 침묵). */
+    val duplicateOfPrevHuman: Boolean = false,
+    /** 트리거 화자의 발화 묶음이 미완성(이어말 중)인가(rules burst_status incomplete, B1). 미관측이면 false. */
+    val burstIncomplete: Boolean = false,
+    /** 최근 대화의 사람 화자 라벨 집합(사적 핑퐁 2-인 판정, B17). 트리거 화자 제외, 히스토리에서 도출. */
+    val priorHumanSpeakerLabels: List<String> = emptyList(),
+    /** 최근 대화의 첫 메시지 본문(사적 핑퐁 호격 시작 판정, B17). 히스토리에서 도출. 없으면 null. */
+    val firstMessageText: String? = null,
+    /** 최근 대화 어디서든 니아가 호명됐는가(사적 핑퐁 예외, B17). 히스토리에서 도출. 미관측이면 false. */
+    val conversationMentionsNia: Boolean = false,
+    /**
+     * 트리거 이벤트 절대 시각(ms) — [ChannelAttentionGate] 타이밍 결정(pingpong·min_gap debounce·dynamic_idle) 주입값.
+     * Date.now 금지(결정론) — 호출자가 JDA `timeCreated` 등에서 도출해 넘긴다. 미관측이면 0.
+     */
+    val tsMs: Long = 0,
     /** 채널 내 단조 증가 장면 순번(decision/예약 멱등 키 일부). */
     val sceneSeq: Long,
     /** 정책 무효화 추적 context 버전. */
@@ -357,6 +450,14 @@ sealed interface ParticipationEmitOutcome {
      * [channelKey] 는 거부된 채널(관찰·테스트).
      */
     data class RateLimited(
+        val channelKey: String,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * attention 타이밍 게이트([ChannelAttentionGate])가 이번 턴을 보류시킴(min_gap 연타·typing 작성 중) — 디바운스
+     * 등가로 과발화를 막는다. 정책/emit 미진입(발화 없음). [channelKey] 는 보류된 채널(관찰·테스트).
+     */
+    data class AttentionDeferred(
         val channelKey: String,
     ) : ParticipationEmitOutcome
 

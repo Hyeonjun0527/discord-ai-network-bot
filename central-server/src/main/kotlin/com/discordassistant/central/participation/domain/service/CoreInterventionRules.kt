@@ -4,10 +4,14 @@ package com.discordassistant.central.participation.domain.service
  * "똑똑하게 끼어드는" 결정론적 규칙 게이트(core nia_engine 이식, 순수 도메인 서비스·무상태).
  *
  * **이식 범위 및 원본 파일 매핑**:
- * - `hard_policy.py` → DROP/RESPOND_NOW/CANDIDATE 즉결 (항목 1-27)
- * - `rules.py`       → clear_wait / clear_speak / clear_silent (항목 28-84)
- * - `attention_gate.py` → 타이밍 상수만 [AttentionGateConstants] 에 (항목 85-107)
- *   (full 타이밍 로직 미이식 — 기존 BurstAwareHeuristicPolicy + rate-limit 가 커버)
+ * - `hard_policy.py` → DROP/RESPOND_NOW/CANDIDATE 즉결 (항목 1-27). direct_address_markers 8개 전부 리터럴 반영
+ *   ("@니아"는 Discord `mentioned` 플래그, 나머지 7개는 [DIRECT_ADDRESS_MARKERS]). version=[HARD_POLICY_VERSION].
+ * - `rules.py`       → clear_wait / clear_speak / clear_silent (항목 28-84). "니아님" 은 NIA_VOCATIVE 경로에도 포함.
+ * - `attention_gate.py` → **타이밍 로직 본체까지 이식**: 상수는 [AttentionGateConstants](version=
+ *   [AttentionGateConstants.ATTENTION_VERSION]), per-channel 타이밍 결정(pingpong wake·dynamic_idle·min_gap debounce·
+ *   typing grace·NO_WAKE-on-nia·WAKE_AFTER_IDLE)은 [ChannelAttentionGate] 로 분리 이식했다. emit 경로가 실제로
+ *   consume 한다(NexaParticipationEmitBridge). idle 은 능동 타이머 대신 디바운스 등가로 처리 — 자세한 방식은
+ *   [ChannelAttentionGate] KDoc 참조.
  * - `social_context.py` → 미이식 — 관계·기억 레이어로 별도 관심사(participation 결정 규칙 아님)
  * - `config/policies.yaml` → 상수 인라인 (항목 14-24)
  * - `config/attention.yaml` → [AttentionGateConstants] (항목 89-93)
@@ -220,6 +224,9 @@ object CoreInterventionRules {
             "니아도", // item 46
             "니아 어떻게", // item 47
             "니아 생각", // item 48
+            // policies.yaml direct_address_markers item 6 "니아님" 을 rules NIA_VOCATIVE 경로에도 반영(인용 제외 매칭).
+            // hard_policy DIRECT_ADDRESS_MARKERS 단순 포함과 별개로, @멘션 없는 "니아님 …" 도 인용 밖이면 SPEAK 로 잡는다.
+            "니아님",
         )
 
     /**
@@ -273,15 +280,25 @@ object CoreInterventionRules {
     /** continuation 매칭 토큰 최소 길이. policies.yaml `minimum_token_length` = 2. */
     private const val CONTINUATION_MIN_TOKEN_LENGTH = 2
 
+    // ── version strings (추적용 — core SSOT 와 동기화 검증) ─────────────────────────
+
+    /** 이식 기준 hard_policy SSOT 버전(policies.yaml `hard_policy_version`). 규칙 drift 추적용. */
+    const val HARD_POLICY_VERSION: String = "hp-1"
+
     // ── 함수 ────────────────────────────────────────────────────────────────────
 
     /**
-     * hard_policy direct_address_markers 단순 포함 매칭(case-insensitive, 인용 제외 없음).
+     * hard_policy direct_address_markers 포함 매칭(case-insensitive).
      * policies.yaml `direct_address_markers` 항목 3-8 (항목 2 "@니아"는 `mentioned` 플래그).
-     * hard_policy 는 MVP 단순 포함이라 rules NIA_VOCATIVE(인용 제외)와 별개 경로.
+     *
+     * core hard_policy.py 는 MVP 단순 포함(인용 미제거)이지만, 그 결합 게이트는 이 마커 경로(3-b)를 rules 의
+     * 인용 제외 호명(3-c)보다 **먼저** 평가한다. 인용 미제거로 두면 `아까 "니아야 와봐" 라고…` 같은 **인용 안 호명**도
+     * SPEAK 로 즉결돼 과발화한다. 안전(덜 발화) 우선이라 여기서도 [stripQuotes] 후 매칭한다 — rules NIA_VOCATIVE 와
+     * 인용 처리를 일치시켜(보수적) 인용 안 호명을 Candidate 로 위임한다. core policies.yaml 도 "인용 정교화는 2차"라
+     * 했고, 이 일치는 그 2차 정교화를 양 경로에 동일 적용한 것이다.
      */
     private fun matchesDirectAddressMarker(text: String): Boolean {
-        val lower = text.lowercase()
+        val lower = stripQuotes(text).lowercase()
         return DIRECT_ADDRESS_MARKERS.any { it.lowercase() in lower }
     }
 
@@ -400,8 +417,10 @@ object CoreInterventionRules {
                 .filter { it.isNotBlank() }
                 .toSet()
         val messageCount = input.priorHumanSpeakerLabels.size + 1
-        return messageCount >= 2 && // item 81
-            speakers.size == 2 && // item 82
+        return messageCount >= 2 &&
+            // item 81
+            speakers.size == 2 &&
+            // item 82
             isDirectedAddress(firstText) // item 84
     }
 }
@@ -411,13 +430,16 @@ object CoreInterventionRules {
 /**
  * `attention_gate.py` + `config/attention.yaml` 의 모든 임계 숫자·상수(항목 89-107).
  *
- * full 타이밍 로직(decide/idle_due/dynamic_idle_ms)은 이식하지 않는다 — 기존
- * BurstAwareHeuristicPolicy 와 채널별/전역 rate-limit 이 idle/burst/debounce 를 이미 담당.
- * 상수는 여기 한곳에 선언해 둬서 future 이식 시 yaml 재조회 없이 참조할 수 있게 한다.
+ * full 타이밍 로직(decide/idle_due/dynamic_idle_ms)은 [ChannelAttentionGate] 에 이식돼 있고, 이 객체는 그 로직과
+ * 상수의 SSOT 다(attention.yaml 값과 1:1). 상수를 한곳에 모아 [ChannelAttentionGate] 와 future 참조가 yaml 재조회
+ * 없이 쓰게 한다.
  *
  * 순수 도메인 상수(Spring/JPA/JDA 미참조).
  */
 object AttentionGateConstants {
+    /** 이식 기준 attention SSOT 버전(attention.yaml `attention_version`). 타이밍 상수 drift 추적용. */
+    const val ATTENTION_VERSION: String = "att-1"
+
     // attention.yaml 값 (항목 89-93)
 
     /** idle 하한(ms) — 빠른 대화. attention.yaml `idle_min_ms`. */

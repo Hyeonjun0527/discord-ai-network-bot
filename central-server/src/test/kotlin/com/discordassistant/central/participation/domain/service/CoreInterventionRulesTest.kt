@@ -244,4 +244,11 @@ class CoreInterventionRulesTest {
         val v = CoreInterventionRules.evaluate(input("니아 어때 이 방법?"))
         assertThat(v).isInstanceOf(CoreInterventionRules.Verdict.Speak::class.java)
     }
+
+    @Test
+    fun `인용 안의 니아님 호명은 SPEAK 아님(인용 제외 — NIA_VOCATIVE·마커 일치)`() {
+        // "니아님" 이 인용 부호 안에만 있으면 (마커 경로·NIA_VOCATIVE 경로 모두) 인용 제외로 SPEAK 아님 → Candidate.
+        val v = CoreInterventionRules.evaluate(input("아까 \"니아님 와요\" 라고 적혀 있었어"))
+        assertThat(v).isEqualTo(CoreInterventionRules.Verdict.Candidate)
+    }
 }

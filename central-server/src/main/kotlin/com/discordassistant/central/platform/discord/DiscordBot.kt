@@ -323,6 +323,12 @@ class DiscordBot(
         // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
         private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
+        // NEXA participation 히스토리 신호 도출기(채널별 사람 메시지 ring buffer — 추가 JDA 조회 0). 트리거가 올 때
+        // 중복·burst 미완·사적 핑퐁(화자집합/첫메시지/니아 호명)을 이 버퍼에서 도출해 브리지로 넘긴다(graceful).
+        private val participationSignals =
+            com.discordassistant.central.platform.discord.nexa
+                .ParticipationSignalDeriver()
+
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
             // DM(유저설치, 길드 없음)이면 글로벌 풀 스코프. 길드 전용 명령이 DM 으로 오면 막는다(방어적 — 컨텍스트로도 차단됨).
@@ -670,6 +676,9 @@ class DiscordBot(
 
             /** /ai-onboard 본문 백필 수집 상한(JDA 레이트리밋·메모리 보호). */
             private const val MAX_ONBOARD_HISTORY_LIMIT = 200
+
+            /** NEXA participation continuation 토큰화(한글/영숫자) — core hard_policy `_TOKEN_RE` 와 동일 패턴. */
+            private val NIA_TOKEN_RE = Regex("[0-9A-Za-z가-힣]+")
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome", "nia")
@@ -1024,8 +1033,13 @@ class DiscordBot(
         ) {
             try {
                 val messageId = event.messageIdLong
+                val selfId = event.jda.selfUser.idLong
                 val speakerLabel = "user_${event.author.idLong % 100000}"
                 val contentRaw = event.message.contentRaw.trim()
+                val tsMs =
+                    event.message.timeCreated
+                        .toInstant()
+                        .toEpochMilli()
                 val turn =
                     com.discordassistant.central.speech.domain.model.ConversationTurn(
                         speakerLabel = speakerLabel,
@@ -1033,10 +1047,42 @@ class DiscordBot(
                     )
                 // core 결정론 규칙([CoreInterventionRules])용 raw 신호: 트리거 원문(짧게)·화자 라벨·니아 발화 reply 여부.
                 // referencedMessage 가 봇 자신(니아) 메시지면 reply-to-nia(RESPOND_NOW). 없으면 보수적 기본값(false).
-                val replyToNia =
-                    event.message.referencedMessage
-                        ?.author
-                        ?.idLong == event.jda.selfUser.idLong
+                // niaReply = 트리거가 reply 한 대상이 니아 메시지일 때만 그 메시지(아니면 null).
+                val niaReply = event.message.referencedMessage?.takeIf { it.author.idLong == selfId }
+                val replyToNia = niaReply != null
+
+                // continuation(A7): 트리거가 니아 발화에 대한 reply 면, 그 referencedMessage(니아 발화) 토큰을 continuation
+                // 후보로 쓴다. 니아 메시지는 봇 author 라 이 핸들러로 직접 오지 않으므로(early-return), reply 의
+                // referencedMessage 가 유일하게 신뢰할 수 있는 "니아 직전 발화" 출처다. TTL 은 그 메시지 시각과 비교.
+                // reply 가 아니면 빈 토큰(continuation 시도 안 함 — 보수적·덜 발화).
+                val niaRecentTokens: List<String>
+                val withinContinuationTtl: Boolean
+                if (niaReply != null) {
+                    val niaTsMs = niaReply.timeCreated.toInstant().toEpochMilli()
+                    niaRecentTokens = niaTokensOf(niaReply.contentRaw)
+                    withinContinuationTtl =
+                        (tsMs - niaTsMs) in
+                        0..com.discordassistant.central.participation.domain.service.CoreInterventionRules.CONTINUATION_TTL_MS
+                } else {
+                    niaRecentTokens = emptyList()
+                    withinContinuationTtl = false
+                }
+
+                // 히스토리 도출 신호(A4 중복·B1 burst 미완·B17 사적 핑퐁) — 채널별 사람 메시지 버퍼에서 도출(추가 JDA 조회 0).
+                val mentionsNiaInTrigger = mentioned || contentRaw.contains("니아")
+                val derived =
+                    participationSignals.deriveAndRecord(
+                        channelId = event.channel.idLong,
+                        trigger =
+                            com.discordassistant.central.platform.discord.nexa.ParticipationSignalDeriver
+                                .HumanMessage(
+                                    speakerLabel = speakerLabel,
+                                    text = contentRaw,
+                                    tsMs = tsMs,
+                                    mentionsNia = mentionsNiaInTrigger,
+                                ),
+                    )
+
                 participationEmitBridge.onMessage(
                     com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
                         guildId = event.guild.idLong,
@@ -1047,6 +1093,14 @@ class DiscordBot(
                         triggerText = contentRaw.take(500),
                         speakerLabel = speakerLabel,
                         replyToNia = replyToNia,
+                        niaRecentTokens = niaRecentTokens,
+                        withinContinuationTtl = withinContinuationTtl,
+                        duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
+                        burstIncomplete = derived.burstIncomplete,
+                        priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
+                        firstMessageText = derived.firstMessageText,
+                        conversationMentionsNia = derived.conversationMentionsNia,
+                        tsMs = tsMs,
                         sceneSeq = messageId,
                         contextVersion = messageId,
                         seed = messageId,
@@ -1056,6 +1110,18 @@ class DiscordBot(
                 log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
             }
         }
+
+        /**
+         * 니아 직전 발화(reply 의 referencedMessage)에서 continuation 매칭용 토큰을 뽑는다 — core
+         * [CoreInterventionRules] continuation 과 같은 규칙(한글/영숫자, 최소 길이 2, 소문자). 규칙이 다시 토큰화하므로
+         * 여기선 길이 필터만 맞춰 잡음을 줄인다.
+         */
+        private fun niaTokensOf(text: String): List<String> =
+            NIA_TOKEN_RE
+                .findAll(text)
+                .map { it.value.lowercase() }
+                .filter { it.length >= 2 }
+                .toList()
 
         /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
         private fun handleMentionAsk(

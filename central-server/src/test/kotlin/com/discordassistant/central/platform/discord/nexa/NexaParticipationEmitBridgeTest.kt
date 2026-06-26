@@ -276,6 +276,182 @@ class NexaParticipationEmitBridgeTest {
         assertThat(emit.calls).isEqualTo(1) // 전역 초과분은 emit 미호출 — GLM 토큰 0
     }
 
+    // ── dead-wired 7필드 실배선(이제 발동) ─────────────────────────────────────
+
+    @Test
+    fun `continuation 토큰 겹침(TTL 내)이면 규칙이 SPEAK 로 즉결한다(A7)`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = false,
+                    recentAgentBurstCount = 5, // 정책 단독이면 IGNORE 일 텐데 continuation 이 SPEAK 로 즉결해야 한다.
+                    triggerText = "그 영화 진짜 재밌더라",
+                    niaRecentTokens = listOf("영화", "재밌"),
+                    withinContinuationTtl = true,
+                ),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(1)
+    }
+
+    @Test
+    fun `직전 사람 메시지와 중복이면 규칙이 SILENT 로 즉결한다(A4)`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "ㅋㅋㅋ", duplicateOfPrevHuman = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleSilent::class.java)
+        assertThat((outcome as ParticipationEmitOutcome.RuleSilent).reasonCode).isEqualTo("RULE_DUPLICATE")
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `발화 묶음 미완성이면 규칙이 WAIT 로 즉결한다(B1)`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "그래서 말인데", burstIncomplete = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleWait::class.java)
+        assertThat((outcome as ParticipationEmitOutcome.RuleWait).reasonCode).isEqualTo("RULE_INCOMPLETE_BURST")
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `두 사람만의 사적 핑퐁이면 규칙이 SILENT 로 즉결한다(B17)`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = false,
+                    triggerText = "응 그래",
+                    speakerLabel = "user_2",
+                    priorHumanSpeakerLabels = listOf("user_1"),
+                    firstMessageText = "준호야 너 어제 그거 봤어?",
+                    conversationMentionsNia = false,
+                ),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleSilent::class.java)
+        assertThat((outcome as ParticipationEmitOutcome.RuleSilent).reasonCode).isEqualTo("RULE_PRIVATE_PINGPONG")
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    // ── attention 타이밍 게이트 통합(pingpong wake / idle 보류) ────────────────
+
+    @Test
+    fun `min_gap 미만 연타면 attention 게이트가 이번 턴을 보류한다(디바운스)`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        // 첫 Candidate 메시지(tsMs 관측). recentAgentBurstCount=5 라 정책이 IGNORE → 발화 안 함(니아 앵커 미설정).
+        // 멘션/호명/핑퐁은 RESPOND_NOW/WAKE_NOW 라 디바운스를 우회하므로, 순수 디바운스는 니아 앵커 없는 연타로 검증한다.
+        val first = bridge.onMessage(signal(mentioned = false, recentAgentBurstCount = 5, triggerText = "점심 뭐 먹지", tsMs = 10_000))
+        // 1초 뒤(min_gap 1500 미만) 연타 — 니아 앵커가 없으니 핑퐁 아님 → attention 게이트가 WAIT 로 보류(정책·emit 미진입).
+        val second = bridge.onMessage(signal(mentioned = false, recentAgentBurstCount = 5, triggerText = "배고프다", tsMs = 11_000))
+
+        assertThat(first).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java) // 정책 IGNORE — 발화 없음·앵커 없음
+        assertThat(second).isInstanceOf(ParticipationEmitOutcome.AttentionDeferred::class.java)
+        assertThat(emit.calls).isEqualTo(0) // 보류분은 emit 미호출 — GLM 토큰 0
+    }
+
+    @Test
+    fun `핑퐁 창 내 응답이면 attention 보류 없이 발화한다(pingpong wake)`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        // 멘션으로 한 번 발화 → 니아 발화 앵커(last_nia_ts=10_000) 설정.
+        bridge.onMessage(signal(mentioned = true, tsMs = 10_000))
+        // 0.8초 뒤 응답: gap(800) < min_gap(1500) 이라 디바운스 대상이지만, 핑퐁 창(20s) 내라 핑퐁이 디바운스를
+        // 앞질러 즉시 통과시킨다. 트리거는 Candidate(일상 발화) — 핑퐁 wake 가 없으면 보류됐어야 함을 검증.
+        val pong =
+            bridge.onMessage(
+                signal(mentioned = false, triggerText = "오 그래?", tsMs = 10_800),
+            )
+
+        assertThat(pong).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `니아님 호명(@멘션 없이)이면 SPEAK 로 발화한다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(signal(mentioned = false, recentAgentBurstCount = 5, triggerText = "니아님 질문 있어요"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(1)
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private fun signal(
@@ -286,6 +462,15 @@ class NexaParticipationEmitBridgeTest {
         triggerText: String = "안녕",
         speakerLabel: String = "user_2",
         replyToNia: Boolean = false,
+        niaRecentTokens: List<String> = emptyList(),
+        withinContinuationTtl: Boolean = false,
+        duplicateOfPrevHuman: Boolean = false,
+        burstIncomplete: Boolean = false,
+        priorHumanSpeakerLabels: List<String> = emptyList(),
+        firstMessageText: String? = null,
+        conversationMentionsNia: Boolean = false,
+        // tsMs 기본 0 = attention 타이밍 게이트 건너뜀(기존 테스트 동작 보존). 타이밍을 검증하는 테스트만 명시 주입한다.
+        tsMs: Long = 0,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
@@ -297,6 +482,14 @@ class NexaParticipationEmitBridgeTest {
             triggerText = triggerText,
             speakerLabel = speakerLabel,
             replyToNia = replyToNia,
+            niaRecentTokens = niaRecentTokens,
+            withinContinuationTtl = withinContinuationTtl,
+            duplicateOfPrevHuman = duplicateOfPrevHuman,
+            burstIncomplete = burstIncomplete,
+            priorHumanSpeakerLabels = priorHumanSpeakerLabels,
+            firstMessageText = firstMessageText,
+            conversationMentionsNia = conversationMentionsNia,
+            tsMs = tsMs,
             sceneSeq = 10L,
             contextVersion = 1L,
             seed = 7L,

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# 운영 점검 자동화(차수 15 #230). actuator 헬스 + 풀 메트릭을 확인하고
+# 운영 점검 자동화(차수 15 #230). actuator 헬스 + 풀 메트릭 + 선택적 공개 경로를 확인하고
 # 비정상이면 비0 종료(크론/모니터에서 사용). 의존: curl, jq 또는 python3.
 #
 # 사용: BASE_URL=http://localhost:8085 scripts/ops_healthcheck.sh
 set -euo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
 APP_SERVICE="${APP_SERVICE:-central-server}"
+EXTERNAL_BASE_URL="${EXTERNAL_BASE_URL:-}"
 if [ -z "${BASE_URL:-}" ]; then
   if curl -fsS --max-time 2 "http://localhost:8085/actuator/health" >/dev/null 2>&1; then
     BASE_URL="http://localhost:8085"
@@ -58,7 +59,14 @@ if [ "$active" -lt "$MIN_PROVIDERS" ]; then
 fi
 echo "✅ activeProviders=$active (>= $MIN_PROVIDERS)"
 
-# 3) 운영 compose 환경이면 dev 엔드포인트 노출을 같이 확인한다.
+# 3) 공개 경로가 있으면 Cloudflare/Tunnel 포함 외부 헬스도 확인한다.
+if [ -n "$EXTERNAL_BASE_URL" ]; then
+  external_health="$(curl -fsS --max-time 10 "$EXTERNAL_BASE_URL/actuator/health" || fail "외부 actuator/health 응답 없음: $EXTERNAL_BASE_URL")"
+  echo "$external_health" | grep -q '"status":"UP"' || fail "외부 헬스 상태 비정상: $external_health"
+  echo "✅ external health UP ($EXTERNAL_BASE_URL)"
+fi
+
+# 4) 운영 compose 환경이면 dev 엔드포인트 노출을 같이 확인한다.
 if should_check_compose_env; then
   dev_enabled="$(docker compose -f "$COMPOSE_FILE" exec -T "$APP_SERVICE" printenv CENTRAL_DEV_ENABLED 2>/dev/null | tr -d '\r\n' || true)"
   [ "$dev_enabled" = "false" ] || fail "CENTRAL_DEV_ENABLED가 false가 아닙니다: ${dev_enabled:-<unset>}"

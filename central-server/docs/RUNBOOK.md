@@ -17,7 +17,7 @@
   ```bash
   ssh ssh.yeon.world
   cd ~/deploy/central-server
-  ./ops_healthcheck.sh
+  EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh
   ```
 
 ### 2) 풀에 프로바이더 0명(활성 연결 0)

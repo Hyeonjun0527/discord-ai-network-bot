@@ -29,6 +29,6 @@ jobs:
           fi
           cd "$DEPLOY_DIR"
           echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
-          bash "$GITHUB_WORKSPACE/central-server/scripts/ops_healthcheck.sh"
+          EXTERNAL_BASE_URL=https://discord-ai.yeon.world bash "$GITHUB_WORKSPACE/central-server/scripts/ops_healthcheck.sh"
           echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"
           DISCORD_GUILD_ID=all bash "$GITHUB_WORKSPACE/central-server/scripts/ops_policy_audit.sh"

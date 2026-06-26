@@ -9,7 +9,7 @@
 # 운영 호스트에서:
 cd ~/deploy/central-server
 docker compose ps
-./ops_healthcheck.sh
+EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh
 DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 ```
 - 스키마는 Flyway 가 자동 적용. DB 는 compose 의 Postgres(볼륨 `pgdata`).

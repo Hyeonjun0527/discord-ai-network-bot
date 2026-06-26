@@ -4,6 +4,8 @@
 #
 # 사용: BASE_URL=http://localhost:8085 scripts/ops_healthcheck.sh
 set -euo pipefail
+COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
+APP_SERVICE="${APP_SERVICE:-central-server}"
 if [ -z "${BASE_URL:-}" ]; then
   if curl -fsS --max-time 2 "http://localhost:8085/actuator/health" >/dev/null 2>&1; then
     BASE_URL="http://localhost:8085"
@@ -12,8 +14,18 @@ if [ -z "${BASE_URL:-}" ]; then
   fi
 fi
 MIN_PROVIDERS="${MIN_PROVIDERS:-0}"   # 이 값 미만이면 경고(기본 0=경고 안 함)
+CHECK_COMPOSE_ENV="${CHECK_COMPOSE_ENV:-auto}" # auto|true|false
 
 fail() { echo "❌ $1" >&2; exit 1; }
+
+should_check_compose_env() {
+  case "$CHECK_COMPOSE_ENV" in
+    true) return 0 ;;
+    false) return 1 ;;
+    auto) [ -f "$COMPOSE_FILE" ] && command -v docker >/dev/null 2>&1 ;;
+    *) fail "CHECK_COMPOSE_ENV는 auto, true, false 중 하나여야 합니다" ;;
+  esac
+}
 
 # 1) 헬스
 health="$(curl -fsS --max-time 5 "$BASE_URL/actuator/health" || fail "actuator/health 응답 없음")"
@@ -25,10 +37,18 @@ pool="$(curl -fsS --max-time 5 "$BASE_URL/api/metrics/pool" || fail "metrics/poo
 echo "ℹ️  pool=$pool"
 if command -v jq >/dev/null 2>&1; then
   active="$(echo "$pool" | jq -r '.activeProviders')"
+  [[ "$active" =~ ^[0-9]+$ ]] || fail "metrics/pool activeProviders 값이 숫자가 아닙니다: $active"
   if [ "$active" -lt "$MIN_PROVIDERS" ]; then
     fail "활성 프로바이더 ${active} < 임계 ${MIN_PROVIDERS}"
   fi
   echo "✅ activeProviders=$active (>= $MIN_PROVIDERS)"
+fi
+
+# 3) 운영 compose 환경이면 dev 엔드포인트 노출을 같이 확인한다.
+if should_check_compose_env; then
+  dev_enabled="$(docker compose -f "$COMPOSE_FILE" exec -T "$APP_SERVICE" printenv CENTRAL_DEV_ENABLED 2>/dev/null | tr -d '\r\n' || true)"
+  [ "$dev_enabled" = "false" ] || fail "CENTRAL_DEV_ENABLED가 false가 아닙니다: ${dev_enabled:-<unset>}"
+  echo "✅ CENTRAL_DEV_ENABLED=false"
 fi
 
 echo "✅ 점검 통과"

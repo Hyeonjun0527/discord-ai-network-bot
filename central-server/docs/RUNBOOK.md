@@ -54,15 +54,25 @@
   ```
 
 ## 백업 / 복구 (Postgres)
-- 백업(정기 cron 권장):
+- 현재 저장소/배포 워크플로는 운영 DB 백업을 자동 생성하지 않는다. 자동화 전까지 당직자는 배포·마이그레이션·위험 작업
+  전에 수동 백업을 만들고, 암호화된 오프호스트 저장소로 옮긴 뒤 복구 리허설 여부를 기록한다.
+- 백업(배포 호스트 `~/deploy/central-server`에서 실행):
   ```bash
-  docker compose exec -T db pg_dump -U central central > backup_$(date +%F).sql
+  mkdir -p backups
+  chmod 700 backups
+  docker compose exec -T db pg_dump -U central -d central --no-owner --no-acl \
+    | gzip > "backups/central_$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
   ```
-- 복구:
+- 복구(가능하면 staging에서 먼저 리허설):
   ```bash
-  docker compose exec -T db psql -U central central < backup_YYYY-MM-DD.sql
+  gunzip -c backups/central_YYYYMMDDTHHMMSSZ.sql.gz \
+    | docker compose exec -T db psql -U central -d central
   ```
-- 볼륨 `pgdata` 가 데이터를 보존. `docker compose down -v` 는 데이터 삭제이므로 주의.
+- 최근 백업 확인(파일 존재만으로 복구 가능성을 보장하지 않음):
+  ```bash
+  find backups -maxdepth 1 -type f -name 'central_*.sql.gz' -printf '%TY-%Tm-%Td %TH:%TM %p\n' | sort | tail
+  ```
+- 볼륨 `pgdata` 가 데이터를 보존. `docker compose down -v` 는 데이터 삭제이므로 금지한다.
 
 ## 보안 점검
 - `CENTRAL_DEV_ENABLED` 운영 false 확인(/dev/* 차단).

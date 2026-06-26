@@ -11,7 +11,7 @@
 ## SLO (목표, 30일 롤링)
 | 지표 | 목표 | 측정 |
 |---|---|---|
-| 중앙 API 가용성(`/actuator/health` UP) | ≥ 99.0% | 헬스 폴링(`ops_healthcheck.sh`) |
+| 중앙 API 가용성(`/actuator/health` UP) | ≥ 99.0% | 헬스 폴링(`ops_healthcheck.sh`, `central ops audit`) |
 | 라우팅 처리 성공률(풀에 가용 프로바이더 있을 때) | ≥ 95% | `ai_request` 상태 집계 |
 | `/ask` p95 응답(라우팅+추론, 풀 정상 시) | ≤ 10s | Micrometer `http_server_requests` / 요청 로그 |
 | 프로바이더 0명(풀 다운) 누적 시간 | ≤ 1%/월 | `providerpool_active_connections` == 0 구간 |

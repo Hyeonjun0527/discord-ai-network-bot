@@ -1,0 +1,33 @@
+# central-server 운영 점검(읽기 전용). 배포 후 생긴 health/policy 드리프트를 주기적으로 잡는다.
+name: central ops audit
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-ops-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: [self-hosted, yeon-arm]
+    steps:
+      - uses: actions/checkout@v4
+      - name: 운영 health/policy 감사
+        run: |
+          set -euo pipefail
+          DEPLOY_DIR="$HOME/deploy/central-server"
+          if [ ! -f "$DEPLOY_DIR/compose.yml" ]; then
+            echo "❌ 배포 compose 파일이 없습니다: $DEPLOY_DIR/compose.yml"
+            exit 1
+          fi
+          cd "$DEPLOY_DIR"
+          echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
+          bash "$GITHUB_WORKSPACE/central-server/scripts/ops_healthcheck.sh"
+          echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"
+          DISCORD_GUILD_ID=all bash "$GITHUB_WORKSPACE/central-server/scripts/ops_policy_audit.sh"

@@ -7,6 +7,7 @@
 - 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
 - 빠른 점검: 배포 위치에서 `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
   두 스크립트는 `central-deploy.yml`이 배포 디렉터리로 복사한다. 파일이 없다면 아직 최신 배포가 돌지 않은 상태다.
+- 주기 점검: GitHub Actions `central ops audit`가 6시간마다 같은 health/policy 감사를 읽기 전용으로 실행한다.
 
 ## 장애 대응
 ### 1) 서버 다운 / health DOWN

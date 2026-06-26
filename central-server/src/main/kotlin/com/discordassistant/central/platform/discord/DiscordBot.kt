@@ -7,6 +7,7 @@ import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
@@ -129,6 +130,7 @@ class DiscordBot(
     private val niaSocialMind: NiaSocialMindService,
     // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
     private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+    private val participationFlags: NexaParticipationFlagService,
     // 니아 채널 자동 만들기 시 ai채팅·ai그림을 LLM 채널 허용 목록에 등록(자동응답↔LLM 정책 불일치 방지). PolicyService 빈.
     private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
@@ -234,6 +236,7 @@ class DiscordBot(
                 adminAssistant,
                 niaSocialMind,
                 participationEmitBridge,
+                participationFlags,
                 channelAllowList,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
@@ -308,6 +311,7 @@ class DiscordBot(
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
         private val niaSocialMind: NiaSocialMindService,
         private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+        private val participationFlags: NexaParticipationFlagService,
         private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
@@ -322,7 +326,7 @@ class DiscordBot(
             ChannelProfilePanelRenderer(channelProfiles, settingsWizard::effectiveAllowedChannelIds)
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
-        private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList)
+        private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList, participationFlags)
 
         // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
         private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()

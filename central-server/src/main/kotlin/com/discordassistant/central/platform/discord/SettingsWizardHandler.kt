@@ -74,6 +74,7 @@ class SettingsWizardHandler(
                 updateSettingsPanel(event, ctx)
             }
             MenuFactory.SAVE_SETTINGS -> savePendingSettings(event, ctx)
+            MenuFactory.NIA_MEMBER_TOGGLE -> toggleNiaMemberChannel(event, ctx)
             else -> return false
         }
         return true
@@ -151,6 +152,7 @@ class SettingsWizardHandler(
             allowedChannelCount = effectiveAllowedChannelIds(ctx).size,
             allowedChannelText = allowedChannelText(ctx),
             autoApprove = pending?.autoApprove ?: commands.isAutoApprove(ctx),
+            niaMemberEnabled = commands.isNiaMemberChannelEnabled(ctx),
             pendingSummary = pendingSummary(ctx),
             currentSummary = currentSettingsSummary(ctx),
         )
@@ -163,11 +165,13 @@ class SettingsWizardHandler(
     private fun currentSettingsSummary(ctx: CommandContext): String {
         val model = commands.guildDefaultModel(ctx) ?: "자동 선택"
         val autoApprove = if (commands.isAutoApprove(ctx)) "켜짐" else "꺼짐"
+        val niaMember = if (commands.isNiaMemberChannelEnabled(ctx)) "켜짐" else "꺼짐"
         return listOf(
             "• 언어: `${commands.guildLanguage(ctx)}`",
             "• 기본 모델: `$model`",
             "• LLM 사용 채널: ${formatChannelPolicy(commands.allowedChannelIds(ctx))}",
             "• 자동 승인: `$autoApprove`",
+            "• 사람같은 니아(현재 채널): `$niaMember`",
         ).joinToString("\n")
     }
 
@@ -235,6 +239,23 @@ class SettingsWizardHandler(
             }, {})
     }
 
+    private fun toggleNiaMemberChannel(
+        event: ButtonInteractionEvent,
+        ctx: CommandContext,
+    ) {
+        val next = !commands.isNiaMemberChannelEnabled(ctx)
+        val reply = commands.setNiaMemberChannel(ctx, next)
+        event
+            .editMessageEmbeds(settingsEmbed(ctx))
+            .setComponents(settingsRows(ctx))
+            .queue({
+                event.hook
+                    .sendMessage(reply.content)
+                    .setEphemeral(true)
+                    .queue({}, {})
+            }, {})
+    }
+
     private fun updateSettingsPanel(
         event: ButtonInteractionEvent,
         ctx: CommandContext,
@@ -274,7 +295,7 @@ class SettingsWizardHandler(
                     current = pendingSettings[settingsKey(ctx)]?.autoApprove ?: commands.isAutoApprove(ctx),
                 ),
             ),
-            ActionRow.of(MenuFactory.settingsActionButtons()),
+            ActionRow.of(MenuFactory.settingsActionButtons(commands.isNiaMemberChannelEnabled(ctx))),
         )
 
     companion object {

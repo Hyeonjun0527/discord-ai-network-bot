@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord
 import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.ChannelAllowListPort
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Member
@@ -33,6 +34,7 @@ class NiaChannelSetupHandlerTest {
     private val guildId = 100L
     private val chatId = 11L
     private val imageId = 22L
+    private val memberId = 33L
     private val actorId = 7L
 
     // Mockito eq()/any() 는 null 을 반환해 Kotlin 비-null 파라미터(예: String) verify 에서 NPE 가 난다.
@@ -84,16 +86,22 @@ class NiaChannelSetupHandlerTest {
 
         val chat = mock(TextChannel::class.java, RETURNS_DEEP_STUBS)
         val image = mock(TextChannel::class.java, RETURNS_DEEP_STUBS)
+        val member = mock(TextChannel::class.java, RETURNS_DEEP_STUBS)
         `when`(chat.idLong).thenReturn(chatId)
         `when`(image.idLong).thenReturn(imageId)
+        `when`(member.idLong).thenReturn(memberId)
         @Suppress("UNCHECKED_CAST")
         val chatAction = mock(ChannelAction::class.java, RETURNS_DEEP_STUBS) as ChannelAction<TextChannel>
 
         @Suppress("UNCHECKED_CAST")
         val imageAction = mock(ChannelAction::class.java, RETURNS_DEEP_STUBS) as ChannelAction<TextChannel>
-        `when`(featureCategory.createTextChannel(any())).thenReturn(chatAction, imageAction)
+
+        @Suppress("UNCHECKED_CAST")
+        val memberAction = mock(ChannelAction::class.java, RETURNS_DEEP_STUBS) as ChannelAction<TextChannel>
+        `when`(featureCategory.createTextChannel(any())).thenReturn(chatAction, imageAction, memberAction)
         `when`(chatAction.complete()).thenReturn(chat)
         `when`(imageAction.complete()).thenReturn(image)
+        `when`(memberAction.complete()).thenReturn(member)
 
         return event
     }
@@ -103,12 +111,15 @@ class NiaChannelSetupHandlerTest {
         val profiles = mock(ChannelAiProfileService::class.java)
         val autoRespond = mock(AutoRespondChannelRegistry::class.java)
         val allowList = mock(ChannelAllowListPort::class.java)
+        val participationFlags = mock(NexaParticipationFlagService::class.java)
         `when`(allowList.allowedChannelIds(guildId)).thenReturn(listOf(999L)) // non-empty = 그 채널만 허용
 
-        NiaChannelSetupHandler(profiles, autoRespond, allowList).handle(mockCreateEvent(), ctx(), "ko")
+        NiaChannelSetupHandler(profiles, autoRespond, allowList, participationFlags).handle(mockCreateEvent(), ctx(), "ko")
 
         verify(allowList).allowChannel(eq(guildId), eq(chatId), eq(actorId))
         verify(allowList).allowChannel(eq(guildId), eq(imageId), eq(actorId))
+        verify(allowList).allowChannel(eq(guildId), eq(memberId), eq(actorId))
+        verify(participationFlags).enableChannelLive(eq(guildId), eq(memberId))
     }
 
     @Test
@@ -116,11 +127,13 @@ class NiaChannelSetupHandlerTest {
         val profiles = mock(ChannelAiProfileService::class.java)
         val autoRespond = mock(AutoRespondChannelRegistry::class.java)
         val allowList = mock(ChannelAllowListPort::class.java)
+        val participationFlags = mock(NexaParticipationFlagService::class.java)
         `when`(allowList.allowedChannelIds(guildId)).thenReturn(emptyList()) // 빈 목록 = 전체 허용
 
-        NiaChannelSetupHandler(profiles, autoRespond, allowList).handle(mockCreateEvent(), ctx(), "ko")
+        NiaChannelSetupHandler(profiles, autoRespond, allowList, participationFlags).handle(mockCreateEvent(), ctx(), "ko")
 
         verify(allowList, never()).allowChannel(anyLong(), anyLong(), anyLong())
+        verify(participationFlags).enableChannelLive(eq(guildId), eq(memberId))
     }
 
     @Test
@@ -128,9 +141,10 @@ class NiaChannelSetupHandlerTest {
         val profiles = mock(ChannelAiProfileService::class.java)
         val autoRespond = mock(AutoRespondChannelRegistry::class.java)
         val allowList = mock(ChannelAllowListPort::class.java)
+        val participationFlags = mock(NexaParticipationFlagService::class.java)
         `when`(allowList.allowedChannelIds(guildId)).thenReturn(emptyList())
 
-        NiaChannelSetupHandler(profiles, autoRespond, allowList).handle(mockCreateEvent(), ctx(), "ko")
+        NiaChannelSetupHandler(profiles, autoRespond, allowList, participationFlags).handle(mockCreateEvent(), ctx(), "ko")
 
         // ai채팅에 니아 프로필 부여 + 자동응답 ON(기존 동작) — allow-list 변경과 무관하게 유지.
         // Kotlin 기본인자는 set$default 가 전 인자를 채워 9-arg set 을 호출하므로 mock 은 9-arg 형태를 본다.

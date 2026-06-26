@@ -4,6 +4,7 @@ import com.discordassistant.central.channelai.application.AutoRespondChannelRegi
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.guild.application.ChannelAllowListPort
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.channel.concrete.Category
@@ -27,13 +28,14 @@ import org.slf4j.LoggerFactory
  *
  * **LLM 채널 허용 목록 등록**: 자동응답(auto-respond)만 켜고 LLM 채널 정책에 등록하지 않으면, 길드 allow-list 가
  * non-empty 인 서버에서 자동 생성 ai채팅이 목록에 없어 RequestOrchestrator 가 "이 채널에서는 LLM 을 사용할 수 없습니다"
- * 로 차단한다(핀 가이드와 모순). 그래서 [channelAllowList] 로 자동 생성 ai채팅·ai그림을 허용 목록에 추가한다 —
+ * 로 차단한다(핀 가이드와 모순). 그래서 [channelAllowList] 로 자동 생성 ai채팅·ai그림·니아수다를 허용 목록에 추가한다 —
  * 단 빈 목록(=전체 허용)일 때는 건드리지 않는다(등록하면 "그 채널만 허용"으로 좁아져 다른 채널이 막힌다).
  */
 class NiaChannelSetupHandler(
     private val channelProfiles: ChannelAiProfileService,
     private val autoRespondChannels: AutoRespondChannelRegistry,
     private val channelAllowList: ChannelAllowListPort,
+    private val participationFlags: NexaParticipationFlagService,
 ) {
     private val log = LoggerFactory.getLogger(NiaChannelSetupHandler::class.java)
 
@@ -70,9 +72,15 @@ class NiaChannelSetupHandler(
             val featureCategory = guild.categoryCache.firstOrNull { it.name.equals(NiaChannelSetup.featureCategoryName(language), true) }
             val chat = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.chatChannelName(language), true) }
             val image = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.imageChannelName(language), true) }
-            // 이미 만들어진 서버라도 과거 버전에서 allow-list 등록을 누락했을 수 있다 → 같은 가드로 재등록해 기존 서버도 자동 복구.
-            if (chat != null && image != null) {
-                registerLlmAllowList(guild.idLong, chat.idLong, image.idLong, ctx.userId)
+            val member =
+                featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.memberChannelName(language), true) }
+                    ?: featureCategory?.createTextChannel(NiaChannelSetup.memberChannelName(language))?.complete()?.also {
+                        pinGuide(it, NiaChannelSetup.memberGuide(language))
+                    }
+            // 이미 만들어진 서버라도 과거 버전에서 등록을 누락했을 수 있다 → 같은 가드로 재등록해 기존 서버도 자동 복구.
+            if (chat != null && image != null && member != null) {
+                registerLlmAllowList(guild.idLong, listOf(chat.idLong, image.idLong, member.idLong), ctx.userId)
+                participationFlags.enableChannelLive(guild.idLong, member.idLong)
             }
             callback
                 .reply(
@@ -81,6 +89,7 @@ class NiaChannelSetupHandler(
                         language,
                         chat.mentionOr(language, "niaSetupChannelChat"),
                         image.mentionOr(language, "niaSetupChannelImage"),
+                        member.mentionOr(language, "niaSetupChannelMember"),
                     ),
                 ).setEphemeral(true)
                 .queue()
@@ -107,7 +116,9 @@ class NiaChannelSetupHandler(
                 actorId = ctx.userId,
             )
             // 자동 생성 채널은 무조건 LLM 사용 가능해야 한다(auto-respond 와 LLM 정책 불일치 방지).
-            registerLlmAllowList(guild.idLong, created.chat.idLong, created.image.idLong, ctx.userId)
+            registerLlmAllowList(guild.idLong, listOf(created.chat.idLong, created.image.idLong, created.member.idLong), ctx.userId)
+            // 사람처럼 눈치 보고 끼어드는 NEXA participation 전용 채널. ai채팅(항상 답변)과 의도를 분리한다.
+            participationFlags.enableChannelLive(guild.idLong, created.member.idLong)
             callback.hook
                 .editOriginal(
                     I18n.get(
@@ -115,6 +126,7 @@ class NiaChannelSetupHandler(
                         language,
                         created.chat.asMention,
                         created.image.asMention,
+                        created.member.asMention,
                         created.voiceName,
                     ),
                 ).queue({}, {})
@@ -129,6 +141,7 @@ class NiaChannelSetupHandler(
     private data class CreatedChannels(
         val chat: TextChannel,
         val image: TextChannel,
+        val member: TextChannel,
         val voiceName: String,
     )
 
@@ -150,11 +163,13 @@ class NiaChannelSetupHandler(
         val featureCategory: Category = guild.createCategory(NiaChannelSetup.featureCategoryName(language)).complete()
         val chat: TextChannel = featureCategory.createTextChannel(NiaChannelSetup.chatChannelName(language)).complete()
         val image: TextChannel = featureCategory.createTextChannel(NiaChannelSetup.imageChannelName(language)).complete()
+        val member: TextChannel = featureCategory.createTextChannel(NiaChannelSetup.memberChannelName(language)).complete()
 
         pinGuide(chat, NiaChannelSetup.chatGuide(language))
         pinGuide(image, NiaChannelSetup.imageGuide(language))
+        pinGuide(member, NiaChannelSetup.memberGuide(language))
 
-        return CreatedChannels(chat = chat, image = image, voiceName = voiceName)
+        return CreatedChannels(chat = chat, image = image, member = member, voiceName = voiceName)
     }
 
     /** 가이드 메시지를 보낸 뒤 핀(pin). 핀 실패(권한 등)는 채널 생성 자체를 깨지 않게 graceful. */
@@ -178,13 +193,11 @@ class NiaChannelSetupHandler(
      */
     private fun registerLlmAllowList(
         guildId: Long,
-        chatChannelId: Long,
-        imageChannelId: Long,
+        channelIds: Collection<Long>,
         actorId: Long,
     ) {
         if (channelAllowList.allowedChannelIds(guildId).isEmpty()) return
-        channelAllowList.allowChannel(guildId, chatChannelId, actorId)
-        channelAllowList.allowChannel(guildId, imageChannelId, actorId)
+        channelIds.distinct().forEach { channelAllowList.allowChannel(guildId, it, actorId) }
     }
 
     /** 봇이 채널 관리 권한(MANAGE_CHANNEL)이 있는지. */

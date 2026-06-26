@@ -338,6 +338,15 @@ class CommandService(
     /** 현재 허용 채널 목록(패널 표시용). 비면 전체 허용. */
     fun allowedChannelIds(ctx: CommandContext): List<Long> = guildAdminCommands.allowedChannelIds(ctx)
 
+    /** 현재 채널에서 사람같은 니아 participation 이 실제 발화 가능한지. */
+    fun isNiaMemberChannelEnabled(ctx: CommandContext): Boolean = guildAdminCommands.isNiaMemberChannelEnabled(ctx)
+
+    /** 현재 채널의 사람같은 니아 participation 을 즉시 켜거나 끈다. */
+    fun setNiaMemberChannel(
+        ctx: CommandContext,
+        enabled: Boolean,
+    ): Reply = guildAdminCommands.setNiaMemberChannel(ctx, enabled)
+
     /** 설정 패널에서 임시 선택한 서버 언어/기본 모델/허용 채널/자동승인을 저장 버튼 한 번으로 적용한다. */
     fun saveGuildSettings(
         ctx: CommandContext,

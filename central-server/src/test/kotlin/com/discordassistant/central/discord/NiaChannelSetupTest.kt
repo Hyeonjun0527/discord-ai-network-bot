@@ -60,9 +60,10 @@ class NiaChannelSetupTest {
         listOf("ko", "en", "ja").forEach { lang ->
             val chat = NiaChannelSetup.chatChannelName(lang)
             val image = NiaChannelSetup.imageChannelName(lang)
+            val member = NiaChannelSetup.memberChannelName(lang)
             val voice = NiaChannelSetup.voiceChannelName(lang)
-            assertTrue(chat.isNotBlank() && image.isNotBlank() && voice.isNotBlank(), lang)
-            assertEquals(3, setOf(chat, image, voice).size, "이름 중복: $lang")
+            assertTrue(chat.isNotBlank() && image.isNotBlank() && member.isNotBlank() && voice.isNotBlank(), lang)
+            assertEquals(4, setOf(chat, image, member, voice).size, "이름 중복: $lang")
         }
     }
 
@@ -83,12 +84,22 @@ class NiaChannelSetupTest {
     }
 
     @Test
+    fun `니아수다 가이드는 항상 답변이 아니라 사람처럼 참여함을 담는다`() {
+        val ko = NiaChannelSetup.memberGuide("ko")
+        assertTrue(ko.contains("사람처럼"), ko)
+        assertTrue(ko.contains("모든 말에 답") || ko.contains("모든 말"), ko)
+        assertTrue(ko.contains("조용히"), ko)
+    }
+
+    @Test
     fun `en·ja 가이드는 한국어 UI 문구를 누수하지 않는다`() {
         // 영어/일본어 클라이언트가 한글 가이드를 보면 안 된다(i18n 완전성).
         val hangul = Regex("[가-힣]")
         assertFalse(hangul.containsMatchIn(NiaChannelSetup.chatGuide("en")), NiaChannelSetup.chatGuide("en"))
         assertFalse(hangul.containsMatchIn(NiaChannelSetup.imageGuide("en")), NiaChannelSetup.imageGuide("en"))
+        assertFalse(hangul.containsMatchIn(NiaChannelSetup.memberGuide("en")), NiaChannelSetup.memberGuide("en"))
         assertFalse(hangul.containsMatchIn(NiaChannelSetup.chatGuide("ja")), NiaChannelSetup.chatGuide("ja"))
         assertFalse(hangul.containsMatchIn(NiaChannelSetup.imageGuide("ja")), NiaChannelSetup.imageGuide("ja"))
+        assertFalse(hangul.containsMatchIn(NiaChannelSetup.memberGuide("ja")), NiaChannelSetup.memberGuide("ja"))
     }
 }

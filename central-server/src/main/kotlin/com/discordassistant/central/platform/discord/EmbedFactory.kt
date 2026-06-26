@@ -209,6 +209,7 @@ object EmbedFactory {
         allowedChannelCount: Int,
         autoApprove: Boolean,
         allowedChannelText: String? = null,
+        niaMemberEnabled: Boolean = false,
         pendingSummary: String? = null,
         currentSummary: String? = null,
     ): MessageEmbed {
@@ -223,7 +224,8 @@ object EmbedFactory {
                     "언어·기본 모델·LLM 사용 허용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
                     "현재 허용 채널은 아래 필드에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 한 번에 체크하면 돼요.\n" +
                     "채널이 25개를 넘거나 멘션을 복사해둔 경우에는 **채널 여러 개 붙여넣기**를 쓰면 됩니다.\n" +
-                    "드롭다운/버튼 선택은 바로 적용되지 않고 **저장 대기 변경사항**으로만 쌓입니다. " +
+                    "**현재 채널 사람 니아 켜기/끄기**는 이 채널에 즉시 적용됩니다.\n" +
+                    "언어·모델·LLM 채널·자동승인 선택은 바로 적용되지 않고 **저장 대기 변경사항**으로만 쌓입니다. " +
                     "마지막에 **설정 한 번에 저장** 버튼을 눌러야 실제 운영 설정이 바뀝니다." +
                     pendingBlock,
             ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
@@ -238,6 +240,10 @@ object EmbedFactory {
             ).addField(
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",
+                true,
+            ).addField(
+                "💬 사람같은 니아(현재 채널)",
+                if (niaMemberEnabled) "켜짐 — 대화 흐름을 보고 끼어듦" else "꺼짐 — 자동 참여 안 함",
                 true,
             ).setFooter("현재 허용 채널을 확인한 뒤 언어·모델·채널·자동승인을 모두 고르고 마지막에 저장하세요.")
             .build()

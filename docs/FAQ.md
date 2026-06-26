@@ -17,7 +17,7 @@
 
 ## 유저
 
-**Q. 어떻게 질문하나요?** — `/ask 질문내용`. 사용 가능한 모델은 `/models`·`/catalog` 로 확인.
+**Q. 어떻게 질문하나요?** — `/ask 질문내용` 또는 `/menu`의 질문 버튼을 사용합니다.
 
 **Q. 사용량 제한이 있나요?** — 서버 정책(역할별 일일 한도)·분당 쿨다운이 적용됩니다.
 `/my-usage` 로 내 사용량을 봅니다.
@@ -29,23 +29,22 @@
 **Q. 어떻게 참여하나요?**
 1. Ollama 설치 + 모델 받기(`ollama pull <model>`)
 2. Discord 에서 `/provider-join` → 관리자 승인 → 토큰 수령
-3. 에이전트 실행: `nexa --token <토큰> --relay-url ws://<서버>:8080/agent`
+3. 에이전트 실행: `nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent`
    (설치/패키징은 `provider-agent/packaging/README.md`)
 
 **Q. 포트를 열어야 하나요?** — **아니요.** 에이전트는 아웃바운드 연결만 사용합니다. inbound 포트
 개방·Ollama 외부 공개 모두 불필요합니다.
 
-**Q. 언제든 멈출 수 있나요?** — `/provider-pause`·`/provider-resume`·`/provider-leave`.
+**Q. 언제든 멈출 수 있나요?** — 데스크톱 앱에서 일시정지·재개·탈퇴를 조절합니다.
 배터리 방전/고부하 시 자동 보호로 일시정지되기도 합니다.
 
-**Q. 어떤 모델·한도를 제공할지 정할 수 있나요?** — `/provider-models`·`/provider-limit`·
-`/provider-scope` 로 모델·일일/동시 한도·허용 범위를 설정합니다.
+**Q. 어떤 모델·한도를 제공할지 정할 수 있나요?** — 데스크톱 앱에서 모델·일일/동시 한도·허용 범위를 설정합니다.
 
 ## 관리자
 
-**Q. 서버에서 어떻게 운영하나요?** — `/provider-approve`·`/provider-remove`(승인/제거),
-`/allow-channel`·`/deny-channel`·`/set-role-policy`(정책), `/fairness`·`/providers`(현황),
-`/llm-block`·`/llm-unblock`(차단). 관리자 명령은 비관리자에게 보이지 않습니다.
+**Q. 서버에서 어떻게 운영하나요?** — `/settings` 또는 `/menu`의 관리자 버튼으로 웹 대시보드를
+열어 채널 허용, 역할 정책, 자동승인, 니아 자동 채널 생성을 관리합니다. Discord 슬래시 명령은
+질문·도움말·상태 확인 중심으로 유지합니다.
 
 ## 문제 해결
 

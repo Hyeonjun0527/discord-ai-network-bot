@@ -1,45 +1,46 @@
 # 운영 가이드 — central-server (커뮤니티 Provider Pool)
 
 ## 배포
+운영 배포의 SSOT는 [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOY_REMOTE.md](DEPLOY_REMOTE.md)이다.
+현재 운영 호스트는 `ssh.yeon.world`, 공개 주소는 `https://discord-ai.yeon.world`,
+컨테이너 포트는 `127.0.0.1:8085`다.
+
 ```bash
-# 호스트(서버)에서:
-cd central-server
-cp .env.example .env        # DISCORD_BOT_TOKEN, DB_PASSWORD 채우기, DISCORD_ENABLED=true
-docker compose up -d --build
-curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
+# 운영 호스트에서:
+cd ~/deploy/central-server
+docker compose ps
+./ops_healthcheck.sh
+DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 ```
 - 스키마는 Flyway 가 자동 적용. DB 는 compose 의 Postgres(볼륨 `pgdata`).
 - 롤백: 이전 이미지 태그로 `docker compose up -d` (또는 `docs/ROLLBACK`).
 
-## 관리자(서버 운영자) — Discord 슬래시 명령
-| 명령 | 용도 |
-|---|---|
-| `/llm-allow-channel #ai-help` | LLM 사용 채널 허용 |
-| `/llm-deny-channel #채널` | 채널 금지 |
-| `/llm-role-policy @역할 level limit` | 역할별 허용 모델 수준·일일 한도 |
-| `/providers` | 풀 상태·승인 대기·기여량 |
-| `/provider-approve @유저` | 프로바이더 등록 승인(토큰 발급) |
-| `/provider-remove @유저` | 풀에서 제거 |
+## 관리자(서버 운영자)
+- Discord 에서는 `/settings` 또는 `/menu` → 관리자 버튼으로 웹 대시보드에 들어간다.
+- 채널 허용, 역할 정책, 자동승인, 니아 자동 채널 생성은 웹 대시보드/버튼 UI가 현재 운영 표면이다.
+- 자동응답 채널에서 `이 채널에서는 LLM 을 사용할 수 없습니다.`가 나오면 [RUNBOOK.md](RUNBOOK.md)의
+  `ops_policy_audit.sh` 절차로 `channel_ai.auto_respond`와 `allowed_channel` 불일치를 확인한다.
 
 ## 프로바이더(기여 유저) 온보딩
-1. Discord 에서 `/provider-join` → (수동 승인 서버면) 관리자가 `/provider-approve` → **토큰 발급**.
+1. Discord 에서 `/provider-join` → (수동 승인 서버면) 관리자가 `/settings` 웹 대시보드에서 승인 → **토큰 발급**.
 2. 자기 PC 에서 에이전트 실행:
    ```bash
    pip install -e provider-agent        # 또는 배포 실행파일
    nexa --token <발급토큰> \
-       --relay-url ws://<서버>:8080/agent --model exaone3.5:7.8b
+       --relay-url wss://discord-ai.yeon.world/agent --model exaone3.5:7.8b
    ```
 3. 에이전트가 풀에 등록되면 그 서버의 `/ask` 일부가 이 PC 에서 처리된다.
-4. `/provider-pause`·`/provider-resume`·`/provider-leave` 로 언제든 조절.
+4. 데스크톱 앱에서 일시정지·재개·한도·시간대를 언제든 조절.
 
 ## 일반 유저
-- `/ask <질문>` — 풀이 처리. `/models`·`/my-usage`·`/privacy`.
+- `/ask <질문>` — 풀이 처리. `/my-usage`·`/privacy` 로 내 사용량과 처리 안내를 확인.
 - **프라이버시**: 질문이 프로바이더 PC 로 전송될 수 있음(민감정보 금지 고지).
 
 ## 모니터링
 - 헬스: `GET /actuator/health` (`providerPool.activeProviderConnections` 포함).
 - 메트릭: `GET /actuator/metrics`.
 - 로그: `docker compose logs -f central-server`.
+- 운영 정기 감사: GitHub Actions `central ops audit`가 6시간마다 health/policy를 읽기 전용으로 확인한다.
 
 ## 보안 점검(기본)
 - 토큰: 일회용·해시 저장·TTL. WS: outbound only, 프레임 화이트리스트·크기 상한.

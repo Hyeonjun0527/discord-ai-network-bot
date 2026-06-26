@@ -33,13 +33,18 @@ jobs:
     runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
+      # uv 가 python-build-standalone arm64 Linux prebuilt 로 3.12 를 보장한다(arch·tool-cache 무관).
+      # activate-environment=true 로 .venv 를 만들어 활성화 → 이후 uv pip / uv run 이 그 3.12 venv 사용.
+      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          activate-environment: true
       - name: scan 예외 정책 검증(만료일·소유자·근거 필수)
         run: |
-          pip install pyyaml
-          python3 scripts/validate-nexa-scan-exceptions.py
+          uv pip install pyyaml
+          uv run python scripts/validate-nexa-scan-exceptions.py
 
   # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
   gradle-deps:
@@ -74,19 +79,23 @@ jobs:
     needs: exception-policy
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
+      # uv 가 arm64 Linux prebuilt 로 3.12 를 보장(arch·tool-cache 무관). UV_PYTHON=3.12 가 설정되어
+      # uvx 가 띄우는 pip-audit 도 3.12 런타임에서 동작한다(venv 불필요 — uvx 격리 실행).
+      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
       # pip-audit 는 critical/high CVE 에서 **실패**해야 한다(M4 — `|| true` 비차단 제거). 임시 허용은
       # docs/nexa/security/scan-exceptions.yaml 의 만료일·소유자·근거 있는 예외(T021 거버넌스)로만 한다.
       - name: pip-audit(ml/social-policy 의존성 CVE — 차단)
         run: |
-          pip install pip-audit
           # --desc 는 {on,off,auto} 값을 받는 옵션이므로 프로젝트 경로는 별도 positional 로 넘긴다.
           # (`--desc ./path` 형태는 경로가 --desc 값으로 먹혀 argparse 가 exit 2 로 실패한다.)
-          pip-audit --strict --desc on ./ml/social-policy
+          # uvx = uv tool 일회 실행(설치 불필요), UV_PYTHON=3.12 런타임 보장.
+          uvx pip-audit --strict --desc on ./ml/social-policy
       - name: pip-audit(provider-agent 의존성 CVE — 차단)
-        run: pip-audit --strict --desc on ./provider-agent
+        run: uvx pip-audit --strict --desc on ./provider-agent
 
   # 로그 redaction 스캔(NEXA-P17-T013) — central-server 테스트가 prod 프로파일로 파일 로그를 남기게 하고,
   # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).
@@ -100,9 +109,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: actions/setup-python@v5
+      # java(setup-java)·gradle 은 그대로(정상). python 만 uv 로 교체 — self-hosted arm64 에 setup-python
+      # prebuilt 가 없어 실패하므로, 마지막 스캔 스크립트를 uv 보장 3.12 venv 에서 실행한다.
+      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          activate-environment: true
       - name: central-server 테스트 실행(prod 프로파일 파일 로그 생성)
         working-directory: central-server
         env:
@@ -119,7 +132,7 @@ jobs:
           fi
           # .gz 도 펼쳐서 스캔.
           for f in central-server/logs/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
-          python3 scripts/scan-sensitive-logs.py central-server/logs/*.log
+          uv run python scripts/scan-sensitive-logs.py central-server/logs/*.log
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:

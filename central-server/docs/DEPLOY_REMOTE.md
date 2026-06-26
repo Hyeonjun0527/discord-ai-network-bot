@@ -7,7 +7,7 @@
 
 ## 흐름
 ```
-push(central-server/**) ─▶ build (ubuntu-latest)
+push(central-server/**) ─▶ build (self-hosted: yeon-arm)
                               ├─ gradlew bootJar
                               └─ docker build → GHCR push (:latest, :sha)
                            ─▶ deploy (self-hosted: yeon-arm, 원격 서버에서 실행)
@@ -37,7 +37,7 @@ gh secret set DISCORD_GUILD_ID -b "서버ID"   # (선택) 즉시 명령
 → 다음 push 또는 워크플로 수동 실행 시 봇이 Discord 에 연결되고 `/menu` 가 뜬다.
 
 ## 배포 트리거
-- `feat/remote-agent-byollm` / `main` 의 `central-server/**` push → 자동 빌드+배포.
+- `main` 의 `central-server/**` push → 자동 빌드+배포.
 - 수동: Actions → "central-server CI/CD (원격 배포)" → Run workflow.
 
 ## self-hosted 러너 (원격, 설치 완료)

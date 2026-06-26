@@ -17,8 +17,8 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 ## A. central-server 배포 (CI/CD)
 
 - 워크플로: **`central-deploy.yml`** = "central-server CI/CD (원격 배포)".
-  - 트리거: `main`(또는 `feat/remote-agent-byollm`)의 `central-server/**` push, 또는 **수동**(`workflow_dispatch`).
-  - build(ubuntu): `gradlew bootJar` → docker build → **GHCR push**(`:latest`, `:sha`).
+  - 트리거: `main`의 `central-server/**` push, 또는 **수동**(`workflow_dispatch`).
+  - build(self-hosted `yeon-arm`): `gradlew bootJar` → docker build → **GHCR push**(`:latest`, `:sha`).
   - deploy(self-hosted `yeon-arm`, `ssh.yeon.world`): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
 - 참고: `central-server-deploy.yml`은 **deprecated**(소스 빌드, `docker-compose.yml`). 실제 운영은 위 `central-deploy.yml`.
 

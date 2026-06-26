@@ -11,7 +11,7 @@ name: central-server CI/CD (원격 배포)
 
 on:
   push:
-    branches: [main, feat/remote-agent-byollm]
+    branches: [main]
     paths:
       - "central-server/**"
       - ".github/workflows/central-deploy.yml"

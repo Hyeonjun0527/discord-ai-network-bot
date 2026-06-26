@@ -18,6 +18,19 @@ CHECK_COMPOSE_ENV="${CHECK_COMPOSE_ENV:-auto}" # auto|true|false
 
 fail() { echo "❌ $1" >&2; exit 1; }
 
+json_field() {
+  field="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$field"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    FIELD="$field" python3 -c 'import json, os, sys; print(json.load(sys.stdin).get(os.environ["FIELD"]))'
+    return
+  fi
+  fail "jq 또는 python3 가 없어 JSON 필드($field)를 읽을 수 없습니다"
+}
+
 should_check_compose_env() {
   case "$CHECK_COMPOSE_ENV" in
     true) return 0 ;;
@@ -35,14 +48,12 @@ echo "✅ health UP"
 # 2) 풀 메트릭
 pool="$(curl -fsS --max-time 5 "$BASE_URL/api/metrics/pool" || fail "metrics/pool 응답 없음")"
 echo "ℹ️  pool=$pool"
-if command -v jq >/dev/null 2>&1; then
-  active="$(echo "$pool" | jq -r '.activeProviders')"
-  [[ "$active" =~ ^[0-9]+$ ]] || fail "metrics/pool activeProviders 값이 숫자가 아닙니다: $active"
-  if [ "$active" -lt "$MIN_PROVIDERS" ]; then
-    fail "활성 프로바이더 ${active} < 임계 ${MIN_PROVIDERS}"
-  fi
-  echo "✅ activeProviders=$active (>= $MIN_PROVIDERS)"
+active="$(echo "$pool" | json_field activeProviders)"
+[[ "$active" =~ ^[0-9]+$ ]] || fail "metrics/pool activeProviders 값이 숫자가 아닙니다: $active"
+if [ "$active" -lt "$MIN_PROVIDERS" ]; then
+  fail "활성 프로바이더 ${active} < 임계 ${MIN_PROVIDERS}"
 fi
+echo "✅ activeProviders=$active (>= $MIN_PROVIDERS)"
 
 # 3) 운영 compose 환경이면 dev 엔드포인트 노출을 같이 확인한다.
 if should_check_compose_env; then

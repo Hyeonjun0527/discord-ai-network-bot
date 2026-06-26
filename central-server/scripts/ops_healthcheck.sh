@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 운영 점검 자동화(차수 15 #230). actuator 헬스 + 풀 메트릭을 확인하고
-# 비정상이면 비0 종료(크론/모니터에서 사용). 의존: curl, (선택) jq.
+# 비정상이면 비0 종료(크론/모니터에서 사용). 의존: curl, jq 또는 python3.
 #
 # 사용: BASE_URL=http://localhost:8085 scripts/ops_healthcheck.sh
 set -euo pipefail
@@ -18,6 +18,8 @@ CHECK_COMPOSE_ENV="${CHECK_COMPOSE_ENV:-auto}" # auto|true|false
 
 fail() { echo "❌ $1" >&2; exit 1; }
 
+[[ "$MIN_PROVIDERS" =~ ^[0-9]+$ ]] || fail "MIN_PROVIDERS는 0 이상의 정수여야 합니다: $MIN_PROVIDERS"
+
 json_field() {
   field="$1"
   if command -v jq >/dev/null 2>&1; then
@@ -25,7 +27,8 @@ json_field() {
     return
   fi
   if command -v python3 >/dev/null 2>&1; then
-    FIELD="$field" python3 -c 'import json, os, sys; print(json.load(sys.stdin).get(os.environ["FIELD"]))'
+    FIELD="$field" python3 -c 'import json, os, sys; print(json.load(sys.stdin).get(os.environ["FIELD"]))' \
+      || fail "JSON 필드($field)를 읽을 수 없습니다"
     return
   fi
   fail "jq 또는 python3 가 없어 JSON 필드($field)를 읽을 수 없습니다"

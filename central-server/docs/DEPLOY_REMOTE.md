@@ -1,16 +1,16 @@
-# 원격 자동 배포 (CI/CD → linuxssh.dailyting.cloud)
+# 원격 자동 배포 (CI/CD → ssh.yeon.world)
 
 `central-server` 를 원격 우분투 서버에 **자동 배포**한다. 워크플로: `.github/workflows/central-deploy.yml`.
 
-> `linuxssh.dailyting.cloud` 는 **Cloudflare Tunnel 뒤**라 GitHub 호스티드 러너의 raw SSH 가 막힌다.
-> 그래서 원격 서버에 **self-hosted 러너(`dailyting-remote`)** 를 설치하고, 배포 잡을 거기서 직접 실행한다.
+> `ssh.yeon.world` 는 Cloudflare Tunnel 뒤 운영 호스트다.
+> 그래서 원격 서버에 **self-hosted 러너(`yeon-arm`)** 를 설치하고, 배포 잡을 거기서 직접 실행한다.
 
 ## 흐름
 ```
 push(central-server/**) ─▶ build (ubuntu-latest)
                               ├─ gradlew bootJar
                               └─ docker build → GHCR push (:latest, :sha)
-                           ─▶ deploy (self-hosted: dailyting-remote, 원격 서버에서 실행)
+                           ─▶ deploy (self-hosted: yeon-arm, 원격 서버에서 실행)
                               ├─ docker login ghcr (GITHUB_TOKEN)
                               ├─ compose.remote.yml → ~/deploy/central-server/compose.yml
                               ├─ .env 렌더(CENTRAL_IMAGE/DB_PASSWORD/DISCORD_*)
@@ -41,11 +41,10 @@ gh secret set DISCORD_GUILD_ID -b "서버ID"   # (선택) 즉시 명령
 - 수동: Actions → "central-server CI/CD (원격 배포)" → Run workflow.
 
 ## self-hosted 러너 (원격, 설치 완료)
-- 이름 `dailyting-remote`, 라벨 `self-hosted,Linux,X64,dailyting-remote`.
-- systemd 서비스: `actions.runner.Hyeonjun0527-discord-assistant.dailyting-remote.service`.
-- 위치: 원격 `~/actions-runner-central`.
+- 이름 `yeon-arm`, 라벨 `self-hosted,yeon-arm`.
+- 위치: 원격 self-hosted runner 서비스.
 ```bash
-ssh linuxssh.dailyting.cloud 'sudo systemctl status actions.runner.*dailyting-remote*'
+ssh ssh.yeon.world 'sudo systemctl status actions.runner.*yeon-arm*'
 ```
 
 ## 원격 프로바이더 노출(후속)
@@ -56,6 +55,8 @@ Cloudflare Tunnel 로 노출하므로, 터널 ingress 에 호스트네임 → `h
 
 ## 운영
 ```bash
-ssh linuxssh.dailyting.cloud 'cd ~/deploy/central-server && docker compose logs -f central-server'
-ssh linuxssh.dailyting.cloud 'cd ~/deploy/central-server && docker compose ps'
+ssh ssh.yeon.world 'cd ~/deploy/central-server && docker compose logs -f central-server'
+ssh ssh.yeon.world 'cd ~/deploy/central-server && docker compose ps'
+ssh ssh.yeon.world 'cd ~/deploy/central-server && ./ops_healthcheck.sh'
+ssh ssh.yeon.world 'cd ~/deploy/central-server && DISCORD_GUILD_ID=all ./ops_policy_audit.sh'
 ```

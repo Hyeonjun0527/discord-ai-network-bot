@@ -183,12 +183,15 @@ for raw_spec in os.environ["NIA_CHANNEL_AUDIT_SPEC"].split(";"):
     if not category_name.strip() or not required_names:
         fail(f"NIA_CHANNEL_AUDIT_SPEC 값이 비었습니다: {raw_spec}")
     audit_specs[category_name.strip()] = required_names
+if not audit_specs:
+    fail("NIA_CHANNEL_AUDIT_SPEC에 유효한 감사 대상이 없습니다")
 
 allowed_by_guild: dict[str, set[str]] = {}
 for row in os.environ.get("ALLOWED_CHANNEL_ROWS", "").splitlines():
     parts = row.split("\t")
-    if len(parts) == 2:
-        allowed_by_guild.setdefault(parts[0], set()).add(parts[1])
+    if len(parts) != 2:
+        fail(f"allowed_channel row 형식 오류: {row}")
+    allowed_by_guild.setdefault(parts[0], set()).add(parts[1])
 
 
 def fetch_json(path: str):

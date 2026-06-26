@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: central-ops-audit
+  # 배포 중 컨테이너 재시작 순간과 겹치면 거짓 실패가 날 수 있어 central-deploy와 같은 큐를 쓴다.
+  group: central-deploy
   cancel-in-progress: false
 
 jobs:

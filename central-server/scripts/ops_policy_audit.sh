@@ -52,6 +52,12 @@ ok() {
   echo "✅ $1"
 }
 
+print_rows() {
+  while IFS= read -r row; do
+    echo "  - $row" >&2
+  done
+}
+
 need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 명령을 찾을 수 없습니다"
 }
@@ -89,7 +95,7 @@ SQL
 )"
 
 if [ -n "$blocked_auto_respond" ]; then
-  echo "$blocked_auto_respond" | sed 's/^/  - /' >&2
+  print_rows <<<"$blocked_auto_respond"
   fail "auto_respond=true 채널 중 LLM allow-list에 없는 채널이 있습니다"
 fi
 ok "auto_respond 채널은 LLM allow-list와 충돌하지 않음"
@@ -105,7 +111,7 @@ SQL
 )"
 
 if [ -n "$duplicates" ]; then
-  echo "$duplicates" | sed 's/^/  - /' >&2
+  print_rows <<<"$duplicates"
   fail "allowed_channel 중복 행이 있습니다"
 fi
 ok "allowed_channel 중복 없음"

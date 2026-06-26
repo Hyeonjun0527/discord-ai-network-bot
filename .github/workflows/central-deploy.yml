@@ -143,7 +143,7 @@ jobs:
           echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
           ./ops_healthcheck.sh
           echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"
-          if docker compose -f compose.yml exec -T central-server printenv DISCORD_BOT_TOKEN | grep -q .; then
+          if docker compose -f compose.yml exec -T central-server sh -c 'test -n "${DISCORD_BOT_TOKEN:-}"'; then
             DISCORD_GUILD_ID=all ./ops_policy_audit.sh
           else
             ./ops_policy_audit.sh

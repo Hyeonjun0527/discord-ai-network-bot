@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord
 import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
+import com.discordassistant.central.guild.application.ChannelAllowListPort
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.channel.concrete.Category
@@ -23,10 +24,16 @@ import org.slf4j.LoggerFactory
  * 그러면 그 채널의 **모든 텍스트 메시지에 멘션 없이** 니아가 자동 응답한다(`DiscordBot.Listener.onMessageReceived`
  * 가 자동응답 캐시로 판정 → `/ask` 와 동일 흐름, 프로필이 있으므로 니아 페르소나 웹훅으로 응답).
  * `.` 로 시작하는 메시지는 제외(카미봇 컨벤션). 캐시 무효화로 생성 즉시 반영된다.
+ *
+ * **LLM 채널 허용 목록 등록**: 자동응답(auto-respond)만 켜고 LLM 채널 정책에 등록하지 않으면, 길드 allow-list 가
+ * non-empty 인 서버에서 자동 생성 ai채팅이 목록에 없어 RequestOrchestrator 가 "이 채널에서는 LLM 을 사용할 수 없습니다"
+ * 로 차단한다(핀 가이드와 모순). 그래서 [channelAllowList] 로 자동 생성 ai채팅·ai그림을 허용 목록에 추가한다 —
+ * 단 빈 목록(=전체 허용)일 때는 건드리지 않는다(등록하면 "그 채널만 허용"으로 좁아져 다른 채널이 막힌다).
  */
 class NiaChannelSetupHandler(
     private val channelProfiles: ChannelAiProfileService,
     private val autoRespondChannels: AutoRespondChannelRegistry,
+    private val channelAllowList: ChannelAllowListPort,
 ) {
     private val log = LoggerFactory.getLogger(NiaChannelSetupHandler::class.java)
 
@@ -63,6 +70,10 @@ class NiaChannelSetupHandler(
             val featureCategory = guild.categoryCache.firstOrNull { it.name.equals(NiaChannelSetup.featureCategoryName(language), true) }
             val chat = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.chatChannelName(language), true) }
             val image = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.imageChannelName(language), true) }
+            // 이미 만들어진 서버라도 과거 버전에서 allow-list 등록을 누락했을 수 있다 → 같은 가드로 재등록해 기존 서버도 자동 복구.
+            if (chat != null && image != null) {
+                registerLlmAllowList(guild.idLong, chat.idLong, image.idLong, ctx.userId)
+            }
             callback
                 .reply(
                     I18n.get(
@@ -95,6 +106,8 @@ class NiaChannelSetupHandler(
                 on = true,
                 actorId = ctx.userId,
             )
+            // 자동 생성 채널은 무조건 LLM 사용 가능해야 한다(auto-respond 와 LLM 정책 불일치 방지).
+            registerLlmAllowList(guild.idLong, created.chat.idLong, created.image.idLong, ctx.userId)
             callback.hook
                 .editOriginal(
                     I18n.get(
@@ -156,6 +169,22 @@ class NiaChannelSetupHandler(
                 .pin()
                 .complete()
         }.onFailure { log.warn("가이드 핀 실패(channel={}): {}", channel.idLong, it.message) }
+    }
+
+    /**
+     * 자동 생성 ai채팅·ai그림을 LLM 채널 허용 목록에 등록한다.
+     * 단 allow-list 가 **비어 있으면 전체 허용 상태**이므로 건드리지 않는다 — 여기서 등록하면 "그 채널만 허용"으로
+     * 좁아져 다른 채널(예: 질문 채널)이 막히는 부작용이 생긴다. non-empty 일 때만 ai채팅·ai그림을 추가한다.
+     */
+    private fun registerLlmAllowList(
+        guildId: Long,
+        chatChannelId: Long,
+        imageChannelId: Long,
+        actorId: Long,
+    ) {
+        if (channelAllowList.allowedChannelIds(guildId).isEmpty()) return
+        channelAllowList.allowChannel(guildId, chatChannelId, actorId)
+        channelAllowList.allowChannel(guildId, imageChannelId, actorId)
     }
 
     /** 봇이 채널 관리 권한(MANAGE_CHANNEL)이 있는지. */

@@ -22,6 +22,24 @@ fun interface AutoApprovePolicy {
 }
 
 /**
+ * LLM 채널 허용 목록에 채널을 **추가**하는 좁은 포트(니아 채널 자동 만들기용). [PolicyService] 가 구현한다.
+ * platform 어댑터(NiaChannelSetupHandler)가 PolicyService 전체 대신 필요한 두 연산만 의존하게 한다.
+ * 빈 목록 = 전체 채널 허용이므로, 호출자는 [allowedChannelIds] 가 non-empty 일 때만 [allowChannel] 해
+ * 전체 허용 상태를 "그 채널만 허용"으로 좁히지 않아야 한다(부작용 방지는 호출자 책임).
+ */
+interface ChannelAllowListPort {
+    /** 허용 채널 ID 목록(비면 전체 허용). */
+    fun allowedChannelIds(guildId: Long): List<Long>
+
+    /** 채널을 LLM 허용 목록에 추가(이미 있으면 no-op). */
+    fun allowChannel(
+        guildId: Long,
+        channelId: Long,
+        adminId: Long,
+    )
+}
+
+/**
  * 채널 AI 허용 목록 관리(데스크톱 앱 관리채널 브리지용 좁은 포트). [PolicyService] 가 구현한다.
  * 빈 목록 = 전체 채널 허용(제한 없음)이라는 도메인 의미를 그대로 노출한다.
  */
@@ -60,7 +78,8 @@ class PolicyService(
     private val clock: Clock = Clock.systemUTC(),
 ) : RoutingPolicy,
     AutoApprovePolicy,
-    GuildChannelPolicy {
+    GuildChannelPolicy,
+    ChannelAllowListPort {
     // ── 읽기 캐시 ────────────────────────────────────────────────────────
     // 길드별 불변 스냅샷 + 로드시각. TTL 경과 또는 무효화 시 재조회. 스레드 안전(ConcurrentHashMap).
     private val channelCache = ConcurrentHashMap<Long, CacheEntry<List<Long>>>()
@@ -148,7 +167,7 @@ class PolicyService(
 
     // ── 채널 정책 ───────────────────────────────────────────────────────
     @Transactional
-    fun allowChannel(
+    override fun allowChannel(
         guildId: Long,
         channelId: Long,
         adminId: Long,

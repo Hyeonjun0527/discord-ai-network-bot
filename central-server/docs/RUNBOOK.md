@@ -22,11 +22,11 @@
 
 ### 2) 풀에 프로바이더 0명(활성 연결 0)
 - `providerpool_active_connections == 0` → `/ask` 가 "처리 가능한 AI 없음" 반환.
-- 대응: 관리자가 프로바이더에게 에이전트 실행 요청. 토큰 만료 시 `/provider-approve` 재발급.
+- 대응: 관리자가 프로바이더에게 에이전트 실행 요청. 토큰 만료 시 `/settings` 웹 대시보드에서 재승인/재발급.
 
 ### 3) 실패율 급증
-- `/fairness`(관리자)로 provider별 실패 확인. 연속 실패 3회면 자동 UNHEALTHY 제외됨.
-- 특정 provider 문제면 `/provider-remove`.
+- `/settings` 웹 대시보드에서 provider별 상태/실패를 확인한다. 연속 실패 3회면 자동 UNHEALTHY 제외됨.
+- 특정 provider 문제면 대시보드에서 제거하거나 해당 프로바이더에게 데스크톱 앱 중지를 요청한다.
 
 ### 4) DB 이슈
 - 마이그레이션 실패: Flyway `flyway_schema_history` 확인. 잘못된 마이그레이션은 새 V_n 으로 보정(이전 것 수정 금지).
@@ -41,7 +41,7 @@
   DISCORD_GUILD_ID=all ./ops_policy_audit.sh      # 봇이 들어간 모든 서버 대조
   DISCORD_GUILD_ID=<guild_id> ./ops_policy_audit.sh  # 특정 서버만 볼 때
   ```
-- 실패하면 출력된 `guild_id`/`channel_id`를 기준으로 관리자 명령(`/llm-allow-channel`) 또는 대시보드에서 해당 채널을 허용한다.
+- 실패하면 출력된 `guild_id`/`channel_id`를 기준으로 웹 대시보드에서 해당 채널을 허용한다.
 - 감사가 통과하면 채널 정책 문제는 아니므로 provider pool, role policy, quota, cloud/provider backend 오류를 이어서 본다.
 
 ## 롤백

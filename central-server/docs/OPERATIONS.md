@@ -37,8 +37,9 @@ DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 - **프라이버시**: 질문이 프로바이더 PC 로 전송될 수 있음(민감정보 금지 고지).
 
 ## 모니터링
-- 헬스: `GET /actuator/health` (`providerPool.activeProviderConnections` 포함).
-- 메트릭: `GET /actuator/metrics`.
+- 헬스: `GET /actuator/health`.
+- 풀 요약: `GET /api/metrics/pool` (`activeProviders`, `inFlightTotal`, `guildPoolSizes`).
+- Prometheus: `GET /actuator/prometheus`.
 - 로그: `docker compose logs -f central-server`.
 - 운영 정기 감사: GitHub Actions `central ops audit`가 6시간마다 health/policy를 읽기 전용으로 확인한다.
 

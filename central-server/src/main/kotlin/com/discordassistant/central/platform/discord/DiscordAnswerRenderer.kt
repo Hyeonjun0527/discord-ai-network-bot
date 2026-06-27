@@ -5,7 +5,6 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.buttons.Button
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +28,7 @@ class DiscordAnswerRenderer(
         if (sendAnswerWebhook(channelUnion, ctx, reply)) {
             editOriginalWithFeedback(
                 hook,
-                "✅ 답변을 채널 AI 프로필로 보냈어요.\n답변이 어땠는지 아래 버튼으로 알려주세요.",
+                "✅ 답변을 채널 AI 프로필로 보냈어요.",
                 reply,
             )
             return
@@ -213,30 +212,12 @@ class DiscordAnswerRenderer(
     }
 
     private fun feedbackRows(reply: Reply): List<ActionRow> {
-        val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
-        if ("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId".length > 100) return emptyList()
-        return listOf(
-            ActionRow.of(
-                Button.success("$ASK_FEEDBACK_PREFIX${FeedbackAction.UP.id}:$requestId", "좋았어요"),
-                Button.secondary("$ASK_FEEDBACK_PREFIX${FeedbackAction.DOWN.id}:$requestId", "아쉬워요"),
-                Button.danger("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId", "문제 신고"),
-            ),
-        )
-    }
-
-    private enum class FeedbackAction(
-        val id: String,
-        val rating: Int,
-        val feedbackType: String,
-    ) {
-        UP("up", 1, "positive"),
-        DOWN("down", -1, "negative"),
-        REPORT("report", -1, "report"),
+        reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return emptyList()
     }
 
     companion object {
         private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
         private const val WEBHOOK_NAME = "discord-ai-channel-profile"
-        private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
     }
 }

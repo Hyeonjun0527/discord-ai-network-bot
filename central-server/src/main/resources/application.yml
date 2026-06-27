@@ -96,6 +96,8 @@ central:
     timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
     # /질문·ai채팅 무료 클라우드 폴백 모델. 빠른 대화 기본값은 GLM Air, env 로 즉시 rollback 가능.
     free-model: ${ZAI_FREE_MODEL:glm-4.5-air}
+    # 짧은 니아 호명(예: "니아야?") 전용 즉답 모델. 실제 AI 호출이며, env 로 즉시 rollback 가능.
+    fast-model: ${ZAI_FAST_MODEL:glm-4.5-airx}
     # 이미지 픽셀까지 중앙 서버가 직접 만드는 클라우드 SD(ADR 0006 단계4 — 완전 앱리스 이미지).
     # 키가 있으면 에이전트(provider-agent) 풀이 비어도 /그림 이 동작한다. 비우면 기존 에이전트(ComfyUI/
     # 에이전트 클라우드SD) 경로로 폴백한다(하위호환). fail-closed — central 픽셀 생성은 zai-api-key 심사가 활성일 때만.

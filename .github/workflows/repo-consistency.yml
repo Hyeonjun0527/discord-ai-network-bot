@@ -1,17 +1,6 @@
 name: repo consistency
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-      - "i18n/**"
-      - "packaging/**"
-      - "specs/**"
-      - "scripts/check_links.py"
-      - "scripts/check_packaging.py"
-      - "scripts/gen_i18n.py"
-      - ".github/workflows/repo-consistency.yml"
   pull_request:
     paths:
       - "docs/**"

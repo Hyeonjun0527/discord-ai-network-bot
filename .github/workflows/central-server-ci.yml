@@ -2,11 +2,6 @@
 name: central-server CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "central-server/**"
-      - ".github/workflows/central-server-ci.yml"
   pull_request:
     paths:
       - "central-server/**"

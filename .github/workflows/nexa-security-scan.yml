@@ -5,14 +5,6 @@
 name: NEXA security scan
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "central-server/**"
-      - "ml/social-policy/**"
-      - "provider-agent/**"
-      - "docs/nexa/security/scan-exceptions.yaml"
-      - ".github/workflows/nexa-security-scan.yml"
   pull_request:
     paths:
       - "central-server/**"

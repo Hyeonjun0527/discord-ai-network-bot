@@ -2,12 +2,6 @@
 name: provider-agent CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "provider-agent/**"
-      - "packaging/**"
-      - ".github/workflows/provider-agent-ci.yml"
   pull_request:
     paths:
       - "provider-agent/**"

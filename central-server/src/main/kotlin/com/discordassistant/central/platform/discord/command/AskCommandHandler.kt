@@ -23,6 +23,7 @@ import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.RemoteCancelledException
+import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.CloudThinkingOption
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.application.ThinkingRouter
@@ -65,17 +66,34 @@ class AskCommandHandler(
     // 어드민(프로젝트 운영자) 전용 모델/thinking 강제 지정 게이트(=central.dashboard.admin-user-ids). 비어드민은 무시.
     private val projectAdmins: com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins,
     @param:Value("\${central.cloud.free-model:glm-4.5-air}") private val freeCloudModel: String = DEFAULT_FREE_CLOUD_MODEL,
+    @param:Value("\${central.cloud.fast-model:glm-4.5-airx}") private val fastCloudModel: String = DEFAULT_FAST_CLOUD_MODEL,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
 ) {
     companion object {
-        // 무료 클라우드 기본 모델(z.ai/GLM Air). env 설정이 비어 있으면 이 모델로 답한다.
+        // /질문·ai채팅 무료 클라우드 기본 모델(z.ai/GLM Air). env 설정이 비어 있으면 이 모델로 답한다.
         const val DEFAULT_FREE_CLOUD_MODEL = "glm-4.5-air"
+        const val DEFAULT_FAST_CLOUD_MODEL = "glm-4.5-airx"
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
         private val log = LoggerFactory.getLogger(AskCommandHandler::class.java)
+
+        internal fun resolveFreeCloudModel(configuredModel: String?): String =
+            configuredModel
+                ?.trim()
+                ?.ifBlank { null }
+                ?: DEFAULT_FREE_CLOUD_MODEL
+
+        internal fun resolveFastCloudModel(
+            configuredModel: String?,
+            fallbackModel: String,
+        ): String =
+            configuredModel
+                ?.trim()
+                ?.ifBlank { null }
+                ?: fallbackModel
 
         // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 클라우드 백엔드) ──
         // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
@@ -132,6 +150,10 @@ class AskCommandHandler(
         // 니아 사회기억/감정 톤 힌트(채널AI 발화 경로에서만 주입). 기본 "" 면 평소 니아 그대로(무영향·하위호환).
         // 정체성·답변 길이·이름 불변(I11) — 반응 온도만 약하게 얹는다(일반 텍스트 응답 system prompt 한정).
         toneDirective: String = "",
+        // 메시지 기반 니아 응답에서만 주입하는 이번 호출용 주변 대화. askMemory 에 저장하지 않아 누적 오염을 막는다.
+        ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
+        // 짧은 호명 같은 즉답형 메시지는 실제 AI 호출을 유지하되 빠른 클라우드 모델/thinking off 로 보낸다.
+        fastResponse: Boolean = false,
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
@@ -162,11 +184,16 @@ class AskCommandHandler(
             modelChoice.selectedModel
                 ?: requestedModel?.trim()?.ifBlank { null }
                 ?: routingPolicy.preferredModel
-        val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
+        val responseMode =
+            if (fastResponse) {
+                ResponseMode.FAST.wire
+            } else {
+                normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
+            }
 
         // 기본은 무료 클라우드(☁️). 단 커뮤니티 로컬 프로바이더가 있고 클라우드 모델을 명시적으로 고르지
         // 않았다면 로컬을 우선(🖥️) 시도하고, 로컬이 처리 못하면(FAILED) 무료 클라우드로 폴백한다.
-        val preferLocal = !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
+        val preferLocal = !fastResponse && !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
         if (preferLocal) {
             // 로컬 에이전트 경로는 멀티턴 기억/thinking 을 쓰지 않는다(클라우드 직결 전용 기능).
             val local =
@@ -195,12 +222,14 @@ class AskCommandHandler(
         // 무료 클라우드 z.ai — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
         freeCloudRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
         // 선택 모델이 클라우드(glm-*)면 그 모델로 직결(어드민이 cloud 모델 지정 시 강제 적용), 아니면 기본 무료 클라우드 모델.
-        val configuredFreeCloudModel = freeCloudModel.trim().ifBlank { DEFAULT_FREE_CLOUD_MODEL }
-        val cloudModel = selectedModel?.trim()?.takeIf { isCloudModel(it) } ?: configuredFreeCloudModel
+        val configuredFreeCloudModel = resolveFreeCloudModel(freeCloudModel)
+        val cloudModel =
+            selectedModel?.trim()?.takeIf { isCloudModel(it) }
+                ?: if (fastResponse) resolveFastCloudModel(fastCloudModel, configuredFreeCloudModel) else configuredFreeCloudModel
         // thinking 속도 라우팅: 어드민 override 가 있으면 그 값, 없으면 규칙 기반 라우터(기본 disabled).
-        val thinking = adminThinkingOverride ?: ThinkingRouter.route(prompt)
+        val thinking = adminThinkingOverride ?: if (fastResponse) CloudThinking.DISABLED else ThinkingRouter.route(prompt)
         // 멀티턴 단기 기억(채널+유저)을 z.ai messages 앞에 붙인다("방금 뭐라고 했지?" 맥락).
-        val history = askMemory.history(ctx.channelId, ctx.userId)
+        val history = askMemory.history(ctx.channelId, ctx.userId) + ambientHistory
         val cloud =
             runOrchestrator(
                 ctx,
@@ -443,11 +472,9 @@ class AskCommandHandler(
         requestId: String?,
         usedCloud: Boolean,
     ): Reply {
-        // 출처 아이콘 하나만 앞에 붙인다(문구 안내 없이): ☁️=무료 클라우드, 🖥️=커뮤니티 로컬 프로바이더.
-        // 클라우드 폴백 답변엔 "모델 대체" 문구를 더하지 않는다(아이콘이 출처를 대신 알려줌).
-        val sourceIcon = if (usedCloud) "☁️" else "🖥️"
+        // 클라우드 폴백 답변엔 "모델 대체" 문구를 더하지 않는다.
         val body = if (usedCloud) answer else answer.withModelFallbackNotice(modelChoice)
-        val fullContent = "$sourceIcon $body"
+        val fullContent = body
         val plan =
             runCatching {
                 if (fullContent.length >= PSEUDO_STREAM_MIN_CHARS) {

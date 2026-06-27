@@ -30,7 +30,33 @@ env:
   APP_PORT: "8085"
 
 jobs:
+  fresh-main:
+    runs-on: [self-hosted, yeon-arm]
+    outputs:
+      should-deploy: ${{ steps.fresh.outputs.should-deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: fresh
+        name: 최신 main 배포만 진행
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin main
+          latest="$(git rev-parse origin/main)"
+          if [ "$latest" != "${{ github.sha }}" ]; then
+            echo "더 최신 main 커밋($latest)이 있어 이 배포는 스킵합니다."
+            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: fresh-main
+    if: needs.fresh-main.outputs.should-deploy == 'true'
     # self-hosted ARM64(yeon-arm, Linux) — 네이티브 arm64 라 QEMU 에뮬레이션 불필요. GitHub-hosted 미사용.
     runs-on: [self-hosted, yeon-arm]
     steps:
@@ -60,7 +86,8 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
 
   deploy:
-    needs: build
+    needs: [fresh-main, build]
+    if: needs.fresh-main.outputs.should-deploy == 'true'
     runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +160,7 @@ jobs:
           retry "컨테이너 기동" docker compose --env-file .env -f compose.yml up -d
           ok=0
           for i in $(seq 1 40); do
-            if curl -sf http://localhost:${APP_PORT}/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi
+            if curl -sf "http://localhost:${APP_PORT}/actuator/health" | grep -q '"status":"UP"'; then ok=1; break; fi
             sleep 3
           done
           if [ "$ok" != "1" ]; then

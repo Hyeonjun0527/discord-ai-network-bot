@@ -10,6 +10,7 @@ import com.discordassistant.central.onboarding.application.GuildHistoryBackfillS
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.quota.application.RateLimiter
+import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -41,6 +42,7 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,6 +65,78 @@ private val DM_COMMANDS =
         "menu",
         "settings",
     )
+
+private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 14
+private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
+private const val RECENT_CHANNEL_CONTEXT_MAX_LINES = 10
+private const val RECENT_CHANNEL_CONTEXT_MAX_CHARS = 1_500
+private const val RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS = 180
+private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
+private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
+private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '~', '！', '？', '。', '，')
+
+internal fun niaDirectAddressPrompt(raw: String): String? {
+    val trimmed = raw.trim()
+    if (!NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) return null
+    val stripped =
+        NIA_DIRECT_ADDRESS_PREFIX
+            .replaceFirst(trimmed, "")
+            .trim()
+    if (stripped.firstOrNull() in NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION) return trimmed
+    return stripped.ifBlank { trimmed }
+}
+
+internal fun isBareNiaDirectAddress(raw: String): Boolean {
+    val trimmed = raw.trim()
+    if (!NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) return false
+    val rest = NIA_DIRECT_ADDRESS_PREFIX.replaceFirst(trimmed, "")
+    return NIA_DIRECT_ADDRESS_DECORATION.matches(rest)
+}
+
+internal data class DiscordRecentPromptMessage(
+    val id: Long,
+    val authorId: Long,
+    val authorLabel: String,
+    val bot: Boolean,
+    val content: String,
+    val createdAtEpochMillis: Long,
+)
+
+internal fun buildDiscordRecentContextTurn(
+    messages: List<DiscordRecentPromptMessage>,
+    currentMessageId: Long,
+    botUserId: Long,
+): CloudTurn? {
+    val lines =
+        messages
+            .asSequence()
+            .filter { it.id != currentMessageId }
+            .filter { it.content.isNotBlank() }
+            .filter { !it.bot || it.authorId == botUserId }
+            .sortedBy { it.createdAtEpochMillis }
+            .toList()
+            .takeLast(RECENT_CHANNEL_CONTEXT_MAX_LINES)
+            .map { message ->
+                val speaker = if (message.authorId == botUserId) "니아" else message.authorLabel.take(40)
+                val text =
+                    message.content
+                        .replace(Regex("\\s+"), " ")
+                        .trim()
+                        .take(RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS)
+                "$speaker: $text"
+            }.toList()
+    if (lines.isEmpty()) return null
+    val body =
+        buildString {
+            appendLine("[최근 채널 대화]")
+            lines.forEach { appendLine(it) }
+            appendLine()
+            append(
+                "위 최근 흐름을 보고 이어서 대답하세요. 같은 사람이 니아를 반복해서 부르면 반복 호출 자체를 맥락으로 삼아 자연스럽게 반응하세요.",
+            )
+        }.take(RECENT_CHANNEL_CONTEXT_MAX_CHARS)
+    return CloudTurn("user", body)
+}
 
 /** 봇이 들어가 있는 서버(길드) 한 건의 식별 정보(어드민 서버 선택 드롭다운용). */
 data class BotGuildInfo(
@@ -327,6 +401,7 @@ class DiscordBot(
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
         private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList, participationFlags)
+        private val recentMessagesByChannel = ConcurrentHashMap<Long, ArrayDeque<DiscordRecentPromptMessage>>()
 
         // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
         private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
@@ -1014,17 +1089,25 @@ class DiscordBot(
          * 자동응답 채널 판정은 [autoRespondChannels] 인메모리 캐시(O(1))로 — 메시지당 DB 조회를 하지 않는다.
          */
         override fun onMessageReceived(event: MessageReceivedEvent) {
-            if (!mentionAskEnabled || !event.isFromGuild || event.author.isBot) return
+            if (!mentionAskEnabled || !event.isFromGuild) return
+            rememberRecentMessage(event)
+            if (event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
             val mentioned =
                 event.message.mentions.users
                     .any { it.idLong == selfId }
+            val directNamePrompt = niaDirectAddressPrompt(event.message.contentRaw)
+            val directlyAddressed = directNamePrompt != null
             // NEXA participation 자발 발화(단계 1): flag 활성 채널에서만 평가·emit. autoRespond/멘션과 **별개 경로**다.
             // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
             // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
-            forwardToParticipation(event, mentioned)
+            forwardToParticipation(event, mentioned || directlyAddressed)
             if (mentioned) {
                 handleMentionAsk(event, selfId)
+                return
+            }
+            if (directNamePrompt != null) {
+                handleDirectNameAsk(event, directNamePrompt)
                 return
             }
             handleAutoRespond(event)
@@ -1148,6 +1231,15 @@ class DiscordBot(
             respondInChannel(event, prompt)
         }
 
+        /** 이름 호명 질문: `니아야`/`니아 ...` 를 @멘션과 같은 Provider Pool 흐름으로 처리한다. */
+        private fun handleDirectNameAsk(
+            event: MessageReceivedEvent,
+            prompt: String,
+        ) {
+            metrics.record("name-ask")
+            respondInChannel(event, prompt, fastResponse = isBareNiaDirectAddress(event.message.contentRaw))
+        }
+
         /**
          * AI 채팅 채널 자동응답: 자동응답이 켜진 채널의 모든 텍스트 메시지에 멘션 없이 응답한다.
          * `.` 로 시작하는 메시지(카미봇 컨벤션)·빈 내용은 무시한다(스킵). 캐시 조회가 O(1) 라 비-AI채팅 채널은 즉시 return.
@@ -1171,10 +1263,11 @@ class DiscordBot(
             respondInChannel(event, content.trim())
         }
 
-        /** 멘션/자동응답 공통: typing → /ask → (프로필 있으면 웹훅 페르소나, 없으면 답장 스트림). 에러는 동일 처리. */
+        /** 멘션/자동응답 공통: /ask → (프로필 있으면 웹훅 페르소나, 없으면 답장 스트림). 에러는 동일 처리. */
         private fun respondInChannel(
             event: MessageReceivedEvent,
             prompt: String,
+            fastResponse: Boolean = false,
         ) {
             val ctx =
                 buildCtx(
@@ -1184,7 +1277,7 @@ class DiscordBot(
                     event.author.idLong,
                 )
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
-            event.channel.sendTyping().queue({}, {})
+            // Discord typing 은 약 10초 유지되고 취소할 수 없어 GLM tail latency 와 묶지 않는다.
             // 니아 사회기억/감정 관찰 → 발화 톤 힌트(D2). 서버 격리 I7, 표시이름·원문 미저장(가명적) I10.
             // 관찰 실패(getOrNull null)해도 발화는 그대로 진행 — graceful(톤 ""=평소 니아).
             val scope = "discord:guild:${ctx.guildId}"
@@ -1202,8 +1295,16 @@ class DiscordBot(
                 }.getOrNull()
             tone?.let { niaToneActive[scope] = it.tone.active }
             val toneDirective = tone?.tone?.directive ?: ""
+            val ambientHistory = recentChannelContext(event)
             try {
-                val reply = commands.ask(ctx, prompt, toneDirective = toneDirective)
+                val reply =
+                    commands.ask(
+                        ctx,
+                        prompt,
+                        toneDirective = toneDirective,
+                        ambientHistory = ambientHistory,
+                        fastResponse = fastResponse,
+                    )
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
@@ -1223,6 +1324,45 @@ class DiscordBot(
                     .mentionRepliedUser(false)
                     .queue({}, {})
             }
+        }
+
+        private fun recentChannelContext(event: MessageReceivedEvent): List<CloudTurn> {
+            val selfId = event.jda.selfUser.idLong
+            val messages = recentMessagesSnapshot(event.channel.idLong)
+            return buildDiscordRecentContextTurn(
+                messages = messages,
+                currentMessageId = event.messageIdLong,
+                botUserId = selfId,
+            )?.let { listOf(it) } ?: emptyList()
+        }
+
+        private fun rememberRecentMessage(event: MessageReceivedEvent) {
+            val channelId = event.channel.idLong
+            val message =
+                DiscordRecentPromptMessage(
+                    id = event.messageIdLong,
+                    authorId = event.author.idLong,
+                    authorLabel = event.member?.effectiveName ?: event.author.name,
+                    bot = event.author.isBot,
+                    content = event.message.contentRaw,
+                    createdAtEpochMillis =
+                        event.message.timeCreated
+                            .toInstant()
+                            .toEpochMilli(),
+                )
+            val buffer = recentMessagesByChannel.computeIfAbsent(channelId) { ArrayDeque() }
+            synchronized(buffer) {
+                buffer.addLast(message)
+                while (buffer.size > RECENT_CHANNEL_CONTEXT_FETCH_LIMIT) buffer.removeFirst()
+            }
+            if (recentMessagesByChannel.size > RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT) {
+                recentMessagesByChannel.keys.firstOrNull { it != channelId }?.let { recentMessagesByChannel.remove(it) }
+            }
+        }
+
+        private fun recentMessagesSnapshot(channelId: Long): List<DiscordRecentPromptMessage> {
+            val buffer = recentMessagesByChannel[channelId] ?: return emptyList()
+            return synchronized(buffer) { buffer.toList() }
         }
 
         /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */

@@ -42,7 +42,7 @@ class CloudLlmAppraiserProvider(
     }
 
     companion object {
-        /** judge/speech 와 같은 빠른 등급 판정 모델(core: glm-4.5-air). */
-        const val APPRAISER_MODEL: String = "glm-4.5-air"
+        /** judge/speech 와 같은 빠른 등급 판정 모델(core: glm-4.5-airx). */
+        const val APPRAISER_MODEL: String = "glm-4.5-airx"
     }
 }

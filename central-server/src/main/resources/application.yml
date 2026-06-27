@@ -94,8 +94,8 @@ central:
     zai-api-key: ${ZAI_API_KEY:}
     zai-base-url: ${ZAI_BASE_URL:https://api.z.ai/api/paas/v4}
     timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
-    # /질문·ai채팅 무료 클라우드 폴백 모델. 빠른 대화 기본값은 GLM Air, env 로 즉시 rollback 가능.
-    free-model: ${ZAI_FREE_MODEL:glm-4.5-air}
+    # /질문·ai채팅 무료 클라우드 폴백 모델. 기본값은 AirX, env 로 즉시 rollback 가능.
+    free-model: ${ZAI_FREE_MODEL:glm-4.5-airx}
     # 짧은 니아 호명(예: "니아야?") 전용 즉답 모델. 실제 AI 호출이며, env 로 즉시 rollback 가능.
     fast-model: ${ZAI_FAST_MODEL:glm-4.5-airx}
     # 이미지 픽셀까지 중앙 서버가 직접 만드는 클라우드 SD(ADR 0006 단계4 — 완전 앱리스 이미지).
@@ -112,7 +112,7 @@ central:
     # NEXA 발화 생성(SPEAK 이후 문장 생성, ADR 0006 anti-corruption) 모델·budget 외부화(P14-T003).
     # endpoint/api-key 는 위 cloud.zai-* 가 SSOT — speech 는 모델 라벨·호출 budget 만 외부화한다.
     # 모델 업데이트·rollback 은 코드 수정 없이 이 값(또는 환경변수)만 바꾸면 된다.
-    model: ${NEXA_SPEECH_MODEL:glm-4.5-air}
+    model: ${NEXA_SPEECH_MODEL:glm-4.5-airx}
     timeout-seconds: ${NEXA_SPEECH_TIMEOUT_SECONDS:8}
     max-retries: ${NEXA_SPEECH_MAX_RETRIES:1}
   ai-network:

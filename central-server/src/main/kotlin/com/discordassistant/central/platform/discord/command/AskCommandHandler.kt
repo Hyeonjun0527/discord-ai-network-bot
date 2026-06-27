@@ -59,21 +59,21 @@ class AskCommandHandler(
     private val cloudLlm: com.discordassistant.central.routing.application.CloudLlm,
     // 이미지 픽셀까지 central 이 직접 만드는 클라우드 SD 백엔드(ADR 0006 단계4 — 완전 앱리스). 키 있으면 isEnabled().
     private val cloudImageBackend: com.discordassistant.central.routing.application.CloudImageBackend,
-    // 무료 클라우드 폴백(로컬 프로바이더 부재 시 GLM Air)의 인당 rate limit — 무료 자원 남용 방지.
+    // 무료 클라우드 폴백(로컬 프로바이더 부재 시 GLM AirX)의 인당 rate limit — 무료 자원 남용 방지.
     private val freeCloudRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
     // /질문 전용 단기 멀티턴 대화 기억(채널+유저·인메모리·TTL). "방금 뭐라고 했지?" 맥락을 클라우드 직결에 제공.
     private val askMemory: com.discordassistant.central.routing.application.AskConversationMemory,
     // 어드민(프로젝트 운영자) 전용 모델/thinking 강제 지정 게이트(=central.dashboard.admin-user-ids). 비어드민은 무시.
     private val projectAdmins: com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins,
-    @param:Value("\${central.cloud.free-model:glm-4.5-air}") private val freeCloudModel: String = DEFAULT_FREE_CLOUD_MODEL,
+    @param:Value("\${central.cloud.free-model:glm-4.5-airx}") private val freeCloudModel: String = DEFAULT_FREE_CLOUD_MODEL,
     @param:Value("\${central.cloud.fast-model:glm-4.5-airx}") private val fastCloudModel: String = DEFAULT_FAST_CLOUD_MODEL,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
 ) {
     companion object {
-        // /질문·ai채팅 무료 클라우드 기본 모델(z.ai/GLM Air). env 설정이 비어 있으면 이 모델로 답한다.
-        const val DEFAULT_FREE_CLOUD_MODEL = "glm-4.5-air"
+        // /질문·ai채팅 무료 클라우드 기본 모델(z.ai/GLM AirX). env 설정이 비어 있으면 이 모델로 답한다.
+        const val DEFAULT_FREE_CLOUD_MODEL = "glm-4.5-airx"
         const val DEFAULT_FAST_CLOUD_MODEL = "glm-4.5-airx"
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600

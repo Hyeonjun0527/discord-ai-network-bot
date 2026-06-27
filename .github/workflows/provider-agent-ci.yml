@@ -3,6 +3,7 @@ name: provider-agent CI
 
 on:
   push:
+    branches: [main]
     paths:
       - "provider-agent/**"
       - "packaging/**"
@@ -25,6 +26,10 @@ on:
       - "scripts/gen_i18n.py"
       - ".github/workflows/provider-agent-ci.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   agent:

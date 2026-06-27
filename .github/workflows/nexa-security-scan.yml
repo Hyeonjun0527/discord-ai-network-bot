@@ -6,6 +6,7 @@ name: NEXA security scan
 
 on:
   push:
+    branches: [main]
     paths:
       - "central-server/**"
       - "ml/social-policy/**"
@@ -26,6 +27,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).

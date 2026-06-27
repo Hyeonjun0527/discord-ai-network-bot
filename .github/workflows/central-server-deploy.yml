@@ -1,5 +1,5 @@
 # [DEPRECATED — 수동 전용] self-hosted(Mac) 배포. 운영 자동배포는 central-deploy.yml
-# (원격 linuxssh.dailyting.cloud)로 이관됨. 이 워크플로는 비상 수동 폴백으로만 남긴다.
+# (원격 ssh.yeon.world / yeon-arm)로 이관됨. 이 워크플로는 비상 수동 폴백으로만 남긴다.
 # 필요 시크릿: ENV_FILE.
 name: central-server deploy (self-hosted, deprecated)
 

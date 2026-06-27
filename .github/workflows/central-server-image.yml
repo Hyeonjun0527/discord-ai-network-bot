@@ -1,7 +1,7 @@
 # central-server 이미지 빌드 & GHCR 푸시 (LAUNCH 차수 7).
 name: central-server image
 
-# 릴리스 이미지 빌드 전용(태그). 브랜치 push 의 빌드+배포는 central-deploy-ssh.yml 이 담당.
+# 릴리스 이미지 빌드 전용(태그). 브랜치 push 의 빌드+배포는 central-deploy.yml 이 담당.
 on:
   push:
     tags:

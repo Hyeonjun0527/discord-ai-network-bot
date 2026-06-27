@@ -45,7 +45,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
 
 ## 3. 프로바이더 온보딩 (내 PC LLM 을 풀에 연결)
 유저(프로바이더)가 자기 PC 에서:
-1. Discord 에서 `/provider-join` → (자동승인 OFF면 관리자 `/provider-approve @유저`) → **1회용 토큰** 수령.
+1. Discord 에서 `/provider-join` → (자동승인 OFF면 관리자 `/settings` 웹 대시보드에서 승인) → **1회용 토큰** 수령.
 2. 그 PC 에서 Ollama 실행 + 모델:
    ```bash
    ollama serve &
@@ -56,7 +56,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
    pip install -e provider-agent            # 또는 배포물/Docker(packaging/README.md)
 nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
    ```
-   → 풀에 등록되면 `/providers`(관리자)·`/catalog` 에 나타난다.
+   → 풀에 등록되면 `/provider-status` 와 웹 대시보드에서 상태를 확인할 수 있다.
 
 ## 4. 라이브 검증 체크리스트
 **첫 사용자는 `/menu` 하나만 기억하면 됩니다** (버튼/드롭다운으로 전부 처리):
@@ -66,9 +66,9 @@ nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
 
 명령으로도 가능(슬래시 입력창에 `/` 치면 설명 자동 표시):
 - `/ask 안녕` 또는 `@니아 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
-- `/help` `/models` `/catalog` `/community-stats`, `/provider-join`.
-- `/ask-long` → 모달, 메시지 우클릭 → 앱 → `AI에게 질문`(컨텍스트 메뉴).
-- `/provider-approve @유저` → 대상에게 토큰 DM, `/fairness` `/provider-schedule`(관리자).
+- `/help` `/my-usage` `/privacy` `/provider-join` `/provider-status`.
+- 긴 질문은 `/menu`의 질문 버튼 또는 메시지 우클릭 → 앱 → `AI에게 질문`(컨텍스트 메뉴).
+- 관리 작업은 `/settings` 웹 대시보드에서 처리한다. 프로바이더의 일시정지·한도·시간대 설정은 데스크톱 앱에서 처리한다.
 
 ## 5. 알아둘 점
 - **리액션 만족도(#171)**: `GUILD_MESSAGE_REACTIONS` 인텐트를 코드에서 활성화해 👍/👎 수집이

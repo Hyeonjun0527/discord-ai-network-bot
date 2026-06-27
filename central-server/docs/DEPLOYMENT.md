@@ -17,9 +17,9 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 ## A. central-server 배포 (CI/CD)
 
 - 워크플로: **`central-deploy.yml`** = "central-server CI/CD (원격 배포)".
-  - 트리거: `main`(또는 `feat/remote-agent-byollm`)의 `central-server/**` push, 또는 **수동**(`workflow_dispatch`).
-  - build(ubuntu): `gradlew bootJar` → docker build → **GHCR push**(`:latest`, `:sha`).
-  - deploy(self-hosted `dailyting-remote`, 원격 서버): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
+  - 트리거: `main`의 `central-server/**` push, 또는 **수동**(`workflow_dispatch`).
+  - build(self-hosted `yeon-arm`): `gradlew bootJar` → docker build → **GHCR push**(`:latest`, `:sha`).
+  - deploy(self-hosted `yeon-arm`, `ssh.yeon.world`): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
 - 참고: `central-server-deploy.yml`은 **deprecated**(소스 빌드, `docker-compose.yml`). 실제 운영은 위 `central-deploy.yml`.
 
 ### ENV_FILE (GitHub repo secret) = 컨테이너 `.env` 전체
@@ -102,6 +102,22 @@ curl -A x -G --data-urlencode "cb=http://127.0.0.1:1/connect/callback" --data-ur
   -D - -o /dev/null https://discord-ai.yeon.world/provider/connect   # 302 → discord.com(OAuth 켜짐)
 curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/dashboard/
 ```
+
+### 운영 정책 감사
+
+자동응답 채널 또는 "니아 채널 자동 만들기"로 만든 `ai채팅`/`ai그림`이 LLM allow-list와 어긋나면
+핀 가이드와 달리 `이 채널에서는 LLM 을 사용할 수 없습니다.`가 발생한다. 배포 후 또는 채널 정책 변경 후에는
+읽기 전용 감사 스크립트로 확인한다.
+
+```bash
+ssh ssh.yeon.world
+cd ~/deploy/central-server
+DISCORD_GUILD_ID=all ./ops_policy_audit.sh
+```
+
+`DISCORD_GUILD_ID=all`은 봇이 들어간 모든 서버의 Discord 채널 목록을 조회해 ko/en/ja 니아 기능 카테고리 아래
+`ai채팅`/`ai그림` 계열 채널이 LLM allow-list에 들어 있는지 대조한다. 특정 서버만 보려면
+`DISCORD_GUILD_ID=<guild_id>`를 준다. 토큰 값은 출력하지 않는다.
 
 ---
 

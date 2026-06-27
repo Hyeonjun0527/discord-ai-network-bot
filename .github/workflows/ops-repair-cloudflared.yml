@@ -1,0 +1,63 @@
+name: ops repair cloudflared
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: [self-hosted, yeon-arm]
+    steps:
+      - name: Restart cloudflared tunnel without printing token
+        run: |
+          set -euo pipefail
+          pid="$(pgrep -o cloudflared || true)"
+          if [ -z "$pid" ]; then
+            echo "cloudflared process not found"
+            exit 1
+          fi
+          work="$HOME/.cache/nexa-cloudflared-restart"
+          mkdir -p "$work"
+          chmod 700 "$work"
+          python3 -c 'import pathlib, sys; pid, output = sys.argv[1], pathlib.Path(sys.argv[2]); args = [arg.decode() for arg in pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if arg]; assert args and pathlib.Path(args[0]).name == "cloudflared"; output.write_text("\n".join(args)); output.chmod(0o600)' "$pid" "$work/argv"
+          owner="$(ps -o user= -p "$pid" | awk '{print $1}')"
+          sudo -n kill -TERM "$pid" || true
+          for _ in $(seq 1 20); do
+            if ! sudo -n kill -0 "$pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          if sudo -n kill -0 "$pid" 2>/dev/null; then
+            sudo -n kill -KILL "$pid"
+          fi
+          sleep 2
+          run_as="$owner"
+          if [ "$owner" = "65532" ]; then
+            run_as="#65532"
+          fi
+          sudo -n nohup sudo -n -u "$run_as" python3 -c 'import os, pathlib, sys; args = pathlib.Path(sys.argv[1]).read_text().splitlines(); os.execvp(args[0], args)' "$work/argv" >"$work/cloudflared.out" 2>"$work/cloudflared.err" &
+          sleep 10
+          if ! pgrep -x cloudflared >/dev/null; then
+            echo "cloudflared did not restart"
+            sed -E 's/(--token )[A-Za-z0-9._=-]+/\1[redacted]/g' "$work/cloudflared.err" || true
+            exit 1
+          fi
+          pgrep -af '[c]loudflared' | sed -E 's/(--token )[A-Za-z0-9._=-]+/\1[redacted]/g'
+
+      - name: Verify local and public health
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 http://localhost:8085/actuator/health
+          echo
+          for i in $(seq 1 12); do
+            if curl -fsS --max-time 20 https://discord-ai.yeon.world/actuator/health; then
+              echo
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "public health did not recover"
+          exit 1

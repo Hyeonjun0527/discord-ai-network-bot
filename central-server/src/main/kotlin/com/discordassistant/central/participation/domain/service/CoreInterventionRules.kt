@@ -16,12 +16,13 @@ package com.discordassistant.central.participation.domain.service
  * - `config/policies.yaml` → 상수 인라인 (항목 14-24)
  * - `config/attention.yaml` → [AttentionGateConstants] (항목 89-93)
  *
- * **결합 순서**(core 와 동일한 보수성):
- * 1. WAIT : burst 미완성(incomplete/media_pending) · 이어가는 연결어
- * 2. SILENT(DROP): 봇/시스템 화자 · 빈 메시지 · 직전 중복
- * 3. SPEAK(RESPOND_NOW): 직접 호명(hard_policy 마커 + rules 호격) · reply · continuation
- * 4. SILENT: 타인 지목 질문 · 타인 @멘션 · 끝난 흐름 · 사적 핑퐁
- * 5. CANDIDATE: 모호 → 기존 정책 분포로 위임
+ * **결합 순서**(core 와 동일한 보수성 + LIVE 운영 보정):
+ * 1. SILENT(DROP): 봇/시스템 화자 · 빈 메시지
+ * 2. WAIT : 이어가는 연결어
+ * 3. SPEAK(RESPOND_NOW): 직접 호명(hard_policy 마커 + rules 호격) · 반복된 직접 호출 · reply · continuation
+ * 4. WAIT/SILENT: burst 미완성(incomplete/media_pending) · 직전 중복
+ * 5. SILENT: 타인 지목 질문 · 타인 @멘션 · 끝난 흐름 · 사적 핑퐁
+ * 6. CANDIDATE: 모호 → 기존 정책 분포로 위임
  *
  * 순수성: Spring/JPA/JDA/adapter 미참조(participation.domain 규칙). 표준 타입만.
  */
@@ -90,50 +91,39 @@ object CoreInterventionRules {
 
     /**
      * 트리거 메시지에 결정론 규칙을 적용해 즉결 또는 위임을 낸다(순수 함수).
-     * core 결합 순서(보수적 — 애매하면 Candidate):
-     * 1) WAIT  : burst 미완 · 연결어
-     * 2) SILENT: 빈 메시지 · 봇/시스템 화자 · 직전 중복
-     * 3) SPEAK : 직접 호명(@멘션·hard_policy 마커·rules 호격) · reply · continuation
-     * 4) SILENT: 타인 지목 질문 · 타인 @멘션 · 끝난 흐름 · 사적 핑퐁
-     * 5) CANDIDATE
+     * core 결합 순서(보수적 — 애매하면 Candidate)에서 LIVE 운영 보정 1개를 적용한다:
+     * 직접 호명/reply/continuation 같은 명시 호출은 burst/중복 같은 약한 시간 신호보다 강하다.
+     * 특히 burst/duplicate 가 직접 호명과 결합하면 "소음" 이 아니라 "응답 실패 후 재호출" 로 분리해 관측한다.
      */
     fun evaluate(input: RuleInput): Verdict {
         val text = input.triggerText
         val trimmed = text.trim()
 
-        // 1) burst 미완성(incomplete/media_pending) → WAIT.
-        if (input.burstIncomplete) {
-            return Verdict.Wait("RULE_INCOMPLETE_BURST")
+        // 1-a) 빈 메시지 → SILENT (hard_policy DROP).
+        if (trimmed.isEmpty()) {
+            return Verdict.Silent("RULE_EMPTY")
         }
-        // 이어가는 연결어(rules _has_trailing_connective) → WAIT.
+        // 1-b) 봇/시스템/니아 자기 메시지 → SILENT (hard_policy DROP + rules RULE_SELF_MESSAGE).
+        if (input.speakerLabel.trim().lowercase() in BOT_SPEAKERS) {
+            return Verdict.Silent("RULE_SELF_MESSAGE")
+        }
+
+        // 2) 이어가는 연결어(rules _has_trailing_connective) → WAIT.
         if (hasTrailingConnective(text)) {
             return Verdict.Wait("RULE_TRAILING_CONNECTIVE")
         }
 
-        // 2-a) 빈 메시지 → SILENT (hard_policy DROP).
-        if (trimmed.isEmpty()) {
-            return Verdict.Silent("RULE_EMPTY")
-        }
-        // 2-b) 봇/시스템/니아 자기 메시지 → SILENT (hard_policy DROP + rules RULE_SELF_MESSAGE).
-        if (input.speakerLabel.trim().lowercase() in BOT_SPEAKERS) {
-            return Verdict.Silent("RULE_SELF_MESSAGE")
-        }
-        // 2-c) 직전 사람 메시지와 완전 중복 → SILENT (hard_policy DROP 중복).
-        if (input.duplicateOfPrevHuman) {
-            return Verdict.Silent("RULE_DUPLICATE")
-        }
-
         // 3-a) Discord @멘션 → SPEAK (hard_policy direct_address "@니아").
         if (input.mentioned) {
-            return Verdict.Speak("RULE_NIA_ADDRESSED")
+            return Verdict.Speak(niaAddressReasonCode(input))
         }
         // 3-b) hard_policy direct_address_markers (policies.yaml — @니아 제외 7개, 인용 미제거로 단순 포함 매칭).
         if (matchesDirectAddressMarker(text)) {
-            return Verdict.Speak("RULE_NIA_ADDRESSED")
+            return Verdict.Speak(niaAddressReasonCode(input))
         }
         // 3-c) rules _mentions_nia (인용문 제외, NIA_VOCATIVE) → SPEAK.
         if (mentionsNia(text)) {
-            return Verdict.Speak("RULE_NIA_ADDRESSED")
+            return Verdict.Speak(niaAddressReasonCode(input))
         }
         // 3-d) 니아 발화에 대한 reply → SPEAK (hard_policy RESPOND_NOW reply).
         if (input.replyToNia) {
@@ -147,24 +137,33 @@ object CoreInterventionRules {
             return Verdict.Speak("RULE_CONTINUATION")
         }
 
-        // 4-a) 특정 타인 지목 질문 → SILENT (rules clear_silent).
+        // 4-a) burst 미완성(incomplete/media_pending) → WAIT.
+        if (input.burstIncomplete) {
+            return Verdict.Wait("RULE_INCOMPLETE_BURST")
+        }
+        // 4-b) 직전 사람 메시지와 완전 중복 → SILENT (hard_policy DROP 중복).
+        if (input.duplicateOfPrevHuman) {
+            return Verdict.Silent("RULE_DUPLICATE")
+        }
+
+        // 5-a) 특정 타인 지목 질문 → SILENT (rules clear_silent).
         if (isDirectedQuestionToOther(text)) {
             return Verdict.Silent("RULE_QUESTION_TO_OTHER")
         }
-        // 4-b) 특정 타인 @멘션(니아 아님) → SILENT (rules clear_silent).
+        // 5-b) 특정 타인 @멘션(니아 아님) → SILENT (rules clear_silent).
         if (mentionsOtherUser(text)) {
             return Verdict.Silent("RULE_QUESTION_TO_OTHER")
         }
-        // 4-c) 끝난 흐름(작별·해결·감사) → SILENT (rules clear_silent).
+        // 5-c) 끝난 흐름(작별·해결·감사) → SILENT (rules clear_silent).
         if (endsWithAny(text, RESOLVED_MARKERS)) {
             return Verdict.Silent("RULE_ALREADY_RESOLVED")
         }
-        // 4-d) 두 사람만의 사적 핑퐁 → SILENT (rules clear_silent).
+        // 5-d) 두 사람만의 사적 핑퐁 → SILENT (rules clear_silent).
         if (isPrivatePingpong(input)) {
             return Verdict.Silent("RULE_PRIVATE_PINGPONG")
         }
 
-        // 5) 모호 — 기존 정책 분포 위임.
+        // 6) 모호 — 기존 정책 분포 위임.
         return Verdict.Candidate
     }
 
@@ -316,6 +315,17 @@ object CoreInterventionRules {
         val cleaned = stripQuotes(text)
         return NIA_VOCATIVE.any { it in cleaned }
     }
+
+    /**
+     * burst/duplicate 자체는 나쁜 신호가 아니다. 직접 호명과 결합하면 "미완성/도배"가 아니라
+     * "응답 실패 후 재호출" 의미가 강하므로 별도 reason code 로 남긴다.
+     */
+    private fun niaAddressReasonCode(input: RuleInput): String =
+        if (input.burstIncomplete || input.duplicateOfPrevHuman) {
+            "RULE_REPEATED_NIA_CALL"
+        } else {
+            "RULE_NIA_ADDRESSED"
+        }
 
     /**
      * 특정인을 이름+호격(야/아)으로 부르며 시작하는지(rules.py `_is_directed_address`, 항목 76-77).

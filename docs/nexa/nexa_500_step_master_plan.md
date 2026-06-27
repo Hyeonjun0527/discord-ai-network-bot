@@ -4144,13 +4144,13 @@ central-server/src/main/kotlin/com/discordassistant/central/
 - **인간 승인 게이트:** 아니오
 - **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 
-### NEXA-P14-T011 — 후보 다중 생성 계약 구현
+### NEXA-P14-T011 — 단일 후보 생성 계약 구현
 
 - **종류/위험도:** `implementation` / `medium`
 - **선행 작업:** NEXA-P14-T010
 - **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/generation/**`
-- **구체 산출물:** 한 SPEAK 결정에서 2~5개 후보를 생성하고 candidate ID와 model metadata를 기록한다.
-- **완료 조건:** 후보 수가 비용 cap을 넘지 않고 설정 가능하다.
+- **구체 산출물:** 한 SPEAK 결정에서 후보 1개만 생성하고 candidate ID와 model metadata를 기록한다.
+- **완료 조건:** 후보 수가 운영 비용 cap에 따라 1개로 고정된다.
 - **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
 - **인간 승인 게이트:** 아니오
 - **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.

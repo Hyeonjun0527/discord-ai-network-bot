@@ -107,6 +107,9 @@ class NiaChannelSetupHandler(
                 displayName = NiaChannelSetup.NIA_PROFILE_NAME,
                 avatarUrl = null,
                 actorId = ctx.userId,
+                purpose = "친구 단톡방의 한 사람처럼 짧게 한마디 거드는 니아",
+                tone = "까칠하지만 장난스럽고 솔직하게",
+                answerLength = "very_short",
             )
             // 자동응답 켜기 → 생성 즉시 그 채널의 모든 메시지에 멘션 없이 니아가 답한다(캐시 무효화로 즉시 반영).
             autoRespondChannels.setAutoRespond(

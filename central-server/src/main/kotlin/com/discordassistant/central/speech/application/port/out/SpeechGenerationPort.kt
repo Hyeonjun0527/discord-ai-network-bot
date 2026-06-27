@@ -32,7 +32,7 @@ data class SpeechGenerationRequest(
     val userPrompt: String,
     /** 발화 종류(추적·모델 메타용). */
     val socialAct: SpeechSocialAct,
-    /** 생성할 후보 수(T011 — [2,5] 범위, 비용 cap 적용 후). */
+    /** 생성할 후보 수(T011 — 비용 절감을 위해 현재 운영 계약은 1개 고정). */
     val candidateCount: Int,
     /** 추론 모드(T013 — 짧은 잡담=비추론, 복잡 사실/코드=추론). */
     val reasoningMode: ReasoningMode,
@@ -54,8 +54,8 @@ data class SpeechGenerationRequest(
     }
 
     companion object {
-        const val MIN_CANDIDATES: Int = 2
-        const val MAX_CANDIDATES: Int = 5
+        const val MIN_CANDIDATES: Int = 1
+        const val MAX_CANDIDATES: Int = 1
     }
 }
 

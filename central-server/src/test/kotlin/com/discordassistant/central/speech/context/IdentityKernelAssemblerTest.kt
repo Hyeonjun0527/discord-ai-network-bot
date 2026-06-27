@@ -26,6 +26,21 @@ class IdentityKernelAssemblerTest {
     }
 
     @Test
+    fun `default nia persona follows core traits without assistant greeting boilerplate`() {
+        val prompt = NexaIdentity.NIA_DEFAULT_PERSONA + "\n" + NexaIdentity.NIA_FEWSHOT
+
+        assertThat(prompt).contains("친구 단톡방", "까칠함", "장난스러움", "솔직함")
+        assertThat(prompt).doesNotContain(
+            "사용자: 안녕?",
+            "니아: 안녕하세요",
+            "안녕하세요, 저는 니아예요",
+            "오늘은 어떤 걸 도와드릴까요",
+            "제가 길을 찾아볼게요",
+            "충실하게 답하세요",
+        )
+    }
+
+    @Test
     fun `guild-specified persona does not clone nia full persona`() {
         val section =
             assembler(IdentityKernelMeta.of("아리", setOf("음악"), administratorApproved = true)).assemble(7L)

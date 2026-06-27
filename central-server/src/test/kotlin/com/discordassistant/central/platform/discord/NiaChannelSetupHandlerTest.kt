@@ -154,9 +154,9 @@ class NiaChannelSetupHandlerTest {
             eqK(NiaChannelSetup.NIA_PROFILE_NAME), // 비-null String → null 반환 NPE 회피
             isNull(), // avatarUrl = null
             eqK(actorId), // actorId(Long?, 박싱) = ctx.userId
-            isNull(), // purpose
-            isNull(), // tone
-            isNull(), // answerLength
+            eqK("친구 단톡방의 한 사람처럼 짧게 한마디 거드는 니아"),
+            eqK("까칠하지만 장난스럽고 솔직하게"),
+            eqK("very_short"),
             isNull(), // constitution
         )
         verify(autoRespond).setAutoRespond(eq(guildId), eq(chatId), eq(true), eq(actorId))

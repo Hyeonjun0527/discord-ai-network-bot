@@ -11,9 +11,9 @@ import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
 /**
- * 후보 다중 생성 유스케이스(NEXA-P14-T011, application).
+ * 발화 후보 생성 유스케이스(NEXA-P14-T011, application).
  *
- * 한 SPEAK 결정에서 2~5개 후보를 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
+ * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 현재 운영 계약은 후보 1개 고정이다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
  * 프롬프트로 조립하고([assembleRequest]) [SpeechGenerationPort] 로 생성한다. budget(T015)이 후보 수·token 상한을,
  * ReasoningModeSelector(T013)가 추론 모드를 정한다.
  *

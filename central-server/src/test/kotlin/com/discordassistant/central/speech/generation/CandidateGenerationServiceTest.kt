@@ -16,7 +16,7 @@ import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
-/** NEXA-P14-T011: 후보 다중 생성 — 후보 수가 비용 cap을 넘지 않고 설정 가능. */
+/** NEXA-P14-T011: 발화 후보 생성 — 후보 수가 비용 cap을 넘지 않고 현재 운영 계약은 1개로 고정. */
 class CandidateGenerationServiceTest {
     private class CapturingPort : SpeechGenerationPort {
         var lastRequest: SpeechGenerationRequest? = null
@@ -39,12 +39,12 @@ class CandidateGenerationServiceTest {
         )
 
     @Test
-    fun `candidate count is clamped to budget cap (configurable, not exceeded)`() {
+    fun `candidate count is clamped to one by operation contract`() {
         val port = CapturingPort()
         val budget = GenerationBudget(maxCandidates = 3, maxOutputTokens = 256, maxContextTokens = 512)
         val result = service(port).generate(SpeechGenerationFixtures.packet(), budget)
-        assertThat(result.candidates).hasSize(3)
-        assertThat(port.lastRequest!!.candidateCount).isEqualTo(3)
+        assertThat(result.candidates).hasSize(1)
+        assertThat(port.lastRequest!!.candidateCount).isEqualTo(1)
         assertThat(result.modelMetadata).isEqualTo("fake-model")
     }
 

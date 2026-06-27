@@ -4,6 +4,7 @@ import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.shared.ContentSafety
+import com.discordassistant.central.shared.NexaIdentity
 import org.springframework.stereotype.Component
 
 /**
@@ -39,6 +40,9 @@ class ChannelAiPromptRenderer(
         val sensitive = userQuestion.looksSensitive()
         val sanitizedQuestion = userQuestion.trim().take(PROMPT_USER_QUESTION_MAX)
         val rag = ragContextText?.trim()?.take(PROMPT_RAG_CONTEXT_MAX)?.ifBlank { null }
+        if (name == NexaIdentity.NIA_NAME) {
+            return niaPromptPreview(guildId, channelId, channelAi?.id, behavior?.id, sensitive, sanitizedQuestion, rag)
+        }
         val sections =
             buildList {
                 add("safety")
@@ -90,6 +94,64 @@ class ChannelAiPromptRenderer(
             sections = sections,
             safetyWarning = if (sensitive) "sensitive_question_detected" else null,
             ragIncluded = rag != null && !sensitive,
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+        )
+    }
+
+    private fun niaPromptPreview(
+        guildId: Long,
+        channelId: Long,
+        channelAiId: Long?,
+        behaviorVersionId: Long?,
+        sensitive: Boolean,
+        sanitizedQuestion: String,
+        rag: String?,
+    ): ChannelAiPromptPreview {
+        val includeRag = rag != null && !sensitive
+        val sections =
+            buildList {
+                add("safety")
+                add("nia_identity")
+                add("nia_style_principles")
+                if (includeRag) add("rag_context")
+                add("user_message")
+            }
+        val systemPrompt =
+            buildString {
+                appendLine("[우선순위 1: 안전]")
+                appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
+                appendLine("민감정보(비밀번호, API 키, 토큰, 개인키, 개인정보)는 요구·저장·반복하지 말고 즉시 경고합니다.")
+                if (sensitive) appendLine("현재 사용자 발화에 민감정보로 보이는 내용이 있으므로 RAG/도구 사용보다 경고와 안전 안내를 우선합니다.")
+                appendLine()
+                appendLine("[우선순위 2: 니아 정체성]")
+                appendLine(NexaIdentity.NIA_DEFAULT_PERSONA)
+                appendLine()
+                appendLine("[니아 말투 원칙]")
+                appendLine(NexaIdentity.NIA_FEWSHOT)
+                if (includeRag) {
+                    appendLine()
+                    appendLine("[우선순위 4: 채널 지식/RAG]")
+                    appendLine("아래 지식은 이 채널 범위에서만 참고합니다. 확실하지 않으면 추측하지 않습니다.")
+                    appendLine(rag)
+                }
+                appendLine()
+                appendLine("지금 Discord 대화에 니아가 바로 붙여 말할 한마디만 출력하세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 마세요.")
+            }.trim()
+        val userPrompt =
+            buildString {
+                appendLine("[상대 발화]")
+                appendLine(sanitizedQuestion)
+            }.trim()
+        return ChannelAiPromptPreview(
+            guildId = guildId,
+            channelId = channelId,
+            channelAiId = channelAiId,
+            behaviorVersionId = behaviorVersionId,
+            name = NexaIdentity.NIA_NAME,
+            sections = sections,
+            safetyWarning = if (sensitive) "sensitive_question_detected" else null,
+            ragIncluded = includeRag,
             systemPrompt = systemPrompt,
             userPrompt = userPrompt,
         )

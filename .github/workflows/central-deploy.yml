@@ -11,7 +11,7 @@ name: central-server CI/CD (원격 배포)
 
 on:
   push:
-    branches: [main, feat/remote-agent-byollm]
+    branches: [main]
     paths:
       - "central-server/**"
       - ".github/workflows/central-deploy.yml"
@@ -130,7 +130,7 @@ jobs:
           retry "컨테이너 기동" docker compose --env-file .env -f compose.yml up -d
           ok=0
           for i in $(seq 1 40); do
-            if curl -sf http://localhost:${APP_PORT}/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi
+            if curl -sf "http://localhost:${APP_PORT}/actuator/health" | grep -q '"status":"UP"'; then ok=1; break; fi
             sleep 3
           done
           if [ "$ok" != "1" ]; then

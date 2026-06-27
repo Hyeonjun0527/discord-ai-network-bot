@@ -3,6 +3,7 @@ name: central-server CI
 
 on:
   push:
+    branches: [main]
     paths:
       - "central-server/**"
       - ".github/workflows/central-server-ci.yml"
@@ -11,6 +12,10 @@ on:
       - "central-server/**"
       - ".github/workflows/central-server-ci.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # 단위/ArchUnit/요구사항 추적성/springdoc 스모크 + Kover 커버리지 게이트(빠름, Docker 불필요).

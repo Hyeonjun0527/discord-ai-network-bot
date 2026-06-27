@@ -29,6 +29,7 @@ import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
 import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.ModelQualityTier
+import com.discordassistant.central.shared.NexaIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -899,6 +900,31 @@ class CommandServiceTest
                 assertTrue(r.content.contains("코드는 실행 가능한 예시 위주로 답합니다."), r.content)
                 assertTrue(r.content.contains("[사용자 질문]"), r.content)
                 assertTrue(r.content.endsWith("코드 설명"), r.content)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 니아 채널 AI는 core 니아 정체성 프롬프트를 사용한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 79, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                commands.setChannelAiProfile(ctx(admin = true), name = "니아", avatarUrl = null, reset = false)
+
+                val r = commands.ask(ctx(), "야")
+
+                assertTrue(r.content.contains("[우선순위 2: 니아 정체성]"), r.content)
+                assertTrue(r.content.contains(NexaIdentity.NIA_DEFAULT_PERSONA), r.content)
+                assertTrue(r.content.contains("[니아 말투 원칙]"), r.content)
+                assertTrue(r.content.contains("[상대 발화]"), r.content)
+                assertTrue(r.content.endsWith("야"), r.content)
+                assertFalse(r.content.contains("[채널 AI 행동 설정]"), r.content)
+                assertFalse(r.content.contains("general_assistant"), r.content)
+                assertFalse(r.content.contains("안녕하세요, 저는 니아예요"), r.content)
+                assertFalse(r.content.contains("오늘은 어떤 걸 도와드릴까요"), r.content)
             } finally {
                 registry.unregister(s)
             }

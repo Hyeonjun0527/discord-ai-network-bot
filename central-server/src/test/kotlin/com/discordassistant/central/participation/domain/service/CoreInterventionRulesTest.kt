@@ -192,10 +192,31 @@ class CoreInterventionRulesTest {
     }
 
     @Test
-    fun `WAIT 가 SPEAK 보다 우선(이어말 중엔 호명이어도 대기)`() {
-        // core 결합 순서: clear_wait 가 clear_speak 보다 먼저 평가된다.
+    fun `이어가는 연결어는 호명이어도 WAIT`() {
         val v = CoreInterventionRules.evaluate(input("니아야 그러니까", burstIncomplete = true))
         assertThat(v).isInstanceOf(CoreInterventionRules.Verdict.Wait::class.java)
+        assertThat((v as CoreInterventionRules.Verdict.Wait).reasonCode).isEqualTo("RULE_TRAILING_CONNECTIVE")
+    }
+
+    @Test
+    fun `니아 직접 호명과 짧은 간격 burst 가 결합하면 반복 호출로 SPEAK`() {
+        val v = CoreInterventionRules.evaluate(input("니아야", burstIncomplete = true))
+        assertThat(v).isInstanceOf(CoreInterventionRules.Verdict.Speak::class.java)
+        assertThat((v as CoreInterventionRules.Verdict.Speak).reasonCode).isEqualTo("RULE_REPEATED_NIA_CALL")
+    }
+
+    @Test
+    fun `니아 직접 호명과 중복이 결합하면 반복 호출로 SPEAK`() {
+        val v = CoreInterventionRules.evaluate(input("니아야", duplicateOfPrevHuman = true))
+        assertThat(v).isInstanceOf(CoreInterventionRules.Verdict.Speak::class.java)
+        assertThat((v as CoreInterventionRules.Verdict.Speak).reasonCode).isEqualTo("RULE_REPEATED_NIA_CALL")
+    }
+
+    @Test
+    fun `니아에게 대답을 요구하는 중복도 반복 호출로 SPEAK`() {
+        val v = CoreInterventionRules.evaluate(input("니아야 대답해", duplicateOfPrevHuman = true))
+        assertThat(v).isInstanceOf(CoreInterventionRules.Verdict.Speak::class.java)
+        assertThat((v as CoreInterventionRules.Verdict.Speak).reasonCode).isEqualTo("RULE_REPEATED_NIA_CALL")
     }
 
     // ── SPEAK — policies.yaml direct_address_markers (DIRECT_ADDRESS_MARKERS) ──

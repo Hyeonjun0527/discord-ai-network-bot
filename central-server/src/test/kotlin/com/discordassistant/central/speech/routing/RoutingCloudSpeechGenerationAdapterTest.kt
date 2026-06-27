@@ -25,7 +25,7 @@ import java.time.ZoneOffset
 class RoutingCloudSpeechGenerationAdapterTest {
     private val config = SpeechModelConfig(model = "glm-5.1", timeoutSeconds = 8, maxRetries = 1)
 
-    private fun request(count: Int = 2) =
+    private fun request(count: Int = 1) =
         SpeechGenerationRequest(
             systemPrompt = "너는 니아야",
             userPrompt = "안녕",

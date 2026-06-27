@@ -668,6 +668,30 @@ class AskCommandHandler(
     }
 
     private fun String.withChannelAiBehavior(profile: ChannelAiProfile): String =
+        if (profile.displayName.trim() == NexaIdentity.NIA_NAME) {
+            withNiaChannelAiBehavior()
+        } else {
+            withCustomChannelAiBehavior(profile)
+        }
+
+    private fun String.withNiaChannelAiBehavior(): String =
+        buildString {
+            appendLine("[우선순위 1: 안전]")
+            appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
+            appendLine()
+            appendLine("[우선순위 2: 니아 정체성]")
+            appendLine(NexaIdentity.NIA_DEFAULT_PERSONA)
+            appendLine()
+            appendLine("[니아 말투 원칙]")
+            appendLine(NexaIdentity.NIA_FEWSHOT)
+            appendLine()
+            appendLine("지금 Discord 대화에 니아가 바로 붙여 말할 한마디만 출력하세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 마세요.")
+            appendLine()
+            appendLine("[상대 발화]")
+            append(this@withNiaChannelAiBehavior)
+        }
+
+    private fun String.withCustomChannelAiBehavior(profile: ChannelAiProfile): String =
         buildString {
             appendLine("[우선순위 1: 안전]")
             appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
@@ -683,7 +707,7 @@ class AskCommandHandler(
             appendLine("민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
             appendLine()
             appendLine("[사용자 질문]")
-            append(this@withChannelAiBehavior)
+            append(this@withCustomChannelAiBehavior)
         }
 
     /** 길드 전역 프롬프트셋(기본 지정된 셋)의 정체성 본문. 없거나 조회 실패 시 NEXA 기본 정체성(니아). */
@@ -693,7 +717,7 @@ class AskCommandHandler(
 
     /**
      * 채널 AI 설정이 없는 기본 서버용 — NEXA 가드레일 + 정체성(길드 전역 프롬프트셋 또는 니아)으로 답하게 한다.
-     * 기본 니아 경로([isNiaDefault])에서는 요청자와의 관계 단계·니아 목소리 few-shot(NIA_FEWSHOT)·니아 캐릭터
+     * 기본 니아 경로([isNiaDefault])에서는 요청자와의 관계 단계·니아 목소리 원칙(NIA_FEWSHOT)·니아 캐릭터
      * 강제 규칙을 추가해 일관성을 강화한다. 서버가 자기 전역 프롬프트셋(예: 다른 이름)을 쓰면 그 정체성을
      * 침범하지 않도록 니아 전용 강화는 건너뛰고 일반 규칙만 둔다.
      */
@@ -712,13 +736,14 @@ class AskCommandHandler(
             if (isNiaDefault) {
                 appendLine(affinityRelationLine(ctx))
                 appendLine()
-                appendLine("[니아 목소리 예시]")
+                appendLine("[니아 말투 원칙]")
                 appendLine(NexaIdentity.NIA_FEWSHOT)
                 appendLine()
                 appendLine(
                     "당신은 위 정체성의 「니아」 본인입니다. 답변 처음부터 끝까지 니아로서 1인칭·일관된 말투와 성격을 유지하세요. " +
-                        "역할에서 벗어나거나 자신을 'AI 모델/언어모델'이라 부르지 마세요. 그러면서 사용자의 질문에는 또렷하고 충실하게 답하세요. " +
-                        "민감정보나 비밀키 입력을 유도하지 말고, 모르면 솔직히 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.",
+                        "역할에서 벗어나거나 자신을 'AI 모델/언어모델'이라 부르지 마세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 말고, " +
+                        "Discord 대화에 바로 붙는 짧은 한마디로 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 짧게 인정하세요. " +
+                        "위 안전 규칙은 항상 우선합니다.",
                 )
             } else {
                 appendLine("위 정체성을 지키되 사용자의 질문에만 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")

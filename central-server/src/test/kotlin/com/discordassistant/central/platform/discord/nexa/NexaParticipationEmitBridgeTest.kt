@@ -348,6 +348,44 @@ class NexaParticipationEmitBridgeTest {
     }
 
     @Test
+    fun `니아 직접 호명과 burst 가 결합한 반복 호출은 emit 된다`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야", burstIncomplete = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+    }
+
+    @Test
+    fun `니아 직접 호명과 duplicate 가 결합한 반복 호출은 emit 된다`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야", duplicateOfPrevHuman = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+    }
+
+    @Test
     fun `두 사람만의 사적 핑퐁이면 규칙이 SILENT 로 즉결한다(B17)`() {
         val scheduler = FakeScheduler()
         val bridge =

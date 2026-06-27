@@ -12,7 +12,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
  *   났을 때만 budget 이 소비된다 — 이 타입은 "발화 시" 에만 [clampCandidateCount]/[clampOutputTokens] 로 상한을
  *   강제한다.
  * - 후보 과생성 차단: [clampCandidateCount] 가 요청 후보 수를 [maxCandidates] 와 계약 상한
- *   ([SpeechGenerationRequest.MAX_CANDIDATES])의 **더 작은 값**으로 내린다 — 어떤 호출도 cap 을 못 넘는다.
+ *   ([SpeechGenerationRequest.MAX_CANDIDATES])의 **더 작은 값**으로 내린다. 현재 운영 계약은 후보 1개 고정이다.
  */
 data class GenerationBudget(
     /** 후보 수 상한(비용 cap). [SpeechGenerationRequest.MIN_CANDIDATES] 이상. */
@@ -43,10 +43,10 @@ data class GenerationBudget(
     fun clampOutputTokens(requested: Int): Int = requested.coerceIn(1, maxOutputTokens)
 
     companion object {
-        /** 보수적 기본 budget(설정 미지정 길드 폴백). */
+        /** 보수적 기본 budget(설정 미지정 길드 폴백). 후보는 비용 절감을 위해 1개만 생성한다. */
         val DEFAULT =
             GenerationBudget(
-                maxCandidates = 3,
+                maxCandidates = 1,
                 maxOutputTokens = 512,
                 maxContextTokens = 1024,
             )

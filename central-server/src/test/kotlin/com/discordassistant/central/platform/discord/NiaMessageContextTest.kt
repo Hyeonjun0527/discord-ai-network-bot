@@ -22,6 +22,23 @@ class NiaMessageContextTest {
     }
 
     @Test
+    fun `반복 니아 호명은 고정 답변이 아니라 모델 입력에 버스트 상황만 힌트로 추가한다`() {
+        val prompt = buildBareNiaDirectAddressPrompt("니아야?", recentBareCallCount = 10)
+
+        assertThat(prompt).startsWith("니아야?")
+        assertThat(prompt).contains("최근 10번 연속")
+        assertThat(prompt).contains("지금 한 번만 사람처럼 반응")
+        assertThat(prompt).doesNotContain("왜 이렇게 불러댐")
+    }
+
+    @Test
+    fun `최근 bare 호명 답변 직후에는 추가 응답을 억제한다`() {
+        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = 2_500)).isTrue()
+        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = 1_999)).isFalse()
+        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = null)).isFalse()
+    }
+
+    @Test
     fun `문장 속 니아 언급은 직접 호명으로 오인하지 않는다`() {
         assertThat(niaDirectAddressPrompt("너는 니아야")).isNull()
         assertThat(niaDirectAddressPrompt("니아는 어떤 캐릭터야?")).isNull()

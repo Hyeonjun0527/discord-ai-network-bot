@@ -43,8 +43,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -71,6 +73,9 @@ private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
 private const val RECENT_CHANNEL_CONTEXT_MAX_LINES = 10
 private const val RECENT_CHANNEL_CONTEXT_MAX_CHARS = 1_500
 private const val RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS = 180
+private const val NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS = 1_200L
+private const val NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS = 8_000L
+private const val NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS = 15_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
 private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '~', '！', '？', '。', '，')
@@ -92,6 +97,25 @@ internal fun isBareNiaDirectAddress(raw: String): Boolean {
     val rest = NIA_DIRECT_ADDRESS_PREFIX.replaceFirst(trimmed, "")
     return NIA_DIRECT_ADDRESS_DECORATION.matches(rest)
 }
+
+internal fun buildBareNiaDirectAddressPrompt(
+    raw: String,
+    recentBareCallCount: Int,
+): String {
+    val prompt = raw.trim().ifBlank { "니아야" }
+    if (recentBareCallCount < 3) return prompt
+    return """
+        $prompt
+
+        [상황 힌트: 같은 사용자가 최근 ${recentBareCallCount}번 연속으로 니아를 불렀습니다. 모든 호출에 따로 답하지 말고, 지금 한 번만 사람처럼 반응하세요. 반복해서 부른 점을 자연스럽게 언급해도 됩니다.]
+        """.trimIndent()
+}
+
+internal fun shouldSuppressBareNiaDirectAddress(
+    nowEpochMillis: Long,
+    lastResponseEpochMillis: Long?,
+    cooldownMillis: Long = NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS,
+): Boolean = lastResponseEpochMillis != null && nowEpochMillis - lastResponseEpochMillis < cooldownMillis
 
 internal data class DiscordRecentPromptMessage(
     val id: Long,
@@ -137,6 +161,14 @@ internal fun buildDiscordRecentContextTurn(
         }.take(RECENT_CHANNEL_CONTEXT_MAX_CHARS)
     return CloudTurn("user", body)
 }
+
+private data class BareNiaDirectAddressKey(
+    val guildId: Long,
+    val channelId: Long,
+    val userId: Long,
+)
+
+private fun elapsedMs(startNanos: Long): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
 
 /** 봇이 들어가 있는 서버(길드) 한 건의 식별 정보(어드민 서버 선택 드롭다운용). */
 data class BotGuildInfo(
@@ -276,8 +308,8 @@ class DiscordBot(
 
     // 추론(ask/imagine)은 길어서 JDA 게이트웨이 스레드를 점유하면 안 된다(동시 요청 시 봇 전체 stall).
     // deferReply 로 ack 한 뒤 실제 처리는 이 전용 풀에서(나머지 빠른 명령은 리스너 스레드 그대로).
-    private val commandExecutor: ExecutorService =
-        Executors.newFixedThreadPool(8) { r -> Thread(r, "discord-cmd").apply { isDaemon = true } }
+    private val commandExecutor: ScheduledExecutorService =
+        Executors.newScheduledThreadPool(8) { r -> Thread(r, "discord-cmd").apply { isDaemon = true } }
 
     @PostConstruct
     fun start() {
@@ -390,7 +422,7 @@ class DiscordBot(
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
-        private val slowCommandExecutor: ExecutorService,
+        private val slowCommandExecutor: ScheduledExecutorService,
     ) : ListenerAdapter() {
         // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션·설정 마법사를 협력자로 위임한다.
         // 동일 의존성 인스턴스를 그대로 넘겨 동작을 구조적으로 보존한다(로직 불변).
@@ -402,6 +434,9 @@ class DiscordBot(
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
         private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList, participationFlags)
         private val recentMessagesByChannel = ConcurrentHashMap<Long, ArrayDeque<DiscordRecentPromptMessage>>()
+        private val pendingBareDirectNameReplies = ConcurrentHashMap<BareNiaDirectAddressKey, ScheduledFuture<*>>()
+        private val activeBareDirectNameReplies = ConcurrentHashMap<BareNiaDirectAddressKey, Boolean>()
+        private val bareDirectNameLastResponseAt = ConcurrentHashMap<BareNiaDirectAddressKey, Long>()
 
         // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
         private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
@@ -1237,7 +1272,63 @@ class DiscordBot(
             prompt: String,
         ) {
             metrics.record("name-ask")
+            if (isBareNiaDirectAddress(event.message.contentRaw)) {
+                scheduleBareDirectNameAsk(event)
+                return
+            }
             respondInChannel(event, prompt, fastResponse = isBareNiaDirectAddress(event.message.contentRaw))
+        }
+
+        private fun scheduleBareDirectNameAsk(event: MessageReceivedEvent) {
+            val key =
+                BareNiaDirectAddressKey(
+                    guildId = event.guild.idLong,
+                    channelId = event.channel.idLong,
+                    userId = event.author.idLong,
+                )
+            val now = System.currentTimeMillis()
+            if (
+                activeBareDirectNameReplies.containsKey(key) ||
+                shouldSuppressBareNiaDirectAddress(now, bareDirectNameLastResponseAt[key])
+            ) {
+                metrics.record("name-ask-bare-suppressed")
+                return
+            }
+
+            pendingBareDirectNameReplies.remove(key)?.cancel(false)
+            lateinit var scheduled: ScheduledFuture<*>
+            scheduled =
+                slowCommandExecutor.schedule(
+                    {
+                        if (!pendingBareDirectNameReplies.remove(key, scheduled)) return@schedule
+                        if (activeBareDirectNameReplies.putIfAbsent(key, true) != null) return@schedule
+                        val startedAt = System.currentTimeMillis()
+                        if (shouldSuppressBareNiaDirectAddress(startedAt, bareDirectNameLastResponseAt[key])) {
+                            activeBareDirectNameReplies.remove(key)
+                            metrics.record("name-ask-bare-suppressed")
+                            return@schedule
+                        }
+                        bareDirectNameLastResponseAt[key] = startedAt
+                        val prompt =
+                            buildBareNiaDirectAddressPrompt(
+                                event.message.contentRaw,
+                                recentBareDirectNameCallCount(
+                                    channelId = event.channel.idLong,
+                                    userId = event.author.idLong,
+                                    nowEpochMillis = startedAt,
+                                ),
+                            )
+                        try {
+                            respondInChannel(event, prompt, fastResponse = true)
+                        } finally {
+                            bareDirectNameLastResponseAt[key] = System.currentTimeMillis()
+                            activeBareDirectNameReplies.remove(key)
+                        }
+                    },
+                    NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS,
+                    TimeUnit.MILLISECONDS,
+                )
+            pendingBareDirectNameReplies[key] = scheduled
         }
 
         /**
@@ -1269,6 +1360,7 @@ class DiscordBot(
             prompt: String,
             fastResponse: Boolean = false,
         ) {
+            val totalStartedAt = System.nanoTime()
             val ctx =
                 buildCtx(
                     event.guild.idLong,
@@ -1282,21 +1374,44 @@ class DiscordBot(
             // 관찰 실패(getOrNull null)해도 발화는 그대로 진행 — graceful(톤 ""=평소 니아).
             val scope = "discord:guild:${ctx.guildId}"
             val speaker = "discord:${ctx.userId}"
+            var toneMs = 0L
             val tone =
-                runCatching {
-                    niaSocialMind.observe(
-                        scope,
-                        speaker,
-                        listOf(prompt),
-                        java.time.Instant.now(),
-                        persist = true,
-                        wasToneActive = niaToneActive[scope] ?: false,
-                    )
-                }.getOrNull()
+                if (fastResponse) {
+                    null
+                } else {
+                    val toneStartedAt = System.nanoTime()
+                    runCatching {
+                        niaSocialMind.observe(
+                            scope,
+                            speaker,
+                            listOf(prompt),
+                            java.time.Instant.now(),
+                            persist = true,
+                            wasToneActive = niaToneActive[scope] ?: false,
+                        )
+                    }.also {
+                        toneMs = elapsedMs(toneStartedAt)
+                    }.getOrNull()
+                }
             tone?.let { niaToneActive[scope] = it.tone.active }
             val toneDirective = tone?.tone?.directive ?: ""
             val ambientHistory = recentChannelContext(event)
+            var askMs = 0L
+            var renderMs = 0L
             try {
+                event.channel
+                    .sendTyping()
+                    .queue(
+                        {},
+                        { e ->
+                            log.debug(
+                                "Discord typing 시작 실패(channel={}): {}",
+                                event.channel.idLong,
+                                e.message,
+                            )
+                        },
+                    )
+                val askStartedAt = System.nanoTime()
                 val reply =
                     commands.ask(
                         ctx,
@@ -1305,6 +1420,8 @@ class DiscordBot(
                         ambientHistory = ambientHistory,
                         fastResponse = fastResponse,
                     )
+                askMs = elapsedMs(askStartedAt)
+                val renderStartedAt = System.nanoTime()
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
@@ -1312,11 +1429,30 @@ class DiscordBot(
                 } else {
                     answers.replyToMessageWithPseudoStream(event.message, reply)
                 }
+                renderMs = elapsedMs(renderStartedAt)
+                log.info(
+                    "Discord message AI latency guild={} channel={} user={} fast={} webhook={} toneMs={} askMs={} renderMs={} totalMs={} replyChars={}",
+                    ctx.guildId,
+                    ctx.channelId,
+                    ctx.userId,
+                    fastResponse,
+                    useWebhookProfile,
+                    toneMs,
+                    askMs,
+                    renderMs,
+                    elapsedMs(totalStartedAt),
+                    reply.content.length,
+                )
             } catch (e: Exception) {
                 log.warn(
-                    "메시지 자동 처리 실패(channel={}, user={}): {}",
+                    "메시지 자동 처리 실패(channel={}, user={}, fast={}, toneMs={}, askMs={}, renderMs={}, totalMs={}): {}",
                     event.channel.idLong,
                     event.author.idLong,
+                    fastResponse,
+                    toneMs,
+                    askMs,
+                    renderMs,
+                    elapsedMs(totalStartedAt),
                     e.message,
                 )
                 event.message
@@ -1364,6 +1500,20 @@ class DiscordBot(
             val buffer = recentMessagesByChannel[channelId] ?: return emptyList()
             return synchronized(buffer) { buffer.toList() }
         }
+
+        private fun recentBareDirectNameCallCount(
+            channelId: Long,
+            userId: Long,
+            nowEpochMillis: Long,
+        ): Int =
+            recentMessagesSnapshot(channelId)
+                .asReversed()
+                .takeWhile { message ->
+                    !message.bot &&
+                        message.authorId == userId &&
+                        nowEpochMillis - message.createdAtEpochMillis <= NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS &&
+                        isBareNiaDirectAddress(message.content)
+                }.count()
 
         /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */
         override fun onMessageReactionAdd(event: MessageReactionAddEvent) {

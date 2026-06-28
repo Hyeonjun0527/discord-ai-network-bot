@@ -1,6 +1,7 @@
 package com.discordassistant.central.socialmemory.adapter.outbound.appraisal
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.socialmemory.domain.model.appraisal.Appraisal
 import com.discordassistant.central.socialmemory.domain.model.appraisal.RelationshipLens
 import com.discordassistant.central.socialmemory.domain.service.appraisal.AppraiserProvider
@@ -34,7 +35,7 @@ class CloudLlmAppraiserProvider(
             SocialAppraiser.SYSTEM_PROMPT + "\n\n" +
                 SocialAppraiser.buildUserPrompt(messages, speakerPersonId, lens, candidatePersonIds)
         return try {
-            val result = cloudLlm.generate(prompt, APPRAISER_MODEL)
+            val result = cloudLlm.generate(prompt, APPRAISER_MODEL, history = emptyList(), thinking = CloudThinking.DISABLED)
             SocialAppraiser.parse(result.text)
         } catch (e: Exception) {
             Appraisal.conservativeDefault(error = "${e.javaClass.simpleName}: ${e.message}")
@@ -42,7 +43,7 @@ class CloudLlmAppraiserProvider(
     }
 
     companion object {
-        /** judge/speech 와 같은 빠른 등급 판정 모델(core: glm-4.5-airx). */
-        const val APPRAISER_MODEL: String = "glm-4.5-airx"
+        /** judge/speech 와 같은 빠른 등급 판정 모델(core: glm-4.5-air). */
+        const val APPRAISER_MODEL: String = "glm-4.5-air"
     }
 }

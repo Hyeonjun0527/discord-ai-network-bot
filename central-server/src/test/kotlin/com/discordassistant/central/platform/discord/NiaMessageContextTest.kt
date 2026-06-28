@@ -8,6 +8,7 @@ class NiaMessageContextTest {
     fun `니아야 이름 호명은 직접 질문 프롬프트로 잡는다`() {
         assertThat(niaDirectAddressPrompt("니아야")).isEqualTo("니아야")
         assertThat(niaDirectAddressPrompt("니아야 왜 답 안 해")).isEqualTo("왜 답 안 해")
+        assertThat(niaDirectAddressPrompt("무슨소란 니아야")).isEqualTo("무슨소란")
         assertThat(niaDirectAddressPrompt("니아? 지금 있어?")).isEqualTo("니아? 지금 있어?")
         assertThat(niaDirectAddressPrompt("니아야!!!")).isEqualTo("니아야!!!")
     }
@@ -22,13 +23,52 @@ class NiaMessageContextTest {
     }
 
     @Test
-    fun `반복 니아 호명은 고정 답변이 아니라 모델 입력에 버스트 상황만 힌트로 추가한다`() {
+    fun `짧은 니아 호명은 없는 소란을 지어내지 말라는 힌트를 추가한다`() {
+        val prompt = buildBareNiaDirectAddressPrompt("니아야?", recentBareCallCount = 1)
+
+        assertThat(prompt).startsWith("니아야?")
+        assertThat(prompt).contains("없는 사건이나 소란을 지어내지 말고")
+        assertThat(prompt).doesNotContain("최근 10번 연속")
+    }
+
+    @Test
+    fun `반복 니아 호명은 모델 입력에 버스트 상황을 힌트로 추가한다`() {
         val prompt = buildBareNiaDirectAddressPrompt("니아야?", recentBareCallCount = 10)
 
         assertThat(prompt).startsWith("니아야?")
         assertThat(prompt).contains("최근 10번 연속")
         assertThat(prompt).contains("지금 한 번만 사람처럼 반응")
+        assertThat(prompt).contains("없는 사건이나 소란을 지어내지 말고")
         assertThat(prompt).doesNotContain("왜 이렇게 불러댐")
+    }
+
+    @Test
+    fun `니아 답변 직후 후속 발화 후보는 의미 판단 힌트로 감싼다`() {
+        val prompt = buildNiaContinuationPrompt("무슨소란")
+
+        assertThat(prompt).startsWith("무슨소란")
+        assertThat(prompt).contains("최근 대화 의미를 보고")
+        assertThat(prompt).contains("단순 조건문처럼 판단하지 말고")
+    }
+
+    @Test
+    fun `니아 답변 직후 발화는 의미 판단용 후속 후보로 감싼다`() {
+        val prompt =
+            buildNiaContinuationPromptFromRecentMessages(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야"),
+                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "어디서 소란 피우는 거야."),
+                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "무슨소란"),
+                    ),
+                currentMessageId = 3,
+                botUserId = 99,
+                nowEpochMillis = 3,
+            )
+
+        assertThat(prompt).isNotNull
+        assertThat(prompt!!).startsWith("무슨소란")
+        assertThat(prompt).contains("최근 대화 의미를 보고")
     }
 
     @Test

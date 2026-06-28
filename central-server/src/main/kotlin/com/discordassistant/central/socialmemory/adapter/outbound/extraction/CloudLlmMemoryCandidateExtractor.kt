@@ -15,7 +15,7 @@ import java.time.Clock
  *
  * **payload 최소화·timeout·schema validation(acceptance T015)**:
  * - payload 최소화: [MemoryCandidateSchema.buildPrompt] 가 원문이 아닌 scene 메타·구조화 cue·닫힌 스키마 지시만 보낸다.
- * - timeout: 외부 HTTP timeout 은 CloudLlm 구현(ZaiCloudLlm, `central.cloud.timeout-seconds`)이 강제한다 — 어댑터는
+ * - timeout: 외부 HTTP timeout 은 CloudLlm 구현(ZaiCloudLlm, `central.cloud.llm-timeout-seconds`)이 강제한다 — 어댑터는
  *   포트만 호출하므로 timeout 정책을 중복 구현하지 않는다(SSOT).
  * - schema validation: [MemoryCandidateSchema.parse] 가 닫힌 enum·비빈 필드를 만족하는 원소만 후보로 받는다.
  *

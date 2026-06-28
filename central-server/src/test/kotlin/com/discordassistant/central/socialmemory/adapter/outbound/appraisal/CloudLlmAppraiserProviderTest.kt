@@ -2,7 +2,9 @@ package com.discordassistant.central.socialmemory.adapter.outbound.appraisal
 
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmResult
+import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.CloudToolResponse
+import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.routing.application.ImageReview
 import com.discordassistant.central.socialmemory.domain.model.appraisal.AppraisalCertainty
 import com.discordassistant.central.socialmemory.domain.model.appraisal.RelationshipLens
@@ -20,6 +22,9 @@ class CloudLlmAppraiserProviderTest {
         private val text: String = "",
         private val fail: Boolean = false,
     ) : CloudLlm {
+        var lastThinking: CloudThinking? = null
+            private set
+
         override fun isEnabled() = enabled
 
         override fun generate(
@@ -28,6 +33,16 @@ class CloudLlmAppraiserProviderTest {
         ): CloudLlmResult {
             if (fail) throw RuntimeException("boom")
             return CloudLlmResult(text)
+        }
+
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+        ): CloudLlmResult {
+            lastThinking = thinking
+            return generate(prompt, model)
         }
 
         override fun generateWithTools(
@@ -58,9 +73,11 @@ class CloudLlmAppraiserProviderTest {
     @Test
     fun `정상 GLM JSON 을 등급으로 파싱`() {
         val json = """{"target_is_nia":true,"kind":"INSULT","intensity":"CLEAR","certainty":"CLEAR"}"""
-        val a = CloudLlmAppraiserProvider(FakeCloudLlm(text = json)).appraise(msg, "discord:1", lens)
+        val cloudLlm = FakeCloudLlm(text = json)
+        val a = CloudLlmAppraiserProvider(cloudLlm).appraise(msg, "discord:1", lens)
         assertEquals(SocialEventKind.INSULT, a.kind)
         assertEquals(AppraisalCertainty.CLEAR, a.certainty)
+        assertEquals(CloudThinking.DISABLED, cloudLlm.lastThinking)
     }
 
     @Test

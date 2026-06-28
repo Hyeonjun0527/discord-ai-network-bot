@@ -7,7 +7,7 @@ import java.time.Duration
 /**
  * 발화 생성 모델 ID·endpoint·budget 설정 외부화(NEXA-P14-T003, adapter/outbound/routing).
  *
- * GLM AirX 를 빠른 기본 후보로 두되 모델 ID·endpoint(타임아웃·재시도)를 **환경 설정**으로 분리한다.
+ * GLM Air 를 기본 후보로 두되 모델 ID·endpoint(타임아웃·재시도)를 **환경 설정**으로 분리한다.
  *
  * **acceptance(T003) — 코드 상수 교체 없이 모델 업데이트·rollback 이 가능하다**: 모델 라벨([model])과 호출
  * budget 은 `application.yml` 의 `central.speech.*`(미설정 시 `central.cloud.*` 기본값을 따름)로 주입된다. 코드에
@@ -19,7 +19,7 @@ import java.time.Duration
  */
 @Component
 class SpeechModelConfig(
-    @param:Value("\${central.speech.model:glm-4.5-airx}") val model: String,
+    @param:Value("\${central.speech.model:glm-4.5-air}") val model: String,
     @param:Value("\${central.speech.timeout-seconds:8}") private val timeoutSeconds: Long,
     @param:Value("\${central.speech.max-retries:1}") val maxRetries: Int,
 ) {

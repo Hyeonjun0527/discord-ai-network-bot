@@ -8,7 +8,9 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.HttpTimeoutException
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 
 /** 클라우드 LLM 토큰 사용량(있으면). 통계/로그용 — 없으면 0. */
 data class CloudLlmUsage(
@@ -347,11 +349,14 @@ object CloudLlmResponseParser {
 class ZaiCloudLlm(
     @param:Value("\${central.cloud.zai-api-key:}") private val apiKey: String,
     @param:Value("\${central.cloud.zai-base-url:https://api.z.ai/api/paas/v4}") private val baseUrl: String,
-    @param:Value("\${central.cloud.timeout-seconds:120}") private val timeoutSeconds: Long,
+    @param:Value("\${central.cloud.llm-timeout-seconds:3}") private val timeoutSeconds: Long,
+    @param:Value("\${central.cloud.llm-max-retries:2}") private val maxRetries: Int = 2,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(ZaiCloudLlm::class.java)
     private val mapper = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
+    private val requestTimeout: Duration = Duration.ofSeconds(timeoutSeconds.coerceAtLeast(1))
+    private val requestMaxAttempts: Int = 1 + maxRetries.coerceAtLeast(0)
 
     override fun isEnabled() = apiKey.isNotBlank()
 
@@ -413,6 +418,7 @@ class ZaiCloudLlm(
         toolsJson: String? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
+        val startedAt = System.nanoTime()
         val base = baseUrl.trimEnd('/')
         val payload =
             mapper
@@ -430,31 +436,66 @@ class ZaiCloudLlm(
                         put("tool_choice", "auto")
                     }
                 }
-        val req =
-            HttpRequest
-                .newBuilder(URI.create("$base/chat/completions"))
-                .timeout(Duration.ofSeconds(timeoutSeconds))
-                .header("Authorization", "Bearer $apiKey")
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)))
-                .build()
-        val resp =
-            try {
-                http.send(req, HttpResponse.BodyHandlers.ofString())
-            } catch (e: Exception) {
-                // 연결 실패 상세는 로그로만, 사용자에겐 일반화 메시지.
-                log.warn("클라우드 LLM 연결 실패: {}", e.javaClass.simpleName)
-                throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, e)
+        val requestBody = mapper.writeValueAsString(payload)
+        var lastTimeout: HttpTimeoutException? = null
+        for (attempt in 1..requestMaxAttempts) {
+            val req =
+                HttpRequest
+                    .newBuilder(URI.create("$base/chat/completions"))
+                    .timeout(requestTimeout)
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .build()
+            val resp =
+                try {
+                    http.send(req, HttpResponse.BodyHandlers.ofString())
+                } catch (e: HttpTimeoutException) {
+                    lastTimeout = e
+                    log.warn(
+                        "클라우드 LLM 호출 timeout model={} attempt={}/{} timeoutSeconds={} elapsedMs={}",
+                        model.ifBlank { DEFAULT_MODEL },
+                        attempt,
+                        requestMaxAttempts,
+                        requestTimeout.seconds,
+                        elapsedMs(startedAt),
+                    )
+                    if (attempt < requestMaxAttempts) continue
+                    throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, e)
+                } catch (e: Exception) {
+                    // 연결 실패 상세는 로그로만, 사용자에겐 일반화 메시지.
+                    log.warn(
+                        "클라우드 LLM 호출 실패 model={} attempt={}/{} timeoutSeconds={} elapsedMs={} error={}",
+                        model.ifBlank { DEFAULT_MODEL },
+                        attempt,
+                        requestMaxAttempts,
+                        requestTimeout.seconds,
+                        elapsedMs(startedAt),
+                        e.javaClass.simpleName,
+                    )
+                    throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, e)
+                }
+            if (resp.statusCode() !in 200..299) {
+                // 업스트림 status·body 는 정보 노출 소지가 있어 로그로만 남긴다(예외 원칙).
+                log.warn(
+                    "클라우드 LLM HTTP {} model={} attempt={}/{} elapsedMs={}: {}",
+                    resp.statusCode(),
+                    model.ifBlank { DEFAULT_MODEL },
+                    attempt,
+                    requestMaxAttempts,
+                    elapsedMs(startedAt),
+                    resp.body().take(500),
+                )
+                throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE)
             }
-        if (resp.statusCode() !in 200..299) {
-            // 업스트림 status·body 는 정보 노출 소지가 있어 로그로만 남긴다(예외 원칙).
-            log.warn("클라우드 LLM HTTP {}: {}", resp.statusCode(), resp.body().take(500))
-            throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE)
+            return resp.body()
         }
-        return resp.body()
+        throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, lastTimeout)
     }
 
+    private fun elapsedMs(startedAt: Long): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
     companion object {
-        const val DEFAULT_MODEL = "glm-5.1"
+        const val DEFAULT_MODEL = "glm-4.5-air"
     }
 }

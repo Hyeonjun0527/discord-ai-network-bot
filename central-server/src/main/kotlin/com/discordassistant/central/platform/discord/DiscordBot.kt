@@ -76,19 +76,32 @@ private const val RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS = 180
 private const val NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS = 1_200L
 private const val NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS = 8_000L
 private const val NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS = 15_000L
+private const val NIA_CONTINUATION_TTL_MS = 90_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
+private val NIA_DIRECT_ADDRESS_SUFFIX = Regex("""(?:^|\s)니아(?:야|아)?[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '~', '！', '？', '。', '，')
+private val NIA_DIRECT_ADDRESS_NON_VOCATIVE_PREFIX_ENDINGS = listOf("은", "는", "이", "가", "을", "를")
 
 internal fun niaDirectAddressPrompt(raw: String): String? {
     val trimmed = raw.trim()
-    if (!NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) return null
+    if (NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) {
+        val stripped =
+            NIA_DIRECT_ADDRESS_PREFIX
+                .replaceFirst(trimmed, "")
+                .trim()
+        if (stripped.firstOrNull() in NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION) return trimmed
+        return stripped.ifBlank { trimmed }
+    }
+
+    if (!NIA_DIRECT_ADDRESS_SUFFIX.containsMatchIn(trimmed)) return null
     val stripped =
-        NIA_DIRECT_ADDRESS_PREFIX
+        NIA_DIRECT_ADDRESS_SUFFIX
             .replaceFirst(trimmed, "")
             .trim()
-    if (stripped.firstOrNull() in NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION) return trimmed
-    return stripped.ifBlank { trimmed }
+    if (stripped.isBlank()) return trimmed
+    if (NIA_DIRECT_ADDRESS_NON_VOCATIVE_PREFIX_ENDINGS.any { stripped.endsWith(it) }) return null
+    return stripped
 }
 
 internal fun isBareNiaDirectAddress(raw: String): Boolean {
@@ -103,11 +116,17 @@ internal fun buildBareNiaDirectAddressPrompt(
     recentBareCallCount: Int,
 ): String {
     val prompt = raw.trim().ifBlank { "니아야" }
-    if (recentBareCallCount < 3) return prompt
+    if (recentBareCallCount < 3) {
+        return """
+            $prompt
+
+            [상황 힌트: 사용자가 니아를 짧게 불렀습니다. 없는 사건이나 소란을 지어내지 말고, 짧고 자연스럽게 왜 불렀는지 되물으세요.]
+            """.trimIndent()
+    }
     return """
         $prompt
 
-        [상황 힌트: 같은 사용자가 최근 ${recentBareCallCount}번 연속으로 니아를 불렀습니다. 모든 호출에 따로 답하지 말고, 지금 한 번만 사람처럼 반응하세요. 반복해서 부른 점을 자연스럽게 언급해도 됩니다.]
+        [상황 힌트: 같은 사용자가 최근 ${recentBareCallCount}번 연속으로 니아를 불렀습니다. 모든 호출에 따로 답하지 말고, 지금 한 번만 사람처럼 반응하세요. 없는 사건이나 소란을 지어내지 말고, 반복해서 부른 점만 자연스럽게 언급해도 됩니다.]
         """.trimIndent()
 }
 
@@ -116,6 +135,33 @@ internal fun shouldSuppressBareNiaDirectAddress(
     lastResponseEpochMillis: Long?,
     cooldownMillis: Long = NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS,
 ): Boolean = lastResponseEpochMillis != null && nowEpochMillis - lastResponseEpochMillis < cooldownMillis
+
+internal fun buildNiaContinuationPrompt(raw: String): String =
+    """
+    ${raw.trim()}
+
+    [상황 힌트: 사용자가 방금 전 니아의 답변에 이어 말했을 수 있습니다. 최근 대화 의미를 보고 니아의 직전 발화에 대한 반응이면 자연스럽게 이어 답하고, 새 주제라면 새 주제에 맞게 짧게 반응하세요. 단순 조건문처럼 판단하지 말고 대화 흐름을 보세요.]
+    """.trimIndent()
+
+internal fun buildNiaContinuationPromptFromRecentMessages(
+    messages: List<DiscordRecentPromptMessage>,
+    currentMessageId: Long,
+    botUserId: Long,
+    nowEpochMillis: Long,
+): String? {
+    val ordered = messages.sortedBy { it.createdAtEpochMillis }
+    val current = ordered.firstOrNull { it.id == currentMessageId } ?: return null
+    val content = current.content.trim()
+    if (content.isBlank() || content.startsWith(".")) return null
+    val previous =
+        ordered
+            .asReversed()
+            .firstOrNull { it.id != currentMessageId && it.content.isNotBlank() }
+            ?: return null
+    if (!previous.bot || previous.authorId != botUserId) return null
+    if (nowEpochMillis - previous.createdAtEpochMillis !in 0..NIA_CONTINUATION_TTL_MS) return null
+    return buildNiaContinuationPrompt(content)
+}
 
 internal data class DiscordRecentPromptMessage(
     val id: Long,
@@ -1145,6 +1191,12 @@ class DiscordBot(
                 handleDirectNameAsk(event, directNamePrompt)
                 return
             }
+            val continuationPrompt = niaContinuationPrompt(event)
+            if (continuationPrompt != null) {
+                metrics.record("name-ask-continuation")
+                respondInChannel(event, continuationPrompt, fastResponse = true)
+                return
+            }
             handleAutoRespond(event)
         }
 
@@ -1370,31 +1422,9 @@ class DiscordBot(
                 )
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             // Discord typing 은 약 10초 유지되고 취소할 수 없어 GLM tail latency 와 묶지 않는다.
-            // 니아 사회기억/감정 관찰 → 발화 톤 힌트(D2). 서버 격리 I7, 표시이름·원문 미저장(가명적) I10.
-            // 관찰 실패(getOrNull null)해도 발화는 그대로 진행 — graceful(톤 ""=평소 니아).
-            val scope = "discord:guild:${ctx.guildId}"
-            val speaker = "discord:${ctx.userId}"
-            var toneMs = 0L
-            val tone =
-                if (fastResponse) {
-                    null
-                } else {
-                    val toneStartedAt = System.nanoTime()
-                    runCatching {
-                        niaSocialMind.observe(
-                            scope,
-                            speaker,
-                            listOf(prompt),
-                            java.time.Instant.now(),
-                            persist = true,
-                            wasToneActive = niaToneActive[scope] ?: false,
-                        )
-                    }.also {
-                        toneMs = elapsedMs(toneStartedAt)
-                    }.getOrNull()
-                }
-            tone?.let { niaToneActive[scope] = it.tone.active }
-            val toneDirective = tone?.tone?.directive ?: ""
+            // 메시지 응답은 실시간성이 우선이다. social-mind/appraiser 는 외부 LLM 호출이라 답변 앞에 두지 않는다.
+            val toneMs = 0L
+            val toneDirective = ""
             val ambientHistory = recentChannelContext(event)
             var askMs = 0L
             var renderMs = 0L
@@ -1499,6 +1529,20 @@ class DiscordBot(
         private fun recentMessagesSnapshot(channelId: Long): List<DiscordRecentPromptMessage> {
             val buffer = recentMessagesByChannel[channelId] ?: return emptyList()
             return synchronized(buffer) { buffer.toList() }
+        }
+
+        private fun niaContinuationPrompt(event: MessageReceivedEvent): String? {
+            val selfId = event.jda.selfUser.idLong
+            val nowEpochMillis =
+                event.message.timeCreated
+                    .toInstant()
+                    .toEpochMilli()
+            return buildNiaContinuationPromptFromRecentMessages(
+                messages = recentMessagesSnapshot(event.channel.idLong),
+                currentMessageId = event.messageIdLong,
+                botUserId = selfId,
+                nowEpochMillis = nowEpochMillis,
+            )
         }
 
         private fun recentBareDirectNameCallCount(

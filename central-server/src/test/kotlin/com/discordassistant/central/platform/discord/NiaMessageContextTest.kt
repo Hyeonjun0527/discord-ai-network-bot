@@ -44,10 +44,10 @@ class NiaMessageContextTest {
 
     @Test
     fun `니아 답변 직후 후속 발화 후보는 의미 판단 힌트로 감싼다`() {
-        val prompt = buildNiaContinuationPrompt("무슨소란")
+        val prompt = buildNiaContinuationPrompt("무슨소란\n니아야")
 
-        assertThat(prompt).startsWith("무슨소란")
-        assertThat(prompt).contains("최근 대화 의미를 보고")
+        assertThat(prompt).contains("[현재 사용자의 원문 메시지]\n무슨소란\n니아야")
+        assertThat(prompt).contains("최근 채널 대화 원문을 기준")
         assertThat(prompt).contains("단순 조건문처럼 판단하지 말고")
     }
 
@@ -67,8 +67,16 @@ class NiaMessageContextTest {
             )
 
         assertThat(prompt).isNotNull
-        assertThat(prompt!!).startsWith("무슨소란")
-        assertThat(prompt).contains("최근 대화 의미를 보고")
+        assertThat(prompt!!).contains("[현재 사용자의 원문 메시지]\n무슨소란")
+        assertThat(prompt).contains("최근 채널 대화 원문을 기준")
+    }
+
+    @Test
+    fun `직접 호명 프롬프트는 현재 원문과 호명 제거 내용을 함께 전달한다`() {
+        val prompt = buildNiaAddressedPrompt("무슨소란   니아야\n진짜?", "무슨소란   \n진짜?")
+
+        assertThat(prompt).contains("[현재 사용자의 원문 메시지]\n무슨소란   니아야\n진짜?")
+        assertThat(prompt).contains("[니아 호명 제거 후 핵심 내용]\n무슨소란   \n진짜?")
     }
 
     @Test
@@ -86,27 +94,28 @@ class NiaMessageContextTest {
     }
 
     @Test
-    fun `최근 채널 맥락은 반복 호출과 니아 답변을 모델 입력으로 전달한다`() {
-        val turn =
-            buildDiscordRecentContextTurn(
+    fun `최근 채널 맥락은 원문을 수정하지 않고 멀티턴으로 전달한다`() {
+        val turns =
+            buildDiscordRecentContextTurns(
                 messages =
                     listOf(
-                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아"),
-                        msg(id = 2, authorId = 10, authorLabel = "HJ", content = "니아야"),
-                        msg(id = 3, authorId = 99, authorLabel = "니아", bot = true, content = "응?"),
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야\n니아야   니아야"),
+                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "응?\n왜 불러."),
+                        msg(id = 3, authorId = 11, authorLabel = "yeon", content = "니아야 싸가지가 없네"),
                         msg(id = 4, authorId = 10, authorLabel = "HJ", content = "CURRENT_TRIGGER_니아야"),
                     ),
                 currentMessageId = 4,
                 botUserId = 99,
             )
 
-        assertThat(turn).isNotNull
-        assertThat(turn!!.role).isEqualTo("user")
-        assertThat(turn.content).contains("HJ: 니아")
-        assertThat(turn.content).contains("HJ: 니아야")
-        assertThat(turn.content).contains("니아: 응?")
-        assertThat(turn.content).contains("반복해서 부르면")
-        assertThat(turn.content).doesNotContain("CURRENT_TRIGGER_니아야")
+        assertThat(turns.map { it.role }).containsExactly("user", "assistant", "user", "user")
+        assertThat(turns[0].content).contains("speaker=HJ")
+        assertThat(turns[0].content).contains("content:\n니아야\n니아야   니아야")
+        assertThat(turns[1].content).isEqualTo("응?\n왜 불러.")
+        assertThat(turns[2].content).contains("speaker=yeon")
+        assertThat(turns[2].content).contains("content:\n니아야 싸가지가 없네")
+        assertThat(turns.joinToString("\n") { it.content }).doesNotContain("CURRENT_TRIGGER_니아야")
+        assertThat(turns.last().content).contains("최근 채널 대화 원문을 그대로 참고")
     }
 
     private fun msg(

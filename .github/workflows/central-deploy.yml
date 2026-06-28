@@ -129,6 +129,14 @@ jobs:
             echo "SERVER_PORT=${SERVER_PORT}"
             echo "APP_PORT=${APP_PORT}"
           } >> .env
+          env_value() {
+            key="$1"
+            awk -F= -v k="$key" '$1 == k { value = substr($0, length(k) + 2) } END { print value }' .env
+          }
+          FREE_MODEL="$(env_value ZAI_FREE_MODEL)"
+          FAST_MODEL="$(env_value ZAI_FAST_MODEL)"
+          SPEECH_MODEL="$(env_value NEXA_SPEECH_MODEL)"
+          echo "▶ 운영 GLM 모델 free=${FREE_MODEL:-glm-4.5-airx} fast=${FAST_MODEL:-glm-4.5-airx} speech=${SPEECH_MODEL:-glm-4.5-airx}"
           # 웹검색(SearXNG) 설정 — JSON 포맷 활성 + 안정적 시크릿(최초 1회만 생성, 이후 유지).
           # 컨테이너(다른 uid)가 읽어야 하므로 settings 파일은 읽기 가능 권한으로 둔다.
           mkdir -p searxng

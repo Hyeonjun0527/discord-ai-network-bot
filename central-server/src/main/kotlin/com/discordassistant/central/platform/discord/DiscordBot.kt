@@ -68,11 +68,9 @@ private val DM_COMMANDS =
         "settings",
     )
 
-private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 14
+private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 30
 private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
-private const val RECENT_CHANNEL_CONTEXT_MAX_LINES = 10
-private const val RECENT_CHANNEL_CONTEXT_MAX_CHARS = 1_500
-private const val RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS = 180
+private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 24
 private const val NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS = 1_200L
 private const val NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS = 8_000L
 private const val NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS = 15_000L
@@ -137,11 +135,29 @@ internal fun shouldSuppressBareNiaDirectAddress(
 ): Boolean = lastResponseEpochMillis != null && nowEpochMillis - lastResponseEpochMillis < cooldownMillis
 
 internal fun buildNiaContinuationPrompt(raw: String): String =
-    """
-    ${raw.trim()}
+    buildString {
+        appendLine("[현재 사용자의 원문 메시지]")
+        appendLine(raw)
+        appendLine()
+        appendLine("[응답 지시]")
+        appendLine("최근 채널 대화 원문을 기준으로, 이 메시지가 니아의 직전 발화나 방금 흐름에 대한 반응이면 자연스럽게 이어 답하세요.")
+        append("새 주제라면 새 주제에 맞게 짧게 반응하세요. 단순 조건문처럼 판단하지 말고 대화 흐름을 보세요.")
+    }
 
-    [상황 힌트: 사용자가 방금 전 니아의 답변에 이어 말했을 수 있습니다. 최근 대화 의미를 보고 니아의 직전 발화에 대한 반응이면 자연스럽게 이어 답하고, 새 주제라면 새 주제에 맞게 짧게 반응하세요. 단순 조건문처럼 판단하지 말고 대화 흐름을 보세요.]
-    """.trimIndent()
+internal fun buildNiaAddressedPrompt(
+    raw: String,
+    addressedContent: String,
+): String =
+    buildString {
+        appendLine("[현재 사용자의 원문 메시지]")
+        appendLine(raw)
+        appendLine()
+        appendLine("[니아 호명 제거 후 핵심 내용]")
+        appendLine(addressedContent)
+        appendLine()
+        appendLine("[응답 지시]")
+        append("원문 메시지와 최근 채널 대화 원문을 함께 보고 자연스럽게 이어 답하세요. 원문에 없는 사건이나 소란을 지어내지 마세요.")
+    }
 
 internal fun buildNiaContinuationPromptFromRecentMessages(
     messages: List<DiscordRecentPromptMessage>,
@@ -151,8 +167,9 @@ internal fun buildNiaContinuationPromptFromRecentMessages(
 ): String? {
     val ordered = messages.sortedBy { it.createdAtEpochMillis }
     val current = ordered.firstOrNull { it.id == currentMessageId } ?: return null
-    val content = current.content.trim()
-    if (content.isBlank() || content.startsWith(".")) return null
+    val content = current.content
+    val trimmed = content.trim()
+    if (trimmed.isBlank() || trimmed.startsWith(".")) return null
     val previous =
         ordered
             .asReversed()
@@ -172,12 +189,12 @@ internal data class DiscordRecentPromptMessage(
     val createdAtEpochMillis: Long,
 )
 
-internal fun buildDiscordRecentContextTurn(
+internal fun buildDiscordRecentContextTurns(
     messages: List<DiscordRecentPromptMessage>,
     currentMessageId: Long,
     botUserId: Long,
-): CloudTurn? {
-    val lines =
+): List<CloudTurn> {
+    val contextTurns =
         messages
             .asSequence()
             .filter { it.id != currentMessageId }
@@ -185,27 +202,29 @@ internal fun buildDiscordRecentContextTurn(
             .filter { !it.bot || it.authorId == botUserId }
             .sortedBy { it.createdAtEpochMillis }
             .toList()
-            .takeLast(RECENT_CHANNEL_CONTEXT_MAX_LINES)
+            .takeLast(RECENT_CHANNEL_CONTEXT_MAX_TURNS)
             .map { message ->
-                val speaker = if (message.authorId == botUserId) "니아" else message.authorLabel.take(40)
-                val text =
-                    message.content
-                        .replace(Regex("\\s+"), " ")
-                        .trim()
-                        .take(RECENT_CHANNEL_CONTEXT_LINE_MAX_CHARS)
-                "$speaker: $text"
-            }.toList()
-    if (lines.isEmpty()) return null
-    val body =
-        buildString {
-            appendLine("[최근 채널 대화]")
-            lines.forEach { appendLine(it) }
-            appendLine()
-            append(
-                "위 최근 흐름을 보고 이어서 대답하세요. 같은 사람이 니아를 반복해서 부르면 반복 호출 자체를 맥락으로 삼아 자연스럽게 반응하세요.",
-            )
-        }.take(RECENT_CHANNEL_CONTEXT_MAX_CHARS)
-    return CloudTurn("user", body)
+                if (message.authorId == botUserId) {
+                    CloudTurn("assistant", message.content)
+                } else {
+                    CloudTurn(
+                        "user",
+                        buildString {
+                            appendLine("[채널 메시지 원문]")
+                            appendLine("speaker=${message.authorLabel}")
+                            appendLine("message_id=${message.id}")
+                            appendLine("content:")
+                            append(message.content)
+                        },
+                    )
+                }
+            }
+    if (contextTurns.isEmpty()) return emptyList()
+    return contextTurns +
+        CloudTurn(
+            "user",
+            "위 최근 채널 대화 원문을 그대로 참고하세요. 원문을 요약하거나 바꿔 읽지 말고, 반복 호출·불만·답변 누락 같은 흐름을 전체 맥락으로 삼아 자연스럽게 이어 답하세요.",
+        )
 }
 
 private data class BareNiaDirectAddressKey(
@@ -1315,7 +1334,7 @@ class DiscordBot(
                 return
             }
             metrics.record("mention-ask")
-            respondInChannel(event, prompt)
+            respondInChannel(event, buildNiaAddressedPrompt(event.message.contentRaw, prompt))
         }
 
         /** 이름 호명 질문: `니아야`/`니아 ...` 를 @멘션과 같은 Provider Pool 흐름으로 처리한다. */
@@ -1328,7 +1347,7 @@ class DiscordBot(
                 scheduleBareDirectNameAsk(event)
                 return
             }
-            respondInChannel(event, prompt, fastResponse = isBareNiaDirectAddress(event.message.contentRaw))
+            respondInChannel(event, buildNiaAddressedPrompt(event.message.contentRaw, prompt), fastResponse = false)
         }
 
         private fun scheduleBareDirectNameAsk(event: MessageReceivedEvent) {
@@ -1453,6 +1472,7 @@ class DiscordBot(
                 askMs = elapsedMs(askStartedAt)
                 val renderStartedAt = System.nanoTime()
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
+                    rememberNiaReply(event.channel.idLong, event.jda.selfUser.idLong, reply.content)
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
                         .queue({}, {})
@@ -1495,11 +1515,11 @@ class DiscordBot(
         private fun recentChannelContext(event: MessageReceivedEvent): List<CloudTurn> {
             val selfId = event.jda.selfUser.idLong
             val messages = recentMessagesSnapshot(event.channel.idLong)
-            return buildDiscordRecentContextTurn(
+            return buildDiscordRecentContextTurns(
                 messages = messages,
                 currentMessageId = event.messageIdLong,
                 botUserId = selfId,
-            )?.let { listOf(it) } ?: emptyList()
+            )
         }
 
         private fun rememberRecentMessage(event: MessageReceivedEvent) {
@@ -1516,6 +1536,32 @@ class DiscordBot(
                             .toInstant()
                             .toEpochMilli(),
                 )
+            rememberRecentMessage(channelId, message)
+        }
+
+        private fun rememberNiaReply(
+            channelId: Long,
+            botUserId: Long,
+            content: String,
+        ) {
+            if (content.isBlank()) return
+            val now = System.currentTimeMillis()
+            val message =
+                DiscordRecentPromptMessage(
+                    id = -now,
+                    authorId = botUserId,
+                    authorLabel = "니아",
+                    bot = true,
+                    content = content,
+                    createdAtEpochMillis = now,
+                )
+            rememberRecentMessage(channelId, message)
+        }
+
+        private fun rememberRecentMessage(
+            channelId: Long,
+            message: DiscordRecentPromptMessage,
+        ) {
             val buffer = recentMessagesByChannel.computeIfAbsent(channelId) { ArrayDeque() }
             synchronized(buffer) {
                 buffer.addLast(message)

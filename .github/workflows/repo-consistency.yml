@@ -1,0 +1,38 @@
+# Repository-wide generated artifacts and documentation checks.
+name: repo consistency
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+    paths:
+      - "ai-context/**"
+      - "docs/**/*.md"
+      - "docs/ssot-viewer/**"
+      - "i18n/**"
+      - "packaging/**"
+      - "specs/**"
+      - "scripts/check_links.py"
+      - "scripts/check_packaging.py"
+      - "scripts/gen_i18n.py"
+      - "scripts/gen_ssot_viewer.py"
+      - ".github/workflows/repo-consistency.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  consistency:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    runs-on: [self-hosted, yeon-arm]
+    steps:
+      - uses: actions/checkout@v4
+      - name: 문서 상대 링크 검증
+        run: python3 scripts/check_links.py
+      - name: 패키지 자산명 SSOT 드리프트 검사
+        run: python3 scripts/check_packaging.py
+      - name: 문구 i18n SSOT 동기/완전성 검사(ko/en/ja)
+        run: python3 scripts/gen_i18n.py --check
+      - name: SSOT viewer 생성본 동기 검사
+        run: python3 scripts/gen_ssot_viewer.py --check

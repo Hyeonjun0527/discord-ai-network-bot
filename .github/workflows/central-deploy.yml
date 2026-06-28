@@ -23,7 +23,10 @@ permissions:
 
 concurrency:
   group: central-deploy
-  cancel-in-progress: false
+  # yeon-arm runner is a single deployment lane. A newer main push must cancel
+  # stale queued/in-flight deploy runs; otherwise old deploys hold the group and
+  # the latest production deploy remains pending.
+  cancel-in-progress: true
 
 env:
   IMAGE: ghcr.io/hyeonjun0527/central-server

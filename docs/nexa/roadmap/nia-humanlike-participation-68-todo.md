@@ -33,7 +33,7 @@
 
 ## B. 현재 막힘 지점 제거
 
-- [ ] 7. `니아수다` 메시지가 실제 participation path에 들어오는지 Discord inbound 경로를 끝까지 추적한다.
+- [x] 7. `니아수다` 메시지가 실제 participation path에 들어오는지 Discord inbound 경로를 끝까지 추적한다.
 - [x] 8. active flag, lane, shadow mode, channel mode 중 어느 gate에서 멈추는지 outcome별로 기록한다.
 - [x] 9. `ConsentPolicyPort`가 fail-closed deny만 반환하는 환경에서는 왜 `ConsentBlocked`가 나는지 운영자가 볼 수 있게 한다.
 - [x] 10. `니아수다` 채널 생성 시 autoRespond가 아니라 participation live/canary/shadow 대상이 되는지 검증한다.

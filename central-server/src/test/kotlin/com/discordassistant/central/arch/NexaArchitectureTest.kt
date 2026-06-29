@@ -198,6 +198,43 @@ class NexaArchitectureTest {
         assertThat(offenders).isEmpty()
     }
 
+    @Test
+    fun `discord inbound message path forwards guild messages to participation before legacy responses`() {
+        val source =
+            Files.readString(
+                Path.of(
+                    "src",
+                    "main",
+                    "kotlin",
+                    "com",
+                    "discordassistant",
+                    "central",
+                    "platform",
+                    "discord",
+                    "DiscordBot.kt",
+                ),
+            )
+
+        val onMessageReceived = source.substringBetween("override fun onMessageReceived", "private fun forwardToParticipation")
+        val botFilter = onMessageReceived.indexOf("if (event.author.isBot) return")
+        val participationForward = onMessageReceived.indexOf("forwardToParticipation(event, mentioned || directlyAddressed)")
+        val mentionResponse = onMessageReceived.indexOf("if (mentioned)")
+        val autoRespond = onMessageReceived.indexOf("handleAutoRespond(event)")
+
+        assertThat(participationForward).isGreaterThan(botFilter)
+        assertThat(participationForward).isLessThan(mentionResponse)
+        assertThat(participationForward).isLessThan(autoRespond)
+
+        val forwardToParticipation = source.substringBetween("private fun forwardToParticipation", "private fun participationSourceTypeOf")
+        val bridgeCall = forwardToParticipation.indexOf("participationEmitBridge.onMessage(")
+        assertThat(forwardToParticipation.indexOf("ParticipationMessageSignal(")).isGreaterThan(bridgeCall)
+        assertThat(forwardToParticipation).contains(
+            "triggerText = contentRaw.take(500)",
+            "rawText = contentRaw",
+            "sourceType = participationSourceTypeOf(event)",
+        )
+    }
+
     companion object {
         // NEXA 5개 도메인의 domain 레이어 패키지.
         private val NEXA_DOMAIN_PACKAGES =
@@ -322,6 +359,17 @@ class NexaArchitectureTest {
                     .filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".kt") }
                     .toList()
             }
+        }
+
+        private fun String.substringBetween(
+            start: String,
+            end: String,
+        ): String {
+            val startIndex = indexOf(start)
+            val endIndex = indexOf(end, startIndex + start.length)
+            assertThat(startIndex).isGreaterThanOrEqualTo(0)
+            assertThat(endIndex).isGreaterThan(startIndex)
+            return substring(startIndex, endIndex)
         }
     }
 }

@@ -10,6 +10,17 @@
 지금 이 장면에서 NEXA가 **무엇을 할지 단 하나의 행동을 고른다**: `IGNORE / WAIT / REACT /
 SPEAK / CANCEL`. **말 자체를 만들거나 보내지 않는다.**
 
+## 채널 의도와 경계
+
+| 채널 의도 | 대표 채널 | 책임 경로 | 불변식 |
+| --- | --- | --- | --- |
+| 자동응답/비서형 채널 | `ai채팅` | 기존 channelai/autoRespond 호환 경로. 멘션 없이도 "답변 요청"으로 다룬다. | 레거시 호환을 위해 유지하며, `니아수다`의 자율 참여 판단과 섞지 않는다. |
+| 사람처럼 참여하는 멤버 채널 | `니아수다` | participation MEMBER 경로. 단일 judge가 원문 window와 scene snapshot을 보고 행동 하나를 고른다. | `autoRespond=true`로 켜지지 않는다. 최종 행동은 `IGNORE / WAIT / REACT / SPEAK / CANCEL_PENDING` 중 하나다. |
+
+`니아수다`에서 반복 호출, 위로 요구, 대화 공백이 보이더라도 곧바로 "위로" 같은 세부 enum을 만들지 않는다.
+원문 window와 구조화 scene signal을 단일 judge의 evidence로 넣고, 그 judge가 말할지/기다릴지/반응만 할지/침묵할지를
+고른다. speech는 `SPEAK` 이후 실제 문구만 만들고, actionruntime은 예약·취소·전송만 수행한다.
+
 ## 소유 (Owns)
 
 | 개념 | 설명 |

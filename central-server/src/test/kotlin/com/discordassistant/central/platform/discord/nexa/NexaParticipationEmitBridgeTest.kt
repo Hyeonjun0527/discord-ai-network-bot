@@ -18,6 +18,7 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextTombstone
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.adapter.outbound.policy.baseline.CooldownHeuristicPolicy
@@ -963,6 +964,8 @@ class NexaParticipationEmitBridgeTest {
         override fun readRecent(scope: RawContextScope): RawContextSnapshot =
             RawContextSnapshot(scope, entries.filter { it.scope == scope })
 
+        override fun readTombstones(scope: RawContextScope): List<RawContextTombstone> = emptyList()
+
         override fun redact(
             scope: RawContextScope,
             messageId: Long,
@@ -1005,6 +1008,8 @@ class NexaParticipationEmitBridgeTest {
         override fun append(entry: RawContextEntry): RawContextAppendResult = error("raw unavailable")
 
         override fun readRecent(scope: RawContextScope): RawContextSnapshot = RawContextSnapshot(scope, emptyList())
+
+        override fun readTombstones(scope: RawContextScope): List<RawContextTombstone> = emptyList()
 
         override fun redact(
             scope: RawContextScope,

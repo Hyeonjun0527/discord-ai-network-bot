@@ -50,9 +50,9 @@
 - [x] 18. 원문은 at-rest 암호화로 저장하고, 평문 DB column, 평문 로그, exception message 유출을 금지한다.
 - [x] 19. scope별 최대 보존량을 설정한다. 기본값은 수십만자 범위로 두고 config로 조정 가능하게 한다.
 - [x] 20. append 후 보존량을 초과하면 가장 오래된 원문부터 FIFO로 제거하는 bounded ring buffer를 구현한다.
-- [ ] 21. 오래된 원문 제거 시 순서와 존재 증거가 필요한 경우 raw 없이 tombstone metadata만 남기는 정책을 정한다.
+- [x] 21. 오래된 원문 제거 시 순서와 존재 증거가 필요한 경우 raw 없이 tombstone metadata만 남기는 정책을 정한다.
 - [x] 22. Discord message delete/edit, 사용자 동의 철회, opt-out, guild/channel disable 시 raw context redaction을 전파한다.
-- [ ] 23. 원문이 삭제된 메시지는 context window에서 즉시 빠지고, 파생 memory와 dataset export에서도 무효화되게 한다.
+- [x] 23. 원문이 삭제된 메시지는 context window에서 즉시 빠지고, 파생 memory와 dataset export에서도 무효화되게 한다.
 - [x] 24. `ContextWindowBuilder`를 만들어 judge 입력용 최근 원문을 token/char 예산 안에서 자른다.
 - [x] 25. judge prompt에서 원문은 quoted scene data로만 넣고, 원문 속 지시가 system/developer/policy를 덮어쓰지 못하게 한다.
 - [x] 26. 원문이 unavailable인 경우 빈 문자열로 처리하지 않고 `content_unavailable` 근거를 judge 입력에 명시한다.

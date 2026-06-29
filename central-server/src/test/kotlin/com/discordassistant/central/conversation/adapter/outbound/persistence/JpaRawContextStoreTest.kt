@@ -28,6 +28,7 @@ class JpaRawContextStoreTest
     constructor(
         private val store: JpaRawContextStore,
         private val rows: NexaRawContextMessageRepository,
+        private val tombstones: NexaRawContextTombstoneRepository,
         private val jdbc: JdbcTemplate,
     ) {
         private val scope = RawContextScope(guildId = 1, channelId = 2, threadId = 3)
@@ -89,6 +90,23 @@ class JpaRawContextStoreTest
         }
 
         @Test
+        fun `eviction leaves ordered tombstone metadata without raw content or snowflakes`() {
+            store.append(entry(messageId = 10, text = "1234", occurredAt = t0))
+            store.append(entry(messageId = 11, text = "5678", occurredAt = t0.plusSeconds(1)))
+
+            store.append(entry(messageId = 12, text = "abcd", occurredAt = t0.plusSeconds(2)))
+
+            val tombstone = store.readTombstones(scope).single()
+            assertThat(tombstone.occurredAt).isEqualTo(t0)
+            assertThat(tombstone.reason).isEqualTo(RawContextUnavailableReason.EVICTED)
+            assertThat(tombstone.contentLength).isEqualTo(4)
+
+            val stored = tombstones.findAll().single().toString()
+            assertThat(stored).doesNotContain("1234")
+            assertThat(stored).doesNotContain("messageId=", "guildId=", "channelId=")
+        }
+
+        @Test
         fun `unavailable context keeps reason without plaintext column`() {
             store.append(
                 entry(
@@ -123,6 +141,10 @@ class JpaRawContextStoreTest
             assertThat(removed.snapshot.entries.map { it.messageId }).containsExactly(11)
             assertThat(repeated.removed).isFalse()
             assertThat(rows.findAll().map { it.messageId }).containsExactly(11)
+
+            val tombstone = store.readTombstones(scope).single()
+            assertThat(tombstone.reason).isEqualTo(RawContextUnavailableReason.REDACTED)
+            assertThat(tombstone.contentLength).isEqualTo(4)
         }
 
         @Test
@@ -144,6 +166,7 @@ class JpaRawContextStoreTest
             assertThat(store.readRecent(scope).entries).isEmpty()
             assertThat(store.readRecent(threadScope).entries).isEmpty()
             assertThat(store.readRecent(otherChannel).entries.map { it.messageId }).containsExactly(12)
+            assertThat(store.readTombstones(scope).single().reason).isEqualTo(RawContextUnavailableReason.CONSENT_REVOKED)
         }
 
         @Test

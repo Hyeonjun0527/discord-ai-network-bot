@@ -6,12 +6,15 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextTombstone
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 
 interface RawContextStorePort {
     fun append(entry: RawContextEntry): RawContextAppendResult
 
     fun readRecent(scope: RawContextScope): RawContextSnapshot
+
+    fun readTombstones(scope: RawContextScope): List<RawContextTombstone>
 
     fun redact(
         scope: RawContextScope,

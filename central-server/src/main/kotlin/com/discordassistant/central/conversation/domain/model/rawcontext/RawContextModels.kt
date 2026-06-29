@@ -94,6 +94,22 @@ data class RawContextSnapshot(
     val retainedRawChars: Int = entries.sumOf { it.contentLength }
 }
 
+data class RawContextTombstone(
+    val scopeFingerprint: String,
+    val messageFingerprint: String,
+    val occurredAt: Instant,
+    val removedAt: Instant,
+    val reason: RawContextUnavailableReason,
+    val sourceType: RawContextSourceType,
+    val contentLength: Int,
+) {
+    init {
+        require(scopeFingerprint.isNotBlank()) { "scopeFingerprint 은 비어 있을 수 없다" }
+        require(messageFingerprint.isNotBlank()) { "messageFingerprint 은 비어 있을 수 없다" }
+        require(contentLength >= 0) { "contentLength 는 음수일 수 없다: $contentLength" }
+    }
+}
+
 data class RawContextAppendResult(
     val snapshot: RawContextSnapshot,
     val evictedMessageIds: List<Long>,

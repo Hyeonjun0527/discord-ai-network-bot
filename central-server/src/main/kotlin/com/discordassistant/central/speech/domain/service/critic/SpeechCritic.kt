@@ -93,4 +93,10 @@ enum class CriticReason {
 
     /** 인간 사칭 — AI 임을 부정하거나 사람인 척함(P17-T017). */
     HUMAN_IMPERSONATION,
+
+    /** participation 이 확정한 burst shape(조각 수·길이·reaction-only)와 후보가 맞지 않음. */
+    BURST_SHAPE_MISMATCH,
+
+    /** 장문 위로·설명식 답변·과한 친밀감·감정 단정처럼 사람 채팅 경계를 벗어난 후보. */
+    CONVERSATIONAL_BOUNDARY,
 }

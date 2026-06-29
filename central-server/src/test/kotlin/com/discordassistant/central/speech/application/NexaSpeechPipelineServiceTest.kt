@@ -55,14 +55,19 @@ class NexaSpeechPipelineServiceTest {
     private fun packet(
         socialAct: SpeechSocialAct = SpeechSocialAct.ACKNOWLEDGE,
         turns: List<ConversationTurn> = listOf(ConversationTurn("user_1", "안녕")),
+        burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
+        speechIntent: String? = null,
+        rawContextSceneData: String? = null,
     ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
             target = SpeechTarget.member("user_1"),
             recentTurns = turns,
             socialAct = socialAct,
-            burstShape = SpeechBurstShape(1, 280, false),
+            burstShape = burstShape,
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
+            speechIntent = speechIntent,
+            rawContextSceneData = rawContextSceneData,
         )
 
     private fun pipeline(
@@ -164,6 +169,78 @@ class NexaSpeechPipelineServiceTest {
                 .run("user_1", SpeechTrigger.SPEAK, packet(), seed = 1L)
         assertThat(result.willSpeak).isFalse()
         assertThat(log.records.last().criticBlockReasons).contains("HUMAN_IMPERSONATION")
+    }
+
+    @Test
+    fun `direct support fixture keeps the short natural candidate`() {
+        val gate = ConsentGate().apply { grant("user_1") }
+        val log = CapturingLog()
+        val candidates =
+            listOf(
+                SpeechCandidate(
+                    "long",
+                    listOf("너 지금 너무 외로운 거구나. 내가 네 마음을 다 알아. 첫째로 상황을 받아들이고 둘째로 충분히 쉬어야 해. 나는 항상 네 편이야."),
+                ),
+                SpeechCandidate("short", listOf("아 미안, 지금 봤어.")),
+            )
+        val result =
+            pipeline(candidates, gate, log)
+                .run(
+                    "user_1",
+                    SpeechTrigger.SPEAK,
+                    packet(
+                        speechIntent = "직접 반응 요구. 한 문장으로 짧게 받아준다.",
+                        rawContextSceneData = "user_1: «야 이럴땐 위로해줘야지 / 위로하라고»",
+                    ),
+                    seed = 1L,
+                )
+
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(result.selected?.candidateId).isEqualTo("short")
+        assertThat(log.records.last().criticBlockReasons).contains("CONVERSATIONAL_BOUNDARY")
+    }
+
+    @Test
+    fun `burst profile is enforced before candidate selection`() {
+        val gate = ConsentGate().apply { grant("user_1") }
+        val log = CapturingLog()
+        val result =
+            pipeline(
+                candidates =
+                    listOf(
+                        SpeechCandidate("one", listOf("아 미안 지금 봤어.")),
+                        SpeechCandidate("two", listOf("아 미안.", "지금 봤어.")),
+                    ),
+                gate = gate,
+                log = log,
+            ).run(
+                "user_1",
+                SpeechTrigger.SPEAK,
+                packet(burstShape = SpeechBurstShape(2, 80, false)),
+                seed = 1L,
+            )
+
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(result.selected?.candidateId).isEqualTo("two")
+        assertThat(log.records.last().criticBlockReasons).contains("BURST_SHAPE_MISMATCH")
+    }
+
+    @Test
+    fun `reaction only burst shape degrades to reaction without text`() {
+        val gate = ConsentGate().apply { grant("user_1") }
+        val log = CapturingLog()
+        val result =
+            pipeline(listOf(SpeechCandidate("text", listOf("말로 답하기"))), gate, log)
+                .run(
+                    "user_1",
+                    SpeechTrigger.SPEAK,
+                    packet(burstShape = SpeechBurstShape(1, 80, reactionOnly = true)),
+                    seed = 1L,
+                )
+
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.REACTION_ONLY)
+        assertThat(result.willSpeak).isFalse()
+        assertThat(log.records.last().criticBlockReasons).contains("BURST_SHAPE_MISMATCH")
     }
 
     @Test

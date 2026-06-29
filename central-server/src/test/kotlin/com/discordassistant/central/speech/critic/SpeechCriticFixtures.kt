@@ -18,6 +18,8 @@ internal object SpeechCriticFixtures {
         memoryRefs: List<MemoryRef> = emptyList(),
         socialAct: SpeechSocialAct = SpeechSocialAct.ACKNOWLEDGE,
         burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
+        speechIntent: String? = null,
+        rawContextSceneData: String? = null,
     ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = focusThreadKey,
@@ -27,6 +29,8 @@ internal object SpeechCriticFixtures {
             burstShape = burstShape,
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
             memoryRefs = memoryRefs,
+            speechIntent = speechIntent,
+            rawContextSceneData = rawContextSceneData,
         )
 
     fun candidate(

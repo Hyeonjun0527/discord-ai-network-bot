@@ -211,6 +211,18 @@ class NexaSpeechPipelineService(
                             com.discordassistant.central.speech.domain.service.critic
                                 .AiIdentityDisclosureCritic(),
                         )
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .AssistantStyleDetector(),
+                        )
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .BurstShapeCritic(),
+                        )
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .ConversationalBoundaryCritic(),
+                        )
                         addAll(extraCritics)
                     },
             )

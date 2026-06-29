@@ -14,7 +14,7 @@ participation 결정 엔진 입력 feature 의 **이름·type·범위·missing s
 
 ## 버전
 
-- `version = 1` (`FeatureCatalog.VERSION` 과 일치해야 한다). feature 추가/의미 변경 시 함께 올린다.
+- `version = 2` (`FeatureCatalog.VERSION` 과 일치해야 한다). feature 추가/의미 변경 시 함께 올린다.
 
 ## missing semantics (공통 규칙)
 
@@ -42,10 +42,15 @@ participation 결정 엔진 입력 feature 의 **이름·type·범위·missing s
 | `thread.target_entropy` | NORMALIZED | [0,1] | ThreadFeatures (T011) | OBSERVABLE | addressee 분산도(member ID 미사용) |
 | `thread.active_speakers` | COUNT | ≥0 | ThreadFeatures (T011) | OBSERVABLE | 활성 화자 수 |
 | `thread.topic_age_seconds` | DURATION | ≥0 | ThreadFeatures (T011) | OBSERVABLE | 화제 경과 |
+| `thread.direct_address_pressure` | NORMALIZED | [0,1] | ThreadFeatures (T011) / runtime scene | OBSERVABLE | 반복 호명·reply·직접 대상 흐름의 thread-state 압력 |
+| `thread.reply_chain_depth` | COUNT | ≥0 | ThreadFeatures (T011) / runtime scene | OBSERVABLE | 현재 burst 가 속한 reply chain 깊이 |
+| `thread.previous_ignored_request_count` | COUNT | ≥0 | ThreadFeatures (T011) / runtime scene | OBSERVABLE | 같은 scope 에서 이전에 무시된 직접 요청 수 |
 | `tempo.human_burst_rate` | RATE | ≥0 | TempoFeatures (T012) | OBSERVABLE | 봇/옵트아웃 제외(P06 동일) |
 | `tempo.median_gap_seconds` | DURATION | ≥0 | TempoFeatures (T012) | OBSERVABLE | human ≤1 burst 면 missing |
 | `tempo.overlap_ratio` | NORMALIZED | [0,1] | TempoFeatures (T012) | OBSERVABLE | human 동시발화 비율 |
 | `tempo.nexa_share` | NORMALIZED | [0,1] | TempoFeatures (T012) | OBSERVABLE | NEXA 발화 점유율 |
+| `tempo.rate_limit_pressure` | NORMALIZED | [0,1] | TempoFeatures (T012) / runtime scene | OBSERVABLE | 전송 제한에 가까운 정도. judge 입력이며 최종 전송 guard 와 별도 |
+| `tempo.anti_spam_pressure` | NORMALIZED | [0,1] | TempoFeatures (T012) / runtime scene | OBSERVABLE | 반복/과발화 방지 압력. judge 입력이며 최종 전송 guard 와 별도 |
 | `relationship.familiarity` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | P06 집계, 미관측 면 missing |
 | `relationship.reciprocity` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | P06 집계 |
 | `relationship.banter_acceptance` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | 관찰 비율(성격 라벨 아님) |

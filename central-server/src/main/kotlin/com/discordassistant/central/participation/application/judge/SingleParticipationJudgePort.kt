@@ -40,6 +40,8 @@ data class SingleJudgeSceneSnapshot(
     val textSignals: JudgeSceneTextSignals = JudgeSceneTextSignals.EMPTY,
     val agentState: JudgeAgentSceneState = JudgeAgentSceneState.EMPTY,
     val conversationState: JudgeConversationSceneState = JudgeConversationSceneState.EMPTY,
+    val turnTakingState: JudgeTurnTakingSceneState = JudgeTurnTakingSceneState.EMPTY,
+    val runtimeGuardState: JudgeRuntimeGuardState = JudgeRuntimeGuardState.EMPTY,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }
@@ -93,6 +95,8 @@ data class JudgeConversationSceneState(
     val humanLikelyAnswering: Boolean,
     val idleGapLikely: Boolean,
     val resolvedLikely: Boolean,
+    val humansTalkingToEachOtherLikely: Boolean = false,
+    val niaAddressedOrIdleOpportunity: Boolean = false,
 ) {
     companion object {
         val EMPTY: JudgeConversationSceneState =
@@ -100,7 +104,50 @@ data class JudgeConversationSceneState(
                 humanLikelyAnswering = false,
                 idleGapLikely = false,
                 resolvedLikely = false,
+                humansTalkingToEachOtherLikely = false,
+                niaAddressedOrIdleOpportunity = false,
             )
+    }
+}
+
+data class JudgeTurnTakingSceneState(
+    val directAddressPressure: Double,
+    val replyChainDepth: Int,
+    val nicknameCall: Boolean,
+    val previousIgnoredRequestCount: Int,
+) {
+    init {
+        require(directAddressPressure in 0.0..1.0) {
+            "directAddressPressure 는 [0,1] 범위여야 한다: $directAddressPressure"
+        }
+        require(replyChainDepth >= 0) { "replyChainDepth 는 음수일 수 없다: $replyChainDepth" }
+        require(previousIgnoredRequestCount >= 0) {
+            "previousIgnoredRequestCount 는 음수일 수 없다: $previousIgnoredRequestCount"
+        }
+    }
+
+    companion object {
+        val EMPTY =
+            JudgeTurnTakingSceneState(
+                directAddressPressure = 0.0,
+                replyChainDepth = 0,
+                nicknameCall = false,
+                previousIgnoredRequestCount = 0,
+            )
+    }
+}
+
+data class JudgeRuntimeGuardState(
+    val rateLimitPressure: Double,
+    val antiSpamPressure: Double,
+) {
+    init {
+        require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
+        require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
+    }
+
+    companion object {
+        val EMPTY = JudgeRuntimeGuardState(rateLimitPressure = 0.0, antiSpamPressure = 0.0)
     }
 }
 

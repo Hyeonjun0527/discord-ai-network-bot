@@ -5,7 +5,7 @@ import com.discordassistant.central.participation.application.port.out.FeatureVa
 
 /**
  * channel tempo feature builder(NEXA-P08-T012, application 레이어·순수 함수). 채널 템포를 정책 feature 로
- * 계산한다 — human burst rate, median gap, overlap ratio, NEXA share.
+ * 계산한다 — human burst rate, median gap, overlap ratio, NEXA share, rate-limit pressure, anti-spam pressure.
  *
  * **acceptance(T012) — 봇/옵트아웃 제외 규칙이 P06 과 동일하다**:
  * P06(socialmemory)이 봇·옵트아웃(동의 없음) 참여자를 관찰 집계에서 제외하는 것과 동일하게, 이 빌더도
@@ -36,6 +36,8 @@ object TempoFeatures {
             FeatureCatalog.TEMPO_MEDIAN_GAP_SECONDS to gapFeature(observation.humanMedianGapSeconds),
             FeatureCatalog.TEMPO_OVERLAP_RATIO to FeatureValue.present(observation.humanOverlapRatio),
             FeatureCatalog.TEMPO_NEXA_SHARE to FeatureValue.present(nexaShare),
+            FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE to FeatureValue.present(observation.rateLimitPressure),
+            FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE to FeatureValue.present(observation.antiSpamPressure),
         )
     }
 
@@ -57,10 +59,16 @@ data class TempoObservation(
     val humanMedianGapSeconds: Double?,
     /** 봇/옵트아웃 제외 후 human burst 간 overlap 비율 [0,1]. */
     val humanOverlapRatio: Double,
+    /** 현재 scope 의 rate-limit 압력 [0,1]. hard block 전 judge 입력으로도 전달한다. */
+    val rateLimitPressure: Double = 0.0,
+    /** 현재 scope 의 anti-spam 압력 [0,1]. hard block 전 judge 입력으로도 전달한다. */
+    val antiSpamPressure: Double = 0.0,
 ) {
     init {
         require(windowSeconds >= 0.0) { "windowSeconds 는 음수일 수 없다" }
         require(humanOverlapRatio in 0.0..1.0) { "humanOverlapRatio 는 [0,1] 범위여야 한다" }
+        require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다" }
+        require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다" }
         humanMedianGapSeconds?.let { require(it >= 0.0) { "humanMedianGapSeconds 는 음수일 수 없다" } }
     }
 }

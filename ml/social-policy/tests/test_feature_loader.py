@@ -29,8 +29,10 @@ def _vec(**features: object) -> dict[str, object]:
 def test_catalog_loads_with_version_and_dim() -> None:
     cat = load_feature_catalog()
     assert cat.version == CATALOG_VERSION
-    assert cat.dim == 27
+    assert cat.dim == 32
     assert cat.feature_ids[0] == "burst.fragment_count"
+    assert "thread.direct_address_pressure" in cat.feature_ids
+    assert "tempo.anti_spam_pressure" in cat.feature_ids
 
 
 def test_unknown_version_rejected_not_ignored() -> None:

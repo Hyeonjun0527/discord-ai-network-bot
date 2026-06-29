@@ -1,5 +1,6 @@
 package com.discordassistant.central.participation.application.port.out
 
+import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.domain.model.action.SocialAct
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.decision.ActionTargetDistribution
@@ -87,7 +88,7 @@ class PolicyDecisionContractTest {
     private fun sampleRequest(): PolicyDecisionRequest =
         PolicyDecisionRequest(
             sceneSnapshotRef = SceneSnapshotRef("g", "c", 3, 1),
-            features = FeatureVectorView.empty(version = 1),
+            features = FeatureVectorView.empty(version = FeatureCatalog.VERSION),
             config = PolicyConfigView("mention", autoRespondEnabled = true, speechAllowed = true),
             modelVersion = null,
             schemaVersion = 1,

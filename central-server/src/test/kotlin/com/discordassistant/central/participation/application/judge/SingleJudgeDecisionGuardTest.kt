@@ -6,6 +6,7 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
 import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
+import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
@@ -137,7 +138,7 @@ class SingleJudgeDecisionGuardTest {
                     recentAgentBurstCount = 0,
                     silenceMillis = 5_000,
                 ),
-            featureVector = FeatureVectorView.empty(version = 1),
+            featureVector = FeatureVectorView.empty(version = FeatureCatalog.VERSION),
             memoryRefs = emptyList(),
             constraints = constraints,
             schemaVersion = SingleJudgeDecisionRequest.CURRENT_SCHEMA_VERSION,

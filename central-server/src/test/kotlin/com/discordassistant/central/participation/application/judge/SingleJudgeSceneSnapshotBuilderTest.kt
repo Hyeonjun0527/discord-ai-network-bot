@@ -21,6 +21,12 @@ class SingleJudgeSceneSnapshotBuilderTest {
                 lastNiaSpokeAgeSeconds = 14.5,
                 pendingActionIds = listOf("pending-1", "pending-2"),
                 humanLikelyAnswering = true,
+                directAddressPressure = 0.7,
+                replyChainDepth = 2,
+                nicknameCall = true,
+                previousIgnoredRequestCount = 3,
+                rateLimitPressure = 0.4,
+                antiSpamPressure = 0.6,
             )
 
         val first = SingleJudgeSceneSnapshotBuilder.build(observation)
@@ -34,7 +40,18 @@ class SingleJudgeSceneSnapshotBuilderTest {
         assertThat(first.sceneSnapshot.agentState.lastSpokeAgeSeconds).isEqualTo(14.5)
         assertThat(first.sceneSnapshot.conversationState.humanLikelyAnswering).isTrue()
         assertThat(first.sceneSnapshot.conversationState.idleGapLikely).isFalse()
+        assertThat(first.sceneSnapshot.turnTakingState.directAddressPressure).isEqualTo(0.7)
+        assertThat(first.sceneSnapshot.turnTakingState.replyChainDepth).isEqualTo(2)
+        assertThat(first.sceneSnapshot.turnTakingState.nicknameCall).isTrue()
+        assertThat(first.sceneSnapshot.turnTakingState.previousIgnoredRequestCount).isEqualTo(3)
+        assertThat(first.sceneSnapshot.runtimeGuardState.rateLimitPressure).isEqualTo(0.4)
+        assertThat(first.sceneSnapshot.runtimeGuardState.antiSpamPressure).isEqualTo(0.6)
         assertThat(features.getValue(FeatureCatalog.BURST_IS_REPLY).value).isEqualTo(1.0)
+        assertThat(features.getValue(FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE).value).isEqualTo(0.7)
+        assertThat(features.getValue(FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH).value).isEqualTo(2.0)
+        assertThat(features.getValue(FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT).value).isEqualTo(3.0)
+        assertThat(features.getValue(FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE).value).isEqualTo(0.4)
+        assertThat(features.getValue(FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE).value).isEqualTo(0.6)
         assertThat(features.getValue(FeatureCatalog.AGENT_PENDING_ACTION_COUNT).value).isEqualTo(2.0)
     }
 
@@ -74,6 +91,46 @@ class SingleJudgeSceneSnapshotBuilderTest {
     }
 
     @Test
+    fun `nickname call is part of direct address and turn taking scene state`() {
+        val result =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "서연아 잠깐만",
+                    directAddressed = false,
+                    nicknameCall = true,
+                ),
+            )
+
+        assertThat(result.sceneSnapshot.directAddressed).isTrue()
+        assertThat(result.sceneSnapshot.turnTakingState.nicknameCall).isTrue()
+        assertThat(result.sceneSnapshot.conversationState.niaAddressedOrIdleOpportunity).isTrue()
+    }
+
+    @Test
+    fun `human to human flow and idle opportunity are explicit scene signals`() {
+        val humanThread =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "그건 내가 답할게",
+                    replyToHuman = true,
+                    directAddressed = false,
+                ),
+            )
+        val idleOpportunity =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "아무도 답이 없네",
+                    directAddressed = false,
+                    silenceMillis = 8_000,
+                ),
+            )
+
+        assertThat(humanThread.sceneSnapshot.conversationState.humansTalkingToEachOtherLikely).isTrue()
+        assertThat(humanThread.sceneSnapshot.conversationState.niaAddressedOrIdleOpportunity).isFalse()
+        assertThat(idleOpportunity.sceneSnapshot.conversationState.niaAddressedOrIdleOpportunity).isTrue()
+    }
+
+    @Test
     fun `본문 부재는 missing 으로 남기고 관측된 0 은 present zero 로 남긴다`() {
         val result =
             SingleJudgeSceneSnapshotBuilder.build(
@@ -107,6 +164,16 @@ class SingleJudgeSceneSnapshotBuilderTest {
             .isInstanceOf(IllegalArgumentException::class.java)
         assertThatThrownBy { observation(pendingActionIds = listOf(" ")) }
             .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { observation(directAddressPressure = 1.1) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { observation(replyChainDepth = -1) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { observation(previousIgnoredRequestCount = -1) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { observation(rateLimitPressure = -0.1) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { observation(antiSpamPressure = 1.1) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     private fun observation(
@@ -121,6 +188,13 @@ class SingleJudgeSceneSnapshotBuilderTest {
         pendingActionIds: List<String> = emptyList(),
         humanLikelyAnswering: Boolean = false,
         resolvedLikely: Boolean = false,
+        directAddressPressure: Double = 0.0,
+        replyChainDepth: Int = 0,
+        nicknameCall: Boolean = false,
+        previousIgnoredRequestCount: Int = 0,
+        humansTalkingToEachOtherLikely: Boolean = false,
+        rateLimitPressure: Double = 0.0,
+        antiSpamPressure: Double = 0.0,
     ): SingleJudgeSceneObservation =
         SingleJudgeSceneObservation(
             ref = ref,
@@ -135,5 +209,12 @@ class SingleJudgeSceneSnapshotBuilderTest {
             pendingActionIds = pendingActionIds,
             humanLikelyAnswering = humanLikelyAnswering,
             resolvedLikely = resolvedLikely,
+            directAddressPressure = directAddressPressure,
+            replyChainDepth = replyChainDepth,
+            nicknameCall = nicknameCall,
+            previousIgnoredRequestCount = previousIgnoredRequestCount,
+            humansTalkingToEachOtherLikely = humansTalkingToEachOtherLikely,
+            rateLimitPressure = rateLimitPressure,
+            antiSpamPressure = antiSpamPressure,
         )
 }

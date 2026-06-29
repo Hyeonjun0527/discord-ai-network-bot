@@ -31,7 +31,7 @@ _CONTRACT_PATH = (
 )
 
 # features.md / FeatureCatalog.VERSION 미러(SSOT). feature 추가·의미 변경 시 함께 올린다.
-CATALOG_VERSION = 1
+CATALOG_VERSION = 2
 
 
 class FeatureSchemaError(ValueError):
@@ -86,10 +86,15 @@ CATALOG_FEATURES: tuple[FeatureSpec, ...] = (
     FeatureSpec("thread.target_entropy", FeatureType.NORMALIZED, 0.0, 1.0),
     FeatureSpec("thread.active_speakers", FeatureType.COUNT, 0.0, None),
     FeatureSpec("thread.topic_age_seconds", FeatureType.DURATION, 0.0, None),
+    FeatureSpec("thread.direct_address_pressure", FeatureType.NORMALIZED, 0.0, 1.0),
+    FeatureSpec("thread.reply_chain_depth", FeatureType.COUNT, 0.0, None),
+    FeatureSpec("thread.previous_ignored_request_count", FeatureType.COUNT, 0.0, None),
     FeatureSpec("tempo.human_burst_rate", FeatureType.RATE, 0.0, None),
     FeatureSpec("tempo.median_gap_seconds", FeatureType.DURATION, 0.0, None),
     FeatureSpec("tempo.overlap_ratio", FeatureType.NORMALIZED, 0.0, 1.0),
     FeatureSpec("tempo.nexa_share", FeatureType.NORMALIZED, 0.0, 1.0),
+    FeatureSpec("tempo.rate_limit_pressure", FeatureType.NORMALIZED, 0.0, 1.0),
+    FeatureSpec("tempo.anti_spam_pressure", FeatureType.NORMALIZED, 0.0, 1.0),
     FeatureSpec("relationship.familiarity", FeatureType.NORMALIZED, 0.0, 1.0),
     FeatureSpec("relationship.reciprocity", FeatureType.NORMALIZED, 0.0, 1.0),
     FeatureSpec("relationship.banter_acceptance", FeatureType.NORMALIZED, 0.0, 1.0),

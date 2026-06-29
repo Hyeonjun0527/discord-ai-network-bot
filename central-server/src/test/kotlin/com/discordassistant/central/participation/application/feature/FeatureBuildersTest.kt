@@ -80,6 +80,9 @@ class FeatureBuildersTest {
                 addresseeProbabilities = listOf(0.5, 0.5),
                 activeSpeakerCount = 3,
                 topicAgeSeconds = 120.0,
+                directAddressPressure = 0.6,
+                replyChainDepth = 4,
+                previousIgnoredRequestCount = 2,
             )
         val features = ThreadFeatures.build(obs)
         assertThat(features.getValue(FeatureCatalog.THREAD_FOCUS_PRESENT).value).isEqualTo(1.0)
@@ -91,6 +94,9 @@ class FeatureBuildersTest {
                 .within(1e-9),
         )
         assertThat(features.getValue(FeatureCatalog.THREAD_ACTIVE_SPEAKERS).value).isEqualTo(3.0)
+        assertThat(features.getValue(FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE).value).isEqualTo(0.6)
+        assertThat(features.getValue(FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH).value).isEqualTo(4.0)
+        assertThat(features.getValue(FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT).value).isEqualTo(2.0)
     }
 
     // ── T012 tempo features ───────────────────────────────────────────────────
@@ -107,6 +113,8 @@ class FeatureBuildersTest {
                 windowSeconds = 60.0,
                 humanMedianGapSeconds = 5.0,
                 humanOverlapRatio = 0.2,
+                rateLimitPressure = 0.3,
+                antiSpamPressure = 0.4,
             )
         val features = TempoFeatures.build(obs)
         // human burst rate = 4 (제외된 10·NEXA 2 미포함) / 1분 = 4.0.
@@ -117,6 +125,8 @@ class FeatureBuildersTest {
             org.assertj.core.api.Assertions
                 .within(1e-9),
         )
+        assertThat(features.getValue(FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE).value).isEqualTo(0.3)
+        assertThat(features.getValue(FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE).value).isEqualTo(0.4)
     }
 
     @Test

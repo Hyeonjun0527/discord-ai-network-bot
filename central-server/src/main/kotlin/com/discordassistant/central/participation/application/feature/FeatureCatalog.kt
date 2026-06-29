@@ -14,7 +14,7 @@ import com.discordassistant.central.participation.application.port.out.FeatureId
  */
 object FeatureCatalog {
     /** feature 벡터 버전 — features.schema.json 의 version 과 일치해야 한다(코드·데이터셋 동기화). */
-    const val VERSION: Int = 1
+    const val VERSION: Int = 2
 
     // ── burst features (T010) ─────────────────────────────────────────────────
     val BURST_FRAGMENT_COUNT = define("burst.fragment_count", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
@@ -30,12 +30,18 @@ object FeatureCatalog {
     val THREAD_TARGET_ENTROPY = define("thread.target_entropy", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
     val THREAD_ACTIVE_SPEAKERS = define("thread.active_speakers", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
     val THREAD_TOPIC_AGE_SECONDS = define("thread.topic_age_seconds", FeatureType.DURATION, PrivacyClass.OBSERVABLE)
+    val THREAD_DIRECT_ADDRESS_PRESSURE = define("thread.direct_address_pressure", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
+    val THREAD_REPLY_CHAIN_DEPTH = define("thread.reply_chain_depth", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
+    val THREAD_PREVIOUS_IGNORED_REQUEST_COUNT =
+        define("thread.previous_ignored_request_count", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
 
     // ── channel tempo features (T012) ─────────────────────────────────────────
     val TEMPO_HUMAN_BURST_RATE = define("tempo.human_burst_rate", FeatureType.RATE, PrivacyClass.OBSERVABLE)
     val TEMPO_MEDIAN_GAP_SECONDS = define("tempo.median_gap_seconds", FeatureType.DURATION, PrivacyClass.OBSERVABLE)
     val TEMPO_OVERLAP_RATIO = define("tempo.overlap_ratio", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
     val TEMPO_NEXA_SHARE = define("tempo.nexa_share", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
+    val TEMPO_RATE_LIMIT_PRESSURE = define("tempo.rate_limit_pressure", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
+    val TEMPO_ANTI_SPAM_PRESSURE = define("tempo.anti_spam_pressure", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
 
     // ── relationship features (T013) ──────────────────────────────────────────
     val REL_FAMILIARITY = define("relationship.familiarity", FeatureType.NORMALIZED, PrivacyClass.AGGREGATE)

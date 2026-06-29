@@ -6,7 +6,8 @@ import kotlin.math.ln
 
 /**
  * thread·addressee feature builder(NEXA-P08-T011, application 레이어·순수 함수). 장면의 thread/addressee 구조에서
- * 정책 feature 를 계산한다 — focus thread 존재, 대상 entropy, active speaker 수, topic age.
+ * 정책 feature 를 계산한다 — focus thread 존재, 대상 entropy, active speaker 수, topic age, direct-address pressure,
+ * reply chain depth, previous ignored request count.
  *
  * **acceptance(T011) — 특정 member ID 자체를 모델 feature 로 직접 사용하지 않는다**:
  * 입력의 addressee 확률([ThreadObservation.addresseeProbabilities])은 **member ID 없는 확률 리스트** 다 —
@@ -24,6 +25,10 @@ object ThreadFeatures {
             FeatureCatalog.THREAD_TARGET_ENTROPY to FeatureValue.present(targetEntropy(observation.addresseeProbabilities)),
             FeatureCatalog.THREAD_ACTIVE_SPEAKERS to FeatureValue.present(observation.activeSpeakerCount.toDouble()),
             FeatureCatalog.THREAD_TOPIC_AGE_SECONDS to FeatureValue.present(observation.topicAgeSeconds),
+            FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE to FeatureValue.present(observation.directAddressPressure),
+            FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH to FeatureValue.present(observation.replyChainDepth.toDouble()),
+            FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT to
+                FeatureValue.present(observation.previousIgnoredRequestCount.toDouble()),
         )
 
     /**
@@ -54,10 +59,21 @@ data class ThreadObservation(
     val activeSpeakerCount: Int,
     /** 현재 화제(topic)가 시작된 뒤 경과 초. */
     val topicAgeSeconds: Double,
+    /** 최근 thread state 기준 니아를 직접 대상으로 부르는 압력 [0,1]. */
+    val directAddressPressure: Double = 0.0,
+    /** 현재 메시지가 속한 reply chain 깊이. */
+    val replyChainDepth: Int = 0,
+    /** 이전에 무시된 직접 요청 수. */
+    val previousIgnoredRequestCount: Int = 0,
 ) {
     init {
         require(activeSpeakerCount >= 0) { "activeSpeakerCount 는 음수일 수 없다" }
         require(topicAgeSeconds >= 0.0) { "topicAgeSeconds 는 음수일 수 없다" }
+        require(directAddressPressure in 0.0..1.0) {
+            "directAddressPressure 는 [0,1] 범위여야 한다: $directAddressPressure"
+        }
+        require(replyChainDepth >= 0) { "replyChainDepth 는 음수일 수 없다" }
+        require(previousIgnoredRequestCount >= 0) { "previousIgnoredRequestCount 는 음수일 수 없다" }
         addresseeProbabilities.forEach {
             require(it in 0.0..1.0) { "addressee 확률은 [0,1] 범위여야 한다: $it" }
         }

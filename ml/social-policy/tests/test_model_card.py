@@ -30,7 +30,7 @@ def _manifest() -> PolicyModelManifest:
         model_id="policy-v1-fixture",
         model_version="policy-v1-fixture",
         dataset_id="nexa-ds-fixture",
-        feature_schema_version=1,
+        feature_schema_version=2,
         calibration_version="cal-1",
         opset=17,
         metrics={"balanced_accuracy": 0.5, "false_ignore_rate": 0.2, "ece": 0.1},

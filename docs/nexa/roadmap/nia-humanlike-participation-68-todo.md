@@ -59,14 +59,14 @@
 
 ## D. 대화 흐름과 타이머 런타임
 
-- [ ] 27. `discord-assistant-core`의 event loop, idle polling, gated pipeline 개념 중 3표결을 제외한 부분만 이식 범위로 다시 정한다.
-- [ ] 28. 현재 per-message synchronous bridge만으로는 "대화 공백 후 끼어들기"가 안 되는 지점을 코드로 확정한다.
-- [ ] 29. message event 외에 idle timer, delayed reevaluation, pending action wake-up을 participation runtime에 추가한다.
-- [ ] 30. 사용자가 반복적으로 부르는 상황을 "반복 요구 regex"가 아니라 thread state와 direct address pressure로 모델링한다.
-- [ ] 31. 사람들끼리 대화 중이면 끼어들지 않고, 니아를 향한 발화나 공백이면 개입할 수 있도록 turn-taking state를 만든다.
-- [ ] 32. reply chain, mention, direct address, nickname call, previous ignored request를 하나의 scene snapshot으로 묶는다.
-- [ ] 33. pending action이 실행되기 직전 최신 대화로 재평가해서 이미 늦었거나 부적절하면 취소한다.
-- [ ] 34. rate limit과 anti-spam은 hard block이 아니라 judge 입력과 actionruntime guard 양쪽에서 일관되게 적용한다.
+- [x] 27. `discord-assistant-core`의 event loop, idle polling, gated pipeline 개념 중 3표결을 제외한 부분만 이식 범위로 다시 정한다.
+- [x] 28. 현재 per-message synchronous bridge만으로는 "대화 공백 후 끼어들기"가 안 되는 지점을 코드로 확정한다.
+- [x] 29. message event 외에 idle timer, delayed reevaluation, pending action wake-up을 participation runtime에 추가한다.
+- [x] 30. 사용자가 반복적으로 부르는 상황을 "반복 요구 regex"가 아니라 thread state와 direct address pressure로 모델링한다.
+- [x] 31. 사람들끼리 대화 중이면 끼어들지 않고, 니아를 향한 발화나 공백이면 개입할 수 있도록 turn-taking state를 만든다.
+- [x] 32. reply chain, mention, direct address, nickname call, previous ignored request를 하나의 scene snapshot으로 묶는다.
+- [x] 33. pending action이 실행되기 직전 최신 대화로 재평가해서 이미 늦었거나 부적절하면 취소한다.
+- [x] 34. rate limit과 anti-spam은 hard block이 아니라 judge 입력과 actionruntime guard 양쪽에서 일관되게 적용한다.
 
 ## E. feature와 scene snapshot
 

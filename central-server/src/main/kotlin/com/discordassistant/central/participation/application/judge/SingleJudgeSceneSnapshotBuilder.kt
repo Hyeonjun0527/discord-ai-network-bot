@@ -21,6 +21,22 @@ object SingleJudgeSceneSnapshotBuilder {
                 humanLikelyAnswering = observation.humanLikelyAnswering,
                 idleGapLikely = observation.silenceMillis?.let { it >= IDLE_GAP_THRESHOLD_MILLIS } ?: false,
                 resolvedLikely = observation.resolvedLikely || looksResolved(observation.triggerText.orEmpty()),
+                humansTalkingToEachOtherLikely =
+                    observation.humansTalkingToEachOtherLikely || (observation.replyToHuman && !directAddressed),
+                niaAddressedOrIdleOpportunity =
+                    directAddressed || (observation.silenceMillis?.let { it >= IDLE_GAP_THRESHOLD_MILLIS } ?: false),
+            )
+        val turnTakingState =
+            JudgeTurnTakingSceneState(
+                directAddressPressure = observation.directAddressPressure.coerceAtLeast(textSignals.callPressure),
+                replyChainDepth = observation.replyChainDepth,
+                nicknameCall = observation.nicknameCall,
+                previousIgnoredRequestCount = observation.previousIgnoredRequestCount,
+            )
+        val runtimeGuardState =
+            JudgeRuntimeGuardState(
+                rateLimitPressure = observation.rateLimitPressure,
+                antiSpamPressure = observation.antiSpamPressure,
             )
         val snapshot =
             SingleJudgeSceneSnapshot(
@@ -34,6 +50,8 @@ object SingleJudgeSceneSnapshotBuilder {
                 textSignals = textSignals,
                 agentState = agentState,
                 conversationState = conversationState,
+                turnTakingState = turnTakingState,
+                runtimeGuardState = runtimeGuardState,
             )
         return SingleJudgeSceneBuildResult(
             sceneSnapshot = snapshot,
@@ -69,6 +87,12 @@ object SingleJudgeSceneSnapshotBuilder {
                     FeatureCatalog.BURST_IS_QUESTION to textDerivedFeature(textSignals.isQuestion, textSignals.contentAvailable),
                     FeatureCatalog.BURST_HAS_MENTION to FeatureValue.present(if (directAddressed) 1.0 else 0.0),
                     FeatureCatalog.BURST_IS_REPLY to FeatureValue.present(if (replyToNia || replyToHuman) 1.0 else 0.0),
+                    FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE to FeatureValue.present(directAddressPressure),
+                    FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH to FeatureValue.present(replyChainDepth.toDouble()),
+                    FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT to
+                        FeatureValue.present(previousIgnoredRequestCount.toDouble()),
+                    FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE to FeatureValue.present(rateLimitPressure),
+                    FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE to FeatureValue.present(antiSpamPressure),
                     FeatureCatalog.AGENT_RECENT_BURST_COUNT to FeatureValue.present(recentAgentBurstCount.toDouble()),
                     FeatureCatalog.AGENT_LAST_SPOKE_AGE_SECONDS to lastSpokeFeature(lastNiaSpokeAgeSeconds),
                     FeatureCatalog.AGENT_PENDING_ACTION_COUNT to FeatureValue.present(pendingActionIds.size.toDouble()),
@@ -82,7 +106,8 @@ object SingleJudgeSceneSnapshotBuilder {
 
     private fun lastSpokeFeature(value: Double?): FeatureValue = value?.let { FeatureValue.present(it) } ?: FeatureValue.MISSING
 
-    private fun SingleJudgeSceneObservation.derivedDirectAddressed(): Boolean = directAddressed || replyToNia || conversationMentionsNia
+    private fun SingleJudgeSceneObservation.derivedDirectAddressed(): Boolean =
+        directAddressed || replyToNia || conversationMentionsNia || nicknameCall
 
     private fun SingleJudgeSceneObservation.replyTargetKind(): String =
         when {
@@ -144,12 +169,28 @@ data class SingleJudgeSceneObservation(
     val pendingActionIds: List<String> = emptyList(),
     val humanLikelyAnswering: Boolean = false,
     val resolvedLikely: Boolean = false,
+    val directAddressPressure: Double = 0.0,
+    val replyChainDepth: Int = 0,
+    val nicknameCall: Boolean = false,
+    val previousIgnoredRequestCount: Int = 0,
+    val humansTalkingToEachOtherLikely: Boolean = false,
+    val rateLimitPressure: Double = 0.0,
+    val antiSpamPressure: Double = 0.0,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }
         silenceMillis?.let { require(it >= 0) { "silenceMillis 는 음수일 수 없다: $it" } }
         lastNiaSpokeAgeSeconds?.let { require(it >= 0.0) { "lastNiaSpokeAgeSeconds 는 음수일 수 없다: $it" } }
         pendingActionIds.forEach { require(it.isNotBlank()) { "pendingActionId 는 비어 있을 수 없다" } }
+        require(directAddressPressure in 0.0..1.0) {
+            "directAddressPressure 는 [0,1] 범위여야 한다: $directAddressPressure"
+        }
+        require(replyChainDepth >= 0) { "replyChainDepth 는 음수일 수 없다: $replyChainDepth" }
+        require(previousIgnoredRequestCount >= 0) {
+            "previousIgnoredRequestCount 는 음수일 수 없다: $previousIgnoredRequestCount"
+        }
+        require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
+        require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
     }
 }
 

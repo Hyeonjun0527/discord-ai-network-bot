@@ -21,6 +21,9 @@ SPEAK / CANCEL`. **말 자체를 만들거나 보내지 않는다.**
 원문 window와 구조화 scene signal을 단일 judge의 evidence로 넣고, 그 judge가 말할지/기다릴지/반응만 할지/침묵할지를
 고른다. speech는 `SPEAK` 이후 실제 문구만 만들고, actionruntime은 예약·취소·전송만 수행한다.
 
+message/typing/idle tick/pending wake-up의 실제 깨움 표면은
+[participation-runtime.md](./participation-runtime.md)에 둔다. 이 경로는 3표결 없이 단일 judge 평가만 시작한다.
+
 ## 소유 (Owns)
 
 | 개념 | 설명 |

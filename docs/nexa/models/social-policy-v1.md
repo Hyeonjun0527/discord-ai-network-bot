@@ -7,8 +7,8 @@
 - model_id: `policy-v1-fixture`
 - model_version: `policy-v1-fixture`
 - dataset_id: `nexa-ds-fixture`
-- artifact_sha256: `81cbf752f1bc998566f654ede4a5819eb4b285758d2ebe90639ea21976400dc2`
-- feature_schema_version: `1`
+- artifact_sha256: `55c1fca49fad7f3eab4fef8167c4723ee5da0905e52fda04e6cfa5abcda1c4e2`
+- feature_schema_version: `2`
 - calibration_version: `cal-1`
 - onnx_opset: `17`
 

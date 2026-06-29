@@ -18,16 +18,17 @@ package com.discordassistant.central.participation.domain.service
  *    * **min_gap debounce(C4·D4) / typing grace(C3·D5)**: 직전 메시지와 간격이 min_gap 미만이거나 typing 중이면 WAIT.
  *    * **dynamic_idle_ms(C6) + WAKE_AFTER_IDLE(C5·C7)**: 일반 CANDIDATE 는 idle(정적) 후 평가하도록 deadline 을 둔다.
  *  - [dynamicIdleMs] 채널 템포(recent_gaps median)로 idle_min..idle_max 선형 보간(C6).
- *  - [idleDue]/[clearPending] idle 마감 도래 판정·소비(C5·C7 — 능동 타이머 없이 디바운스로 등가).
+ *  - [idleDue]/[clearPending] idle 마감 도래 판정·소비(C5·C7). 이 도메인 서비스는 deadline 만 계산하고,
+ *    active idle polling 은 application runtime 이 담당한다.
  *
- * **NEXA 통합에서의 idle 처리 방식(택한 방법 + 이유)**: NEXA 의 emit 경로는 메시지마다 **동기** 평가한다(능동 타이머
- * 부재). core 의 WAKE_AFTER_IDLE 은 "마지막 메시지 후 N초 정적이면 깨움"이라 본래 타이머가 필요하지만, 능동 스케줄러를
- * 새로 들이는 것은 이 단계(SHADOW/안전 우선)에 과하고 위험하다. 그래서 **디바운스 등가**를 택했다:
- *  - WAKE_NOW(멘션/호명/reply/continuation/pingpong)는 즉시 통과 — idle 대기 없음(사람이 바로 받아치는 타이밍).
- *  - WAIT(min_gap 연타·typing)는 이번 턴 발화 보류 — core 의 "묶음이 이어지는 중" 과 동일 효과.
- *  - WAKE_AFTER_IDLE 은 "이번 메시지가 묶음의 끝일 수 있음"을 뜻하므로 통과시키되(능동 타이머라면 정적 후 깨웠을 것),
- *    바로 다음 빠른 연타는 위 WAIT(min_gap) 가 잡는다. 즉 deadline 은 [idleDue] 로 노출은 하되 emit 경로는 WAIT 보류로
- *    과발화를 막는 등가 동작을 낸다. 능동 타이머 도입은 LIVE 승격 단계의 후속 작업으로 남긴다.
+ * **NEXA 통합에서의 idle 처리 방식(택한 방법 + 이유)**: legacy emit bridge 는 메시지마다 **동기** 평가할 수밖에 없어
+ * "마지막 메시지 후 N초 정적이면 깨움"을 단독으로 시작하지 못한다. 그래서 이 도메인 서비스는 core 와 같은
+ * WAKE_AFTER_IDLE deadline 을 노출하고, application runtime(`ParticipationRuntimeLoop`)이 idle tick 에서
+ * [idleDue]/[clearPending] 으로 deadline 을 소비한다.
+ *  - WAKE_NOW(멘션/호명/reply/continuation/pingpong)는 즉시 단일 judge 를 깨운다.
+ *  - WAIT(min_gap 연타·typing)는 deadline 을 연장하고 이번 턴 평가를 보류한다.
+ *  - WAKE_AFTER_IDLE 은 active idle polling 이 다시 깨울 예약 시각이다. 이것이 per-message bridge 만으로는 만들 수
+ *    없던 "대화 공백 후 끼어들기"의 application-level entrypoint 다.
  *
  * 순수성: Spring/JPA/JDA/adapter 미참조(participation.domain 규칙). 표준 타입만. 시각은 호출자가 ts(ms)로 주입한다
  * (Date.now/random 금지 — 같은 이벤트 시퀀스 → 항상 같은 깨움 타임라인, 재현 가능).

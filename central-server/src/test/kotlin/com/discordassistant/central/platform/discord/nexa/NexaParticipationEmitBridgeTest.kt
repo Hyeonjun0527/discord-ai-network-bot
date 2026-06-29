@@ -12,6 +12,7 @@ import com.discordassistant.central.conversation.domain.model.ConsentDecision
 import com.discordassistant.central.participation.adapter.outbound.policy.baseline.CooldownHeuristicPolicy
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.model.ShadowModelRegistry
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
@@ -488,6 +489,86 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         assertThat(emit.calls).isEqualTo(1)
+    }
+
+    // ── gate trace / debug 관측성 ─────────────────────────────────────────────
+
+    @Test
+    fun `flag OFF 도 원문 없이 gate trace 로 남는다`() {
+        val scheduler = FakeScheduler()
+        val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.OFF),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                traceStore = traces,
+            )
+
+        val rawTrigger = "민감한 원문이 여기 있어"
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = rawTrigger, tsMs = 10_000))
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.Inactive)
+        val trace = traces.recent(guildId = 1L, channelId = 3L).single()
+        assertThat(trace.outcome).isEqualTo("INACTIVE")
+        assertThat(trace.mode).isEqualTo(ShadowMode.OFF)
+        assertThat(trace.features.mentioned).isTrue()
+        assertThat(trace.toString()).doesNotContain(rawTrigger)
+    }
+
+    @Test
+    fun `규칙 침묵 reason 이 gate trace 로 남는다`() {
+        val scheduler = FakeScheduler()
+        val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                traceStore = traces,
+            )
+
+        bridge.onMessage(signal(mentioned = false, triggerText = "준호야 너 표 있어?", speakerLabel = "user_2"))
+
+        val trace = traces.recent(guildId = 1L, channelId = 3L).single()
+        assertThat(trace.outcome).isEqualTo("RULE_SILENT")
+        assertThat(trace.reasonCode).isEqualTo("RULE_QUESTION_TO_OTHER")
+        assertThat(trace.policyAction).isNull()
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `동의 차단은 speechOutcome BLOCKED 로 gate trace 에 보인다`() {
+        val scheduler = FakeScheduler()
+        val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_ONLY, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                traceStore = traces,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        val trace = traces.recent(guildId = 1L, channelId = 3L).single()
+        assertThat(trace.outcome).isEqualTo("EMITTED")
+        assertThat(trace.policyAction).isEqualTo("speak")
+        assertThat(trace.safeAction).isEqualTo("speak")
+        assertThat(trace.speechOutcome).isEqualTo("BLOCKED")
+        assertThat(trace.consentStage).isNotNull()
+        assertThat(trace.willSpeak).isFalse()
+        assertThat(scheduler.scheduled).isEmpty()
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

@@ -4,6 +4,9 @@ import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
+import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
+import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.port.out.FeatureValue
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
@@ -11,6 +14,8 @@ import com.discordassistant.central.participation.application.port.out.Participa
 import com.discordassistant.central.participation.application.port.out.PolicyConfigView
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.AttentionGateConstants
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.participation.domain.service.ChannelAttentionGate
@@ -67,6 +72,7 @@ class NexaParticipationEmitBridge(
     private val rateLimitStore: RateLimitStore,
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
+    private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
 
@@ -84,16 +90,23 @@ class NexaParticipationEmitBridge(
      * ([ParticipationEmitOutcome])를 돌려준다(테스트·관찰용).
      */
     fun onMessage(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
-        if (!flags.isNexaActive(guildId = signal.guildId, channelId = signal.channelId)) {
-            return ParticipationEmitOutcome.Inactive // flag OFF(legacy) — 자발 발화 경로 미진입(기존 동작 보존)
+        val mode = flags.effectiveMode(guildId = signal.guildId, channelId = signal.channelId)
+        if (!mode.evaluatesPolicy) {
+            return recordTrace(
+                signal = signal,
+                mode = mode,
+                outcome = ParticipationEmitOutcome.Inactive,
+            )
         }
-        return try {
-            evaluateAndEmit(signal)
-        } catch (e: Exception) {
-            // 관찰 실패는 사용자 응답(autoRespond 등)을 막지 않는다 — 흡수 후 로그만(관찰 best-effort).
-            log.warn("NEXA participation 발화 평가 실패(channel={}) — 자발 발화만 건너뜀: {}", signal.channelId, e.message)
-            ParticipationEmitOutcome.Failed
-        }
+        val outcome =
+            try {
+                evaluateAndEmit(signal)
+            } catch (e: Exception) {
+                // 관찰 실패는 사용자 응답(autoRespond 등)을 막지 않는다 — 흡수 후 로그만(관찰 best-effort).
+                log.warn("NEXA participation 발화 평가 실패(channel={}) — 자발 발화만 건너뜀: {}", signal.channelId, e.message)
+                ParticipationEmitOutcome.Failed
+            }
+        return recordTrace(signal = signal, mode = mode, outcome = outcome)
     }
 
     private fun evaluateAndEmit(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
@@ -290,6 +303,42 @@ class NexaParticipationEmitBridge(
         return ParticipationEmitOutcome.Emitted(result)
     }
 
+    private fun recordTrace(
+        signal: ParticipationMessageSignal,
+        mode: ShadowMode,
+        outcome: ParticipationEmitOutcome,
+    ): ParticipationEmitOutcome {
+        traceStore.append(
+            ParticipationGateTrace(
+                correlationId = correlationIdOf(signal),
+                guildId = signal.guildId,
+                channelId = signal.channelId,
+                sceneSeq = signal.sceneSeq,
+                contextVersion = signal.contextVersion,
+                recordedAt = recordedAtOf(signal),
+                mode = mode,
+                outcome = outcome.traceOutcome,
+                reasonCode = outcome.traceReasonCode,
+                policyAction = outcome.tracePolicyAction,
+                safeAction = outcome.traceSafeAction,
+                speechOutcome = outcome.traceSpeechOutcome,
+                consentStage = outcome.traceConsentStage,
+                willSpeak = outcome.traceWillSpeak,
+                features =
+                    ParticipationGateTraceFeatures(
+                        mentioned = signal.mentioned,
+                        replyToNia = signal.replyToNia,
+                        duplicateOfPrevHuman = signal.duplicateOfPrevHuman,
+                        burstIncomplete = signal.burstIncomplete,
+                        conversationMentionsNia = signal.conversationMentionsNia,
+                        recentAgentBurstCount = signal.recentAgentBurstCount,
+                        hasTimestamp = signal.tsMs > 0,
+                    ),
+            ),
+        )
+        return outcome
+    }
+
     /**
      * 자발 발화 빈도 이중 게이트(채널별 + 전역). **둘 다 통과해야** true. emit 호출 전에 평가하므로 거부면 GLM 토큰 0.
      * 게이트 평가 자체가 실패(예외)해도 흡수해 발화를 막는다(fail-closed — 안전망이 오히려 폭주를 허용하지 않게).
@@ -314,6 +363,11 @@ class NexaParticipationEmitBridge(
         guildId: Long,
         userId: Long,
     ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = userId)
+
+    private fun correlationIdOf(signal: ParticipationMessageSignal): String = "participation:${signal.channelId}:${signal.sceneSeq}"
+
+    private fun recordedAtOf(signal: ParticipationMessageSignal): Instant =
+        if (signal.tsMs > 0) Instant.ofEpochMilli(signal.tsMs) else Instant.EPOCH
 
     /**
      * core 규칙이 명백한 SPEAK 로 즉결했을 때 쓰는 결정론 분포(SPEAK=1.0). 정책 분포를 묻지 않고 바로 발화하되,
@@ -469,3 +523,61 @@ sealed interface ParticipationEmitOutcome {
     /** 평가/emit 중 예외 흡수 — 사용자 응답에는 영향 없음. */
     data object Failed : ParticipationEmitOutcome
 }
+
+private val ParticipationEmitOutcome.traceOutcome: String
+    get() =
+        when (this) {
+            ParticipationEmitOutcome.Inactive -> "INACTIVE"
+            is ParticipationEmitOutcome.NotSpeaking -> "NOT_SPEAKING"
+            is ParticipationEmitOutcome.RuleSilent -> "RULE_SILENT"
+            is ParticipationEmitOutcome.RuleWait -> "RULE_WAIT"
+            is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
+            is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
+            is ParticipationEmitOutcome.Emitted -> "EMITTED"
+            ParticipationEmitOutcome.Failed -> "FAILED"
+        }
+
+private val ParticipationEmitOutcome.traceReasonCode: String?
+    get() =
+        when (this) {
+            is ParticipationEmitOutcome.RuleSilent -> reasonCode
+            is ParticipationEmitOutcome.RuleWait -> reasonCode
+            is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
+            is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
+            else -> null
+        }
+
+private val ParticipationEmitOutcome.tracePolicyAction: String?
+    get() =
+        when (this) {
+            is ParticipationEmitOutcome.NotSpeaking -> action.wireName
+            is ParticipationEmitOutcome.Emitted -> SocialActionKind.SPEAK.wireName
+            else -> null
+        }
+
+private val ParticipationEmitOutcome.traceSafeAction: String?
+    get() =
+        (this as? ParticipationEmitOutcome.Emitted)
+            ?.result
+            ?.safeDecision
+            ?.finalAction
+            ?.wireName
+
+private val ParticipationEmitOutcome.traceSpeechOutcome: String?
+    get() =
+        (this as? ParticipationEmitOutcome.Emitted)
+            ?.result
+            ?.pipelineResult
+            ?.outcome
+            ?.name
+
+private val ParticipationEmitOutcome.traceConsentStage: String?
+    get() =
+        (this as? ParticipationEmitOutcome.Emitted)
+            ?.result
+            ?.pipelineResult
+            ?.consentStage
+            ?.name
+
+private val ParticipationEmitOutcome.traceWillSpeak: Boolean?
+    get() = (this as? ParticipationEmitOutcome.Emitted)?.result?.willSpeak

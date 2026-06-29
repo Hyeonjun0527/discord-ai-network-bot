@@ -34,13 +34,13 @@
 ## B. 현재 막힘 지점 제거
 
 - [ ] 7. `니아수다` 메시지가 실제 participation path에 들어오는지 Discord inbound 경로를 끝까지 추적한다.
-- [ ] 8. active flag, lane, shadow mode, channel mode 중 어느 gate에서 멈추는지 outcome별로 기록한다.
-- [ ] 9. `ConsentPolicyPort`가 fail-closed deny만 반환하는 환경에서는 왜 `ConsentBlocked`가 나는지 운영자가 볼 수 있게 한다.
+- [x] 8. active flag, lane, shadow mode, channel mode 중 어느 gate에서 멈추는지 outcome별로 기록한다.
+- [x] 9. `ConsentPolicyPort`가 fail-closed deny만 반환하는 환경에서는 왜 `ConsentBlocked`가 나는지 운영자가 볼 수 있게 한다.
 - [ ] 10. `니아수다` 채널 생성 시 autoRespond가 아니라 participation live/canary/shadow 대상이 되는지 검증한다.
 - [ ] 11. bot/self/webhook/system 메시지가 사람 메시지와 섞여 judge에 들어가지 않도록 source type 필터를 확정한다.
 - [ ] 12. blank, dot-prefix, command-like 메시지 처리 정책을 autoRespond와 participation에서 각각 분리한다.
-- [ ] 13. early return 결과인 `Inactive`, `ConsentBlocked`, `RuleSilent`, `RuleWait`, `AttentionDeferred`, `NotSpeaking`을 모두 추적 가능하게 한다.
-- [ ] 14. 사용자가 "왜 답장 안 해?"라고 물었을 때 운영자가 원문 없이도 어느 gate에서 막혔는지 볼 수 있는 디버그 view를 만든다.
+- [x] 13. early return 결과인 `Inactive`, `ConsentBlocked`, `RuleSilent`, `RuleWait`, `AttentionDeferred`, `NotSpeaking`을 모두 추적 가능하게 한다.
+- [x] 14. 사용자가 "왜 답장 안 해?"라고 물었을 때 운영자가 원문 없이도 어느 gate에서 막혔는지 볼 수 있는 디버그 view를 만든다.
 
 ## C. 원문 뇌 컨텍스트 저장소
 

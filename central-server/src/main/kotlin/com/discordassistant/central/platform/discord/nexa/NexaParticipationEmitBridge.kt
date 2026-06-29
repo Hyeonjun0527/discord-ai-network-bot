@@ -1,6 +1,12 @@
 package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
+import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
@@ -72,6 +78,7 @@ class NexaParticipationEmitBridge(
     private val rateLimitStore: RateLimitStore,
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
+    private val rawContextStore: RawContextStorePort? = null,
     private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
@@ -98,6 +105,23 @@ class NexaParticipationEmitBridge(
                 outcome = ParticipationEmitOutcome.Inactive,
             )
         }
+        if (signal.sourceType != ParticipationMessageSourceType.HUMAN) {
+            return recordTrace(
+                signal = signal,
+                mode = mode,
+                outcome = ParticipationEmitOutcome.RuleSilent("RULE_NON_HUMAN_SOURCE"),
+            )
+        }
+        if (signal.isParticipationCommandLike()) {
+            return recordTrace(
+                signal = signal,
+                mode = mode,
+                outcome = ParticipationEmitOutcome.RuleSilent("RULE_COMMAND_LIKE"),
+            )
+        }
+        if (!captureRawContext(signal)) {
+            return recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed)
+        }
         val outcome =
             try {
                 evaluateAndEmit(signal)
@@ -107,6 +131,42 @@ class NexaParticipationEmitBridge(
                 ParticipationEmitOutcome.Failed
             }
         return recordTrace(signal = signal, mode = mode, outcome = outcome)
+    }
+
+    private fun captureRawContext(signal: ParticipationMessageSignal): Boolean {
+        val store = rawContextStore ?: return true
+        return try {
+            store.append(signal.toRawContextEntry())
+            true
+        } catch (e: Exception) {
+            log.warn(
+                "NEXA raw context 저장 실패(channel={}, message={}) — participation 평가 중단: {}",
+                signal.channelId,
+                signal.messageId,
+                e.message,
+            )
+            false
+        }
+    }
+
+    private fun ParticipationMessageSignal.toRawContextEntry(): RawContextEntry =
+        RawContextEntry(
+            scope = RawContextScope(guildId = guildId, channelId = channelId, threadId = threadId),
+            messageId = messageId,
+            authorPseudonym = userPseudonym(guildId, userId),
+            occurredAt = recordedAtOf(this),
+            replyToMessageId = replyToMessageId,
+            sourceType = sourceType.toRawContextSourceType(),
+            content = rawContextContent(),
+        )
+
+    private fun ParticipationMessageSignal.rawContextContent(): RawContextContent {
+        val text = rawText
+        return if (text.isBlank()) {
+            RawContextContent.Unavailable(RawContextUnavailableReason.EMPTY)
+        } else {
+            RawContextContent.Available(text)
+        }
     }
 
     private fun evaluateAndEmit(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
@@ -427,8 +487,16 @@ data class ParticipationMessageSignal(
     val guildId: Long,
     /** raw 채널 id(participation flag·라우팅 키). */
     val channelId: Long,
+    /** raw message id(raw context 보존·redaction·decision correlation 에 사용). */
+    val messageId: Long,
     /** raw 발화자 user id(브리지가 동의 가명·target 가명화에 사용). */
     val userId: Long,
+    /** raw context scope 의 thread id. 채널 직속이면 null. */
+    val threadId: Long? = null,
+    /** reply 대상 message id. 없으면 null. */
+    val replyToMessageId: Long? = null,
+    /** Discord message 출처. 사람 메시지만 raw context와 judge 후보에 들어간다. */
+    val sourceType: ParticipationMessageSourceType = ParticipationMessageSourceType.HUMAN,
     /** 봇이 직접 멘션됐는가(정책 신호 — 멘션이면 cooldown 무시 경향). */
     val mentioned: Boolean,
     /** 최근 NEXA 발화 횟수(cooldown 신호 — 말 많음 억제). 미관측이면 0. */
@@ -440,6 +508,8 @@ data class ParticipationMessageSignal(
      * 제외를 판정한다. 미관측이면 빈 문자열(보수적 — 규칙이 Candidate 로 위임해 기존 정책 분포에 맡긴다).
      */
     val triggerText: String = "",
+    /** raw context store 에 저장할 원문. [triggerText] 와 달리 규칙 평가용 500자 절단을 적용하지 않는다. */
+    val rawText: String = triggerText,
     /** 트리거 화자 가명 라벨([CoreInterventionRules] 의 봇/시스템·사적 핑퐁 판정용). 미관측이면 빈 문자열. */
     val speakerLabel: String = "",
     /** 트리거가 니아의 메시지에 대한 reply 인가(core hard_policy RESPOND_NOW reply 신호). 미관측이면 false(보수적). */
@@ -473,6 +543,23 @@ data class ParticipationMessageSignal(
     /** 결정론 seed(안전 override·후보 선택 재현 키). */
     val seed: Long,
 )
+
+enum class ParticipationMessageSourceType {
+    HUMAN,
+    BOT,
+    WEBHOOK,
+    SYSTEM,
+}
+
+private fun ParticipationMessageSourceType.toRawContextSourceType(): RawContextSourceType =
+    when (this) {
+        ParticipationMessageSourceType.HUMAN -> RawContextSourceType.HUMAN
+        ParticipationMessageSourceType.BOT -> RawContextSourceType.BOT
+        ParticipationMessageSourceType.WEBHOOK -> RawContextSourceType.WEBHOOK
+        ParticipationMessageSourceType.SYSTEM -> RawContextSourceType.SYSTEM
+    }
+
+private fun ParticipationMessageSignal.isParticipationCommandLike(): Boolean = rawText.trimStart().startsWith(".")
 
 /** [NexaParticipationEmitBridge.onMessage] 결과 — flag OFF/비SPEAK/emit/실패를 명시 구분(관찰·테스트). */
 sealed interface ParticipationEmitOutcome {

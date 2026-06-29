@@ -8,7 +8,16 @@ import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.conversation.application.port.out.ConsentPolicyPort
+import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
 import com.discordassistant.central.conversation.domain.model.ConsentDecision
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 import com.discordassistant.central.participation.adapter.outbound.policy.baseline.CooldownHeuristicPolicy
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
@@ -571,6 +580,101 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled).isEmpty()
     }
 
+    @Test
+    fun `LIVE human 메시지는 절단하지 않은 원문을 raw context store 에 저장한다`() {
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        val longRaw = "니아야 " + "가".repeat(600)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                rawContextStore = rawStore,
+            )
+
+        bridge.onMessage(signal(mentioned = true, triggerText = longRaw.take(500), rawText = longRaw))
+
+        val entry = rawStore.entries.single()
+        assertThat(entry.messageId).isEqualTo(10L)
+        assertThat(entry.sourceType).isEqualTo(RawContextSourceType.HUMAN)
+        assertThat((entry.content as RawContextContent.Available).text).isEqualTo(longRaw)
+    }
+
+    @Test
+    fun `webhook system bot source 는 raw context 와 judge 후보에서 제외된다`() {
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                rawContextStore = rawStore,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = true,
+                    sourceType = ParticipationMessageSourceType.WEBHOOK,
+                    rawText = "니아야 봐줘",
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.RuleSilent("RULE_NON_HUMAN_SOURCE"))
+        assertThat(rawStore.entries).isEmpty()
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `dot prefix command-like 메시지는 participation 에서 별도 silent 처리한다`() {
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                rawContextStore = rawStore,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = ".도움말", rawText = ".도움말"))
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.RuleSilent("RULE_COMMAND_LIKE"))
+        assertThat(rawStore.entries).isEmpty()
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `raw context 저장 실패 시 원문 없이 judge 를 계속 돌리지 않는다`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                rawContextStore = ThrowingRawContextStore,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, rawText = "니아야"))
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.Failed)
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private fun signal(
@@ -590,15 +694,21 @@ class NexaParticipationEmitBridgeTest {
         conversationMentionsNia: Boolean = false,
         // tsMs 기본 0 = attention 타이밍 게이트 건너뜀(기존 테스트 동작 보존). 타이밍을 검증하는 테스트만 명시 주입한다.
         tsMs: Long = 0,
+        messageId: Long = 10L,
+        rawText: String = triggerText,
+        sourceType: ParticipationMessageSourceType = ParticipationMessageSourceType.HUMAN,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
             channelId = channelId,
+            messageId = messageId,
             userId = 2L,
+            sourceType = sourceType,
             mentioned = mentioned,
             recentAgentBurstCount = recentAgentBurstCount,
             recentTurns = listOf(ConversationTurn("user_2", "안녕")),
             triggerText = triggerText,
+            rawText = rawText,
             speakerLabel = speakerLabel,
             replyToNia = replyToNia,
             niaRecentTokens = niaRecentTokens,
@@ -613,6 +723,39 @@ class NexaParticipationEmitBridgeTest {
             contextVersion = 1L,
             seed = 7L,
         )
+
+    private class CapturingRawContextStore : RawContextStorePort {
+        val entries = mutableListOf<RawContextEntry>()
+
+        override fun append(entry: RawContextEntry): RawContextAppendResult {
+            entries += entry
+            return RawContextAppendResult(readRecent(entry.scope), emptyList())
+        }
+
+        override fun readRecent(scope: RawContextScope): RawContextSnapshot =
+            RawContextSnapshot(scope, entries.filter { it.scope == scope })
+
+        override fun redact(
+            scope: RawContextScope,
+            messageId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextRedactionResult {
+            val removed = entries.removeIf { it.scope == scope && it.messageId == messageId }
+            return RawContextRedactionResult(readRecent(scope), removed)
+        }
+    }
+
+    private object ThrowingRawContextStore : RawContextStorePort {
+        override fun append(entry: RawContextEntry): RawContextAppendResult = error("raw unavailable")
+
+        override fun readRecent(scope: RawContextScope): RawContextSnapshot = RawContextSnapshot(scope, emptyList())
+
+        override fun redact(
+            scope: RawContextScope,
+            messageId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextRedactionResult = RawContextRedactionResult(readRecent(scope), removed = false)
+    }
 
     private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")
 

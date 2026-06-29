@@ -17,6 +17,7 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.entities.MessageType
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
@@ -1284,10 +1285,15 @@ class DiscordBot(
                     com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
                         guildId = event.guild.idLong,
                         channelId = event.channel.idLong,
+                        messageId = messageId,
                         userId = event.author.idLong,
+                        threadId = event.message.startedThread?.idLong,
+                        replyToMessageId = event.message.referencedMessage?.idLong,
+                        sourceType = participationSourceTypeOf(event),
                         mentioned = mentioned,
                         recentTurns = listOf(turn),
                         triggerText = contentRaw.take(500),
+                        rawText = contentRaw,
                         speakerLabel = speakerLabel,
                         replyToNia = replyToNia,
                         niaRecentTokens = niaRecentTokens,
@@ -1307,6 +1313,19 @@ class DiscordBot(
                 log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
             }
         }
+
+        private fun participationSourceTypeOf(
+            event: MessageReceivedEvent,
+        ): com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType =
+            when {
+                event.message.type != MessageType.DEFAULT && event.message.type != MessageType.INLINE_REPLY ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.SYSTEM
+                event.message.isWebhookMessage ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.WEBHOOK
+                event.author.isBot ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.BOT
+                else -> com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.HUMAN
+            }
 
         /**
          * 니아 직전 발화(reply 의 referencedMessage)에서 continuation 매칭용 토큰을 뽑는다 — core

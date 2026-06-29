@@ -6,6 +6,7 @@ import com.discordassistant.central.conversation.application.port.out.ConsentPol
 import com.discordassistant.central.global.privacy.ConsentGate
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
+import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -74,6 +75,11 @@ class NexaSpeechEmitConfig {
     @Bean
     @ConditionalOnMissingBean(SpeechDecisionLogPort::class)
     fun nexaNoopSpeechDecisionLog(): SpeechDecisionLogPort = SpeechDecisionLogPort.Noop
+
+    /** requestlog correlation recorder 미바인딩 환경 기본값(Noop). */
+    @Bean
+    @ConditionalOnMissingBean(NexaCorrelationRecorderPort::class)
+    fun nexaNoopCorrelationRecorder(): NexaCorrelationRecorderPort = NexaCorrelationRecorderPort.Noop
 
     /** banter 안전 override + decision log(M3) — 전송될 행동을 정하기 전 위험 act/SPEAK 제거. */
     @Bean

@@ -14,11 +14,14 @@ import com.discordassistant.central.participation.application.debug.Participatio
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.FeatureValue
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
+import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
 import com.discordassistant.central.participation.application.port.out.PolicyConfigView
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
+import com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
@@ -79,6 +82,7 @@ class NexaParticipationEmitBridge(
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
     private val rawContextStore: RawContextStorePort? = null,
+    private val decisionLog: ParticipationDecisionLogPort? = null,
     private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
@@ -301,15 +305,38 @@ class NexaParticipationEmitBridge(
         if (signal.tsMs > 0) {
             val wake = evaluateAttention(channelKey, signal, verdict)
             if (wake == AttentionGateConstants.WAIT) {
+                logRuleDecision(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    channelKey = channelKey,
+                    actionKind = SocialActionKind.WAIT,
+                    reasonCode = "ATTENTION_DEFERRED",
+                )
                 return ParticipationEmitOutcome.AttentionDeferred(channelKey)
             }
         }
 
         when (verdict) {
-            is CoreInterventionRules.Verdict.Silent ->
+            is CoreInterventionRules.Verdict.Silent -> {
+                logRuleDecision(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    channelKey = channelKey,
+                    actionKind = SocialActionKind.IGNORE,
+                    reasonCode = verdict.reasonCode,
+                )
                 return ParticipationEmitOutcome.RuleSilent(verdict.reasonCode)
-            is CoreInterventionRules.Verdict.Wait ->
+            }
+            is CoreInterventionRules.Verdict.Wait -> {
+                logRuleDecision(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    channelKey = channelKey,
+                    actionKind = SocialActionKind.WAIT,
+                    reasonCode = verdict.reasonCode,
+                )
                 return ParticipationEmitOutcome.RuleWait(verdict.reasonCode)
+            }
             is CoreInterventionRules.Verdict.Speak -> {
                 // 규칙이 명백한 SPEAK 라 정책 분포를 묻지 않는다 — 결정론 ALWAYS_SPEAK 분포로 emit 한다.
                 return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, ruleForcedSpeakResponse())
@@ -352,6 +379,14 @@ class NexaParticipationEmitBridge(
         // 2) SPEAK 가 가장 유력하지 않으면 emit 를 부르지 않는다(IGNORE/REACT/WAIT 는 발화 없음). emit 가 안전 override 로
         //    다시 한 번 접지만, 여기서 먼저 거르면 불필요한 발화 파이프라인·생성 비용을 피한다(KISS).
         if (response.mostLikelyAction != com.discordassistant.central.participation.domain.model.action.SocialActionKind.SPEAK) {
+            logPolicyDecision(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                channelKey = channelKey,
+                response = response,
+                actionKind = response.mostLikelyAction,
+                reasonCode = "POLICY_ARGMAX_${response.mostLikelyAction.name}",
+            )
             return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
         }
         return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response)
@@ -420,8 +455,17 @@ class NexaParticipationEmitBridge(
         guildPseudonym: String,
         userPseudonym: String,
         channelKey: String,
-        response: com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse,
+        response: PolicyDecisionResponse,
     ): ParticipationEmitOutcome {
+        logPolicyDecision(
+            signal = signal,
+            guildPseudonym = guildPseudonym,
+            channelKey = channelKey,
+            response = response,
+            actionKind = SocialActionKind.SPEAK,
+            reasonCode = response.reasonCodeForDecision(),
+        )
+
         // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
         //    채널별/전역 이중 게이트를 둔다. **둘 중 하나라도 거부면 emit 를 호출하지 않는다(GLM 토큰 0)**. LIVE 로
         //    실제 전송이 일어나도 이 게이트가 분당 발화 수를 hard cap 으로 묶어 과발화·토큰 폭주를 막는다.
@@ -448,9 +492,17 @@ class NexaParticipationEmitBridge(
                         guildPseudonym = guildPseudonym,
                         channelId = channelKey,
                         contextVersion = signal.contextVersion,
-                        featureHash = "mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}",
+                        featureHash = featureHashOf(signal),
                         featureVectorVersion = FeatureCatalog.VERSION,
                         modelVersion = response.modelVersion,
+                        reasonCode = response.reasonCodeForDecision(),
+                        judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
+                        decisionDelayMillis =
+                            response.delayDistribution.mostLikelyBucket.lowerBound
+                                ?.toMillis(),
+                        lastWakeUpReason = signal.wakeUpReasonCode(),
+                        missingInputCodes = signal.missingInputCodes(),
+                        evidenceRefs = signal.evidenceRefs(guildPseudonym),
                     ),
                 rawDistribution = response.toDomain(),
                 safetyContext = BanterSafetyContext(),
@@ -539,10 +591,116 @@ class NexaParticipationEmitBridge(
         userId: Long,
     ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = userId)
 
+    private fun messagePseudonym(
+        guildId: Long,
+        messageId: Long,
+    ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = messageId)
+
     private fun correlationIdOf(signal: ParticipationMessageSignal): String = "participation:${signal.channelId}:${signal.sceneSeq}"
 
     private fun recordedAtOf(signal: ParticipationMessageSignal): Instant =
         if (signal.tsMs > 0) Instant.ofEpochMilli(signal.tsMs) else Instant.EPOCH
+
+    private fun PolicyDecisionResponse.reasonCodeForDecision(): String =
+        if (modelVersion == RULE_FORCED_MODEL_VERSION) "RULE_FORCED_SPEAK" else "POLICY_ARGMAX_SPEAK"
+
+    private fun logRuleDecision(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+        actionKind: SocialActionKind,
+        reasonCode: String,
+    ) {
+        appendDecisionLog(
+            DecisionLogRecord(
+                correlationId = correlationIdOf(signal),
+                guildPseudonym = guildPseudonym,
+                channelId = channelKey,
+                contextVersion = signal.contextVersion,
+                actionKind = actionKind,
+                featureHash = featureHashOf(signal),
+                featureVectorVersion = FeatureCatalog.VERSION,
+                modelVersion = RULE_FORCED_MODEL_VERSION,
+                seed = signal.seed,
+                removedKinds = emptySet(),
+                reasonCode = reasonCode,
+                judgeConfidence = 1.0,
+                decisionDelayMillis = if (actionKind == SocialActionKind.WAIT) 1_000 else null,
+                lastWakeUpReason = signal.wakeUpReasonCode(),
+                missingInputCodes = signal.missingInputCodes(),
+                evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                consumedGenerationQuota = false,
+                decidedAt = recordedAtOf(signal),
+            ),
+        )
+    }
+
+    private fun logPolicyDecision(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+        response: PolicyDecisionResponse,
+        actionKind: SocialActionKind,
+        reasonCode: String,
+    ) {
+        appendDecisionLog(
+            DecisionLogRecord(
+                correlationId = correlationIdOf(signal),
+                guildPseudonym = guildPseudonym,
+                channelId = channelKey,
+                contextVersion = signal.contextVersion,
+                actionKind = actionKind,
+                featureHash = featureHashOf(signal),
+                featureVectorVersion = FeatureCatalog.VERSION,
+                modelVersion = response.modelVersion,
+                seed = signal.seed,
+                removedKinds = emptySet(),
+                reasonCode = reasonCode,
+                judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
+                decisionDelayMillis =
+                    response.delayDistribution.mostLikelyBucket.lowerBound
+                        ?.toMillis(),
+                lastWakeUpReason = signal.wakeUpReasonCode(),
+                missingInputCodes = signal.missingInputCodes(),
+                evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                consumedGenerationQuota = actionKind == SocialActionKind.SPEAK,
+                decidedAt = recordedAtOf(signal),
+            ),
+        )
+    }
+
+    private fun appendDecisionLog(record: DecisionLogRecord) {
+        val sink = decisionLog ?: return
+        try {
+            sink.append(record)
+        } catch (e: Exception) {
+            log.warn("NEXA participation decision log 기록 실패(correlation={}) — {}", record.correlationId, e.message)
+        }
+    }
+
+    private fun featureHashOf(signal: ParticipationMessageSignal): String =
+        "mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}"
+
+    private fun ParticipationMessageSignal.wakeUpReasonCode(): String =
+        when {
+            replyToNia -> "REPLY_TO_NIA"
+            mentioned -> "MENTION"
+            conversationMentionsNia -> "CONVERSATION_MENTIONS_NIA"
+            else -> "POLICY_CANDIDATE"
+        }
+
+    private fun ParticipationMessageSignal.missingInputCodes(): Set<String> =
+        buildSet {
+            if (rawText.isBlank()) add("RAW_CONTENT_UNAVAILABLE")
+            if (tsMs <= 0) add("TIMESTAMP_MISSING")
+            if (recentTurns.isEmpty()) add("RECENT_TURNS_MISSING")
+        }
+
+    private fun ParticipationMessageSignal.evidenceRefs(guildPseudonym: String): Set<String> =
+        setOf(
+            "raw_context_scope:g=$guildPseudonym:c=$channelId",
+            "raw_context_message:${messagePseudonym(guildId, messageId)}",
+        )
 
     /**
      * core 규칙이 명백한 SPEAK 로 즉결했을 때 쓰는 결정론 분포(SPEAK=1.0). 정책 분포를 묻지 않고 바로 발화하되,

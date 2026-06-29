@@ -52,6 +52,18 @@ data class DecisionLogRecord(
     val seed: Long,
     /** 하드 제약으로 제거된 action kind 들(안전 후처리 근거, T021). */
     val removedKinds: Set<SocialActionKind>,
+    /** judge/guard/admin 설명용 안정 reason code. 원문·프롬프트 본문 금지. */
+    val reasonCode: String? = null,
+    /** judge confidence. 규칙/legacy 분포는 호출자가 보수적으로 계산해 채운다. */
+    val judgeConfidence: Double? = null,
+    /** WAIT/예약 설명용 지연(ms). 즉시/미관측이면 null 가능. */
+    val decisionDelayMillis: Long? = null,
+    /** 마지막 wake-up/보류 이유 코드. 자연어 원문이 아니라 안정 코드만 저장한다. */
+    val lastWakeUpReason: String? = null,
+    /** 판단에 빠진 입력 코드 목록(content_unavailable 등). 원문 비포함. */
+    val missingInputCodes: Set<String> = emptySet(),
+    /** raw context/eval evidence 참조. 원문과 원시 Discord snowflake 를 직접 담지 않는다. */
+    val evidenceRefs: Set<String> = emptySet(),
     /** 이 결정이 generation quota 를 소모했는가(SPEAK 만 true). */
     val consumedGenerationQuota: Boolean,
     /** 결정 발생 시각(보존/삭제 정책의 기준). */
@@ -65,5 +77,13 @@ data class DecisionLogRecord(
         require(modelVersion.isNotBlank()) { "modelVersion 은 비어 있을 수 없다" }
         require(featureVectorVersion >= 1) { "featureVectorVersion 은 1 이상이어야 한다" }
         require(contextVersion >= 0) { "contextVersion 은 음수일 수 없다" }
+        judgeConfidence?.let { require(it in 0.0..1.0) { "judgeConfidence 는 [0,1] 범위여야 한다: $it" } }
+        decisionDelayMillis?.let { require(it >= 0) { "decisionDelayMillis 는 음수일 수 없다: $it" } }
+        missingInputCodes.forEach { require(it.isStableCode()) { "missingInputCodes 는 안정 코드여야 한다: $it" } }
+        evidenceRefs.forEach { require(it.isStableCodeRef()) { "evidenceRefs 는 안정 참조여야 한다: $it" } }
     }
 }
+
+private fun String.isStableCode(): Boolean = matches(Regex("[A-Z0-9_:-]{1,96}"))
+
+private fun String.isStableCodeRef(): Boolean = matches(Regex("[A-Za-z0-9_:.=-]{1,160}"))

@@ -48,6 +48,12 @@ class JpaParticipationDecisionLog(
         entity.modelVersion = record.modelVersion
         entity.seed = record.seed
         entity.removedKinds = record.removedKinds.joinToString(",") { it.wireName }
+        entity.reasonCode = record.reasonCode
+        entity.judgeConfidence = record.judgeConfidence
+        entity.decisionDelayMillis = record.decisionDelayMillis
+        entity.lastWakeUpReason = record.lastWakeUpReason
+        entity.missingInputCodes = record.missingInputCodes.joinToString(",")
+        entity.evidenceRefs = record.evidenceRefs.joinToString(",")
         entity.consumedGenerationQuota = record.consumedGenerationQuota
         entity.decidedAt = record.decidedAt
         logs.save(entity)
@@ -76,6 +82,12 @@ class JpaParticipationDecisionLog(
                     .filter { it.isNotBlank() }
                     .mapNotNull { code -> SocialActionKind.entries.firstOrNull { it.wireName == code } }
                     .toSet(),
+            reasonCode = reasonCode,
+            judgeConfidence = judgeConfidence,
+            decisionDelayMillis = decisionDelayMillis,
+            lastWakeUpReason = lastWakeUpReason,
+            missingInputCodes = missingInputCodes.toCodeSet(),
+            evidenceRefs = evidenceRefs.toCodeSet(),
             consumedGenerationQuota = consumedGenerationQuota,
             decidedAt = decidedAt,
         )
@@ -99,6 +111,12 @@ class NexaPolicyDecisionLogEntity(
     @Column(name = "model_version") var modelVersion: String = "",
     @Column(name = "seed") var seed: Long = 0,
     @Column(name = "removed_kinds") var removedKinds: String = "",
+    @Column(name = "reason_code") var reasonCode: String? = null,
+    @Column(name = "judge_confidence") var judgeConfidence: Double? = null,
+    @Column(name = "decision_delay_millis") var decisionDelayMillis: Long? = null,
+    @Column(name = "last_wake_up_reason") var lastWakeUpReason: String? = null,
+    @Column(name = "missing_input_codes") var missingInputCodes: String = "",
+    @Column(name = "evidence_refs") var evidenceRefs: String = "",
     @Column(name = "consumed_generation_quota") var consumedGenerationQuota: Boolean = false,
     @Column(name = "decided_at") var decidedAt: Instant = Instant.EPOCH,
 ) {
@@ -115,3 +133,9 @@ interface NexaPolicyDecisionLogRepository : JpaRepository<NexaPolicyDecisionLogE
         @Param("olderThan") olderThan: Instant,
     ): Int
 }
+
+private fun String.toCodeSet(): Set<String> =
+    split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .toSet()

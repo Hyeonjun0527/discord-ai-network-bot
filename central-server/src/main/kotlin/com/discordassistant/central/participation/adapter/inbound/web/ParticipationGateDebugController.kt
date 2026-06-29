@@ -3,6 +3,8 @@ package com.discordassistant.central.participation.adapter.inbound.web
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
+import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
+import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -14,6 +16,7 @@ import java.time.Instant
 @RequestMapping("/api/ai-network/nexa/debug/participation")
 class ParticipationGateDebugController(
     private val traces: ParticipationGateTraceStore,
+    private val decisions: ParticipationDecisionLogPort,
 ) {
     @GetMapping("/guilds/{guildId}/channels/{channelId}/traces")
     fun recentTraces(
@@ -24,6 +27,11 @@ class ParticipationGateDebugController(
         traces
             .recent(guildId = guildId, channelId = channelId, limit = limit)
             .map { it.toDto() }
+
+    @GetMapping("/decisions/{correlationId}")
+    fun decisionExplanation(
+        @PathVariable correlationId: String,
+    ): ParticipationDecisionExplanationDto? = decisions.findByCorrelationId(correlationId)?.toExplanationDto()
 }
 
 data class ParticipationGateTraceDto(
@@ -56,6 +64,22 @@ data class ParticipationGateTraceFeaturesDto(
     val hasTimestamp: Boolean,
 )
 
+data class ParticipationDecisionExplanationDto(
+    val correlationId: String,
+    val action: String,
+    val gate: String,
+    val reasonCode: String?,
+    val judgeConfidence: Double?,
+    val decisionDelayMillis: Long?,
+    val lastWakeUpReason: String?,
+    val missingInputCodes: Set<String>,
+    val evidenceRefs: Set<String>,
+    val contextVersion: Long,
+    val consumedGenerationQuota: Boolean,
+    val modelVersion: String,
+    val decidedAt: Instant,
+)
+
 private fun ParticipationGateTrace.toDto(): ParticipationGateTraceDto =
     ParticipationGateTraceDto(
         correlationId = correlationId,
@@ -86,4 +110,21 @@ private fun ParticipationGateTraceFeatures.toDto(): ParticipationGateTraceFeatur
         conversationMentionsNia = conversationMentionsNia,
         recentAgentBurstCount = recentAgentBurstCount,
         hasTimestamp = hasTimestamp,
+    )
+
+private fun DecisionLogRecord.toExplanationDto(): ParticipationDecisionExplanationDto =
+    ParticipationDecisionExplanationDto(
+        correlationId = correlationId,
+        action = actionKind.wireName,
+        gate = "DECISION_LOG",
+        reasonCode = reasonCode,
+        judgeConfidence = judgeConfidence,
+        decisionDelayMillis = decisionDelayMillis,
+        lastWakeUpReason = lastWakeUpReason,
+        missingInputCodes = missingInputCodes,
+        evidenceRefs = evidenceRefs,
+        contextVersion = contextVersion,
+        consumedGenerationQuota = consumedGenerationQuota,
+        modelVersion = modelVersion,
+        decidedAt = decidedAt,
     )

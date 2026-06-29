@@ -65,6 +65,12 @@ class BanterSafetyDecisionService(
                 modelVersion = provenance.modelVersion,
                 seed = seed,
                 removedKinds = removedKinds,
+                reasonCode = provenance.reasonCode,
+                judgeConfidence = provenance.judgeConfidence,
+                decisionDelayMillis = provenance.decisionDelayMillis,
+                lastWakeUpReason = provenance.lastWakeUpReason,
+                missingInputCodes = provenance.missingInputCodes,
+                evidenceRefs = provenance.evidenceRefs,
                 consumedGenerationQuota = consumedGenerationQuota,
                 decidedAt = Instant.now(clock),
             ),
@@ -87,6 +93,12 @@ data class DecisionProvenance(
     val featureHash: String,
     val featureVectorVersion: Int,
     val modelVersion: String,
+    val reasonCode: String? = null,
+    val judgeConfidence: Double? = null,
+    val decisionDelayMillis: Long? = null,
+    val lastWakeUpReason: String? = null,
+    val missingInputCodes: Set<String> = emptySet(),
+    val evidenceRefs: Set<String> = emptySet(),
 )
 
 /** banter 안전 결정 결과 — 최종 행동·override 발생 여부·제거된 kind·quota 소비. */

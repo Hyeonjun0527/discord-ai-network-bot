@@ -2,6 +2,7 @@ package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.RouteResult
+import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.DecisionProvenance
@@ -13,6 +14,8 @@ import com.discordassistant.central.participation.domain.model.action.SocialActi
 import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
 import com.discordassistant.central.participation.domain.model.decision.ActionDistribution
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
+import com.discordassistant.central.requestlog.application.NexaCorrelation
+import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.PipelineResult
 import com.discordassistant.central.speech.application.generation.GenerationBudget
@@ -56,6 +59,7 @@ class NexaSpeechEmitService(
     private val pipeline: NexaSpeechPipelineService,
     private val actionRouter: ParticipationActionRouter,
     private val modelRegistry: ShadowModelRegistry,
+    private val correlationRecorder: NexaCorrelationRecorderPort,
 ) {
     /**
      * 한 participation 평가 결과([request])를 단일 seam 으로 emit 한다. 안전 override → (필요 시)LIVE 모델 검증 →
@@ -116,6 +120,19 @@ class NexaSpeechEmitService(
                 executeAfter = request.executeAfter,
                 contextVersion = request.provenance.contextVersion,
             )
+        correlationRecorder.record(
+            NexaCorrelation(
+                correlationId = request.provenance.correlationId,
+                decisionId = request.provenance.correlationId,
+                actionId =
+                    if (routeResult is RouteResult.Scheduled) {
+                        ActionIdentity.of(request.provenance.correlationId, request.sampledActionIndex).value
+                    } else {
+                        null
+                    },
+                modelVersion = request.provenance.modelVersion,
+            ),
+        )
         return NexaSpeechEmitResult(
             safeDecision = safe,
             pipelineResult = pipelineResult,

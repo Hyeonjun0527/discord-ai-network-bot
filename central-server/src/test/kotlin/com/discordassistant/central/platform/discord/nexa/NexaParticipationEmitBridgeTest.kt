@@ -30,10 +30,12 @@ import com.discordassistant.central.participation.application.port.out.NexaParti
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeState
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
+import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.config.ParticipationLane
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.model.shadow.ShadowModeAudit
 import com.discordassistant.central.quota.application.InMemoryRateLimitStore
+import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -114,6 +116,7 @@ class NexaParticipationEmitBridgeTest {
     @Test
     fun `flag ON 이라도 정책이 SPEAK 가 아니면 emit 을 호출하지 않는다`() {
         val scheduler = FakeScheduler()
+        val decisionLog = CapturingParticipationLog()
         val bridge =
             NexaParticipationEmitBridge(
                 flags = flagService(ShadowMode.SHADOW_PREDICT),
@@ -123,12 +126,21 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                decisionLog = decisionLog,
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, recentAgentBurstCount = 5))
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java)
         assertThat(scheduler.scheduled).isEmpty()
+        assertThat(decisionLog.records.single().correlationId).isEqualTo("participation:3:10")
+        assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.IGNORE)
+        assertThat(
+            decisionLog.records
+                .single()
+                .evidenceRefs
+                .joinToString(","),
+        ).doesNotContain("안녕")
     }
 
     // ── CoreInterventionRules 통합(규칙 즉결이 정책보다 먼저) ────────────────────
@@ -979,6 +991,7 @@ class NexaParticipationEmitBridgeTest {
             pipeline = pipeline,
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
+            correlationRecorder = NexaCorrelationRecorderPort.Noop,
         )
     }
 
@@ -1009,6 +1022,7 @@ class NexaParticipationEmitBridgeTest {
                 pipeline = pipeline,
                 actionRouter = ParticipationActionRouter(scheduler),
                 modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
+                correlationRecorder = NexaCorrelationRecorderPort.Noop,
             )
         return CountingEmit(service, generationPort)
     }

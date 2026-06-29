@@ -32,6 +32,8 @@ import com.discordassistant.central.participation.domain.model.decision.TargetCa
 import com.discordassistant.central.participation.domain.model.decision.TargetKind
 import com.discordassistant.central.participation.domain.model.decision.TargetRef
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
+import com.discordassistant.central.requestlog.application.NexaCorrelation
+import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -121,6 +123,14 @@ class NexaSpeechEmitServiceTest {
         }
     }
 
+    private class CapturingCorrelationRecorder : NexaCorrelationRecorderPort {
+        val records = mutableListOf<NexaCorrelation>()
+
+        override fun record(correlation: NexaCorrelation) {
+            records += correlation
+        }
+    }
+
     private class FakeScheduler : ActionSchedulerPort {
         val scheduled = mutableListOf<ScheduledSocialAction>()
 
@@ -189,6 +199,7 @@ class NexaSpeechEmitServiceTest {
         participationLog: ParticipationDecisionLogPort = CapturingParticipationLog(),
         speechLog: SpeechDecisionLogPort = CapturingSpeechLog(),
         registry: ShadowModelRegistry = approvedRegistry(),
+        correlationRecorder: NexaCorrelationRecorderPort = NexaCorrelationRecorderPort.Noop,
     ): NexaSpeechEmitService {
         val consentPolicy = ConsentPolicyPort { _, _, _ -> consent }
         val generationService =
@@ -210,6 +221,7 @@ class NexaSpeechEmitServiceTest {
             pipeline = pipeline,
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = registry,
+            correlationRecorder = correlationRecorder,
         )
     }
 
@@ -269,17 +281,21 @@ class NexaSpeechEmitServiceTest {
     @Test
     fun `실제 경로 — 동의·안전·critic 통과면 SPEAK 가 예약된다`() {
         val scheduler = FakeScheduler()
+        val correlationRecorder = CapturingCorrelationRecorder()
         val seam =
             seam(
                 candidates = listOf(SpeechCandidate("c1", listOf("오 그거 좋네"))),
                 consent = ConsentDecision.OBSERVE_AND_SPEAK,
                 scheduler = scheduler,
+                correlationRecorder = correlationRecorder,
             )
         val result = seam.emit(request())
         assertThat(result.willSpeak).isTrue()
         assertThat(result.pipelineResult?.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
         assertThat(scheduler.scheduled).hasSize(1)
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
+        assertThat(correlationRecorder.records.single())
+            .isEqualTo(NexaCorrelation("corr-1", "corr-1", "corr-1#0", "policy-v1"))
     }
 
     @Test

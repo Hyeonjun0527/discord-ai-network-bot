@@ -64,6 +64,30 @@ class JpaParticipationDecisionLogTest
                 .containsExactlyInAnyOrder(SocialActionKind.SPEAK, SocialActionKind.CANCEL_PENDING)
         }
 
+        @Test
+        fun `decision explainability metadata 는 원문 없이 라운드트립으로 보존된다`() {
+            log.append(
+                record("corr-explain", SocialActionKind.WAIT, Instant.now())
+                    .copy(
+                        reasonCode = "POLICY_LOW_CONFIDENCE",
+                        judgeConfidence = 0.42,
+                        decisionDelayMillis = 1_000,
+                        lastWakeUpReason = "MENTION",
+                        missingInputCodes = setOf("TIMESTAMP_MISSING", "RECENT_TURNS_MISSING"),
+                        evidenceRefs = setOf("raw_context_message:v1:abc-123", "raw_context_window:hash=def456"),
+                    ),
+            )
+
+            val found = log.findByCorrelationId("corr-explain")
+            assertThat(found!!.reasonCode).isEqualTo("POLICY_LOW_CONFIDENCE")
+            assertThat(found.judgeConfidence).isEqualTo(0.42)
+            assertThat(found.decisionDelayMillis).isEqualTo(1_000)
+            assertThat(found.lastWakeUpReason).isEqualTo("MENTION")
+            assertThat(found.missingInputCodes).containsExactlyInAnyOrder("TIMESTAMP_MISSING", "RECENT_TURNS_MISSING")
+            assertThat(found.evidenceRefs)
+                .containsExactlyInAnyOrder("raw_context_message:v1:abc-123", "raw_context_window:hash=def456")
+        }
+
         private fun record(
             correlationId: String,
             kind: SocialActionKind,

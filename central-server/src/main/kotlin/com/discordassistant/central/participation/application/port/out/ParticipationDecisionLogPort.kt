@@ -79,8 +79,8 @@ data class DecisionLogRecord(
         require(contextVersion >= 0) { "contextVersion 은 음수일 수 없다" }
         judgeConfidence?.let { require(it in 0.0..1.0) { "judgeConfidence 는 [0,1] 범위여야 한다: $it" } }
         decisionDelayMillis?.let { require(it >= 0) { "decisionDelayMillis 는 음수일 수 없다: $it" } }
-        missingInputCodes.forEach { require(it.isStableCode()) { "missingInputCodes 는 안정 코드여야 한다: $it" } }
-        evidenceRefs.forEach { require(it.isStableCodeRef()) { "evidenceRefs 는 안정 참조여야 한다: $it" } }
+        missingInputCodes.forEach { require(it.isStableCode()) { "missingInputCodes 는 안정 코드여야 한다" } }
+        evidenceRefs.forEach { require(it.isStableCodeRef()) { "evidenceRefs 는 안정 참조여야 한다" } }
     }
 }
 

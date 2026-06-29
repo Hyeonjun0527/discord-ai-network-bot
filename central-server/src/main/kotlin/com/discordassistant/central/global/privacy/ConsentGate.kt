@@ -48,8 +48,17 @@ enum class ProcessingStage {
     /** 메시지 수집·관찰(진행 중 ingestion). */
     INGESTION,
 
+    /** judge 입력용 원문 context window 조회. */
+    RAW_CONTEXT_READ,
+
+    /** 단일 participation judge 호출. */
+    JUDGE_CALL,
+
     /** 발화 후보 생성. */
     SPEECH_GENERATION,
+
+    /** 예약된 action 실행 직전. */
+    PENDING_ACTION,
 
     /** 외부 GLM 요청 직전. */
     EXTERNAL_GLM_REQUEST,

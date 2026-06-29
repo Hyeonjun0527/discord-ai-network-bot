@@ -17,16 +17,25 @@ class ConsentRevocationEndToEndTest {
     ) {
         var externalSends = 0
             private set
+        var rawContextReads = 0
+            private set
+        var judgeCalls = 0
+            private set
+        var pendingActions = 0
+            private set
         var speeches = 0
             private set
         var trainingExports = 0
             private set
 
-        /** 한 메시지의 ingestion → speech → GLM 전송 → export 흐름. 각 단계 진입 전 동의를 게이트한다. */
+        /** 한 메시지의 ingestion → raw read → judge → speech → GLM → pending action → export 흐름. */
         fun process(revokeBefore: ProcessingStage? = null) {
             runStage(ProcessingStage.INGESTION, revokeBefore) { /* 관찰만 */ }
+            runStage(ProcessingStage.RAW_CONTEXT_READ, revokeBefore) { rawContextReads++ }
+            runStage(ProcessingStage.JUDGE_CALL, revokeBefore) { judgeCalls++ }
             runStage(ProcessingStage.SPEECH_GENERATION, revokeBefore) { speeches++ }
             runStage(ProcessingStage.EXTERNAL_GLM_REQUEST, revokeBefore) { externalSends++ }
+            runStage(ProcessingStage.PENDING_ACTION, revokeBefore) { pendingActions++ }
             runStage(ProcessingStage.TRAINING_EXPORT, revokeBefore) { trainingExports++ }
         }
 
@@ -46,18 +55,48 @@ class ConsentRevocationEndToEndTest {
         val gate = ConsentGate().apply { grant("user_3") }
         val p = Pipeline(gate, "user_3")
         runCatching { p.process(revokeBefore = ProcessingStage.INGESTION) }
+        assertThat(p.rawContextReads).isZero()
+        assertThat(p.judgeCalls).isZero()
         assertThat(p.speeches).isZero()
+        assertThat(p.pendingActions).isZero()
         assertThat(p.externalSends).isZero()
         assertThat(p.trainingExports).isZero()
     }
 
     @Test
-    fun `revocation just before pending speech action blocks send and export`() {
+    fun `revocation just before raw context read blocks judge speech pending and export`() {
+        val gate = ConsentGate().apply { grant("user_3") }
+        val p = Pipeline(gate, "user_3")
+        runCatching { p.process(revokeBefore = ProcessingStage.RAW_CONTEXT_READ) }
+        assertThat(p.rawContextReads).isZero()
+        assertThat(p.judgeCalls).isZero()
+        assertThat(p.speeches).isZero()
+        assertThat(p.pendingActions).isZero()
+        assertThat(p.externalSends).isZero()
+        assertThat(p.trainingExports).isZero()
+    }
+
+    @Test
+    fun `revocation just before judge call blocks judge speech pending and export`() {
+        val gate = ConsentGate().apply { grant("user_3") }
+        val p = Pipeline(gate, "user_3")
+        runCatching { p.process(revokeBefore = ProcessingStage.JUDGE_CALL) }
+        assertThat(p.rawContextReads).isEqualTo(1)
+        assertThat(p.judgeCalls).isZero()
+        assertThat(p.speeches).isZero()
+        assertThat(p.pendingActions).isZero()
+        assertThat(p.externalSends).isZero()
+        assertThat(p.trainingExports).isZero()
+    }
+
+    @Test
+    fun `revocation just before speech generation blocks send pending and export`() {
         val gate = ConsentGate().apply { grant("user_3") }
         val p = Pipeline(gate, "user_3")
         runCatching { p.process(revokeBefore = ProcessingStage.SPEECH_GENERATION) }
         assertThat(p.speeches).isZero()
         assertThat(p.externalSends).isZero()
+        assertThat(p.pendingActions).isZero()
         assertThat(p.trainingExports).isZero()
     }
 
@@ -68,6 +107,20 @@ class ConsentRevocationEndToEndTest {
         runCatching { p.process(revokeBefore = ProcessingStage.EXTERNAL_GLM_REQUEST) }
         // 발화는 생성됐을 수 있으나 외부 전송·export 는 0(철회 이후 신규 외부 전송 0).
         assertThat(p.externalSends).isZero()
+        assertThat(p.pendingActions).isZero()
+        assertThat(p.trainingExports).isZero()
+    }
+
+    @Test
+    fun `revocation just before pending action blocks scheduled execution and export`() {
+        val gate = ConsentGate().apply { grant("user_3") }
+        val p = Pipeline(gate, "user_3")
+        runCatching { p.process(revokeBefore = ProcessingStage.PENDING_ACTION) }
+        assertThat(p.rawContextReads).isEqualTo(1)
+        assertThat(p.judgeCalls).isEqualTo(1)
+        assertThat(p.speeches).isEqualTo(1)
+        assertThat(p.externalSends).isEqualTo(1)
+        assertThat(p.pendingActions).isZero()
         assertThat(p.trainingExports).isZero()
     }
 
@@ -76,8 +129,11 @@ class ConsentRevocationEndToEndTest {
         val gate = ConsentGate().apply { grant("user_3") }
         val p = Pipeline(gate, "user_3")
         p.process(revokeBefore = null)
+        assertThat(p.rawContextReads).isEqualTo(1)
+        assertThat(p.judgeCalls).isEqualTo(1)
         assertThat(p.speeches).isEqualTo(1)
         assertThat(p.externalSends).isEqualTo(1)
+        assertThat(p.pendingActions).isEqualTo(1)
         assertThat(p.trainingExports).isEqualTo(1)
     }
 
@@ -86,7 +142,10 @@ class ConsentRevocationEndToEndTest {
         val gate = ConsentGate() // grant 없음.
         val p = Pipeline(gate, "user_3")
         runCatching { p.process() }
+        assertThat(p.rawContextReads).isZero()
+        assertThat(p.judgeCalls).isZero()
         assertThat(p.speeches).isZero()
         assertThat(p.externalSends).isZero()
+        assertThat(p.pendingActions).isZero()
     }
 }

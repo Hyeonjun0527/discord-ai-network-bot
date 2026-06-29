@@ -11,6 +11,7 @@ import com.discordassistant.central.conversation.application.port.out.ConsentPol
 import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
 import com.discordassistant.central.conversation.domain.model.ConsentDecision
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
@@ -18,6 +19,7 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
+import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.adapter.outbound.policy.baseline.CooldownHeuristicPolicy
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
@@ -675,7 +677,128 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled).isEmpty()
     }
 
+    @Test
+    fun `message delete 는 raw context 에서 해당 원문을 즉시 제거한다`() {
+        val rawStore = CapturingRawContextStore()
+        rawStore.entries += rawEntry(messageId = 10L, text = "삭제될 원문")
+        rawStore.entries += rawEntry(messageId = 11L, text = "남는 원문")
+        val bridge = bridgeWithRawStore(rawStore)
+
+        val outcome =
+            bridge.onMessageDeleted(
+                ParticipationRawContextRedactionSignal(
+                    guildId = 1L,
+                    channelId = 3L,
+                    messageId = 10L,
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Redacted(1))
+        assertThat(rawStore.entries.map { it.messageId }).containsExactly(11L)
+    }
+
+    @Test
+    fun `message edit 는 judge 를 다시 돌리지 않고 raw context 원문만 교체한다`() {
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        rawStore.entries += rawEntry(messageId = 10L, text = "수정 전")
+        val bridge = bridgeWithRawStore(rawStore, scheduler)
+
+        val outcome =
+            bridge.onMessageEdited(
+                ParticipationRawContextEditSignal(
+                    guildId = 1L,
+                    channelId = 3L,
+                    messageId = 10L,
+                    userId = 2L,
+                    rawText = "수정 후",
+                    occurredAt = Instant.parse("2026-06-29T00:00:00Z"),
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Upserted)
+        assertThat((rawStore.entries.single().content as RawContextContent.Available).text).isEqualTo("수정 후")
+        assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `message edit 이 blank 나 command-like 로 바뀌면 저장된 raw context 를 제거한다`() {
+        val rawStore = CapturingRawContextStore()
+        rawStore.entries += rawEntry(messageId = 10L, text = "수정 전")
+        val bridge = bridgeWithRawStore(rawStore)
+
+        val outcome =
+            bridge.onMessageEdited(
+                ParticipationRawContextEditSignal(
+                    guildId = 1L,
+                    channelId = 3L,
+                    messageId = 10L,
+                    userId = 2L,
+                    rawText = ".도움말",
+                    occurredAt = Instant.parse("2026-06-29T00:00:00Z"),
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Redacted(1))
+        assertThat(rawStore.entries).isEmpty()
+    }
+
+    @Test
+    fun `channel disable 은 해당 채널의 모든 raw context scope 를 제거한다`() {
+        val rawStore = CapturingRawContextStore()
+        rawStore.entries += rawEntry(messageId = 10L, text = "채널 원문")
+        rawStore.entries += rawEntry(messageId = 11L, text = "스레드 원문", scope = RawContextScope(1L, 3L, 99L))
+        rawStore.entries += rawEntry(messageId = 12L, text = "다른 채널", scope = RawContextScope(1L, 4L))
+        val bridge = bridgeWithRawStore(rawStore)
+
+        val outcome = bridge.onChannelDisabled(guildId = 1L, channelId = 3L)
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Redacted(2))
+        assertThat(rawStore.entries.map { it.messageId }).containsExactly(12L)
+    }
+
+    @Test
+    fun `guild disable 은 해당 길드 raw context 를 모두 제거한다`() {
+        val rawStore = CapturingRawContextStore()
+        rawStore.entries += rawEntry(messageId = 10L, text = "길드 원문")
+        rawStore.entries += rawEntry(messageId = 11L, text = "다른 길드", scope = RawContextScope(2L, 3L))
+        val bridge = bridgeWithRawStore(rawStore)
+
+        val outcome = bridge.onGuildDisabled(guildId = 1L)
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Redacted(1))
+        assertThat(rawStore.entries.map { it.messageId }).containsExactly(11L)
+    }
+
+    @Test
+    fun `user opt-out 은 같은 guild 의 해당 author raw context 를 제거한다`() {
+        val rawStore = CapturingRawContextStore()
+        val optedOutUser = userPseudonym(guildId = 1L, userId = 2L)
+        rawStore.entries += rawEntry(messageId = 10L, text = "내 원문", authorPseudonym = optedOutUser)
+        rawStore.entries += rawEntry(messageId = 11L, text = "다른 사람", authorPseudonym = "other")
+        val bridge = bridgeWithRawStore(rawStore)
+
+        val outcome = bridge.onUserOptedOut(guildId = 1L, userId = 2L)
+
+        assertThat(outcome).isEqualTo(ParticipationRawContextMutationOutcome.Redacted(1))
+        assertThat(rawStore.entries.map { it.messageId }).containsExactly(11L)
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private fun bridgeWithRawStore(
+        rawStore: RawContextStorePort,
+        scheduler: FakeScheduler = FakeScheduler(),
+    ): NexaParticipationEmitBridge =
+        NexaParticipationEmitBridge(
+            flags = flagService(ShadowMode.LIVE),
+            policy = CooldownHeuristicPolicy(),
+            emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+            rateLimitStore = InMemoryRateLimitStore(),
+            perChannelPerMin = 6,
+            globalPerMin = 30,
+            rawContextStore = rawStore,
+        )
 
     private fun signal(
         mentioned: Boolean,
@@ -724,10 +847,32 @@ class NexaParticipationEmitBridgeTest {
             seed = 7L,
         )
 
+    private fun rawEntry(
+        messageId: Long,
+        text: String,
+        scope: RawContextScope = RawContextScope(1L, 3L),
+        authorPseudonym: String = "user-a",
+    ): RawContextEntry =
+        RawContextEntry(
+            scope = scope,
+            messageId = messageId,
+            authorPseudonym = authorPseudonym,
+            occurredAt = Instant.parse("2026-06-29T00:00:00Z").plusMillis(messageId),
+            replyToMessageId = null,
+            sourceType = RawContextSourceType.HUMAN,
+            content = RawContextContent.Available(text),
+        )
+
+    private fun userPseudonym(
+        guildId: Long,
+        userId: Long,
+    ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = userId)
+
     private class CapturingRawContextStore : RawContextStorePort {
         val entries = mutableListOf<RawContextEntry>()
 
         override fun append(entry: RawContextEntry): RawContextAppendResult {
+            entries.removeIf { it.scope == entry.scope && it.messageId == entry.messageId }
             entries += entry
             return RawContextAppendResult(readRecent(entry.scope), emptyList())
         }
@@ -743,6 +888,34 @@ class NexaParticipationEmitBridgeTest {
             val removed = entries.removeIf { it.scope == scope && it.messageId == messageId }
             return RawContextRedactionResult(readRecent(scope), removed)
         }
+
+        override fun redactScope(
+            scope: RawContextScope,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = removeAll { it.scope == scope }
+
+        override fun redactChannel(
+            guildId: Long,
+            channelId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = removeAll { it.scope.guildId == guildId && it.scope.channelId == channelId }
+
+        override fun redactGuild(
+            guildId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = removeAll { it.scope.guildId == guildId }
+
+        override fun redactAuthor(
+            guildId: Long,
+            authorPseudonym: String,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = removeAll { it.scope.guildId == guildId && it.authorPseudonym == authorPseudonym }
+
+        private fun removeAll(predicate: (RawContextEntry) -> Boolean): RawContextBulkRedactionResult {
+            val removed = entries.count(predicate)
+            entries.removeIf(predicate)
+            return RawContextBulkRedactionResult(removed)
+        }
     }
 
     private object ThrowingRawContextStore : RawContextStorePort {
@@ -755,6 +928,28 @@ class NexaParticipationEmitBridgeTest {
             messageId: Long,
             reason: RawContextUnavailableReason,
         ): RawContextRedactionResult = RawContextRedactionResult(readRecent(scope), removed = false)
+
+        override fun redactScope(
+            scope: RawContextScope,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = error("raw unavailable")
+
+        override fun redactChannel(
+            guildId: Long,
+            channelId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = error("raw unavailable")
+
+        override fun redactGuild(
+            guildId: Long,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = error("raw unavailable")
+
+        override fun redactAuthor(
+            guildId: Long,
+            authorPseudonym: String,
+            reason: RawContextUnavailableReason,
+        ): RawContextBulkRedactionResult = error("raw unavailable")
     }
 
     private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")

@@ -126,6 +126,57 @@ class JpaRawContextStoreTest
         }
 
         @Test
+        fun `channel redaction removes every raw row in channel across thread scopes`() {
+            val threadScope = scope.copy(threadId = 4)
+            val otherChannel = scope.copy(channelId = 99)
+            store.append(entry(messageId = 10, text = "aa", entryScope = scope))
+            store.append(entry(messageId = 11, text = "bb", entryScope = threadScope))
+            store.append(entry(messageId = 12, text = "cc", entryScope = otherChannel))
+
+            val result =
+                store.redactChannel(
+                    guildId = scope.guildId,
+                    channelId = scope.channelId,
+                    reason = RawContextUnavailableReason.CONSENT_REVOKED,
+                )
+
+            assertThat(result.removedCount).isEqualTo(2)
+            assertThat(store.readRecent(scope).entries).isEmpty()
+            assertThat(store.readRecent(threadScope).entries).isEmpty()
+            assertThat(store.readRecent(otherChannel).entries.map { it.messageId }).containsExactly(12)
+        }
+
+        @Test
+        fun `author redaction removes that author across channels in same guild`() {
+            val otherChannel = scope.copy(channelId = 99)
+            store.append(entry(messageId = 10, text = "aa", authorPseudonym = "user-a", entryScope = scope))
+            store.append(entry(messageId = 11, text = "bb", authorPseudonym = "user-a", entryScope = otherChannel))
+            store.append(entry(messageId = 12, text = "cc", authorPseudonym = "user-b", entryScope = scope))
+
+            val result =
+                store.redactAuthor(
+                    guildId = scope.guildId,
+                    authorPseudonym = "user-a",
+                    reason = RawContextUnavailableReason.CONSENT_REVOKED,
+                )
+
+            assertThat(result.removedCount).isEqualTo(2)
+            assertThat(rows.findAll().map { it.messageId }).containsExactly(12)
+        }
+
+        @Test
+        fun `guild redaction removes all raw rows for that guild only`() {
+            val otherGuild = scope.copy(guildId = 9)
+            store.append(entry(messageId = 10, text = "aa", entryScope = scope))
+            store.append(entry(messageId = 11, text = "bb", entryScope = otherGuild))
+
+            val result = store.redactGuild(scope.guildId, RawContextUnavailableReason.CONSENT_REVOKED)
+
+            assertThat(result.removedCount).isEqualTo(1)
+            assertThat(rows.findAll().map { it.messageId }).containsExactly(11)
+        }
+
+        @Test
         fun `oversized raw entry exception does not include raw text`() {
             assertThatThrownBy { store.append(entry(messageId = 99, text = "123456789")) }
                 .isInstanceOf(IllegalArgumentException::class.java)
@@ -139,11 +190,13 @@ class JpaRawContextStoreTest
             text: String = "hello",
             content: RawContextContent = RawContextContent.Available(text),
             occurredAt: Instant = t0,
+            authorPseudonym: String = "user-a",
+            entryScope: RawContextScope = scope,
         ): RawContextEntry =
             RawContextEntry(
-                scope = scope,
+                scope = entryScope,
                 messageId = messageId,
-                authorPseudonym = "user-a",
+                authorPseudonym = authorPseudonym,
                 occurredAt = occurredAt,
                 replyToMessageId = null,
                 sourceType = RawContextSourceType.HUMAN,

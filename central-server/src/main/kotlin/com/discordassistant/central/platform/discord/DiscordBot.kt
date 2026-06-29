@@ -30,7 +30,9 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
+import net.dv8tion.jda.api.events.message.MessageDeleteEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
+import net.dv8tion.jda.api.events.message.MessageUpdateEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.events.session.ShutdownEvent
@@ -1100,19 +1102,55 @@ class DiscordBot(
 
         /** 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/설정을 정리한다. */
         override fun onGuildLeave(event: GuildLeaveEvent) {
+            participationEmitBridge.onGuildDisabled(event.guild.idLong)
             guildCleanup.cleanup(event.guild.idLong)
         }
 
         /** 프로바이더 유저가 서버를 떠나면 해당 서버의 provider 상태만 정리한다. 기여 로그는 유지한다. */
         override fun onGuildMemberRemove(event: GuildMemberRemoveEvent) {
+            participationEmitBridge.onUserOptedOut(guildId = event.guild.idLong, userId = event.user.idLong)
             reconciliation.cleanupMember(event.guild.idLong, event.user.idLong)
         }
 
         /** 채널 삭제 이벤트가 오면 허용 채널 정책과 채널 AI 프로필을 같이 정리한다. */
         override fun onChannelDelete(event: ChannelDeleteEvent) {
             if (event.isFromGuild) {
+                participationEmitBridge.onChannelDisabled(guildId = event.guild.idLong, channelId = event.channel.idLong)
                 reconciliation.cleanupChannel(event.guild.idLong, event.channel.idLong)
             }
+        }
+
+        /** 메시지 삭제 이벤트는 raw context 에서 해당 원문을 즉시 제거한다. */
+        override fun onMessageDelete(event: MessageDeleteEvent) {
+            if (!event.isFromGuild) return
+            participationEmitBridge.onMessageDeleted(
+                com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
+                    guildId = event.guild.idLong,
+                    channelId = event.channel.idLong,
+                    messageId = event.messageIdLong,
+                ),
+            )
+        }
+
+        /** 메시지 수정 이벤트는 raw context 의 원문만 갱신하고, participation judge/emit 은 다시 실행하지 않는다. */
+        override fun onMessageUpdate(event: MessageUpdateEvent) {
+            if (!event.isFromGuild) return
+            val occurredAt =
+                (event.message.timeEdited ?: event.message.timeCreated)
+                    .toInstant()
+            participationEmitBridge.onMessageEdited(
+                com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
+                    guildId = event.guild.idLong,
+                    channelId = event.channel.idLong,
+                    messageId = event.messageIdLong,
+                    userId = event.author.idLong,
+                    threadId = event.message.startedThread?.idLong,
+                    replyToMessageId = event.message.referencedMessage?.idLong,
+                    sourceType = participationSourceTypeOf(event),
+                    rawText = event.message.contentRaw.trim(),
+                    occurredAt = occurredAt,
+                ),
+            )
         }
 
         /** 긴 질문 모달 제출(#189). */
@@ -1316,6 +1354,19 @@ class DiscordBot(
 
         private fun participationSourceTypeOf(
             event: MessageReceivedEvent,
+        ): com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType =
+            when {
+                event.message.type != MessageType.DEFAULT && event.message.type != MessageType.INLINE_REPLY ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.SYSTEM
+                event.message.isWebhookMessage ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.WEBHOOK
+                event.author.isBot ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.BOT
+                else -> com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.HUMAN
+            }
+
+        private fun participationSourceTypeOf(
+            event: MessageUpdateEvent,
         ): com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType =
             when {
                 event.message.type != MessageType.DEFAULT && event.message.type != MessageType.INLINE_REPLY ->

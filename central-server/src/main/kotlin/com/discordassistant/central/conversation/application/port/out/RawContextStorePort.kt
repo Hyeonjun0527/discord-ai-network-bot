@@ -1,6 +1,7 @@
 package com.discordassistant.central.conversation.application.port.out
 
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
@@ -17,4 +18,26 @@ interface RawContextStorePort {
         messageId: Long,
         reason: RawContextUnavailableReason,
     ): RawContextRedactionResult
+
+    fun redactScope(
+        scope: RawContextScope,
+        reason: RawContextUnavailableReason,
+    ): RawContextBulkRedactionResult
+
+    fun redactChannel(
+        guildId: Long,
+        channelId: Long,
+        reason: RawContextUnavailableReason,
+    ): RawContextBulkRedactionResult
+
+    fun redactGuild(
+        guildId: Long,
+        reason: RawContextUnavailableReason,
+    ): RawContextBulkRedactionResult
+
+    fun redactAuthor(
+        guildId: Long,
+        authorPseudonym: String,
+        reason: RawContextUnavailableReason,
+    ): RawContextBulkRedactionResult
 }

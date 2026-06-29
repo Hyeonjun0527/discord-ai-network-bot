@@ -103,3 +103,11 @@ data class RawContextRedactionResult(
     val snapshot: RawContextSnapshot,
     val removed: Boolean,
 )
+
+data class RawContextBulkRedactionResult(
+    val removedCount: Int,
+) {
+    init {
+        require(removedCount >= 0) { "removedCount 는 음수일 수 없다: $removedCount" }
+    }
+}

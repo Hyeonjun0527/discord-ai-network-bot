@@ -149,6 +149,94 @@ class NexaParticipationEmitBridge(
         }
     }
 
+    fun onMessageDeleted(signal: ParticipationRawContextRedactionSignal): ParticipationRawContextMutationOutcome =
+        mutateRawContext(
+            operation = "message_delete",
+            guildId = signal.guildId,
+            channelId = signal.channelId,
+            messageId = signal.messageId,
+        ) { store ->
+            val result =
+                store.redact(
+                    scope = signal.scope(),
+                    messageId = signal.messageId,
+                    reason = RawContextUnavailableReason.REDACTED,
+                )
+            ParticipationRawContextMutationOutcome.Redacted(if (result.removed) 1 else 0)
+        }
+
+    fun onMessageEdited(signal: ParticipationRawContextEditSignal): ParticipationRawContextMutationOutcome {
+        if (signal.sourceType != ParticipationMessageSourceType.HUMAN || signal.rawText.isBlank() || signal.isCommandLike()) {
+            return onMessageDeleted(signal.toRedactionSignal())
+        }
+        return mutateRawContext(
+            operation = "message_edit",
+            guildId = signal.guildId,
+            channelId = signal.channelId,
+            messageId = signal.messageId,
+        ) { store ->
+            store.append(signal.toRawContextEntry())
+            ParticipationRawContextMutationOutcome.Upserted
+        }
+    }
+
+    fun onChannelDisabled(
+        guildId: Long,
+        channelId: Long,
+    ): ParticipationRawContextMutationOutcome =
+        mutateRawContext(operation = "channel_disabled", guildId = guildId, channelId = channelId, messageId = null) { store ->
+            val result =
+                store.redactChannel(
+                    guildId = guildId,
+                    channelId = channelId,
+                    reason = RawContextUnavailableReason.CONSENT_REVOKED,
+                )
+            ParticipationRawContextMutationOutcome.Redacted(result.removedCount)
+        }
+
+    fun onGuildDisabled(guildId: Long): ParticipationRawContextMutationOutcome =
+        mutateRawContext(operation = "guild_disabled", guildId = guildId, channelId = null, messageId = null) { store ->
+            val result = store.redactGuild(guildId = guildId, reason = RawContextUnavailableReason.CONSENT_REVOKED)
+            ParticipationRawContextMutationOutcome.Redacted(result.removedCount)
+        }
+
+    fun onUserOptedOut(
+        guildId: Long,
+        userId: Long,
+    ): ParticipationRawContextMutationOutcome =
+        mutateRawContext(operation = "user_opted_out", guildId = guildId, channelId = null, messageId = null) { store ->
+            val result =
+                store.redactAuthor(
+                    guildId = guildId,
+                    authorPseudonym = userPseudonym(guildId, userId),
+                    reason = RawContextUnavailableReason.CONSENT_REVOKED,
+                )
+            ParticipationRawContextMutationOutcome.Redacted(result.removedCount)
+        }
+
+    private fun mutateRawContext(
+        operation: String,
+        guildId: Long,
+        channelId: Long?,
+        messageId: Long?,
+        block: (RawContextStorePort) -> ParticipationRawContextMutationOutcome,
+    ): ParticipationRawContextMutationOutcome {
+        val store = rawContextStore ?: return ParticipationRawContextMutationOutcome.NoStore
+        return try {
+            block(store)
+        } catch (e: Exception) {
+            log.warn(
+                "NEXA raw context mutation 실패(operation={}, guild={}, channel={}, message={}) — {}",
+                operation,
+                guildId,
+                channelId,
+                messageId,
+                e.message,
+            )
+            ParticipationRawContextMutationOutcome.Failed
+        }
+    }
+
     private fun ParticipationMessageSignal.toRawContextEntry(): RawContextEntry =
         RawContextEntry(
             scope = RawContextScope(guildId = guildId, channelId = channelId, threadId = threadId),
@@ -160,6 +248,17 @@ class NexaParticipationEmitBridge(
             content = rawContextContent(),
         )
 
+    private fun ParticipationRawContextEditSignal.toRawContextEntry(): RawContextEntry =
+        RawContextEntry(
+            scope = scope(),
+            messageId = messageId,
+            authorPseudonym = userPseudonym(guildId, userId),
+            occurredAt = occurredAt,
+            replyToMessageId = replyToMessageId,
+            sourceType = sourceType.toRawContextSourceType(),
+            content = RawContextContent.Available(rawText),
+        )
+
     private fun ParticipationMessageSignal.rawContextContent(): RawContextContent {
         val text = rawText
         return if (text.isBlank()) {
@@ -168,6 +267,22 @@ class NexaParticipationEmitBridge(
             RawContextContent.Available(text)
         }
     }
+
+    private fun ParticipationRawContextRedactionSignal.scope(): RawContextScope =
+        RawContextScope(guildId = guildId, channelId = channelId, threadId = threadId)
+
+    private fun ParticipationRawContextEditSignal.scope(): RawContextScope =
+        RawContextScope(guildId = guildId, channelId = channelId, threadId = threadId)
+
+    private fun ParticipationRawContextEditSignal.toRedactionSignal(): ParticipationRawContextRedactionSignal =
+        ParticipationRawContextRedactionSignal(
+            guildId = guildId,
+            channelId = channelId,
+            threadId = threadId,
+            messageId = messageId,
+        )
+
+    private fun ParticipationRawContextEditSignal.isCommandLike(): Boolean = rawText.trimStart().startsWith(".")
 
     private fun evaluateAndEmit(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
         val guildPseudonym = guildPseudonym(signal.guildId)
@@ -544,6 +659,41 @@ data class ParticipationMessageSignal(
     val seed: Long,
 )
 
+data class ParticipationRawContextRedactionSignal(
+    val guildId: Long,
+    val channelId: Long,
+    val threadId: Long? = null,
+    val messageId: Long,
+) {
+    init {
+        require(guildId > 0) { "guildId 는 양수여야 한다: $guildId" }
+        require(channelId > 0) { "channelId 는 양수여야 한다: $channelId" }
+        threadId?.let { require(it > 0) { "threadId 는 양수여야 한다: $it" } }
+        require(messageId > 0) { "messageId 는 양수여야 한다: $messageId" }
+    }
+}
+
+data class ParticipationRawContextEditSignal(
+    val guildId: Long,
+    val channelId: Long,
+    val messageId: Long,
+    val userId: Long,
+    val threadId: Long? = null,
+    val replyToMessageId: Long? = null,
+    val sourceType: ParticipationMessageSourceType = ParticipationMessageSourceType.HUMAN,
+    val rawText: String,
+    val occurredAt: Instant,
+) {
+    init {
+        require(guildId > 0) { "guildId 는 양수여야 한다: $guildId" }
+        require(channelId > 0) { "channelId 는 양수여야 한다: $channelId" }
+        require(messageId > 0) { "messageId 는 양수여야 한다: $messageId" }
+        require(userId > 0) { "userId 는 양수여야 한다: $userId" }
+        threadId?.let { require(it > 0) { "threadId 는 양수여야 한다: $it" } }
+        replyToMessageId?.let { require(it > 0) { "replyToMessageId 는 양수여야 한다: $it" } }
+    }
+}
+
 enum class ParticipationMessageSourceType {
     HUMAN,
     BOT,
@@ -609,6 +759,22 @@ sealed interface ParticipationEmitOutcome {
 
     /** 평가/emit 중 예외 흡수 — 사용자 응답에는 영향 없음. */
     data object Failed : ParticipationEmitOutcome
+}
+
+sealed interface ParticipationRawContextMutationOutcome {
+    data object NoStore : ParticipationRawContextMutationOutcome
+
+    data object Upserted : ParticipationRawContextMutationOutcome
+
+    data class Redacted(
+        val removedCount: Int,
+    ) : ParticipationRawContextMutationOutcome {
+        init {
+            require(removedCount >= 0) { "removedCount 는 음수일 수 없다: $removedCount" }
+        }
+    }
+
+    data object Failed : ParticipationRawContextMutationOutcome
 }
 
 private val ParticipationEmitOutcome.traceOutcome: String

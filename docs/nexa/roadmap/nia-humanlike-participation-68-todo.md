@@ -112,7 +112,7 @@
 - [x] 65. consent 테스트를 만든다. 동의 철회 직후 raw context read, judge call, speech generation, pending action이 모두 멈추는지 검증한다.
 - [x] 66. prompt injection 테스트를 만든다. 원문 안의 "이전 지시 무시"가 judge/system policy를 덮어쓰지 못해야 한다.
 - [x] 67. shadow/canary 운영 기준을 만든다. missed intervention과 false interruption 비율이 기준 안에 들어와야 LIVE를 논의한다.
-- [ ] 68. 최종 검증 스크립트를 추가한다. 문서 링크, task graph, unit/integration/eval fixture, no-raw-log scan을 한 번에 실행한다.
+- [x] 68. 최종 검증 스크립트를 추가한다. 문서 링크, task graph, unit/integration/eval fixture, no-raw-log scan을 한 번에 실행한다.
 
 ## 완료 기준
 

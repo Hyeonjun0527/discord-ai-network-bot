@@ -12,6 +12,7 @@ show_usage() {
 
 scope:
   docs      task graph, NEXA fixture, 문서 링크, diff 공백 검사
+  nia       NIA humanlike participation 최종 검증(docs, fixtures, targeted tests, raw-log scan)
   central   central-server build
   agent     provider-agent pytest/ruff/mypy
   ml        ml/social-policy pytest/ruff/mypy (학습 데이터셋 빌더)
@@ -45,6 +46,10 @@ verify_docs() {
   run_command python3 scripts/validate-nexa-scan-exceptions.py
   run_command python3 scripts/check_links.py
   run_command git diff --check
+}
+
+verify_nia() {
+  run_command scripts/verify-nia-humanlike-participation.sh
 }
 
 verify_central() {
@@ -88,6 +93,7 @@ verify_all() {
 run_scope() {
   case "$1" in
     docs) verify_docs ;;
+    nia) verify_nia ;;
     central) verify_central ;;
     agent) verify_agent ;;
     ml) verify_ml ;;

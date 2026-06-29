@@ -81,7 +81,7 @@
 
 ## F. 단일 judge 정책
 
-- [ ] 43. 3표결, ensemble judge, majority vote 호출 경로를 production participation path에서 제거한다.
+- [x] 43. 3표결, ensemble judge, majority vote 호출 경로를 production participation path에서 제거한다.
 - [x] 44. 단일 judge 입력 schema를 정의한다. 입력은 raw context window, scene snapshot, feature vector, memory refs, constraints로 나눈다.
 - [x] 45. 단일 judge 출력 schema를 정의한다. 출력은 action, confidence, delay, reaction candidate, speech intent, tone axes, reason code로 나눈다.
 - [x] 46. judge가 `SPEAK`를 고를 때도 speech text를 직접 만들지 않게 하고, speech intent와 scene direction만 넘긴다.

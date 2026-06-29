@@ -6,8 +6,11 @@ import com.tngtech.archunit.junit.AnalyzeClasses
 import com.tngtech.archunit.junit.ArchTest
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * NEXA 신규 도메인 경계 ArchUnit 규칙(차수 P01-T022/T023).
@@ -174,6 +177,27 @@ class NexaArchitectureTest {
         assertThatThrownBy { rule.check(fixture) }.isInstanceOf(AssertionError::class.java)
     }
 
+    @Test
+    fun `production participation path contains no ensemble or majority vote traces`() {
+        val forbidden = Regex("(?i)(3표결|ensemble|majority|tri[- ]?judge|three[- ]?judge|다수결|\\bvoting\\b|\\bvote\\b)")
+        val roots =
+            listOf(
+                Path.of("src", "main", "kotlin", "com", "discordassistant", "central", "participation"),
+                Path.of("src", "main", "kotlin", "com", "discordassistant", "central", "platform", "discord", "nexa"),
+            )
+
+        val offenders =
+            roots
+                .flatMap(::kotlinSourceFiles)
+                .mapNotNull { path ->
+                    val text = Files.readString(path)
+                    val match = forbidden.find(text) ?: return@mapNotNull null
+                    "${path.toString().removePrefix("src/main/kotlin/")}: ${match.value}"
+                }
+
+        assertThat(offenders).isEmpty()
+    }
+
     companion object {
         // NEXA 5개 도메인의 domain 레이어 패키지.
         private val NEXA_DOMAIN_PACKAGES =
@@ -290,5 +314,14 @@ class NexaArchitectureTest {
 
         // fixture 패키지는 test 소스라 @AnalyzeClasses(DoNotIncludeTests)에 안 잡힌다 — 명시 로드.
         private fun importFixture(vararg packages: String) = ClassFileImporter().importPackages(*packages)
+
+        private fun kotlinSourceFiles(root: Path): List<Path> {
+            if (!Files.exists(root)) return emptyList()
+            Files.walk(root).use { paths ->
+                return paths
+                    .filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".kt") }
+                    .toList()
+            }
+        }
     }
 }

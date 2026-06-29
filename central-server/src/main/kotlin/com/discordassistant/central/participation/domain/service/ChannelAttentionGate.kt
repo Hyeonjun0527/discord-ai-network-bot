@@ -1,7 +1,7 @@
 package com.discordassistant.central.participation.domain.service
 
 /**
- * Attention Gate — "지금 두뇌(GLM 3표결/발화 생성)를 깨울 **타이밍**인가"를 공짜 규칙으로 결정한다
+ * Attention Gate — "지금 단일 judge 또는 발화 생성을 깨울 **타이밍**인가"를 공짜 규칙으로 결정한다
  * (core `attention_gate.py` 1:1 이식, 순수·결정적 도메인 서비스).
  *
  * [CoreInterventionRules] 가 "낄까 말까"(끼어들기 **판단**)를 결정한다면, 이 게이트는 그 앞단에서 "언제 깨우나"

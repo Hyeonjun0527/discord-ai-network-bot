@@ -105,13 +105,13 @@
 - [x] 58. 모든 participation decision에 correlation id를 부여하고 requestlog와 decision log를 원문 없이 연결한다.
 - [x] 59. raw context ref는 decision log에 직접 원문으로 남기지 않고, 접근 권한이 필요한 evidence reference로만 남긴다.
 - [x] 60. "왜 안 말했는지"를 action, gate, judge confidence, missing input, last wake-up reason으로 설명하는 admin/debug view를 만든다.
-- [ ] 61. `missed_intervention` eval set을 만든다. 위로 요구, 반복 호출, 대화 공백, 질문 무시 상황을 포함한다.
-- [ ] 62. `false_interruption` eval set을 만든다. 사람끼리 대화 중 끼어들면 안 되는 상황을 포함한다.
+- [x] 61. `missed_intervention` eval set을 만든다. 위로 요구, 반복 호출, 대화 공백, 질문 무시 상황을 포함한다.
+- [x] 62. `false_interruption` eval set을 만든다. 사람끼리 대화 중 끼어들면 안 되는 상황을 포함한다.
 - [x] 63. raw context retention 테스트를 만든다. 수십만자 초과 시 가장 오래된 원문이 삭제되는지 검증한다.
 - [ ] 64. privacy 테스트를 만든다. 원문이 request log, decision log, exception, metric label, dataset export에 새지 않는지 검증한다.
 - [ ] 65. consent 테스트를 만든다. 동의 철회 직후 raw context read, judge call, speech generation, pending action이 모두 멈추는지 검증한다.
 - [x] 66. prompt injection 테스트를 만든다. 원문 안의 "이전 지시 무시"가 judge/system policy를 덮어쓰지 못해야 한다.
-- [ ] 67. shadow/canary 운영 기준을 만든다. missed intervention과 false interruption 비율이 기준 안에 들어와야 LIVE를 논의한다.
+- [x] 67. shadow/canary 운영 기준을 만든다. missed intervention과 false interruption 비율이 기준 안에 들어와야 LIVE를 논의한다.
 - [ ] 68. 최종 검증 스크립트를 추가한다. 문서 링크, task graph, unit/integration/eval fixture, no-raw-log scan을 한 번에 실행한다.
 
 ## 완료 기준

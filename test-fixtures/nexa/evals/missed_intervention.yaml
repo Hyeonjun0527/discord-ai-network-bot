@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "nexa.intervention-eval.v1",
+  "evalSetId": "missed_intervention",
+  "title": "Missed intervention eval set",
+  "syntheticOnly": true,
+  "counterfactualWindowsMs": [3000, 10000, 30000, 120000],
+  "coverage": {
+    "requiredTags": ["direct_support_request", "repeated_call", "idle_gap", "ignored_question"]
+  },
+  "cases": [
+    {
+      "caseId": "mi-direct-support-request",
+      "tags": ["direct_support_request", "comfort_request"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-hj", "text": "내 여친 서연이가 내 답장을 안 봐 ㅠㅠ" },
+        { "messageId": "m2", "atOffsetMs": 1800, "actorId": "actor-hj", "text": "야 이럴땐 위로해줘야지" }
+      ],
+      "prediction": { "atOffsetMs": 2500, "action": "IGNORE", "targetMessageId": "m2" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 5200, "actorId": "actor-hj", "type": "reply", "targetMessageId": "m2", "text": "위로하라고 니아야" }
+        ]
+      },
+      "expected": {
+        "proxy": "missed_intervention",
+        "note": "반복된 직접 반응 요구가 관찰 창 안에 다시 나타난다."
+      }
+    },
+    {
+      "caseId": "mi-repeated-call",
+      "tags": ["repeated_call"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-min", "text": "니아야 이거 봐줘" },
+        { "messageId": "m2", "atOffsetMs": 4200, "actorId": "actor-min", "text": "니아?" }
+      ],
+      "prediction": { "atOffsetMs": 5000, "action": "WAIT", "targetMessageId": "m2" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 9300, "actorId": "actor-min", "type": "reply", "targetMessageId": "m2", "text": "아직 있어?" }
+        ]
+      },
+      "expected": {
+        "proxy": "missed_intervention",
+        "note": "같은 사람이 짧은 시간 안에 호출을 반복한다."
+      }
+    },
+    {
+      "caseId": "mi-idle-gap-open-room-question",
+      "tags": ["idle_gap", "open_room_question"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-jae", "text": "다들 주말 모임 어디서 할까?" }
+      ],
+      "prediction": { "atOffsetMs": 6000, "action": "WAIT", "targetMessageId": "m1" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 28000, "actorId": "actor-jae", "type": "reply", "targetMessageId": "m1", "text": "아무도 의견 없으면 내가 정할게" }
+        ]
+      },
+      "expected": {
+        "proxy": "missed_intervention",
+        "note": "열린 질문 뒤 공백이 길어지고 질문자가 다시 수습한다."
+      }
+    },
+    {
+      "caseId": "mi-ignored-direct-question",
+      "tags": ["ignored_question", "direct_question"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-sora", "text": "니아야 이 에러 로그 어디부터 봐야 해?" }
+      ],
+      "prediction": { "atOffsetMs": 2000, "action": "IGNORE", "targetMessageId": "m1" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 11800, "actorId": "actor-sora", "type": "reply", "targetMessageId": "m1", "text": "이거 아무도 모르나?" }
+        ]
+      },
+      "expected": {
+        "proxy": "missed_intervention",
+        "note": "직접 질문이 무시된 뒤 같은 요청이 다시 올라온다."
+      }
+    },
+    {
+      "caseId": "mi-negative-private-talk",
+      "tags": ["negative_control", "private_human_talk"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-yuna", "text": "요즘 집 얘기는 여기서 더 말하기 좀 그렇다" },
+        { "messageId": "m2", "atOffsetMs": 1500, "actorId": "actor-tae", "text": "괜찮아, 나중에 따로 얘기하자" }
+      ],
+      "prediction": { "atOffsetMs": 2200, "action": "IGNORE", "targetMessageId": "m2" },
+      "observation": { "humanActions": [] },
+      "expected": {
+        "proxy": "none",
+        "note": "호명 없는 사적 대화에서 침묵은 missed intervention이 아니다."
+      }
+    }
+  ]
+}

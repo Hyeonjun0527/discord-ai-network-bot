@@ -3,6 +3,8 @@
 - 작업: NEXA-P09-T016 (`kind: experiment`, `human_gate: false`) · 상위: [participation-context](../architecture/participation-context.md)
 - 구현: [`InterventionProxies.kt`](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/InterventionProxies.kt)
 - 테스트: [`ShadowEvaluationMetricsTest.kt`](../../../central-server/src/test/kotlin/com/discordassistant/central/participation/application/evaluation/ShadowEvaluationMetricsTest.kt)
+- eval set: [`missed_intervention.yaml`](../../../test-fixtures/nexa/evals/missed_intervention.yaml)
+- validator: [`validate-nexa-intervention-evals.py`](../../../scripts/validate-nexa-intervention-evals.py)
 
 ## 정의
 
@@ -54,3 +56,18 @@ MI 는 "사람이 도움/개입이 필요했다" 같은 **내심 추론을 하�
 | 종합: 실제로 놓친 개입이었나? | 놓침 / 비놓침(오탐) |
 
 검토 표본·합의 오탐률은 P09-T024 이후 게이트에서 독립 집계한다. 자동 proxy 는 1차 신호, human review 가 2차 보정이다.
+
+## fixed eval coverage
+
+[`missed_intervention.yaml`](../../../test-fixtures/nexa/evals/missed_intervention.yaml)은 아래 네 유형을 synthetic fixture로
+고정한다. 실제 운영 원문은 들어가지 않는다.
+
+| tag | 포함 이유 |
+| --- | --- |
+| `direct_support_request` | "위로해줘야지 / 위로하라고"처럼 직접 반응을 요구하는 장면 |
+| `repeated_call` | 같은 사람이 짧은 시간 안에 니아를 다시 부르는 장면 |
+| `idle_gap` | 열린 질문 뒤 긴 공백이 생기는 장면 |
+| `ignored_question` | 직접 질문이 답 없이 지나가 다시 올라오는 장면 |
+
+각 양성 case는 `IGNORE/WAIT` 예측과 관찰 창 내 인간 행동으로 `missed_intervention` proxy가 계산되어야 한다. 음성
+control은 호명 없는 사적 대화에서 침묵이 missed intervention으로 계산되지 않아야 한다.

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "nexa.intervention-eval.v1",
+  "evalSetId": "false_interruption",
+  "title": "False interruption eval set",
+  "syntheticOnly": true,
+  "counterfactualWindowsMs": [3000, 10000, 30000, 120000],
+  "coverage": {
+    "requiredTags": ["human_to_human_conversation", "private_support", "rapid_dyad", "already_being_answered"]
+  },
+  "cases": [
+    {
+      "caseId": "fi-human-to-human-conversation",
+      "tags": ["human_to_human_conversation"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-jh", "text": "나 오늘 발표 망쳐서 좀 멍하다" }
+      ],
+      "prediction": { "atOffsetMs": 900, "action": "SPEAK", "targetMessageId": "m1" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 2100, "actorId": "actor-tae", "type": "reply", "targetMessageId": "m1", "text": "괜찮아? 무슨 일 있었는데" }
+        ]
+      },
+      "expected": {
+        "proxy": "false_interruption",
+        "note": "니아가 말하려는 순간 다른 사람이 이미 같은 흐름을 이어간다."
+      }
+    },
+    {
+      "caseId": "fi-private-support",
+      "tags": ["private_support", "human_to_human_conversation"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-yun", "text": "진로 얘기 때문에 부모님이랑 또 싸웠어" },
+        { "messageId": "m2", "atOffsetMs": 1000, "actorId": "actor-bin", "text": "천천히 말해봐" }
+      ],
+      "prediction": { "atOffsetMs": 1400, "action": "SPEAK", "targetMessageId": "m1" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 2600, "actorId": "actor-bin", "type": "reply", "targetMessageId": "m1", "text": "오늘 무슨 말 들었는데?" }
+        ]
+      },
+      "expected": {
+        "proxy": "false_interruption",
+        "note": "사적 지지 대화에서 사람이 이미 받고 있으므로 끼어들면 안 된다."
+      }
+    },
+    {
+      "caseId": "fi-rapid-dyad-banter",
+      "tags": ["rapid_dyad", "human_to_human_conversation"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-dh", "text": "그 영화 진짜 노잼이던데" },
+        { "messageId": "m2", "atOffsetMs": 700, "actorId": "actor-subin", "text": "엥 난 재밌었는데" }
+      ],
+      "prediction": { "atOffsetMs": 1200, "action": "SPEAK", "targetMessageId": "m2" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 1900, "actorId": "actor-dh", "type": "reply", "targetMessageId": "m2", "text": "취향 차이 인정ㅋㅋ" }
+        ]
+      },
+      "expected": {
+        "proxy": "false_interruption",
+        "note": "빠른 dyad 농담 흐름은 니아가 보탤 타이밍이 아니다."
+      }
+    },
+    {
+      "caseId": "fi-already-being-answered",
+      "tags": ["already_being_answered"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-sora", "text": "코틀린에서 null 체크 이렇게 해도 돼?" },
+        { "messageId": "m2", "atOffsetMs": 900, "actorId": "actor-jun", "text": "잠깐만 코드 보면" }
+      ],
+      "prediction": { "atOffsetMs": 1500, "action": "SPEAK", "targetMessageId": "m1" },
+      "observation": {
+        "humanActions": [
+          { "atOffsetMs": 3300, "actorId": "actor-jun", "type": "reply", "targetMessageId": "m1", "text": "이 경우엔 let보다 early return이 나아" }
+        ]
+      },
+      "expected": {
+        "proxy": "false_interruption",
+        "note": "사람이 이미 답변을 시작한 질문에 중복으로 끼어들 뻔했다."
+      }
+    },
+    {
+      "caseId": "fi-negative-direct-address-no-human-reply",
+      "tags": ["negative_control", "direct_address"],
+      "transcript": [
+        { "messageId": "m1", "atOffsetMs": 0, "actorId": "actor-min", "text": "니아야 이 명령어 옵션 뭐였지?" }
+      ],
+      "prediction": { "atOffsetMs": 800, "action": "SPEAK", "targetMessageId": "m1" },
+      "observation": { "humanActions": [] },
+      "expected": {
+        "proxy": "none",
+        "note": "직접 호명 뒤 즉시 인간 응답이 없으면 false interruption이 아니다."
+      }
+    }
+  ]
+}

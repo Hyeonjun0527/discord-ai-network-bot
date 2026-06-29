@@ -26,6 +26,7 @@ canary 진입 **전** 반드시 확인한다(미충족 시 진입 금지):
 | 기간(duration) | 7일(1주). 매일 SLO·error budget 리뷰. |
 | 시간대(time window) | 팀 근무 시간(예: 평일 10:00–18:00 KST)만 LIVE. 그 외에는 SHADOW 로 자동 강등(무인 발화 금지). |
 | max share | 채널 burst 점유율 상한 35%([alerts.md](alerts.md) `SHARE_RATIO` warn) — 넘으면 자동 강등. |
+| intervention proxy | [shadow-canary-gates.md](shadow-canary-gates.md)의 FIR/MIR 기준을 동시에 만족해야 승급 논의 가능. |
 | 모델 | 현재 active LIVE 모델([model rollback](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/application/model/ModelRollbackService.kt) 의 active). 변경 시 재승인. |
 | 단계 | [`ShadowMode.CANARY`](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/shadow/ShadowMode.kt) — 제한적 실제 발화. |
 
@@ -45,5 +46,6 @@ canary 진입 **전** 반드시 확인한다(미충족 시 진입 금지):
 
 ## 진입 게이트
 
-이 계획은 P18-T025(canary 진입 게이트)에서 SLO·alert·kill switch·rollback·consent·자동 중단을 **staging 에서
-실제 시연**한 뒤에만 운영 canary 로 진행한다. 시연 전 운영 canary 금지.
+이 계획은 P18-T025(canary 진입 게이트)에서 SLO·alert·kill switch·rollback·consent·자동 중단과
+[intervention gate](shadow-canary-gates.md)를 **staging 에서 실제 시연**한 뒤에만 운영 canary 로 진행한다.
+시연 전 운영 canary 금지.

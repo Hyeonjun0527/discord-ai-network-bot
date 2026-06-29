@@ -3,6 +3,8 @@
 - 작업: NEXA-P09-T015 (`kind: experiment`, `human_gate: false`) · 상위: [participation-context](../architecture/participation-context.md)
 - 구현: [`InterventionProxies.kt`](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/InterventionProxies.kt)
 - 테스트: [`ShadowEvaluationMetricsTest.kt`](../../../central-server/src/test/kotlin/com/discordassistant/central/participation/application/evaluation/ShadowEvaluationMetricsTest.kt)
+- eval set: [`false_interruption.yaml`](../../../test-fixtures/nexa/evals/false_interruption.yaml)
+- validator: [`validate-nexa-intervention-evals.py`](../../../scripts/validate-nexa-intervention-evals.py)
 
 ## 정의
 
@@ -52,3 +54,18 @@ FI(prediction, observation) = (prediction.sampledAction == SPEAK)
 
 검토 표본 크기·합의 오탐률은 P09-T024(7일 관찰)·이후 게이트에서 독립 집계한다. 이 문서의 proxy 는 **자동 1차 신호**이고
 human review 가 **2차 보정**이다 — 한 지표만으로 정책 승패를 정하지 않는다(T022 비교 템플릿 참조).
+
+## fixed eval coverage
+
+[`false_interruption.yaml`](../../../test-fixtures/nexa/evals/false_interruption.yaml)은 아래 네 유형을 synthetic fixture로
+고정한다. 실제 운영 원문은 들어가지 않는다.
+
+| tag | 포함 이유 |
+| --- | --- |
+| `human_to_human_conversation` | 사람끼리 이미 흐름을 이어가는 일반 대화 |
+| `private_support` | 한 사람이 다른 사람을 이미 받아주는 사적 지지 대화 |
+| `rapid_dyad` | 초 단위로 오가는 dyad 농담/티키타카 |
+| `already_being_answered` | 질문에 다른 사람이 이미 답을 시작한 장면 |
+
+각 양성 case는 `SPEAK` 예측과 3초 내 인간 행동으로 `false_interruption` proxy가 계산되어야 한다. 음성 control은
+직접 호명 뒤 인간 응답이 없으면 false interruption으로 계산되지 않아야 한다.

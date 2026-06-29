@@ -38,10 +38,12 @@ NEXA 사회적 참여를 **길드 단위로 점진 적용**하고, 문제가 생
 3. **SHADOW 승급**: 관리자 NEXA 설정(웹 대시보드 전용)에서 길드 lane 을 SHADOW 로 올린다. 정책이 관찰·예측·
    기록만 하고 **전송은 0회**다([NexaShadowEndToEndTest] 가 shadow 전송 0 을 증명). shadow 리포트로 발화율/침묵률을
    며칠 관찰한다.
-4. **CANARY 승급**: shadow 지표가 안정적이면, 소수 채널만 CANARY 로 올린다(`confirmLiveSend=true` 필요). 채널
-   단위 override 로 일부 채널만 실제 발화시키고 나머지는 SHADOW 로 둔다.
-5. **LIVE 승급**: canary 가 문제없으면 길드 lane 을 LIVE 로 올린다(`confirmLiveSend=true`). 라이선스가 만료된
-   사용자가 켜면 LIVE 요청은 SHADOW 로 자동 상한된다(legacy 로 되돌지 않음, T015).
+4. **CANARY 승급**: shadow 지표가 [intervention gate](../operations/shadow-canary-gates.md) 기준 안에 있으면,
+   소수 채널만 CANARY 로 올린다(`confirmLiveSend=true` 필요). 채널 단위 override 로 일부 채널만 실제
+   발화시키고 나머지는 SHADOW 로 둔다.
+5. **LIVE 승급**: canary 가 [intervention gate](../operations/shadow-canary-gates.md) 기준을 계속 만족하면
+   길드 lane 을 LIVE 로 올린다(`confirmLiveSend=true`). 라이선스가 만료된 사용자가 켜면 LIVE 요청은 SHADOW 로
+   자동 상한된다(legacy 로 되돌지 않음, T015).
 
 ## rollback 절차 (3축 독립)
 

@@ -25,6 +25,10 @@ import com.discordassistant.central.participation.adapter.outbound.policy.baseli
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
+import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.feature.MemoryObservation
+import com.discordassistant.central.participation.application.feature.RelationshipFeatures
+import com.discordassistant.central.participation.application.feature.RelationshipObservation
 import com.discordassistant.central.participation.application.model.ShadowModelRegistry
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
@@ -303,6 +307,83 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java) // 정책 위임 결과
         assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `bridge policy request 는 mention 과 recent burst 만이 아니라 선별된 scene feature 를 보낸다`() {
+        val scheduler = FakeScheduler()
+        val policy = CapturingPolicy(ignoreResponse())
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = policy,
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = false,
+                    recentAgentBurstCount = 5,
+                    triggerText = "오늘 뭐 먹지",
+                    replyToHuman = true,
+                    silenceMillis = 8_000,
+                    lastNiaSpokeAgeSeconds = 20.0,
+                    pendingActionIds = listOf("pending-1"),
+                    directAddressPressure = 0.3,
+                    replyChainDepth = 2,
+                    previousIgnoredRequestCount = 1,
+                    rateLimitPressure = 0.2,
+                    antiSpamPressure = 0.4,
+                    relationshipObservation =
+                        RelationshipObservation(
+                            familiarity = 0.9,
+                            reciprocity = 0.3,
+                            banterAcceptance = 0.7,
+                            sampleSize = 1,
+                            observed = true,
+                        ),
+                    memoryObservation =
+                        MemoryObservation(
+                            relevantPresent = true,
+                            topConfidence = 0.2,
+                            freshestAgeSeconds = 120.0,
+                            pendingIntentActive = true,
+                        ),
+                ),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java)
+        val features = policy.lastRequest!!.features.features
+        assertThat(features.keys.map { it.id })
+            .contains(
+                "burst.is_question",
+                "burst.is_reply",
+                "thread.direct_address_pressure",
+                "thread.reply_chain_depth",
+                "thread.previous_ignored_request_count",
+                "tempo.rate_limit_pressure",
+                "tempo.anti_spam_pressure",
+                "relationship.familiarity",
+                "relationship.sample_confidence",
+                "memory.relevant_confidence",
+                "memory.pending_intent_active",
+                "agent.last_spoke_age_seconds",
+                "agent.pending_action_count",
+            )
+        assertThat(features.getValue(FeatureCatalog.BURST_IS_REPLY).value).isEqualTo(1.0)
+        assertThat(features.getValue(FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE).value).isEqualTo(0.3)
+        assertThat(features.getValue(FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH).value).isEqualTo(2.0)
+        assertThat(features.getValue(FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE).value).isEqualTo(0.2)
+        assertThat(features.getValue(FeatureCatalog.REL_FAMILIARITY).value).isEqualTo(0.9)
+        assertThat(features.getValue(FeatureCatalog.REL_SAMPLE_CONFIDENCE).value)
+            .isEqualTo(RelationshipFeatures.sampleConfidence(1))
+        assertThat(features.getValue(FeatureCatalog.MEMORY_RELEVANT_CONFIDENCE).value).isEqualTo(0.2)
+        assertThat(features.getValue(FeatureCatalog.MEMORY_PENDING_INTENT_ACTIVE).value).isEqualTo(1.0)
+        assertThat(policy.lastRequest!!.sceneSnapshotRef.guildPseudonym).isNotBlank()
     }
 
     @Test
@@ -904,6 +985,21 @@ class NexaParticipationEmitBridgeTest {
         messageId: Long = 10L,
         rawText: String = triggerText,
         sourceType: ParticipationMessageSourceType = ParticipationMessageSourceType.HUMAN,
+        replyToHuman: Boolean = false,
+        silenceMillis: Long? = null,
+        lastNiaSpokeAgeSeconds: Double? = null,
+        pendingActionIds: List<String> = emptyList(),
+        humanLikelyAnswering: Boolean = false,
+        resolvedLikely: Boolean = false,
+        directAddressPressure: Double = 0.0,
+        replyChainDepth: Int = 0,
+        nicknameCall: Boolean = false,
+        previousIgnoredRequestCount: Int = 0,
+        humansTalkingToEachOtherLikely: Boolean = false,
+        rateLimitPressure: Double = 0.0,
+        antiSpamPressure: Double = 0.0,
+        relationshipObservation: RelationshipObservation? = null,
+        memoryObservation: MemoryObservation? = null,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
@@ -918,6 +1014,7 @@ class NexaParticipationEmitBridgeTest {
             rawText = rawText,
             speakerLabel = speakerLabel,
             replyToNia = replyToNia,
+            replyToHuman = replyToHuman,
             niaRecentTokens = niaRecentTokens,
             withinContinuationTtl = withinContinuationTtl,
             duplicateOfPrevHuman = duplicateOfPrevHuman,
@@ -925,6 +1022,20 @@ class NexaParticipationEmitBridgeTest {
             priorHumanSpeakerLabels = priorHumanSpeakerLabels,
             firstMessageText = firstMessageText,
             conversationMentionsNia = conversationMentionsNia,
+            silenceMillis = silenceMillis,
+            lastNiaSpokeAgeSeconds = lastNiaSpokeAgeSeconds,
+            pendingActionIds = pendingActionIds,
+            humanLikelyAnswering = humanLikelyAnswering,
+            resolvedLikely = resolvedLikely,
+            directAddressPressure = directAddressPressure,
+            replyChainDepth = replyChainDepth,
+            nicknameCall = nicknameCall,
+            previousIgnoredRequestCount = previousIgnoredRequestCount,
+            humansTalkingToEachOtherLikely = humansTalkingToEachOtherLikely,
+            rateLimitPressure = rateLimitPressure,
+            antiSpamPressure = antiSpamPressure,
+            relationshipObservation = relationshipObservation,
+            memoryObservation = memoryObservation,
             tsMs = tsMs,
             sceneSeq = 10L,
             contextVersion = 1L,
@@ -1150,6 +1261,35 @@ class NexaParticipationEmitBridgeTest {
 
         override fun decide(request: PolicyDecisionRequest): PolicyDecisionResponse = response
     }
+
+    private class CapturingPolicy(
+        private val response: PolicyDecisionResponse,
+    ) : ParticipationPolicyPort {
+        var lastRequest: PolicyDecisionRequest? = null
+            private set
+
+        override fun capabilities(): PolicyEngineCapabilities =
+            PolicyEngineCapabilities(
+                supportedSchemaVersions = setOf(1),
+                supportedModelVersions = setOf(response.modelVersion),
+            )
+
+        override fun decide(request: PolicyDecisionRequest): PolicyDecisionResponse {
+            lastRequest = request
+            return response
+        }
+    }
+
+    private fun ignoreResponse(): PolicyDecisionResponse =
+        PolicyDecisionResponse(
+            actionWeights = mapOf(SocialActionKind.IGNORE to 1.0),
+            targetDistribution = ActionTargetDistribution.none("fixed-ignore"),
+            delayDistribution = DelayDistribution(mapOf(DelayBucket.IMMEDIATE to 1.0)),
+            socialActWeights = emptyMap(),
+            burstProfile = BurstProfile.singleLine(),
+            uncertainty = 0.0,
+            modelVersion = "fixed-ignore-policy",
+        )
 
     private class CapturingParticipationLog : ParticipationDecisionLogPort {
         val records = mutableListOf<DecisionLogRecord>()

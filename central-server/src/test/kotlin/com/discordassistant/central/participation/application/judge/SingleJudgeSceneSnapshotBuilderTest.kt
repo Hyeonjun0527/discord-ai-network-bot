@@ -1,6 +1,9 @@
 package com.discordassistant.central.participation.application.judge
 
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.feature.MemoryObservation
+import com.discordassistant.central.participation.application.feature.RelationshipFeatures
+import com.discordassistant.central.participation.application.feature.RelationshipObservation
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -152,6 +155,44 @@ class SingleJudgeSceneSnapshotBuilderTest {
         assertThat(features.getValue(FeatureCatalog.AGENT_RECENT_BURST_COUNT).value).isEqualTo(0.0)
         assertThat(features.getValue(FeatureCatalog.AGENT_PENDING_ACTION_COUNT).missing).isFalse()
         assertThat(features.getValue(FeatureCatalog.AGENT_PENDING_ACTION_COUNT).value).isEqualTo(0.0)
+        assertThat(features.getValue(FeatureCatalog.REL_SAMPLE_CONFIDENCE).missing).isTrue()
+        assertThat(features.getValue(FeatureCatalog.MEMORY_RELEVANT_CONFIDENCE).missing).isTrue()
+    }
+
+    @Test
+    fun `relationship 와 memory confidence 는 낮은 값 그대로 judge 입력에 남긴다`() {
+        val result =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    relationshipObservation =
+                        RelationshipObservation(
+                            familiarity = 0.85,
+                            reciprocity = 0.25,
+                            banterAcceptance = 0.70,
+                            sampleSize = 1,
+                            observed = true,
+                        ),
+                    memoryObservation =
+                        MemoryObservation(
+                            relevantPresent = true,
+                            topConfidence = 0.20,
+                            freshestAgeSeconds = 120.0,
+                            pendingIntentActive = true,
+                        ),
+                ),
+            )
+
+        val features = result.featureVector.features
+        val expectedRelConfidence = RelationshipFeatures.sampleConfidence(1)
+        assertThat(result.sceneSnapshot.relationshipState.familiarity).isEqualTo(0.85)
+        assertThat(result.sceneSnapshot.relationshipState.sampleConfidence).isEqualTo(expectedRelConfidence)
+        assertThat(result.sceneSnapshot.memoryState.topConfidence).isEqualTo(0.20)
+        assertThat(result.sceneSnapshot.memoryState.pendingIntentActive).isTrue()
+        assertThat(features.getValue(FeatureCatalog.REL_FAMILIARITY).value).isEqualTo(0.85)
+        assertThat(features.getValue(FeatureCatalog.REL_SAMPLE_CONFIDENCE).value).isEqualTo(expectedRelConfidence)
+        assertThat(features.getValue(FeatureCatalog.MEMORY_RELEVANT_PRESENT).value).isEqualTo(1.0)
+        assertThat(features.getValue(FeatureCatalog.MEMORY_RELEVANT_CONFIDENCE).value).isEqualTo(0.20)
+        assertThat(features.getValue(FeatureCatalog.MEMORY_PENDING_INTENT_ACTIVE).value).isEqualTo(1.0)
     }
 
     @Test
@@ -195,6 +236,8 @@ class SingleJudgeSceneSnapshotBuilderTest {
         humansTalkingToEachOtherLikely: Boolean = false,
         rateLimitPressure: Double = 0.0,
         antiSpamPressure: Double = 0.0,
+        relationshipObservation: RelationshipObservation? = null,
+        memoryObservation: MemoryObservation? = null,
     ): SingleJudgeSceneObservation =
         SingleJudgeSceneObservation(
             ref = ref,
@@ -216,5 +259,7 @@ class SingleJudgeSceneSnapshotBuilderTest {
             humansTalkingToEachOtherLikely = humansTalkingToEachOtherLikely,
             rateLimitPressure = rateLimitPressure,
             antiSpamPressure = antiSpamPressure,
+            relationshipObservation = relationshipObservation,
+            memoryObservation = memoryObservation,
         )
 }

@@ -15,8 +15,12 @@ import com.discordassistant.central.participation.application.debug.Participatio
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.feature.MemoryObservation
+import com.discordassistant.central.participation.application.feature.RelationshipObservation
+import com.discordassistant.central.participation.application.judge.SingleJudgeSceneBuildResult
+import com.discordassistant.central.participation.application.judge.SingleJudgeSceneObservation
+import com.discordassistant.central.participation.application.judge.SingleJudgeSceneSnapshotBuilder
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
-import com.discordassistant.central.participation.application.port.out.FeatureValue
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
@@ -348,26 +352,13 @@ class NexaParticipationEmitBridge(
             CoreInterventionRules.Verdict.Candidate -> Unit // 모호 → 아래 정책 분포로 위임.
         }
 
-        // 1) participation 평가 — 관측 가능한 최소 신호(멘션·최근 NEXA 발화량)로 정책 분포를 얻는다.
-        val features =
-            FeatureVectorView.of(
-                version = FeatureCatalog.VERSION,
-                pairs =
-                    mapOf(
-                        FeatureCatalog.BURST_HAS_MENTION to FeatureValue.present(if (signal.mentioned) 1.0 else 0.0),
-                        FeatureCatalog.AGENT_RECENT_BURST_COUNT to FeatureValue.present(signal.recentAgentBurstCount.toDouble()),
-                    ),
-            )
+        // 1) participation 평가 — Discord bridge도 단일 scene snapshot builder를 통해 feature vector를 만든다.
+        //    예전 2-feature(mention/recent burst) 경로로 돌아가지 않도록 bridge hot path와 judge contract를 맞춘다.
+        val sceneBuild = buildPolicyScene(signal, guildPseudonym, channelKey)
         val request =
             PolicyDecisionRequest(
-                sceneSnapshotRef =
-                    SceneSnapshotRef(
-                        guildPseudonym = guildPseudonym,
-                        channelId = channelKey,
-                        sceneSeq = signal.sceneSeq,
-                        contextVersion = signal.contextVersion,
-                    ),
-                features = features,
+                sceneSnapshotRef = sceneBuild.sceneSnapshot.ref,
+                features = sceneBuild.featureVector,
                 config =
                     PolicyConfigView(
                         channelMode = "participation",
@@ -390,11 +381,49 @@ class NexaParticipationEmitBridge(
                 response = response,
                 actionKind = response.mostLikelyAction,
                 reasonCode = "POLICY_ARGMAX_${response.mostLikelyAction.name}",
+                featureVector = sceneBuild.featureVector,
             )
             return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
         }
-        return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response)
+        return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response, sceneBuild.featureVector)
     }
+
+    private fun buildPolicyScene(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+    ): SingleJudgeSceneBuildResult =
+        SingleJudgeSceneSnapshotBuilder.build(
+            SingleJudgeSceneObservation(
+                ref =
+                    SceneSnapshotRef(
+                        guildPseudonym = guildPseudonym,
+                        channelId = channelKey,
+                        sceneSeq = signal.sceneSeq,
+                        contextVersion = signal.contextVersion,
+                    ),
+                triggerText = signal.triggerText.takeIf { it.isNotBlank() },
+                directAddressed = signal.mentioned,
+                replyToNia = signal.replyToNia,
+                replyToHuman = signal.replyToHuman,
+                conversationMentionsNia = signal.conversationMentionsNia,
+                recentAgentBurstCount = signal.recentAgentBurstCount,
+                silenceMillis = signal.silenceMillis,
+                lastNiaSpokeAgeSeconds = signal.lastNiaSpokeAgeSeconds,
+                pendingActionIds = signal.pendingActionIds,
+                humanLikelyAnswering = signal.humanLikelyAnswering,
+                resolvedLikely = signal.resolvedLikely,
+                directAddressPressure = signal.directAddressPressure,
+                replyChainDepth = signal.replyChainDepth,
+                nicknameCall = signal.nicknameCall || signal.triggerText.contains(NexaIdentity.NIA_NAME),
+                previousIgnoredRequestCount = signal.previousIgnoredRequestCount,
+                humansTalkingToEachOtherLikely = signal.humansTalkingToEachOtherLikely,
+                rateLimitPressure = signal.rateLimitPressure,
+                antiSpamPressure = signal.antiSpamPressure,
+                relationshipObservation = signal.relationshipObservation,
+                memoryObservation = signal.memoryObservation,
+            ),
+        )
 
     /**
      * 채널 attention 상태를 갱신하고 이 트리거의 깨움 action([AttentionGateConstants] WAKE_NOW/WAIT/WAKE_AFTER_IDLE)을 낸다.
@@ -460,6 +489,7 @@ class NexaParticipationEmitBridge(
         userPseudonym: String,
         channelKey: String,
         response: PolicyDecisionResponse,
+        featureVector: FeatureVectorView? = null,
     ): ParticipationEmitOutcome {
         logPolicyDecision(
             signal = signal,
@@ -468,6 +498,7 @@ class NexaParticipationEmitBridge(
             response = response,
             actionKind = SocialActionKind.SPEAK,
             reasonCode = response.reasonCodeForDecision(),
+            featureVector = featureVector,
         )
 
         // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
@@ -669,6 +700,7 @@ class NexaParticipationEmitBridge(
         response: PolicyDecisionResponse,
         actionKind: SocialActionKind,
         reasonCode: String,
+        featureVector: FeatureVectorView? = null,
     ) {
         appendDecisionLog(
             DecisionLogRecord(
@@ -677,7 +709,7 @@ class NexaParticipationEmitBridge(
                 channelId = channelKey,
                 contextVersion = signal.contextVersion,
                 actionKind = actionKind,
-                featureHash = featureHashOf(signal),
+                featureHash = featureVector?.let { featureHashOf(it) } ?: featureHashOf(signal),
                 featureVectorVersion = FeatureCatalog.VERSION,
                 modelVersion = response.modelVersion,
                 seed = signal.seed,
@@ -707,6 +739,11 @@ class NexaParticipationEmitBridge(
 
     private fun featureHashOf(signal: ParticipationMessageSignal): String =
         "mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}"
+
+    private fun featureHashOf(featureVector: FeatureVectorView): String =
+        featureVector.features.entries.joinToString(";") { (id, value) ->
+            "${id.id}=${if (value.missing) "missing" else value.value}"
+        }
 
     private fun ParticipationMessageSignal.wakeUpReasonCode(): String =
         when {
@@ -832,6 +869,8 @@ data class ParticipationMessageSignal(
     val speakerLabel: String = "",
     /** 트리거가 니아의 메시지에 대한 reply 인가(core hard_policy RESPOND_NOW reply 신호). 미관측이면 false(보수적). */
     val replyToNia: Boolean = false,
+    /** 트리거가 다른 사람 메시지에 대한 reply 인가. 사람끼리 답하는 흐름이면 judge가 끼어들기 위험을 볼 수 있다. */
+    val replyToHuman: Boolean = false,
     /**
      * 니아 직전 발화 토큰(continuation A7 — core hard_policy continuation). 채널 히스토리에서 도출. 없으면 빈 목록
      * (continuation 시도 안 함 — 보수적).
@@ -849,6 +888,34 @@ data class ParticipationMessageSignal(
     val firstMessageText: String? = null,
     /** 최근 대화 어디서든 니아가 호명됐는가(사적 핑퐁 예외, B17). 히스토리에서 도출. 미관측이면 false. */
     val conversationMentionsNia: Boolean = false,
+    /** 마지막 사람 발화 이후 공백(ms). 미관측이면 null 이고 feature/snapshot은 missing 또는 false 로 남긴다. */
+    val silenceMillis: Long? = null,
+    /** 마지막 니아 발화 경과(초). 미관측이면 null 로 남긴다. */
+    val lastNiaSpokeAgeSeconds: Double? = null,
+    /** 실행 전 최신 장면 재평가가 필요한 pending action id 목록. */
+    val pendingActionIds: List<String> = emptyList(),
+    /** 사람이 답하려는 흐름으로 보이는가. enum 대신 scene evidence 로만 전달한다. */
+    val humanLikelyAnswering: Boolean = false,
+    /** 이미 해결된 대화로 보이는가. */
+    val resolvedLikely: Boolean = false,
+    /** 니아를 직접 부르는 thread 압력 [0,1]. 반복 regex가 아니라 upstream thread state가 채운다. */
+    val directAddressPressure: Double = 0.0,
+    /** 현재 reply chain 깊이. */
+    val replyChainDepth: Int = 0,
+    /** @멘션 없이 별명/호명으로 니아를 부른 신호. */
+    val nicknameCall: Boolean = false,
+    /** 이전 직접 요청이 답 없이 지나간 횟수. */
+    val previousIgnoredRequestCount: Int = 0,
+    /** 사람끼리 대화 중인 흐름으로 보여 끼어들면 안 될 가능성. */
+    val humansTalkingToEachOtherLikely: Boolean = false,
+    /** 최종 전송 guard와 별개로 judge 입력에 제공하는 rate-limit 압력 [0,1]. */
+    val rateLimitPressure: Double = 0.0,
+    /** 최종 전송 guard와 별개로 judge 입력에 제공하는 anti-spam 압력 [0,1]. */
+    val antiSpamPressure: Double = 0.0,
+    /** socialmemory/relationship 읽기 포트가 채운 관계 집계. null이면 unavailable, observed=false이면 낮은 confidence evidence. */
+    val relationshipObservation: RelationshipObservation? = null,
+    /** socialmemory 읽기 포트가 채운 기억 요약. null이면 unavailable, relevantPresent=false이면 관련 기억 없음 evidence. */
+    val memoryObservation: MemoryObservation? = null,
     /**
      * 트리거 이벤트 절대 시각(ms) — [ChannelAttentionGate] 타이밍 결정(pingpong·min_gap debounce·dynamic_idle) 주입값.
      * Date.now 금지(결정론) — 호출자가 JDA `timeCreated` 등에서 도출해 넘긴다. 미관측이면 0.
@@ -860,7 +927,22 @@ data class ParticipationMessageSignal(
     val contextVersion: Long,
     /** 결정론 seed(안전 override·후보 선택 재현 키). */
     val seed: Long,
-)
+) {
+    init {
+        silenceMillis?.let { require(it >= 0) { "silenceMillis 는 음수일 수 없다: $it" } }
+        lastNiaSpokeAgeSeconds?.let { require(it >= 0.0) { "lastNiaSpokeAgeSeconds 는 음수일 수 없다: $it" } }
+        pendingActionIds.forEach { require(it.isNotBlank()) { "pendingActionId 는 비어 있을 수 없다" } }
+        require(directAddressPressure in 0.0..1.0) {
+            "directAddressPressure 는 [0,1] 범위여야 한다: $directAddressPressure"
+        }
+        require(replyChainDepth >= 0) { "replyChainDepth 는 음수일 수 없다: $replyChainDepth" }
+        require(previousIgnoredRequestCount >= 0) {
+            "previousIgnoredRequestCount 는 음수일 수 없다: $previousIgnoredRequestCount"
+        }
+        require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
+        require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
+    }
+}
 
 data class ParticipationRawContextRedactionSignal(
     val guildId: Long,

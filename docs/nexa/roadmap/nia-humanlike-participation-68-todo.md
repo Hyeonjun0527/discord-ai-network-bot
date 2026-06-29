@@ -70,11 +70,11 @@
 
 ## E. feature와 scene snapshot
 
-- [ ] 35. 현재 bridge가 mention과 recent burst count만 넣는 feature vector를 전수 조사한다.
-- [ ] 36. `FeatureCatalog`의 burst, thread, tempo, relationship, memory, agent feature 중 실제 judge에 줄 항목을 선별한다.
+- [x] 35. 현재 bridge가 mention과 recent burst count만 넣는 feature vector를 전수 조사한다.
+- [x] 36. `FeatureCatalog`의 burst, thread, tempo, relationship, memory, agent feature 중 실제 judge에 줄 항목을 선별한다.
 - [x] 37. 원문에서 파생한 `is_question`, direct address, reply target, emotional intensity, call pressure를 scene snapshot에 추가한다.
 - [x] 38. feature missing과 feature zero를 엄격히 구분한다.
-- [ ] 39. relationship/socialmemory confidence가 낮으면 judge가 과하게 친한 척하지 않도록 confidence를 함께 전달한다.
+- [x] 39. relationship/socialmemory confidence가 낮으면 judge가 과하게 친한 척하지 않도록 confidence를 함께 전달한다.
 - [x] 40. 니아의 최근 발화 비율, 마지막 발화 시각, 연속 발화 수를 scene snapshot에 포함한다.
 - [x] 41. 사람이 답하려는 흐름인지, 아무도 안 답하는 공백인지, 이미 해결된 대화인지 구분하는 conversation state를 만든다.
 - [x] 42. snapshot 생성 결과를 deterministic fixture로 고정해서 같은 원문이면 같은 judge input이 만들어지게 한다.

@@ -4,6 +4,7 @@
 - 코드: [ParticipationRuntimeLoop.kt](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/application/runtime/ParticipationRuntimeLoop.kt),
   [ChannelAttentionGate.kt](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/ChannelAttentionGate.kt),
   [SingleJudgeSceneSnapshotBuilder.kt](../../../central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/SingleJudgeSceneSnapshotBuilder.kt)
+- judge feature 선별: [judge-feature-selection.md](../policy/judge-feature-selection.md)
 
 ## 결정
 

@@ -1,6 +1,11 @@
 package com.discordassistant.central.participation.application.judge
 
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
+import com.discordassistant.central.participation.application.feature.MemoryFeatures
+import com.discordassistant.central.participation.application.feature.MemoryObservation
+import com.discordassistant.central.participation.application.feature.RelationshipFeatures
+import com.discordassistant.central.participation.application.feature.RelationshipObservation
+import com.discordassistant.central.participation.application.port.out.FeatureId
 import com.discordassistant.central.participation.application.port.out.FeatureValue
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
@@ -38,6 +43,8 @@ object SingleJudgeSceneSnapshotBuilder {
                 rateLimitPressure = observation.rateLimitPressure,
                 antiSpamPressure = observation.antiSpamPressure,
             )
+        val relationshipState = observation.relationshipObservation.toRelationshipSceneState()
+        val memoryState = observation.memoryObservation.toMemorySceneState()
         val snapshot =
             SingleJudgeSceneSnapshot(
                 ref = observation.ref,
@@ -52,6 +59,8 @@ object SingleJudgeSceneSnapshotBuilder {
                 conversationState = conversationState,
                 turnTakingState = turnTakingState,
                 runtimeGuardState = runtimeGuardState,
+                relationshipState = relationshipState,
+                memoryState = memoryState,
             )
         return SingleJudgeSceneBuildResult(
             sceneSnapshot = snapshot,
@@ -79,25 +88,68 @@ object SingleJudgeSceneSnapshotBuilder {
     private fun SingleJudgeSceneObservation.toFeatureVector(
         textSignals: JudgeSceneTextSignals,
         directAddressed: Boolean,
-    ): FeatureVectorView =
-        FeatureVectorView.of(
-            version = FeatureCatalog.VERSION,
-            pairs =
-                linkedMapOf(
-                    FeatureCatalog.BURST_IS_QUESTION to textDerivedFeature(textSignals.isQuestion, textSignals.contentAvailable),
-                    FeatureCatalog.BURST_HAS_MENTION to FeatureValue.present(if (directAddressed) 1.0 else 0.0),
-                    FeatureCatalog.BURST_IS_REPLY to FeatureValue.present(if (replyToNia || replyToHuman) 1.0 else 0.0),
-                    FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE to FeatureValue.present(directAddressPressure),
-                    FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH to FeatureValue.present(replyChainDepth.toDouble()),
-                    FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT to
-                        FeatureValue.present(previousIgnoredRequestCount.toDouble()),
-                    FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE to FeatureValue.present(rateLimitPressure),
-                    FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE to FeatureValue.present(antiSpamPressure),
-                    FeatureCatalog.AGENT_RECENT_BURST_COUNT to FeatureValue.present(recentAgentBurstCount.toDouble()),
-                    FeatureCatalog.AGENT_LAST_SPOKE_AGE_SECONDS to lastSpokeFeature(lastNiaSpokeAgeSeconds),
-                    FeatureCatalog.AGENT_PENDING_ACTION_COUNT to FeatureValue.present(pendingActionIds.size.toDouble()),
-                ),
-        )
+    ): FeatureVectorView {
+        val pairs =
+            linkedMapOf(
+                FeatureCatalog.BURST_IS_QUESTION to textDerivedFeature(textSignals.isQuestion, textSignals.contentAvailable),
+                FeatureCatalog.BURST_HAS_MENTION to FeatureValue.present(if (directAddressed) 1.0 else 0.0),
+                FeatureCatalog.BURST_IS_REPLY to FeatureValue.present(if (replyToNia || replyToHuman) 1.0 else 0.0),
+                FeatureCatalog.THREAD_DIRECT_ADDRESS_PRESSURE to FeatureValue.present(directAddressPressure),
+                FeatureCatalog.THREAD_REPLY_CHAIN_DEPTH to FeatureValue.present(replyChainDepth.toDouble()),
+                FeatureCatalog.THREAD_PREVIOUS_IGNORED_REQUEST_COUNT to
+                    FeatureValue.present(previousIgnoredRequestCount.toDouble()),
+                FeatureCatalog.TEMPO_RATE_LIMIT_PRESSURE to FeatureValue.present(rateLimitPressure),
+                FeatureCatalog.TEMPO_ANTI_SPAM_PRESSURE to FeatureValue.present(antiSpamPressure),
+                FeatureCatalog.AGENT_RECENT_BURST_COUNT to FeatureValue.present(recentAgentBurstCount.toDouble()),
+                FeatureCatalog.AGENT_LAST_SPOKE_AGE_SECONDS to lastSpokeFeature(lastNiaSpokeAgeSeconds),
+                FeatureCatalog.AGENT_PENDING_ACTION_COUNT to FeatureValue.present(pendingActionIds.size.toDouble()),
+            )
+        pairs.putAll(relationshipFeaturePairs(relationshipObservation))
+        pairs.putAll(memoryFeaturePairs(memoryObservation))
+        return FeatureVectorView.of(version = FeatureCatalog.VERSION, pairs = pairs)
+    }
+
+    private fun RelationshipObservation?.toRelationshipSceneState(): JudgeRelationshipSceneState =
+        when (this) {
+            null -> JudgeRelationshipSceneState.EMPTY
+            else ->
+                JudgeRelationshipSceneState(
+                    familiarity = familiarity.takeIf { observed },
+                    reciprocity = reciprocity.takeIf { observed },
+                    banterAcceptance = banterAcceptance.takeIf { observed },
+                    sampleConfidence = RelationshipFeatures.sampleConfidence(sampleSize),
+                )
+        }
+
+    private fun MemoryObservation?.toMemorySceneState(): JudgeMemorySceneState =
+        when (this) {
+            null -> JudgeMemorySceneState.EMPTY
+            else ->
+                JudgeMemorySceneState(
+                    relevantPresent = relevantPresent,
+                    topConfidence = topConfidence.takeIf { relevantPresent },
+                    freshestAgeSeconds = freshestAgeSeconds.takeIf { relevantPresent },
+                    pendingIntentActive = pendingIntentActive,
+                )
+        }
+
+    private fun relationshipFeaturePairs(observation: RelationshipObservation?): Map<FeatureId, FeatureValue> =
+        observation?.let { RelationshipFeatures.build(it) }
+            ?: linkedMapOf(
+                FeatureCatalog.REL_FAMILIARITY to FeatureValue.MISSING,
+                FeatureCatalog.REL_RECIPROCITY to FeatureValue.MISSING,
+                FeatureCatalog.REL_BANTER_ACCEPTANCE to FeatureValue.MISSING,
+                FeatureCatalog.REL_SAMPLE_CONFIDENCE to FeatureValue.MISSING,
+            )
+
+    private fun memoryFeaturePairs(observation: MemoryObservation?): Map<FeatureId, FeatureValue> =
+        observation?.let { MemoryFeatures.build(it) }
+            ?: linkedMapOf(
+                FeatureCatalog.MEMORY_RELEVANT_PRESENT to FeatureValue.MISSING,
+                FeatureCatalog.MEMORY_RELEVANT_CONFIDENCE to FeatureValue.MISSING,
+                FeatureCatalog.MEMORY_RELEVANT_AGE_SECONDS to FeatureValue.MISSING,
+                FeatureCatalog.MEMORY_PENDING_INTENT_ACTIVE to FeatureValue.MISSING,
+            )
 
     private fun textDerivedFeature(
         value: Boolean,
@@ -176,6 +228,8 @@ data class SingleJudgeSceneObservation(
     val humansTalkingToEachOtherLikely: Boolean = false,
     val rateLimitPressure: Double = 0.0,
     val antiSpamPressure: Double = 0.0,
+    val relationshipObservation: RelationshipObservation? = null,
+    val memoryObservation: MemoryObservation? = null,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }

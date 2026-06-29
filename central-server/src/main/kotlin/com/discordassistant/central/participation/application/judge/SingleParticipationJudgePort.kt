@@ -42,6 +42,8 @@ data class SingleJudgeSceneSnapshot(
     val conversationState: JudgeConversationSceneState = JudgeConversationSceneState.EMPTY,
     val turnTakingState: JudgeTurnTakingSceneState = JudgeTurnTakingSceneState.EMPTY,
     val runtimeGuardState: JudgeRuntimeGuardState = JudgeRuntimeGuardState.EMPTY,
+    val relationshipState: JudgeRelationshipSceneState = JudgeRelationshipSceneState.EMPTY,
+    val memoryState: JudgeMemorySceneState = JudgeMemorySceneState.EMPTY,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }
@@ -49,6 +51,52 @@ data class SingleJudgeSceneSnapshot(
         pendingActionIds.forEach { pendingActionId ->
             require(pendingActionId.isNotBlank()) { "pendingActionId 는 비어 있을 수 없다" }
         }
+    }
+}
+
+data class JudgeRelationshipSceneState(
+    val familiarity: Double?,
+    val reciprocity: Double?,
+    val banterAcceptance: Double?,
+    val sampleConfidence: Double?,
+) {
+    init {
+        validateNullableAxis("familiarity", familiarity)
+        validateNullableAxis("reciprocity", reciprocity)
+        validateNullableAxis("banterAcceptance", banterAcceptance)
+        validateNullableAxis("sampleConfidence", sampleConfidence)
+    }
+
+    companion object {
+        val EMPTY =
+            JudgeRelationshipSceneState(
+                familiarity = null,
+                reciprocity = null,
+                banterAcceptance = null,
+                sampleConfidence = null,
+            )
+    }
+}
+
+data class JudgeMemorySceneState(
+    val relevantPresent: Boolean?,
+    val topConfidence: Double?,
+    val freshestAgeSeconds: Double?,
+    val pendingIntentActive: Boolean?,
+) {
+    init {
+        validateNullableAxis("topConfidence", topConfidence)
+        freshestAgeSeconds?.let { require(it >= 0.0) { "freshestAgeSeconds 는 음수일 수 없다: $it" } }
+    }
+
+    companion object {
+        val EMPTY =
+            JudgeMemorySceneState(
+                relevantPresent = null,
+                topConfidence = null,
+                freshestAgeSeconds = null,
+                pendingIntentActive = null,
+            )
     }
 }
 
@@ -286,6 +334,13 @@ data class JudgeToneAxes(
             require(value in 0.0..1.0) { "$name 축은 [0,1] 범위여야 한다: $value" }
         }
     }
+}
+
+private fun validateNullableAxis(
+    name: String,
+    value: Double?,
+) {
+    value?.let { require(it in 0.0..1.0) { "$name 축은 [0,1] 범위여야 한다: $it" } }
 }
 
 @JvmInline

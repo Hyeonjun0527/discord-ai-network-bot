@@ -30,6 +30,8 @@ object FieldCrypto {
                 ?.let { SecretKeySpec(MessageDigest.getInstance("SHA-256").digest(it.toByteArray(Charsets.UTF_8)), "AES") }
     }
 
+    fun isConfigured(): Boolean = key != null
+
     fun encrypt(plain: String?): String? {
         val k = key ?: return plain
         if (plain == null) return null

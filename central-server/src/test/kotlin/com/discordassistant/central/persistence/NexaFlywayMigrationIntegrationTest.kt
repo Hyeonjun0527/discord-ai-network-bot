@@ -10,7 +10,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 /**
  * NEXA-P15-T020 — NEXA Flyway 마이그레이션 통합 검증(H2, 비-Docker).
  *
- * P02~P15 NEXA 마이그레이션(V50~V66)이 운영 baseline(V49) 위에 **순서대로·additive 로** 적용돼 깨끗한 스키마가
+ * P02~P15 NEXA 마이그레이션(V50~V71)이 운영 baseline(V49) 위에 **순서대로·additive 로** 적용돼 깨끗한 스키마가
  * 만들어지는지 검증한다. H2(PostgreSQL 모드) + Flyway 로 V1~현재 전체를 적용한 뒤:
  *  - flyway_schema_history 에 V50~V66 가 success=true 로 모두 기록됐는지(checksum/constraint 통과 = 적용 성공),
  *  - NEXA 핵심 테이블/컬럼이 존재하는지(consent·event store·scheduled action·participation flag·온보딩 동의 4축)
@@ -27,7 +27,7 @@ class NexaFlywayMigrationIntegrationTest {
     private lateinit var em: EntityManager
 
     @Test
-    fun `NEXA 마이그레이션 V50부터 V66까지 모두 success 로 적용된다`() {
+    fun `NEXA 마이그레이션 V50부터 V71까지 모두 success 로 적용된다`() {
         @Suppress("UNCHECKED_CAST")
         val rows =
             em
@@ -41,8 +41,8 @@ class NexaFlywayMigrationIntegrationTest {
                 (row[0] as Any).toString() to toBool(row[1])
             }
 
-        // V50~V66 의 NEXA 마이그레이션이 모두 적용·성공이어야 한다(누락·실패 0).
-        (50..66).forEach { v ->
+        // V50~V71 의 NEXA 마이그레이션이 모두 적용·성공이어야 한다(누락·실패 0).
+        (50..71).forEach { v ->
             assertThat(successByVersion).containsKey(v.toString())
             assertThat(successByVersion[v.toString()]).`as`("V$v success").isTrue()
         }
@@ -55,6 +55,7 @@ class NexaFlywayMigrationIntegrationTest {
         assertThat(tableRowCount("nexa_channel_scope")).isZero()
         assertThat(tableRowCount("nexa_scheduled_action")).isZero()
         assertThat(tableRowCount("nexa_participation_channel_flag")).isZero()
+        assertThat(tableRowCount("nexa_raw_context_message")).isZero()
 
         // T014 온보딩 동의 4축 컬럼이 기존 테이블에 additive 로 추가됐다(셀렉트가 깨지지 않으면 컬럼 존재).
         em

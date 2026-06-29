@@ -47,8 +47,8 @@
 - [x] 15. `RawContextStore` 포트를 새로 정의하고 일반 event store, request log, decision log와 분리한다.
 - [x] 16. RawContextStore scope를 `guild + channel + thread` 기준으로 정의하고, 필요 시 author pseudonym view를 추가한다.
 - [x] 17. 원문 저장 항목에 `messageId`, `authorPseudonym`, `occurredAt`, `replyTo`, `sourceType`, `content`, `contentLength`를 포함한다.
-- [ ] 18. 원문은 at-rest 암호화로 저장하고, 평문 DB column, 평문 로그, exception message 유출을 금지한다.
-- [ ] 19. scope별 최대 보존량을 설정한다. 기본값은 수십만자 범위로 두고 config로 조정 가능하게 한다.
+- [x] 18. 원문은 at-rest 암호화로 저장하고, 평문 DB column, 평문 로그, exception message 유출을 금지한다.
+- [x] 19. scope별 최대 보존량을 설정한다. 기본값은 수십만자 범위로 두고 config로 조정 가능하게 한다.
 - [x] 20. append 후 보존량을 초과하면 가장 오래된 원문부터 FIFO로 제거하는 bounded ring buffer를 구현한다.
 - [ ] 21. 오래된 원문 제거 시 순서와 존재 증거가 필요한 경우 raw 없이 tombstone metadata만 남기는 정책을 정한다.
 - [ ] 22. Discord message delete/edit, 사용자 동의 철회, opt-out, guild/channel disable 시 raw context redaction을 전파한다.

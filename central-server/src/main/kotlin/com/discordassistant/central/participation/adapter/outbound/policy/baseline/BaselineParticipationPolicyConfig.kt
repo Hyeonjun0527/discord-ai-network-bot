@@ -10,8 +10,9 @@ import org.springframework.context.annotation.Configuration
  *
  * participation 자발 발화 wiring(participation-activation-plan 단계 1)이 SPEAK/IGNORE 분포를 얻으려면
  * [ParticipationPolicyPort] bean 이 필요하다. 관측 가능한 최소 신호(멘션·최근 NEXA 발화량)만 보는
- * [CooldownHeuristicPolicy] 를 안전한 하한 baseline 으로 등록한다 — 단계 1 은 SHADOW_PREDICT(전송 0)라 정책 품질은
- * 관측 대상일 뿐 사용자 영향이 없으므로, 단순·결정론 baseline 으로 시작한다.
+ * [CooldownHeuristicPolicy] 를 안전한 하한 baseline 으로 등록한다. 이 bean 은 최종 "사람같은 judge" 구현이 아니라
+ * shadow/default 기준선이다 — 단계 1 은 SHADOW_PREDICT(전송 0)라 정책 품질은 관측 대상일 뿐 사용자 영향이
+ * 없으므로, 단순·결정론 baseline 으로 시작한다.
  *
  * 더 풍부한 정책(ONNX/learned/gRPC) bean 이 등록되면 [ConditionalOnMissingBean] 으로 이 기본이 비활성화된다.
  *

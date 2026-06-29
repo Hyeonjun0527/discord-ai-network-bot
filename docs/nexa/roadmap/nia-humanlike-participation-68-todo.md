@@ -29,7 +29,7 @@
 - [x] 3. `말할지 / 기다릴지 / 반응만 할지 / 침묵할지`를 participation의 유일한 최종 행동 선택으로 고정한다.
 - [x] 4. speech는 말 내용만 만들고, 말할지 여부를 다시 판단하지 못하도록 계약을 점검한다.
 - [x] 5. actionruntime은 예약, 취소, 전송만 맡고 사회적 판단을 포함하지 않도록 경계를 점검한다.
-- [ ] 6. 기존 baseline, heuristic, demo, dormant wiring이 실제 product path와 섞이지 않도록 이름과 문서를 정리한다.
+- [x] 6. 기존 baseline, heuristic, demo, dormant wiring이 실제 product path와 섞이지 않도록 이름과 문서를 정리한다.
 
 ## B. 현재 막힘 지점 제거
 

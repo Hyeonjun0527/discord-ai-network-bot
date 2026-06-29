@@ -37,6 +37,9 @@ data class SingleJudgeSceneSnapshot(
     val recentAgentBurstCount: Int,
     val silenceMillis: Long?,
     val pendingActionIds: List<String> = emptyList(),
+    val textSignals: JudgeSceneTextSignals = JudgeSceneTextSignals.EMPTY,
+    val agentState: JudgeAgentSceneState = JudgeAgentSceneState.EMPTY,
+    val conversationState: JudgeConversationSceneState = JudgeConversationSceneState.EMPTY,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }
@@ -44,6 +47,60 @@ data class SingleJudgeSceneSnapshot(
         pendingActionIds.forEach { pendingActionId ->
             require(pendingActionId.isNotBlank()) { "pendingActionId 는 비어 있을 수 없다" }
         }
+    }
+}
+
+data class JudgeSceneTextSignals(
+    val contentAvailable: Boolean,
+    val isQuestion: Boolean,
+    val replyTargetKind: String,
+    val emotionalIntensity: Double,
+    val callPressure: Double,
+) {
+    init {
+        require(replyTargetKind.isNotBlank()) { "replyTargetKind 는 비어 있을 수 없다" }
+        require(emotionalIntensity in 0.0..1.0) { "emotionalIntensity 는 [0,1] 범위여야 한다: $emotionalIntensity" }
+        require(callPressure in 0.0..1.0) { "callPressure 는 [0,1] 범위여야 한다: $callPressure" }
+    }
+
+    companion object {
+        val EMPTY: JudgeSceneTextSignals =
+            JudgeSceneTextSignals(
+                contentAvailable = false,
+                isQuestion = false,
+                replyTargetKind = "none",
+                emotionalIntensity = 0.0,
+                callPressure = 0.0,
+            )
+    }
+}
+
+data class JudgeAgentSceneState(
+    val recentSpeechCount: Int,
+    val lastSpokeAgeSeconds: Double?,
+) {
+    init {
+        require(recentSpeechCount >= 0) { "recentSpeechCount 는 음수일 수 없다: $recentSpeechCount" }
+        lastSpokeAgeSeconds?.let { require(it >= 0.0) { "lastSpokeAgeSeconds 는 음수일 수 없다: $it" } }
+    }
+
+    companion object {
+        val EMPTY: JudgeAgentSceneState = JudgeAgentSceneState(recentSpeechCount = 0, lastSpokeAgeSeconds = null)
+    }
+}
+
+data class JudgeConversationSceneState(
+    val humanLikelyAnswering: Boolean,
+    val idleGapLikely: Boolean,
+    val resolvedLikely: Boolean,
+) {
+    companion object {
+        val EMPTY: JudgeConversationSceneState =
+            JudgeConversationSceneState(
+                humanLikelyAnswering = false,
+                idleGapLikely = false,
+                resolvedLikely = false,
+            )
     }
 }
 

@@ -21,6 +21,7 @@ import org.mockito.Mockito.isNull
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoMoreInteractions
 import org.mockito.Mockito.`when`
 
 /**
@@ -160,5 +161,21 @@ class NiaChannelSetupHandlerTest {
             isNull(), // constitution
         )
         verify(autoRespond).setAutoRespond(eq(guildId), eq(chatId), eq(true), eq(actorId))
+    }
+
+    @Test
+    fun `니아수다는 autoRespond 를 켜지 않고 participation live 채널로만 등록한다`() {
+        val profiles = mock(ChannelAiProfileService::class.java)
+        val autoRespond = mock(AutoRespondChannelRegistry::class.java)
+        val allowList = mock(ChannelAllowListPort::class.java)
+        val participationFlags = mock(NexaParticipationFlagService::class.java)
+        `when`(allowList.allowedChannelIds(guildId)).thenReturn(emptyList())
+
+        NiaChannelSetupHandler(profiles, autoRespond, allowList, participationFlags).handle(mockCreateEvent(), ctx(), "ko")
+
+        verify(autoRespond).setAutoRespond(eq(guildId), eq(chatId), eq(true), eq(actorId))
+        verifyNoMoreInteractions(autoRespond)
+        verify(participationFlags).enableChannelLive(eq(guildId), eq(memberId))
+        verify(participationFlags, never()).enableChannelLive(eq(guildId), eq(chatId))
     }
 }

@@ -93,9 +93,9 @@
 
 ## G. 발화 생성과 톤
 
-- [ ] 52. participation의 speech intent를 `SpeechScenePacket`에 반영해서 항상 `ACKNOWLEDGE`로 고정되는 현재 경로를 제거한다.
-- [ ] 53. speech prompt에 raw context window 중 필요한 부분과 judge의 intent를 함께 넣는다.
-- [ ] 54. speech는 짧게 말할 상황, 반응만 할 상황, 말하지 않을 상황을 다시 뒤집지 않도록 입력 계약을 점검한다.
+- [x] 52. participation의 speech intent를 `SpeechScenePacket`에 반영해서 항상 `ACKNOWLEDGE`로 고정되는 현재 경로를 제거한다.
+- [x] 53. speech prompt에 raw context window 중 필요한 부분과 judge의 intent를 함께 넣는다.
+- [x] 54. speech는 짧게 말할 상황, 반응만 할 상황, 말하지 않을 상황을 다시 뒤집지 않도록 입력 계약을 점검한다.
 - [ ] 55. 장문 위로, 설명충식 답변, 과한 친밀감, 사용자 대신 감정 단정하기를 critic으로 막는다.
 - [ ] 56. 대화 상황에 따라 한 문장, 짧은 두 문장, reaction-only, silence를 자연스럽게 선택하는 burst profile을 적용한다.
 - [ ] 57. "야 이럴땐 위로해줘야지 / 위로하라고" 같은 직접 요구 fixture에서 짧고 자연스러운 개입이 생성되는지 고정한다.

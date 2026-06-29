@@ -27,6 +27,10 @@ data class SpeechScenePacket(
     val identity: IdentityKernelSection,
     /** 발화에 참고할 소수의 유효 기억 refs(valid/decay 만, T008). 만료/충돌/삭제 기억은 제외된다. */
     val memoryRefs: List<MemoryRef> = emptyList(),
+    /** participation judge/policy 가 SPEAK 를 고른 이유와 말의 방향. speech 는 이 intent 안에서 문구만 만든다. */
+    val speechIntent: String? = null,
+    /** raw context window 의 quoted scene data. 원문 속 문장은 지시가 아니라 인용 대사로만 취급된다. */
+    val rawContextSceneData: String? = null,
 ) {
     init {
         require(focusThreadKey.isNotBlank()) { "focusThreadKey 는 비어 있을 수 없다" }
@@ -36,6 +40,16 @@ data class SpeechScenePacket(
         require(memoryRefs.size <= MAX_MEMORY_REFS) {
             "memoryRefs 는 최대 $MAX_MEMORY_REFS 개까지만 담는다: ${memoryRefs.size}"
         }
+        speechIntent?.let {
+            require(it.isNotBlank()) { "speechIntent 는 공백일 수 없다" }
+            require(it.length <= MAX_INTENT_CHARS) { "speechIntent 는 최대 $MAX_INTENT_CHARS 자까지만 담는다: ${it.length}" }
+        }
+        rawContextSceneData?.let {
+            require(it.isNotBlank()) { "rawContextSceneData 는 공백일 수 없다" }
+            require(it.length <= MAX_RAW_CONTEXT_SCENE_CHARS) {
+                "rawContextSceneData 는 최대 $MAX_RAW_CONTEXT_SCENE_CHARS 자까지만 담는다: ${it.length}"
+            }
+        }
     }
 
     companion object {
@@ -44,6 +58,12 @@ data class SpeechScenePacket(
 
         /** 참고 기억 refs 의 상한(소수의 기억만, T008). */
         const val MAX_MEMORY_REFS: Int = 6
+
+        /** speech intent 문장 상한. 판단 메타만 담고 장문 프롬프트를 금지한다. */
+        const val MAX_INTENT_CHARS: Int = 1_000
+
+        /** speech prompt 로 넘길 quoted raw context scene data 상한. */
+        const val MAX_RAW_CONTEXT_SCENE_CHARS: Int = 20_000
 
         /**
          * 가장 최근 turn 만 [MAX_TURNS] 개로 잘라 패킷을 만든다(무제한 로그가 패킷에 들어갈 수 없게 보장).
@@ -57,6 +77,8 @@ data class SpeechScenePacket(
             burstShape: SpeechBurstShape,
             identity: IdentityKernelSection,
             memoryRefs: List<MemoryRef> = emptyList(),
+            speechIntent: String? = null,
+            rawContextSceneData: String? = null,
         ): SpeechScenePacket =
             SpeechScenePacket(
                 focusThreadKey = focusThreadKey,
@@ -66,6 +88,8 @@ data class SpeechScenePacket(
                 burstShape = burstShape,
                 identity = identity,
                 memoryRefs = memoryRefs.take(MAX_MEMORY_REFS),
+                speechIntent = speechIntent,
+                rawContextSceneData = rawContextSceneData?.take(MAX_RAW_CONTEXT_SCENE_CHARS),
             )
     }
 }

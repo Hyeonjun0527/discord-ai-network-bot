@@ -71,7 +71,8 @@ class CandidateGenerationService(
     /**
      * 외부로 나갈 user payload 를 조립한다(NEXA-P17-T002/T004 enforcement). allowlist 직렬화(명시 허용 필드 +
      * minimizer 스크럽)로 deny-by-default payload 를 만들고, content 격리기로 최근 turn 을 **인용된 장면 데이터**로
-     * 감싸 붙인다 — raw content 가 새 지시문이 되지 못한다. 두 방어선이 실제 GLM payload 경로에 함께 적용된다.
+     * 감싸 붙인다. participation raw context 는 이미 quote-isolated scene data 로 만든 값만 붙인다 — raw content 가 새
+     * 지시문이 되지 못한다. 두 방어선이 실제 GLM payload 경로에 함께 적용된다.
      */
     private fun assembleUserPayload(packet: SpeechScenePacket): String =
         buildString {
@@ -79,6 +80,11 @@ class CandidateGenerationService(
             appendLine()
             appendLine()
             append(contentIsolator.serializeAsQuotedScene(packet))
+            packet.rawContextSceneData?.let { rawContextScene ->
+                appendLine()
+                appendLine()
+                append(rawContextScene)
+            }
         }.trim()
 
     /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
@@ -87,6 +93,11 @@ class CandidateGenerationService(
             appendLine(renderIdentity(packet.identity))
             appendLine()
             appendLine("[지금 장면 지침]")
+            packet.speechIntent?.let { intent ->
+                appendLine("[participation 결정]")
+                appendLine(intent)
+                appendLine("SPEAK 여부는 이미 확정됐다. 여기서는 실제 문구만 만들고 WAIT/REACT/IGNORE 로 다시 뒤집지 않는다.")
+            }
             appendLine(socialActCompiler.compile(packet.socialAct))
             appendLine(burstCompiler.compile(packet.burstShape))
             appendLine()

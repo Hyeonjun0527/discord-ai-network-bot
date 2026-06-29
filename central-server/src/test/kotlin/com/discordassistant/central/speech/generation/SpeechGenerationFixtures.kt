@@ -15,6 +15,8 @@ internal object SpeechGenerationFixtures {
         burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
         turns: List<ConversationTurn> = listOf(ConversationTurn("user_1", "안녕")),
         memoryRefs: List<MemoryRef> = emptyList(),
+        speechIntent: String? = null,
+        rawContextSceneData: String? = null,
     ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
@@ -24,5 +26,7 @@ internal object SpeechGenerationFixtures {
             burstShape = burstShape,
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
             memoryRefs = memoryRefs,
+            speechIntent = speechIntent,
+            rawContextSceneData = rawContextSceneData,
         )
 }

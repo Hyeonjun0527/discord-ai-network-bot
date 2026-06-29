@@ -10,6 +10,7 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
@@ -81,11 +82,14 @@ class NexaParticipationEmitBridge(
     private val rateLimitStore: RateLimitStore,
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
+    @param:Value("\${central.nexa.participation.speech.raw-context.max-chars:12000}")
+    private val speechRawContextMaxChars: Int = 12_000,
     private val rawContextStore: RawContextStorePort? = null,
     private val decisionLog: ParticipationDecisionLogPort? = null,
     private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
+    private val speechRawContextWindowBuilder = JudgeContextWindowBuilder(speechRawContextMaxChars)
 
     /**
      * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
@@ -480,9 +484,11 @@ class NexaParticipationEmitBridge(
                 focusThreadKey = "discord:$guildPseudonym:$channelKey",
                 target = SpeechTarget.member(userPseudonym),
                 recentTurns = signal.recentTurns,
-                socialAct = SpeechSocialAct.ACKNOWLEDGE,
-                burstShape = SpeechBurstShape(fragmentCount = 1, maxFragmentLength = 280, reactionOnly = false),
+                socialAct = response.selectedSpeechSocialAct(),
+                burstShape = response.toSpeechBurstShape(),
                 identity = NIA_IDENTITY,
+                speechIntent = response.speechIntent(reasonCode = response.reasonCodeForDecision()),
+                rawContextSceneData = rawContextSceneDataForSpeech(signal),
             )
         val emitRequest =
             NexaSpeechEmitRequest(
@@ -604,6 +610,27 @@ class NexaParticipationEmitBridge(
     private fun PolicyDecisionResponse.reasonCodeForDecision(): String =
         if (modelVersion == RULE_FORCED_MODEL_VERSION) "RULE_FORCED_SPEAK" else "POLICY_ARGMAX_SPEAK"
 
+    private fun PolicyDecisionResponse.selectedSpeechSocialAct(): SpeechSocialAct {
+        val selected = socialActWeights.entries.maxByOrNull { it.value }?.key
+        return SpeechSocialAct.fromWireName(selected?.wireName ?: SpeechSocialAct.ACKNOWLEDGE.wireName)
+    }
+
+    private fun PolicyDecisionResponse.toSpeechBurstShape(): SpeechBurstShape =
+        SpeechBurstShape(
+            fragmentCount = burstProfile.mostLikelyFragmentCount,
+            maxFragmentLength = burstProfile.maxFragmentLength,
+            reactionOnly = false,
+        )
+
+    private fun PolicyDecisionResponse.speechIntent(reasonCode: String): String =
+        buildString {
+            append("participation_action=SPEAK; ")
+            append("reason_code=$reasonCode; ")
+            append("social_act=${selectedSpeechSocialAct().wireName}; ")
+            append("fragments=${burstProfile.mostLikelyFragmentCount}; ")
+            append("speech는 말할지 여부를 다시 판단하지 않고 이 방향의 실제 문구만 만든다.")
+        }
+
     private fun logRuleDecision(
         signal: ParticipationMessageSignal,
         guildPseudonym: String,
@@ -701,6 +728,24 @@ class NexaParticipationEmitBridge(
             "raw_context_scope:g=$guildPseudonym:c=$channelId",
             "raw_context_message:${messagePseudonym(guildId, messageId)}",
         )
+
+    private fun rawContextSceneDataForSpeech(signal: ParticipationMessageSignal): String? {
+        val store = rawContextStore ?: return null
+        return try {
+            val snapshot =
+                store.readRecent(
+                    RawContextScope(
+                        guildId = signal.guildId,
+                        channelId = signal.channelId,
+                        threadId = signal.threadId,
+                    ),
+                )
+            speechRawContextWindowBuilder.build(snapshot).quotedSceneData
+        } catch (e: Exception) {
+            log.warn("NEXA speech raw context window 읽기 실패(channel={}) — {}", signal.channelId, e.message)
+            null
+        }
+    }
 
     /**
      * core 규칙이 명백한 SPEAK 로 즉결했을 때 쓰는 결정론 분포(SPEAK=1.0). 정책 분포를 묻지 않고 바로 발화하되,

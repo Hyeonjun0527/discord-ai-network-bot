@@ -85,10 +85,10 @@
 - [x] 44. 단일 judge 입력 schema를 정의한다. 입력은 raw context window, scene snapshot, feature vector, memory refs, constraints로 나눈다.
 - [x] 45. 단일 judge 출력 schema를 정의한다. 출력은 action, confidence, delay, reaction candidate, speech intent, tone axes, reason code로 나눈다.
 - [x] 46. judge가 `SPEAK`를 고를 때도 speech text를 직접 만들지 않게 하고, speech intent와 scene direction만 넘긴다.
-- [ ] 47. `WAIT`는 무기한 침묵이 아니라 wake-up 조건과 만료 시간을 가진 pending decision으로 만든다.
-- [ ] 48. `REACT`는 emoji/reaction-only 후보와 실패 시 fallback을 포함하되 텍스트 발화와 분리한다.
-- [ ] 49. `IGNORE`는 로그 가능한 판단이어야 하며, gate early return과 구분한다.
-- [ ] 50. judge confidence가 낮으면 기본 행동은 `WAIT` 또는 `IGNORE`로 두고, 억지 SPEAK를 금지한다.
+- [x] 47. `WAIT`는 무기한 침묵이 아니라 wake-up 조건과 만료 시간을 가진 pending decision으로 만든다.
+- [x] 48. `REACT`는 emoji/reaction-only 후보와 실패 시 fallback을 포함하되 텍스트 발화와 분리한다.
+- [x] 49. `IGNORE`는 로그 가능한 판단이어야 하며, gate early return과 구분한다.
+- [x] 50. judge confidence가 낮으면 기본 행동은 `WAIT` 또는 `IGNORE`로 두고, 억지 SPEAK를 금지한다.
 - [x] 51. "위로", "농담", "장난", "사과", "정정" 같은 세부 상황은 enum 추가가 아니라 tone axes와 natural language intent로 표현한다.
 
 ## G. 발화 생성과 톤

@@ -81,6 +81,9 @@ data class JudgeDecisionConstraints(
         require(lowConfidenceFallbackActions.all { it in allowedActions }) {
             "lowConfidenceFallbackActions 는 allowedActions 안에서만 고를 수 있다"
         }
+        require(lowConfidenceFallbackActions.all { it == SocialActionKind.WAIT || it == SocialActionKind.IGNORE }) {
+            "lowConfidenceFallbackActions 는 WAIT 또는 IGNORE 만 허용한다"
+        }
     }
 
     private fun hasGateConflict(

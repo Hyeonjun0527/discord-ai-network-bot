@@ -1,6 +1,6 @@
 # ExecPlan: NIA Humanlike Root Improvement v2
 
-Status: draft
+Status: execution-locked. Section 12 progress log is the current-state SSOT.
 Created: 2026-06-30
 Primary scope: `central-server`, `admin-console`, `docs/nexa`, `scripts`, `test-fixtures`
 
@@ -25,6 +25,12 @@ This plan is intentionally concrete. Each milestone defines owned files,
 expected DB/API contracts, tests, validation commands, and stop conditions. If a
 future session loses context, resume from the first incomplete milestone and do
 not invent a new plan.
+
+Execution rule: this document is the implementation contract. If execution needs
+a design decision, file ownership change, behavior contract change, or validation
+gate that is not written here, update this ExecPlan first and only then edit
+code. The only exception is a mechanical compiler/test fix inside files already
+owned by the active milestone.
 
 ## 2. Non-Goals
 
@@ -68,6 +74,80 @@ not invent a new plan.
    PR unless the milestone explicitly says so.
 10. If validation fails twice for the same reason, stop and record the blocker
     instead of piling on unrelated fixes.
+11. Every progress entry must name the exact milestone task numbers completed
+    using `M?.?` notation. Existing numbered tasks under a milestone map directly:
+    task `3` under M4 is `M4.3`.
+12. If the active context is lost or compacted, do not infer from chat. Follow
+    section 4.1 and section 12.
+13. If an existing implementation is discovered, write whether the milestone will
+    adopt, extend, or replace it before editing that code.
+14. No hidden "temporary" rule may be added to make the screenshot-like case pass.
+    The case must pass through raw scene, few-shot examples, and the single judge.
+15. Prompt, parser, or action-routing changes require at least one fixture or test
+    that proves the behavior without production raw text.
+16. A test may use synthetic Korean raw text, but production Discord text must not
+    be copied into docs, fixtures, commit messages, or chat.
+17. A validation failure may be fixed only in files owned by the active milestone.
+    If the fix needs another area, amend this plan first.
+18. Generated files may change only through their generator/check command, and the
+    progress log must name that command.
+
+### 4.1 Resume Protocol
+
+Use this sequence whenever a new session, compacted context, or different agent
+continues the work:
+
+1. Read sections 1-7, then the latest entry in section 12.
+2. Run `git status --short --branch`.
+3. Confirm the branch name equals the branch for the active milestone.
+4. Confirm all modified files are owned by the active milestone or already
+   justified by a plan amendment.
+5. Re-run the last failed or pending validation command before adding new code.
+6. Identify the first incomplete task number in the active milestone.
+7. Implement only that task and its directly required tests.
+8. If a missing file, new DB field, or unexpected existing implementation changes
+   the design, update this plan before editing code.
+9. After validation, append a section 12 progress entry with changed files,
+   task numbers, commands, and next task.
+10. Only then commit or move to the next milestone.
+
+Stop immediately if branch, modified files, or validation state cannot be
+reconciled with section 12. The correct recovery is to inspect and amend the
+plan, not to continue from intuition.
+
+### 4.2 Milestone Execution Template
+
+Each milestone must be executed in this order:
+
+1. **Discovery:** inspect current files, migrations, tests, and package graph for
+   only the owned area.
+2. **Plan amendment:** record discovered mismatches in this document before code
+   changes.
+3. **Contract first:** define or update domain/API/prompt contracts before
+   adapters.
+4. **Tests/fixtures:** add the narrow test or fixture proving the contract.
+5. **Implementation:** make the smallest production change satisfying the test.
+6. **Validation:** run focused tests, then the milestone build/check commands.
+7. **Progress log:** record evidence, blocker, and exact next step.
+8. **Commit:** stage only owned files.
+
+### 4.3 What Counts As Improvisation
+
+These are not allowed unless this ExecPlan is amended first:
+
+- adding a new behavior state such as `EMOTIONAL_SUPPORT`;
+- changing final action values beyond `IGNORE / WAIT / REACT / SPEAK / CANCEL`;
+- adding "contains phrase -> SPEAK" or "lonely -> SPEAK" logic;
+- letting the speech pipeline decide whether NIA should participate;
+- changing consent semantics to get a test to pass;
+- replacing few-shot examples with deterministic admin rules;
+- introducing a second/third judge or vote because a case is ambiguous;
+- using socialmemory as the primary current-scene source instead of raw text;
+- broad refactors outside the active milestone's owned files.
+
+Allowed micro-decisions without a plan amendment: private helper names, DTO field
+ordering, test fixture ids, local variable names, and compiler-only fixes inside
+owned files that do not change a contract.
 
 ## 5. Core Contracts
 
@@ -396,18 +476,24 @@ Branch: `feat/nia-raw-context-brain`
 
 Owned files:
 
-- `central-server/src/main/resources/db/migration/V_NEXT__nexa_raw_context_store.sql`
+- existing tracked `central-server/src/main/resources/db/migration/V71__nexa_raw_context_store.sql`
+- existing tracked `central-server/src/main/resources/db/migration/V73__nexa_raw_context_tombstones.sql`
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/rawcontext/*`
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/rawcontext/*`
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/port/out/RawContextStorePort.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/JpaRawContextStore.kt`
 - `central-server/src/test/kotlin/com/discordassistant/central/conversation/...`
+- `central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridgeTest.kt`
+  only when `RawContextStorePort` changes and test fakes must implement the same
+  contract.
 
 Important existing risk:
 
-- Local workspace already shows untracked `V71__nexa_raw_context_store.sql`.
-  Before implementing, inspect it and either adopt, rename, or discard with
-  explicit ownership. Do not create duplicate V71 migrations.
+- M3 discovery found `V71__nexa_raw_context_store.sql` and
+  `V73__nexa_raw_context_tombstones.sql` already tracked on the current base.
+  Adopt and extend the existing raw-context implementation. Do not create a
+  duplicate raw-context migration unless a verified schema gap appears, and if a
+  schema gap appears, amend this plan before adding a new migration.
 
 Table: `nexa_raw_context_message`
 
@@ -430,14 +516,18 @@ Table: `nexa_raw_context_message`
 
 Tasks:
 
-1. Store raw text only after consent allows observation.
-2. Add rolling retention by channel using max character budget.
-3. Default budget: 200,000 characters per guild/channel unless config overrides.
-4. Prune oldest messages first, preserving message boundaries.
-5. Redaction removes text from future judge windows.
-6. Query windows in chronological order.
-7. Include reply references when available.
+1. Verify existing ingest path stores raw text only after consent allows
+   observation; if not, fix the ingest bridge, not the judge.
+2. Verify or add rolling retention by channel using max character budget.
+3. Set default budget to 200,000 characters per guild/channel unless config
+   overrides.
+4. Verify or add oldest-first pruning while preserving message boundaries.
+5. Verify redaction removes text from future judge windows.
+6. Verify query windows are returned in chronological order.
+7. Verify reply references are retained when available.
 8. Add diagnostics returning counts/hashes, not raw text.
+9. Update test fakes to match any new raw-context port methods.
+10. Record whether each existing behavior was adopted unchanged or changed.
 
 Acceptance:
 
@@ -445,6 +535,8 @@ Acceptance:
   pruned until the stored total is <= 200,000.
 - A redacted message never appears in judge input.
 - Raw text is never printed in app logs or test assertion error messages.
+- Raw-context diagnostics expose only counts, timestamps, and fingerprints; no
+  raw text, Discord snowflakes, or author ids.
 
 Validation:
 
@@ -906,6 +998,7 @@ Append entries in this format:
 YYYY-MM-DD HH:MM KST - M? - status
 Branch:
 Commit/PR:
+Task IDs:
 Changed files:
 Validation:
 Blocked by:
@@ -915,9 +1008,10 @@ Next:
 Initial entry:
 
 ```text
-2026-06-30 - M0 draft created
+2026-06-30 18:25 KST - M0 - completed
 Branch: docs/nia-humanlike-v2-execplan
-Commit/PR: none
+Commit/PR: 625e4a1514eeb167f011e8ab9313bbfeb798d2ce
+Task IDs: M0.1-M0.5
 Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md,
   docs/adr/0016-nia-raw-fewshot-judge.md,
   docs/nexa/architecture/conversation-context.md,
@@ -926,16 +1020,16 @@ Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md,
   docs/nexa/architecture/speech-context.md,
   ai-context/domain.json,
   docs/nexa/baseline/central-package-graph.md (generated by scripts/central-package-graph.py after docs gate drift)
-Validation: first docs gate failed on system Python missing yaml; second failed on generated package graph drift;
-  architecture SSOT and link checks passed; full docs gate pending after generated baseline refresh
+Validation: docs gate passed after generated baseline refresh.
 Blocked by: none
-Next: run docs validation, then proceed to M1 on a new branch after M0 is committed or merged.
+Next: M1 on feat/nia-fewshot-backend.
 ```
 
 ```text
 2026-06-30 18:45 KST - M1 - completed
 Branch: feat/nia-fewshot-backend
-Commit/PR: pending
+Commit/PR: 83b3ebb3d2a750c9efa7e414ec935c9d13261232
+Task IDs: M1.1-M1.9
 Changed files: central-server/src/main/resources/db/migration/V74__nexa_fewshot_sets.sql,
   central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/fewshot/NiaFewShotModels.kt,
   central-server/src/main/kotlin/com/discordassistant/central/participation/application/fewshot/NiaFewShotService.kt,
@@ -948,13 +1042,14 @@ Changed files: central-server/src/main/resources/db/migration/V74__nexa_fewshot_
 Validation: focused *NiaFewShot* tests passed; make central-build passed after raising default test JVM heap
   from 1280m to 1536m; docs gate passed after regenerating central package graph; git diff --check passed.
 Blocked by: none
-Next: commit M1, then start M2 on feat/nia-fewshot-admin from the accepted M1 base.
+Next: M2 on feat/nia-fewshot-admin.
 ```
 
 ```text
 2026-06-30 19:00 KST - M2 - completed
 Branch: feat/nia-fewshot-admin
-Commit/PR: pending
+Commit/PR: 7d3c8ff267ed7348b2633167135df98f6fbf0937
+Task IDs: M2.1-M2.10
 Changed files: central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt,
   central-server/src/test/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminControllerTest.kt,
   central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt,
@@ -970,5 +1065,34 @@ Changed files: central-server/src/main/kotlin/com/discordassistant/central/parti
 Validation: focused *NiaFewShot* and AiNetworkApiSecurityFilter tests passed; make central-build passed;
   cd admin-console && pnpm build passed; docs gate passed after regenerating central package graph.
 Blocked by: none
-Next: commit M2, then start M3 raw conversation brain on feat/nia-raw-context-brain.
+Next: M3 raw conversation brain on feat/nia-raw-context-brain.
+```
+
+```text
+2026-06-30 19:05 KST - M3 - plan amendment before continuing implementation
+Branch: feat/nia-raw-context-brain
+Commit/PR: pending
+Task IDs: M3.1-M3.10 planning lock only; implementation validation still pending
+Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation: docs gate passed; git diff --check passed.
+Blocked by: none
+Next: update raw-context test fakes for the diagnostics port method, then rerun focused *RawContext* tests.
+```
+
+```text
+2026-06-30 19:10 KST - M3 - completed
+Branch: feat/nia-raw-context-brain
+Commit/PR: M3 commit on this branch; exact hash is the branch HEAD before M4 starts.
+Task IDs: M3.1-M3.10
+Changed files: central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/rawcontext/RawContextModels.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/conversation/application/port/out/RawContextStorePort.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/JpaRawContextStore.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/conversation/domain/service/rawcontext/RawContextRingBufferTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/JpaRawContextStoreTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridgeTest.kt,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation: focused *RawContext* tests passed; make central-build passed; git diff --check passed;
+  default raw-context config scan shows nexa.raw-context.max-raw-chars-per-scope default is 200000.
+Blocked by: none
+Next: commit M3, then start M4 scene window assembler on feat/nia-scene-window.
 ```

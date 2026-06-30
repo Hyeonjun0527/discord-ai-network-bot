@@ -148,6 +148,24 @@ class JpaRawContextStoreTest
         }
 
         @Test
+        fun `diagnostics returns counts and hashes without raw text or snowflakes`() {
+            store.append(entry(messageId = 10, text = "rawA", occurredAt = t0))
+            store.append(entry(messageId = 11, text = "rawB", occurredAt = t0.plusSeconds(1)))
+            store.redact(scope, messageId = 10, reason = RawContextUnavailableReason.REDACTED)
+
+            val diagnostics = store.diagnostics(scope)
+            val surface = diagnostics.toString()
+
+            assertThat(diagnostics.messageCount).isEqualTo(1)
+            assertThat(diagnostics.retainedRawChars).isEqualTo("rawB".length)
+            assertThat(diagnostics.tombstoneCount).isEqualTo(1)
+            assertThat(diagnostics.scopeFingerprint).hasSize(64)
+            assertThat(surface).doesNotContain("rawA")
+            assertThat(surface).doesNotContain("rawB")
+            assertThat(surface).doesNotContain("guildId=1", "channelId=2", "messageId=10", "messageId=11")
+        }
+
+        @Test
         fun `channel redaction removes every raw row in channel across thread scopes`() {
             val threadScope = scope.copy(threadId = 4)
             val otherChannel = scope.copy(channelId = 99)

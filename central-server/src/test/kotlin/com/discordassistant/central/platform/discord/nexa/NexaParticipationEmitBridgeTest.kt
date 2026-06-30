@@ -13,6 +13,7 @@ import com.discordassistant.central.conversation.domain.model.ConsentDecision
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextDiagnostics
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
@@ -1075,6 +1076,18 @@ class NexaParticipationEmitBridgeTest {
         override fun readRecent(scope: RawContextScope): RawContextSnapshot =
             RawContextSnapshot(scope, entries.filter { it.scope == scope })
 
+        override fun diagnostics(scope: RawContextScope): RawContextDiagnostics {
+            val scoped = entries.filter { it.scope == scope }
+            return RawContextDiagnostics(
+                scopeFingerprint = "test-scope-fingerprint",
+                messageCount = scoped.size,
+                retainedRawChars = scoped.sumOf { it.contentLength },
+                tombstoneCount = 0,
+                firstOccurredAt = scoped.minOfOrNull { it.occurredAt },
+                lastOccurredAt = scoped.maxOfOrNull { it.occurredAt },
+            )
+        }
+
         override fun readTombstones(scope: RawContextScope): List<RawContextTombstone> = emptyList()
 
         override fun redact(
@@ -1119,6 +1132,16 @@ class NexaParticipationEmitBridgeTest {
         override fun append(entry: RawContextEntry): RawContextAppendResult = error("raw unavailable")
 
         override fun readRecent(scope: RawContextScope): RawContextSnapshot = RawContextSnapshot(scope, emptyList())
+
+        override fun diagnostics(scope: RawContextScope): RawContextDiagnostics =
+            RawContextDiagnostics(
+                scopeFingerprint = "test-scope-fingerprint",
+                messageCount = 0,
+                retainedRawChars = 0,
+                tombstoneCount = 0,
+                firstOccurredAt = null,
+                lastOccurredAt = null,
+            )
 
         override fun readTombstones(scope: RawContextScope): List<RawContextTombstone> = emptyList()
 

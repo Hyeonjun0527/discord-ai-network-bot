@@ -18,6 +18,11 @@ class RawContextRingBufferTest {
     private val t0 = Instant.parse("2026-06-29T00:00:00Z")
 
     @Test
+    fun `기본 raw context 보존 예산은 20만자다`() {
+        assertEquals(200_000, RawContextRetentionPolicy().maxRawChars)
+    }
+
+    @Test
     fun `raw char 한도를 넘으면 가장 오래된 원문부터 제거한다`() {
         val buffer = RawContextRingBuffer(scope, RawContextRetentionPolicy(maxRawChars = 8))
 

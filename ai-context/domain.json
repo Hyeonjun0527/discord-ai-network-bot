@@ -903,21 +903,22 @@
       "docs/adr/0007-nexa-social-member-context.md",
       "docs/adr/0008-spring-modulith-evaluation.md",
       "docs/adr/0009-channelai-responsibility.md",
-      "docs/adr/0010-ainetwork-socialmemory-boundary.md"
+      "docs/adr/0010-ainetwork-socialmemory-boundary.md",
+      "docs/adr/0016-nia-raw-fewshot-judge.md"
     ],
     "moduleDag": "docs/nexa/architecture/module-dag.md",
     "contexts": [
       {
         "id": "conversation",
         "role": "관찰",
-        "owns": "정규화 이벤트·버스트·스레드·장면 projection",
+        "owns": "정규화 이벤트·버스트·스레드·장면 projection·원문 맥락 window",
         "forbids": "행동 결정·문장 생성·전송",
         "contract": "docs/nexa/architecture/conversation-context.md"
       },
       {
         "id": "participation",
         "role": "행동 선택",
-        "owns": "IGNORE/WAIT/REACT/SPEAK/CANCEL·feature·decision log",
+        "owns": "IGNORE/WAIT/REACT/SPEAK/CANCEL·feature·decision log·few-shot 판단 헌법·single judge",
         "forbids": "문장 생성·Discord 전송",
         "contract": "docs/nexa/architecture/participation-context.md"
       },

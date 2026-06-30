@@ -10,6 +10,10 @@
 지금 이 장면에서 NEXA가 **무엇을 할지 단 하나의 행동을 고른다**: `IGNORE / WAIT / REACT /
 SPEAK / CANCEL`. **말 자체를 만들거나 보내지 않는다.**
 
+ADR 0016 이후 humanlike v2 경로의 최종 결정자는 단일 participation judge다. judge는 conversation의
+원문 window, active few-shot version, socialmemory 보조 기억, consent/channel metadata를 함께 보고
+정확히 하나의 action을 반환한다.
+
 ## 채널 의도와 경계
 
 | 채널 의도 | 대표 채널 | 책임 경로 | 불변식 |
@@ -32,6 +36,7 @@ message/typing/idle tick/pending wake-up의 실제 깨움 표면은
 | feature | 결정 입력 신호(멘션 여부, 질문 형태, 호명, 최근 발화 간격, 채널 모드, 호감도 등)를 정규화한 값 |
 | decision log | 어떤 feature로 어떤 행동을 왜 골랐는지의 감사 로그(원문 없이 correlation ID로 연결) |
 | 발화 타이밍 정책 | 언제 SPEAK로 전환할지, 연속 발화 억제(쿨다운) 규칙 |
+| few-shot 헌법 | admin에서 draft/eval/publish/rollback되는 판단 사례집. 규칙 편집기가 아니라 judge의 judgment prior |
 
 ## 비소유 (Does NOT own)
 
@@ -40,6 +45,7 @@ message/typing/idle tick/pending wake-up의 실제 깨움 표면은
 - **문장 생성** → `speech`(SPEAK 결정 이후 호출됨)
 - **실제 Discord 전송·재시도** → `actionruntime`
 - **채널 AI 프로필·모드 SSOT** → `channelai`(participation은 모드를 입력으로 읽음, ADR 0009)
+- **원문 메시지 보관·pruning** → `conversation`
 
 ## 포트
 
@@ -47,6 +53,7 @@ message/typing/idle tick/pending wake-up의 실제 깨움 표면은
 - 아웃바운드:
   - `SceneQuery`/`BurstQuery`(conversation 읽기)
   - `SocialMemoryQuery`(socialmemory 읽기)
+  - `FewShotSetQuery`(active few-shot version 읽기)
   - `RequestSpeech`(SPEAK일 때 speech에 후보 문구 계획 요청)
   - `ScheduleAction`/`CancelAction`(actionruntime에 실행 예약·취소 명령)
   - `ReEvaluationPort` **구현**(actionruntime이 소유한 포트 인터페이스를 participation이 구현) —
@@ -73,3 +80,5 @@ message/typing/idle tick/pending wake-up의 실제 깨움 표면은
 2. participation은 텍스트를 만들지 않는다 — SPEAK는 "말하기로 결정"이지 "말의 내용"이 아니다.
 3. 모든 비-IGNORE 결정은 decision log에 근거 feature와 함께 기록된다.
 4. participation만이 "말할지 여부"의 최종 결정자다(speech·actionruntime은 이를 뒤집지 않음).
+5. 허용 action은 `IGNORE / WAIT / REACT / SPEAK / CANCEL`뿐이다. `EMOTIONAL_SUPPORT` 같은 감정·상황 enum을 action-selection driver로 추가하지 않는다.
+6. baseline heuristic과 core intervention rules는 final judge를 대체할 수 없다. safety는 차단·하강만 가능하며 SPEAK를 강제하지 않는다.

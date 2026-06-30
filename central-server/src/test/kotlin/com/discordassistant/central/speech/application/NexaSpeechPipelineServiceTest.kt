@@ -40,8 +40,13 @@ class NexaSpeechPipelineServiceTest {
     private class FakePort(
         private val candidates: List<SpeechCandidate>,
     ) : SpeechGenerationPort {
-        override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult =
-            SpeechGenerationResult(candidates, modelMetadata = "mock")
+        var calls = 0
+            private set
+
+        override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
+            calls++
+            return SpeechGenerationResult(candidates, modelMetadata = "mock")
+        }
     }
 
     /** decision log sink — 기록된 결정을 수집(M3 소비 증명). */
@@ -75,10 +80,16 @@ class NexaSpeechPipelineServiceTest {
         candidates: List<SpeechCandidate>,
         gate: ConsentGate,
         log: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+    ): NexaSpeechPipelineService = pipeline(FakePort(candidates), gate, log)
+
+    private fun pipeline(
+        generationPort: FakePort,
+        gate: ConsentGate,
+        log: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
     ): NexaSpeechPipelineService {
         val generationService =
             CandidateGenerationService(
-                generationPort = FakePort(candidates),
+                generationPort = generationPort,
                 socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
@@ -137,31 +148,29 @@ class NexaSpeechPipelineServiceTest {
     }
 
     @Test
-    fun `H1 — 생성 후 외부 전송 직전 철회면 전송 차단`() {
-        val gate = ConsentGate().apply { grant("user_1") }
+    fun `H1 — 외부 GLM 요청 경계에서 철회면 generation 포트를 호출하지 않는다`() {
         val log = CapturingLog()
-        // 생성 게이트 통과 후 전송 직전 동의를 끊는 ConsentGate 데코레이터.
+        val generationPort = FakePort(listOf(SpeechCandidate("c1", listOf("좋아"))))
+        // 외부 GLM 요청 경계에서 동의를 끊는 ConsentGate 데코레이터.
         val revokingGate =
             object : ConsentGate() {
-                private var calls = 0
-
                 override fun checkAllowed(
                     subjectPseudonym: String,
                     stage: ProcessingStage,
                 ) {
-                    calls++
                     if (stage == ProcessingStage.EXTERNAL_GLM_REQUEST) {
-                        // 외부 전송 직전엔 철회된 상태.
+                        // generation 포트 호출 직전엔 철회된 상태.
                         revoke(subjectPseudonym)
                     }
                     super.checkAllowed(subjectPseudonym, stage)
                 }
             }.apply { grant("user_1") }
         val result =
-            pipeline(listOf(SpeechCandidate("c1", listOf("좋아"))), revokingGate, log)
+            pipeline(generationPort, revokingGate, log)
                 .run("user_1", SpeechTrigger.SPEAK, packet(), seed = 1L)
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.BLOCKED)
         assertThat(result.consentStage).isEqualTo(ProcessingStage.EXTERNAL_GLM_REQUEST)
+        assertThat(generationPort.calls).isZero()
     }
 
     @Test

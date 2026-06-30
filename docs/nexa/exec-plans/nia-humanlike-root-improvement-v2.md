@@ -154,6 +154,40 @@ Allowed micro-decisions without a plan amendment: private helper names, DTO fiel
 ordering, test fixture ids, local variable names, and compiler-only fixes inside
 owned files that do not change a contract.
 
+### 4.4 Concrete Work-Order Lock
+
+Section 14 is mandatory for every remaining unchecked item in section 13. A
+remaining `R###` item may be checked only after its section 14 work order has:
+
+- all listed inputs inspected or an explicit section 12 note explaining why an
+  input is absent;
+- changes limited to the listed file envelope or a plan amendment made before
+  editing new files;
+- the named close evidence recorded in section 12 or in the exact test output;
+- every stop/amend condition either absent or resolved by a plan amendment.
+
+Do not treat "it compiles" as sufficient evidence for a work order unless the
+work order explicitly names build success as the close evidence. Do not mark a
+task done from chat memory, screenshots, or model confidence.
+
+### 4.5 Context Reset Packet
+
+Every resume handoff must start with this compact packet before further code:
+
+```text
+ExecPlan: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Branch: <current branch from git status>
+Latest section 12 entry: <timestamp + milestone + next task>
+First unchecked section 13 task: <R###>
+Section 14 work order loaded: yes/no
+Dirty files: <git status --short paths>
+Last validation command/result: <command + pass/fail or not run>
+Stop condition active: <none or exact condition>
+```
+
+If this packet cannot be filled from files and commands, pause and inspect; do
+not continue from the previous assistant's prose summary.
+
 ## 5. Core Contracts
 
 ### 5.1 Few-Shot Example Contract
@@ -779,9 +813,18 @@ Branch: `feat/nia-db-consent-adapter`
 Owned files:
 
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapter.kt`
-- `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/ConsentPolicyRepositories.kt`
+- optional `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/ConsentPolicyRepositories.kt`
+  only if query separation reduces complexity; otherwise keep the query layer
+  private inside `DbConsentPolicyAdapter.kt`.
+- optional `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyHealthIndicator.kt`
+  only if health/status code is split from the adapter file.
 - `central-server/src/test/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapterTest.kt`
 - `central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/PolicyBackedConsentGateIntegrationTest.kt`
+- `central-server/src/test/kotlin/com/discordassistant/central/conversation/IngestDiscordEventServiceTest.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineService.kt`
+- `central-server/src/test/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineServiceTest.kt`
+- `central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaSpeechEmitServiceTest.kt`
+- `central-server/src/test/kotlin/com/discordassistant/central/global/privacy/ConsentRevocationEndToEndTest.kt`
 
 Inputs:
 
@@ -833,9 +876,12 @@ Owned files:
 
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/*`
 - `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt`
+- optional `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeModeProperties.kt`
+  or equivalent local config type if no existing config object can own the mode.
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/CooldownHeuristicPolicy.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/CoreInterventionRules.kt`
 - tests under `central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/`
+- tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/domain/service/`
 
 Tasks:
 
@@ -878,6 +924,11 @@ Owned files:
 - `scripts/validate-nexa-eval-report.py`
 - `docs/nexa/quality/human-likeness-rubric.md`
 - `docs/nexa/quality/nia-judge-report.md`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/fewshot/*`
+- `central-server/src/test/kotlin/com/discordassistant/central/participation/**/fewshot/*`
+- `admin-console/src/api.ts`
+- `admin-console/src/App.tsx`
 
 Seed composition:
 
@@ -1370,6 +1421,64 @@ Blocked by: none
 Next: commit M6, then start M7 at R033 on `feat/nia-db-consent-adapter`.
 ```
 
+```text
+2026-06-30 21:04 KST - M7 - consent discovery locked
+Branch: feat/nia-db-consent-adapter
+Commit/PR: pending
+Task IDs: M7.R033-M7.R034
+Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Real tables and fields: V50 defines `nexa_guild_consent.guild_id/enabled`,
+  `nexa_channel_scope.guild_id/channel_id/observe_allowed/speak_allowed`, and
+  `nexa_user_opt_out.guild_id/user_id/opted_out`; V65 defines
+  `nexa_participation_channel_flag.guild_pseudonym/channel_id/excluded`.
+Consent call sites: `IngestDiscordEventService` checks `ConsentPolicyPort` before append;
+  `PolicyBackedConsentGate` checks the same port for `SPEECH_GENERATION` and
+  `EXTERNAL_GLM_REQUEST`; `NexaSpeechEmitConfig` wires that gate as the default
+  `ConsentGate`; `FailClosedConsentPolicyConfig` remains the fallback
+  `@ConditionalOnMissingBean(ConsentPolicyPort::class)`.
+Plan amendment: M7 owned test path corrected from
+  `central-server/src/test/kotlin/com/discordassistant/central/conversation/application/IngestDiscordEventServiceTest.kt`
+  to `central-server/src/test/kotlin/com/discordassistant/central/conversation/IngestDiscordEventServiceTest.kt`.
+  External GLM/request-boundary enforcement lives in `NexaSpeechPipelineService`, so that service and its
+  focused test were added to the M7 owned file list before changing the consent-check order.
+Validation: discovery only; implementation/tests continue at R035.
+Blocked by: none
+Next: R035 add repository/query layer coverage for guild consent, channel scope, user opt-out, and channel flags.
+```
+
+```text
+2026-06-30 20:37 KST - M7 - DB consent adapter complete
+Branch: feat/nia-db-consent-adapter
+Commit/PR: pending
+Task IDs: M7.R035-M7.R046
+Changed files:
+  central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapter.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineService.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/conversation/IngestDiscordEventServiceTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapterTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/PolicyBackedConsentGateIntegrationTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaSpeechEmitServiceTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineServiceTest.kt,
+  docs/nexa/baseline/central-package-graph.md,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Implementation: `DbConsentPolicyAdapter` now synthesizes DB-backed consent from guild enabled state,
+  channel observe/speak scope, user opt-out, and participation channel exclusion. The production
+  `ConsentPolicyPort` is DB-backed when present; `FailClosedConsentPolicyConfig` remains fallback-only.
+  `NexaConsentPolicyHealthIndicator` reports `dbBackedConsentPolicyActive`, `failClosedOnly`, and
+  `devEnabled` without raw text or ids.
+Consent boundary fix: `NexaSpeechPipelineService` now checks `EXTERNAL_GLM_REQUEST` before calling the
+  speech generation port, so `OBSERVE_ONLY` cannot reach external generation and then be blocked too late.
+Validation:
+  `central-server/gradlew -p central-server test --no-daemon --console=plain --tests '*Consent*' --tests '*PolicyBackedConsentGate*'` passed.
+  `env JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/Home make central-build` passed.
+  `python3 scripts/central-package-graph.py` regenerated `docs/nexa/baseline/central-package-graph.md`.
+  `PATH=/Users/osuma/coding_stuffs/discord-assitant/.venv/bin:$PATH ./scripts/nexa-verify.sh docs` passed.
+  First docs-gate attempt with this worktree PATH failed only because this worktree has no `.venv`
+  and `/usr/bin/python3` lacks PyYAML; the repo venv rerun passed.
+Blocked by: none
+Next: commit M7, then start M8 at R047 on `feat/nia-judge-final-decision`.
+```
+
 ## 13. Remaining Atomic Checklist (M5-M11)
 
 This checklist is the execution ledger for the remaining work. Start at the
@@ -1450,29 +1559,29 @@ or after a progress-log entry records why it is deferred.
 
 ### M7 Atomic Checklist - DB Consent Adapter
 
-- [ ] R033 Inspect consent tables, current fail-closed config,
+- [x] R033 Inspect consent tables, current fail-closed config,
   `PolicyBackedConsentGate`, ingestion, speech, and external GLM call sites.
-- [ ] R034 Amend this plan if real table/field names differ from section 7 M7.
-- [ ] R035 Add repository/query layer for guild consent, channel scope,
+- [x] R034 Amend this plan if real table/field names differ from section 7 M7.
+- [x] R035 Add repository/query layer for guild consent, channel scope,
   user opt-out, and participation channel flags.
-- [ ] R036 Implement `DbConsentPolicyAdapter` synthesis exactly as section 7
+- [x] R036 Implement `DbConsentPolicyAdapter` synthesis exactly as section 7
   M7 states: disabled guild, user opt-out, observe denied, speak denied,
   else observe-and-speak.
-- [ ] R037 Register DB-backed `ConsentPolicyPort` as production bean and keep
+- [x] R037 Register DB-backed `ConsentPolicyPort` as production bean and keep
   fail-closed only as `@ConditionalOnMissingBean`.
-- [ ] R038 Add startup health/status evidence when production has only the
+- [x] R038 Add startup health/status evidence when production has only the
   fail-closed consent bean.
-- [ ] R039 Add ingestion tests proving DENIED stores no raw context.
-- [ ] R040 Add speech tests proving OBSERVE_ONLY blocks generation and logs
+- [x] R039 Add ingestion tests proving DENIED stores no raw context.
+- [x] R040 Add speech tests proving OBSERVE_ONLY blocks generation and logs
   the durable reason.
-- [ ] R041 Add external GLM/request-boundary tests proving the same consent
+- [x] R041 Add external GLM/request-boundary tests proving the same consent
   decision is reused.
-- [ ] R042 Add empty-table tests proving fail-closed behavior.
-- [ ] R043 Add enabled guild/channel tests proving OBSERVE_AND_SPEAK reaches
+- [x] R042 Add empty-table tests proving fail-closed behavior.
+- [x] R043 Add enabled guild/channel tests proving OBSERVE_AND_SPEAK reaches
   generation/scheduling.
-- [ ] R044 Add opt-out revocation tests before scheduled send.
-- [ ] R045 Run focused `*Consent*` and `*PolicyBackedConsentGate*` tests.
-- [ ] R046 Run `make central-build`, append M7 progress, and commit
+- [x] R044 Add opt-out revocation tests before scheduled send.
+- [x] R045 Run focused `*Consent*` and `*PolicyBackedConsentGate*` tests.
+- [x] R046 Run `make central-build`, append M7 progress, and commit
   `feat/nia-db-consent-adapter`.
 
 ### M8 Atomic Checklist - Judge Final Decision
@@ -1576,3 +1685,101 @@ or after a progress-log entry records why it is deferred.
 - [ ] R100 Record final rollout evidence that the screenshot-like regression no
   longer produces unexplained silence and every no-reply case has a durable
   reason.
+
+## 14. Remaining Work Orders
+
+Use this section as the execution spec for section 13. The first unchecked
+`R###` is the only active work order unless section 12 explicitly says otherwise.
+
+### M7 Work Orders - DB Consent Adapter
+
+| ID | Inputs to inspect first | Allowed change | Close evidence | Stop/amend condition |
+| --- | --- | --- | --- | --- |
+| R033 | `git status --short --branch`; migrations defining `nexa_guild_consent`, `nexa_channel_scope`, `nexa_user_opt_out`, `nexa_participation_channel_flag`; `ConsentPolicyPort`; `FailClosedConsentPolicyConfig`; `PolicyBackedConsentGate`; ingest/speech call sites. | Section 12 discovery note only. | Section 12 lists real table names, field names, active branch, dirty files, and call sites. | Any table/field/call site differs from section 7 M7. |
+| R034 | R033 discovery note. | This ExecPlan only. | Either "no amendment needed" in section 12, or updated table/file/contract rows before code. | Discovered mismatch not reflected in section 7, section 13, or this section. |
+| R035 | Real SQL columns from R033 and existing persistence style in `Jpa*Store` adapters. | Query layer in `DbConsentPolicyAdapter.kt`, or optional `ConsentPolicyRepositories.kt` if it reduces complexity. | Tests or focused assertions cover guild enabled, channel scope, user opt-out, and channel flag queries. | Query requires raw text, Discord names, production ids in logs, or new schema. |
+| R036 | `ConsentDecision` semantics and section 7 M7 synthesis. | `DbConsentPolicyAdapter` synthesis only. | Empty/missing data returns `DENIED`; enabled + observe + speak returns `OBSERVE_AND_SPEAK`; enabled + observe + no speak returns `OBSERVE_ONLY`. | Any new consent enum/state or phrase-based behavior rule appears. |
+| R037 | Spring bean registration and `@ConditionalOnMissingBean` fallback. | DB adapter bean wiring; fallback config only if needed to preserve fail-closed. | A Spring context or slice test proves the DB adapter is the production `ConsentPolicyPort` when present and fallback remains only when missing. | More than one unqualified `ConsentPolicyPort` bean exists. |
+| R038 | Actuator health/status conventions already used in central server. | Consent health/status indicator in the M7 owned package. | Health/status output includes `dbBackedConsentPolicyActive`, `failClosedOnly`, and dev/prod distinction. | The health path prints raw text, snowflakes, tokens, or user ids. |
+| R039 | `IngestDiscordEventService` tests/fakes and raw-context append path. | Ingestion test only, plus M7-owned fix if it fails. | DENIED returns the rejected consent result and the fake/store receives zero raw context appends. | Ingest stores raw before consent, or fixing requires non-M7 owned architecture. |
+| R040 | `NexaSpeechPipelineService`/`NexaSpeechEmitService` consent-block tests. | Speech test and M7-owned consent/logging fix. | `OBSERVE_ONLY` passes observation but blocks `EXTERNAL_GLM_REQUEST`; speech decision log records blocked reason. | Speech generation is reached without a consent gate. |
+| R041 | `PolicyBackedConsentGate.pseudonymOf` and external GLM boundary. | Gate integration test or speech-pipeline test. | The same `ConsentPolicyPort` decision is used at `SPEECH_GENERATION` and `EXTERNAL_GLM_REQUEST`. | A second in-memory consent source is introduced. |
+| R042 | Empty DB state from migrations. | DB adapter test. | Empty `nexa_*consent*` tables return `DENIED` for observation and speech. | Empty DB defaults to observe or speak. |
+| R043 | Existing SPEAK scheduling tests in `NexaSpeechEmitServiceTest`. | Test wiring DB adapter or policy-backed gate into a fixture SPEAK path. | Enabled guild/channel consent schedules exactly one SPEAK or reaches the existing scheduling fake. | The test bypasses `PolicyBackedConsentGate`. |
+| R044 | `ConsentRevocationEndToEndTest`, actionruntime revocation listener, and scheduled action path. | Revocation test and minimal adapter/listener connection if absent. | Opt-out before send cancels/blocks scheduled SPEAK before Discord execution/export. | Revocation waits for scheduler tick or requires production DB mutation. |
+| R045 | All M7 focused tests. | Test fixes inside M7-owned files only. | `central-server/gradlew ... --tests '*Consent*' --tests '*PolicyBackedConsentGate*'` passes. | Same failure repeats twice or points outside M7 ownership. |
+| R046 | M7 diff, docs gate status, central build status. | Section 12 progress entry and commit only. | `make central-build` passes; docs gate passes or package graph is regenerated by its script; commit includes only M7-owned files. | Dirty unowned files are staged or validation evidence is missing. |
+
+### M8 Work Orders - Final Judge Promotion
+
+| ID | Inputs to inspect first | Allowed change | Close evidence | Stop/amend condition |
+| --- | --- | --- | --- | --- |
+| R047 | `NexaParticipationEmitBridge`, `CooldownHeuristicPolicy`, `CoreInterventionRules`, final SPEAK branches, decision log fields. | Section 12 discovery note only. | Section 12 lists every branch that can currently force SPEAK. | A final-decision branch lives outside M8 owned files. |
+| R048 | R047 discovery. | This ExecPlan only. | M8 owned files and work orders match real wiring before code. | New config/route/log file is required but not listed. |
+| R049 | Existing config binding style. | Judge mode config type and invalid-value fail-fast. | Unit/context test covers `off`, `shadow`, `final`, and invalid mode. | Default mode changes production behavior without explicit config. |
+| R050 | M6 trace fields and current baseline path. | Off-mode trace reason only. | Off mode preserves baseline action but logs no-judge/final-source reason. | Off mode calls the LLM judge. |
+| R051 | M5 shadow service and M6 decision log. | Shadow-mode bridge wiring. | Shadow mode persists judge comparison and leaves runtime action unchanged. | Shadow mode changes scheduled action behavior. |
+| R052 | `NiaParticipationJudge` output contract and bridge action mapping. | Final-mode action selection. | Final mode maps only judge output to final participation action. | Baseline policy can override final judge. |
+| R053 | Baseline policy usage sites. | Rename/wire baseline as comparison-only in final mode. | Final-mode logs never report `baseline-cooldown-heuristic-1` as final source. | Baseline remains in final action path. |
+| R054 | `CoreInterventionRules` verdict model. | Convert hard SPEAK rules to guard/candidate behavior in final mode while preserving unsafe/stale blocks. | Tests prove rules may block/wait/drop but cannot force SPEAK in final mode. | A deterministic direct-address rule still returns final SPEAK. |
+| R055 | Direct mention/reply-to-NIA tests and bridge branches. | Remove/bypass final SPEAK shortcuts. | Regression test shows direct-address cases need judge evidence. | Fix adds a phrase list that forces SPEAK. |
+| R056 | Speech emit entry points. | Routing guard tests. | WAIT/IGNORE/REACT/CANCEL never enter speech generation. | Non-SPEAK action touches speech service. |
+| R057 | SPEAK path and durable block reasons. | Routing/logging fix for SPEAK. | SPEAK either reaches speech+scheduler or stores a durable block reason. | Silent return after SPEAK exists. |
+| R058 | `CANCEL_PENDING` mapping and actionruntime cancel path. | Bridge/runtime mapping only. | CANCEL cancels pending action without speech generation. | CANCEL creates a new speech action. |
+| R059 | `final_decision_source` persistence. | Decision log wiring. | Final mode writes `single_judge`; shadow/off write `baseline` or explicit non-final source. | Source field is null for a completed decision. |
+| R060 | Bridge tests. | Tests for off/shadow/final modes. | Three mode tests pass and assert final action source. | Mode tests rely on production external LLM. |
+| R061 | Screenshot-like synthetic fixture and direct-address contrast cases. | Regression tests only unless failure is M8-owned. | Direct-address behavior is explained by raw scene + few-shot + judge evidence. | Test asserts a deterministic phrase rule. |
+| R062 | Speech-entry tests. | Tests only unless M8-owned fix needed. | No action except SPEAK can call speech. | The test can pass while speech is mocked away from all branches. |
+| R063 | Focused M8 test command. | M8-owned test/code fixes only. | `*NexaParticipationEmitBridge*`, `*CoreInterventionRules*`, `*CooldownHeuristic*` pass. | Same failure repeats twice or points outside M8 ownership. |
+| R064 | M8 full diff and validation. | Section 12 progress entry and commit only. | `make central-build` passes; commit includes only M8-owned files. | Unowned files are required without plan amendment. |
+
+### M9 Work Orders - Eval Gates And Few-Shot Seed
+
+| ID | Inputs to inspect first | Allowed change | Close evidence | Stop/amend condition |
+| --- | --- | --- | --- | --- |
+| R065 | Existing fixture schemas, `scripts/validate-nexa-eval-report.py`, admin eval endpoint, `scripts/nexa-human-likeness-eval.py`. | Section 12 discovery note only. | Section 12 names the schema to extend/reuse and the admin eval integration point. | Existing schema conflicts with M9 composition. |
+| R066 | Chosen fixture schema from R065. | `nia-fewshot-seed.yaml` schema/header. | Schema contains ids, action, raw message refs, evidence refs, bad alternatives, and privacy class. | Schema requires production raw text. |
+| R067 | Section 7 M9 composition. | Exactly 40 synthetic/anonymized examples. | Counts are SPEAK 8, WAIT 8, REACT 5, IGNORE 8, CANCEL 4, hard ambiguous 7. | Any example is copied from production text or real Discord ids. |
+| R068 | Fixture privacy class and validator style. | Validation script/rule. | Validator fails if an example is marked or shaped as production raw text. | Validator needs access to production logs. |
+| R069 | Judge output contract and fixture expected actions. | Eval scoring for action correctness. | Script exits non-zero when action accuracy threshold fails and reports ids only. | Report prints raw production text. |
+| R070 | Over-talk failure definition. | Over-talk metric in eval script/report. | False SPEAK/over-talk risk is scored and thresholded. | Metric becomes a phrase blacklist. |
+| R071 | Under-talk/missed-direct scenarios. | Under-talk metric. | Missed direct reply/request cases are scored and thresholded. | Metric forces SPEAK by deterministic rule. |
+| R072 | Stale memory scenario category. | Stale-memory override metric. | Current raw scene beats contradictory old memory in scoring. | Socialmemory becomes primary current-scene source. |
+| R073 | Ambiguous contrast cases. | Ambiguity metric/category. | Nearby-but-wrong action failures are counted by example id. | Ambiguity is solved by adding new enums. |
+| R074 | M2 admin eval endpoint and service boundaries. | Admin eval service/script bridge. | Admin eval runs local seed evaluation without production data. | Endpoint sends production raw text to docs/scripts. |
+| R075 | Publish workflow in `NiaFewShotService`. | Publish gate. | Publish fails with actionable failed ids when seed thresholds fail. | Failed publish can be overridden silently. |
+| R076 | Existing quality docs. | `human-likeness-rubric.md`. | Rubric defines action quality, over-talk, under-talk, stale-memory, ambiguity, and privacy. | Rubric introduces deterministic comfort/emotion states. |
+| R077 | Eval output format. | Generated report. | `nia-judge-report.md` includes thresholds, pass/fail, failed ids, no production raw text. | Report includes raw production text or Discord ids. |
+| R078 | Eval command. | Script/data fixes only. | `python3 scripts/nia-judge-eval.py --fixtures test-fixtures/nexa/quality/nia-fewshot-seed.yaml` passes. | Script requires network or production DB. |
+| R079 | Report validator. | Validator/report fixes only. | `python3 scripts/validate-nexa-eval-report.py` passes. | Validator accepts missing thresholds. |
+| R080 | Docs gate and central build. | M9-owned fixes only. | Docs gate and `make central-build` pass. | Central build failure points outside M9 ownership. |
+| R081 | M9 diff and validation. | Section 12 progress entry and commit only. | Commit includes seed, scripts, admin eval wiring, report/rubric, and validation evidence. | Commit includes production raw text. |
+
+### M10 Work Orders - Deploy And Operations Protection
+
+| ID | Inputs to inspect first | Allowed change | Close evidence | Stop/amend condition |
+| --- | --- | --- | --- | --- |
+| R082 | Central deploy workflow, central CI workflow, existing skip/path filters, deploy summaries. | Section 12 discovery note only. | Section 12 lists the exact skip condition and deploy trigger path. | Workflow ownership differs from section 7 M10. |
+| R083 | R082 skip condition. | Workflow guard/filter fix. | A central code commit cannot be hidden by generated-RAG skip logic. | Fix broadens deploy to unrelated paths without reason. |
+| R084 | Existing GitHub Actions summary format. | Deploy summary fields. | Summary prints app SHA, image SHA, migration version, judge mode, few-shot version, DB consent status. | Summary prints secrets/tokens/raw text. |
+| R085 | Existing diagnostic scripts and M6 decision trace script. | Read-only diagnostic extension. | Diagnostic can verify app/migration/judge/few-shot/consent status without raw text. | Diagnostic mutates production or requires LIVE send. |
+| R086 | Project GitHub API polling rule. | Manual deploy runbook. | Runbook states no more than one PR/check/run poll every 8 minutes unless user asks tighter. | Runbook encourages tight polling loops. |
+| R087 | Judge mode and few-shot rollback controls. | Rollback runbook. | Runbook can roll back by judge mode or few-shot version without code revert. | Rollback requires DB deletion or irreversible migration. |
+| R088 | Skipped/blocked/successful deploy states. | Ops docs. | Docs distinguish skipped, blocked, failed, deployed, and verified production states. | Docs call a skipped deploy successful. |
+| R089 | Docs gate. | Docs/script fixes only. | `./scripts/nexa-verify.sh docs` passes. | Docs gate failure points outside M10 ownership. |
+| R090 | `actionlint` availability. | Workflow lint fixes or recorded local gap. | `actionlint` passes, or section 12 records tool absence and GitHub CI reliance. | Workflow syntax is unvalidated and no gap is recorded. |
+| R091 | M10 diff and validation. | Section 12 progress entry and commit only. | Commit includes only M10-owned files and validation evidence. | Human approval gate is bypassed. |
+
+### M11 Work Orders - Staged Rollout
+
+| ID | Inputs to inspect first | Allowed change | Close evidence | Stop/amend condition |
+| --- | --- | --- | --- | --- |
+| R092 | `main` branch state, PR/CI status, release gates, M1-M10 progress entries. | No code; readiness note only. | Readiness note says M1-M10 merged, CI green, no missing release/prod gate. | Any gate missing or ambiguous. |
+| R093 | Human approval record for deploy, DB migration, Discord LIVE, target guild/channel. | No code; approval capture only. | Explicit approval is recorded before prod/LIVE action. | Approval is absent, indirect, or ambiguous. |
+| R094 | Approved deploy path and M10 runbook. | Deployment action only after R093. | Production starts in `CENTRAL_NEXA_JUDGE_MODE=shadow`. | Mode is `final` before shadow verification. |
+| R095 | Deployed app SHA, image SHA, Flyway/migration status, active few-shot, DB consent health. | Verification only. | Evidence records exact SHA/version/status values. | Any deployed value differs from intended. |
+| R096 | Read-only diagnostic command and known message/correlation ids. | Diagnostics only; no raw text in chat/docs. | Diagnostic output proves explainability without exposing raw text. | Diagnostic requires copying production raw content. |
+| R097 | Approved target guild/channel and final-mode toggle path. | Enable final judge for one approved scope only. | One target guild/channel is in final mode; all others remain shadow/off. | Scope is broader than approval. |
+| R098 | Metrics/log queries for silent SPEAK drops, consent blocks, malformed judge output, timeout fallback, over-talk, rollback events. | Monitoring only. | Monitoring window evidence records counts and examples by id/hash only. | Monitoring cannot distinguish silence cause. |
+| R099 | M10 rollback runbook and R098 evidence. | Rollback only if triggered. | Rollback evidence records trigger, action, and post-rollback health. | Rollback requires code revert or data deletion. |
+| R100 | Original screenshot-like synthetic regression, decision trace, speech trace, rollout evidence. | Final evidence note only. | The regression has no unexplained silence; every no-reply path has durable reason. | Any no-reply path lacks traceable reason. |

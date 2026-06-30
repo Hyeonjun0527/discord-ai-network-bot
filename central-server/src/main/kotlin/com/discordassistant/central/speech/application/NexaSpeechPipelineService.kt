@@ -82,10 +82,10 @@ class NexaSpeechPipelineService(
             return downgraded(packet, traceContext, directive)
         }
 
-        // 3) SPEAK·not stale·동의 유효일 때만 generation 포트 호출(SpeechGenerationGate 가 강제).
-        val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
-        if (!gate.invokedGeneration) {
-            // SPEAK 아님/stale — 무발화로 마무리(외부 전송 0).
+        // 3) SPEAK 이 아니거나 stale 이면 generation 포트를 호출하지 않는다. 이 경우 외부 요청 자체가 없으므로
+        //    EXTERNAL_GLM_REQUEST 동의까지 요구하지 않는다.
+        if (trigger != SpeechTrigger.SPEAK || stale) {
+            val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
             return cancel(
                 packet,
                 traceContext,
@@ -97,11 +97,27 @@ class NexaSpeechPipelineService(
             )
         }
 
-        // 4) 외부 전송 직전 동의 재확인(철회는 즉시 효력 — 늦은 전송 차단).
+        // 4) 외부 GLM 요청 직전 동의 재확인. SpeechGenerationPort 는 외부 routing/cloud LLM 어댑터로 이어지므로,
+        //    발화 동의가 없으면 generation 포트를 호출하기 전에 막아 외부 요청 자체를 0 으로 만든다.
         try {
             consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)
         } catch (e: ConsentRevokedException) {
             return blocked(packet, traceContext, consentStage = e.stage)
+        }
+
+        // 5) SPEAK·not stale·동의 유효일 때만 generation 포트 호출(SpeechGenerationGate 가 강제).
+        val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
+        if (!gate.invokedGeneration) {
+            // 방어적 fallback. 위 preflight 에서 이미 걸러져야 한다.
+            return cancel(
+                packet,
+                traceContext,
+                directive,
+                generated = 0,
+                criticReasons = emptySet(),
+                blockedStage = "GENERATION_GATE",
+                blockedReason = "GENERATION_${gate.skipReason?.name ?: "SKIPPED"}",
+            )
         }
 
         // 5) critic 검열 + 확률 선택(비밀/AI 정체성 critic 포함 — 전송될 후보에 대해 전송 전 실행).

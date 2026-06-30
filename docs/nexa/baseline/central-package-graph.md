@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 730
-- Cross-node import edges: 594
+- Kotlin files scanned: 731
+- Cross-node import edges: 595
 
 ## Nodes
 
@@ -15,7 +15,7 @@
 | `actionruntime` | 40 |
 | `ainetwork` | 52 |
 | `channelai` | 21 |
-| `conversation` | 83 |
+| `conversation` | 84 |
 | `dev` | 1 |
 | `global` | 44 |
 | `globalpromptset` | 3 |
@@ -59,7 +59,7 @@
 | `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
 | `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
 | `channelai` | `shared` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.shared.ContentSafety` |
-| `conversation` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/JpaRawContextStore.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
+| `conversation` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapter.kt` | `com.discordassistant.central.global.crypto.ScopedPseudonymizer` |
 | `dev` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `dev` | `relay` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |

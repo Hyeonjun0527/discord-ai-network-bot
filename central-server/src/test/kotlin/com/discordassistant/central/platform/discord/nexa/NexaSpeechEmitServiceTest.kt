@@ -318,16 +318,21 @@ class NexaSpeechEmitServiceTest {
     @Test
     fun `H1 — OBSERVE_ONLY(관찰만 허용)면 외부 전송 직전에 차단된다`() {
         val scheduler = FakeScheduler()
+        val speechLog = CapturingSpeechLog()
         val seam =
             seam(
                 candidates = listOf(SpeechCandidate("c1", listOf("좋아"))),
                 consent = ConsentDecision.OBSERVE_ONLY, // 관찰은 되나 발화 동의 없음.
                 scheduler = scheduler,
+                speechLog = speechLog,
             )
         val result = seam.emit(request())
         assertThat(result.willSpeak).isFalse()
-        // 생성 단계(관찰 동의)는 통과하나 외부 전송 단계(발화 동의)에서 BLOCKED.
+        // 관찰 동의는 통과하나 외부 GLM 요청 경계(발화 동의)에서 BLOCKED.
         assertThat(result.pipelineResult?.outcome).isEqualTo(SpeechDecisionOutcome.BLOCKED)
+        assertThat(speechLog.records.last().consentBlocked).isTrue()
+        assertThat(speechLog.records.last().blockedStage).isEqualTo("EXTERNAL_GLM_REQUEST")
+        assertThat(speechLog.records.last().blockedReason).isEqualTo("CONSENT_REVOKED")
         assertThat(scheduler.scheduled.none { it.type == ScheduledActionType.SPEAK }).isTrue()
     }
 

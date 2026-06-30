@@ -44,11 +44,13 @@ class IngestDiscordEventServiceTest {
     private class FakeEventStore : EventStorePort {
         val eventIds = mutableListOf<String>()
         val outboxIds = mutableListOf<String>()
+        val appendedEvents = mutableListOf<NormalizedDiscordEvent>()
 
         override fun append(event: NormalizedDiscordEvent): AppendResult {
             val key = event.eventId.value
             if (key in eventIds) return AppendResult.DUPLICATE
             // 원자성: event 와 outbox 를 같이 기록(부분 상태 없음).
+            appendedEvents += event
             eventIds += key
             outboxIds += key
             return AppendResult.APPENDED
@@ -105,6 +107,7 @@ class IngestDiscordEventServiceTest {
         assertEquals(IngestOutcome.REJECTED_CONSENT, outcome)
         assertTrue(store.eventIds.isEmpty(), "미동의 → 적재 0")
         assertTrue(store.outboxIds.isEmpty(), "미동의 → outbox 0")
+        assertTrue(store.appendedEvents.isEmpty(), "미동의 → 원문 canary 를 가진 event 객체도 store 에 전달하지 않는다")
     }
 
     @Test

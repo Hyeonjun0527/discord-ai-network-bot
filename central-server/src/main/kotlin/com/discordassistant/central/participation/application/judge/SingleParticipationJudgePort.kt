@@ -4,6 +4,8 @@ import com.discordassistant.central.participation.application.context.JudgeConte
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 
 interface SingleParticipationJudgePort {
     fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision
@@ -13,6 +15,7 @@ data class SingleJudgeDecisionRequest(
     val rawContextWindow: JudgeContextWindow,
     val sceneSnapshot: SingleJudgeSceneSnapshot,
     val featureVector: FeatureVectorView,
+    val fewShotSet: JudgeFewShotSetPayload = JudgeFewShotSetPayload.EMPTY,
     val memoryRefs: List<JudgeMemoryRef>,
     val constraints: JudgeDecisionConstraints,
     val schemaVersion: Int,
@@ -26,6 +29,104 @@ data class SingleJudgeDecisionRequest(
     companion object {
         const val CURRENT_SCHEMA_VERSION: Int = 1
         const val MAX_MEMORY_REFS: Int = 8
+    }
+}
+
+data class JudgeFewShotSetPayload(
+    val setId: Long?,
+    val version: Int?,
+    val examples: List<JudgeFewShotExamplePayload>,
+) {
+    init {
+        setId?.let { require(it > 0) { "few-shot setId 는 양수여야 한다: $it" } }
+        version?.let { require(it >= 1) { "few-shot version 은 1 이상이어야 한다: $it" } }
+        require((setId == null) == (version == null)) { "few-shot setId 와 version 은 함께 있어야 한다" }
+        require(examples.size <= MAX_EXAMPLES) { "few-shot examples 는 최대 $MAX_EXAMPLES 개까지만 담는다" }
+        if (examples.isNotEmpty()) {
+            require(setId != null && version != null) { "few-shot examples 가 있으면 setId/version 이 필요하다" }
+        }
+    }
+
+    override fun toString(): String = "JudgeFewShotSetPayload(setId=$setId, version=$version, exampleCount=${examples.size})"
+
+    companion object {
+        val EMPTY = JudgeFewShotSetPayload(setId = null, version = null, examples = emptyList())
+        const val MAX_EXAMPLES: Int = 64
+    }
+}
+
+data class JudgeFewShotExamplePayload(
+    val exampleId: String,
+    val title: String,
+    val rawMessages: List<JudgeFewShotRawMessagePayload>,
+    val expectedAction: NiaFewShotAction,
+    val reason: String,
+    val evidenceRefs: Set<String>,
+    val badAlternative: JudgeFewShotBadAlternativePayload,
+    val tags: Set<String> = emptySet(),
+    val priority: Int = 0,
+    val privacyClass: NiaFewShotPrivacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+) {
+    init {
+        require(exampleId.isStableRef()) { "few-shot exampleId 는 안정 ref 여야 한다: $exampleId" }
+        require(title.isNotBlank()) { "few-shot title 은 비어 있을 수 없다" }
+        require(title.length <= MAX_TITLE_CHARS) { "few-shot title 이 너무 길다" }
+        require(rawMessages.isNotEmpty()) { "few-shot rawMessages 는 비어 있을 수 없다" }
+        require(rawMessages.size <= MAX_RAW_MESSAGES) { "few-shot rawMessages 가 너무 많다" }
+        require(reason.isNotBlank()) { "few-shot reason 은 비어 있을 수 없다" }
+        require(reason.length <= MAX_REASON_CHARS) { "few-shot reason 이 너무 길다" }
+        require(badAlternative.action != expectedAction) { "few-shot badAlternative 는 expectedAction 과 달라야 한다" }
+        require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
+        evidenceRefs.forEach { require(it.isStableRef()) { "few-shot evidence ref 는 안정 ref 여야 한다: $it" } }
+        val rawRefs = rawMessages.map { it.ref }.toSet()
+        require(rawRefs.containsAll(evidenceRefs)) { "few-shot evidenceRefs 는 rawMessages ref 를 가리켜야 한다" }
+        tags.forEach { require(it.isStableSlug()) { "few-shot tag 는 안정 slug 여야 한다: $it" } }
+    }
+
+    override fun toString(): String =
+        "JudgeFewShotExamplePayload(exampleId=$exampleId, expectedAction=$expectedAction, rawMessageCount=${rawMessages.size})"
+
+    companion object {
+        const val MAX_TITLE_CHARS: Int = 160
+        const val MAX_REASON_CHARS: Int = 1_000
+        const val MAX_RAW_MESSAGES: Int = 32
+    }
+}
+
+data class JudgeFewShotRawMessagePayload(
+    val ref: String,
+    val authorRole: String,
+    val offsetMs: Long,
+    val text: String,
+) {
+    init {
+        require(ref.isStableRef()) { "few-shot raw message ref 는 안정 ref 여야 한다: $ref" }
+        require(authorRole.isStableSlug()) { "few-shot authorRole 은 안정 slug 여야 한다: $authorRole" }
+        require(text.isNotBlank()) { "few-shot raw message text 는 비어 있을 수 없다" }
+        require(text.length <= MAX_TEXT_CHARS) { "few-shot raw message text 가 너무 길다" }
+    }
+
+    override fun toString(): String =
+        "JudgeFewShotRawMessagePayload(ref=$ref, authorRole=$authorRole, offsetMs=$offsetMs, textLength=${text.length})"
+
+    companion object {
+        const val MAX_TEXT_CHARS: Int = 4_000
+    }
+}
+
+data class JudgeFewShotBadAlternativePayload(
+    val action: NiaFewShotAction,
+    val whyBad: String,
+) {
+    init {
+        require(whyBad.isNotBlank()) { "few-shot bad alternative reason 은 비어 있을 수 없다" }
+        require(whyBad.length <= MAX_REASON_CHARS) { "few-shot bad alternative reason 이 너무 길다" }
+    }
+
+    override fun toString(): String = "JudgeFewShotBadAlternativePayload(action=$action, reasonLength=${whyBad.length})"
+
+    companion object {
+        const val MAX_REASON_CHARS: Int = 1_000
     }
 }
 
@@ -342,6 +443,10 @@ private fun validateNullableAxis(
 ) {
     value?.let { require(it in 0.0..1.0) { "$name 축은 [0,1] 범위여야 한다: $it" } }
 }
+
+private fun String.isStableRef(): Boolean = matches(Regex("[A-Za-z0-9_:.=-]{1,160}"))
+
+private fun String.isStableSlug(): Boolean = matches(Regex("[a-z0-9][a-z0-9_-]{0,63}"))
 
 @JvmInline
 value class JudgeReasonCode(

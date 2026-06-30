@@ -3,6 +3,7 @@ package com.discordassistant.central.participation.application.context
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRetentionPolicy
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
+import com.discordassistant.central.participation.application.judge.JudgeFewShotSetPayload
 import com.discordassistant.central.participation.application.judge.JudgeMemoryRef
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneBuildResult
@@ -19,6 +20,7 @@ class NiaJudgeContextAssembler(
             rawContextWindow = windowBuilder.build(input.rawContextSnapshot),
             sceneSnapshot = sceneBuild.sceneSnapshot,
             featureVector = sceneBuild.featureVector,
+            fewShotSet = input.fewShotSet,
             memoryRefs = input.memoryRefs,
             constraints = input.constraints,
             schemaVersion = input.schemaVersion,
@@ -32,6 +34,7 @@ data class NiaJudgeContextInput(
     val sceneObservation: SingleJudgeSceneObservation,
     val constraints: JudgeDecisionConstraints,
     val seed: Long,
+    val fewShotSet: JudgeFewShotSetPayload = JudgeFewShotSetPayload.EMPTY,
     val memoryRefs: List<JudgeMemoryRef> = emptyList(),
     val sceneBuild: SingleJudgeSceneBuildResult? = null,
     val schemaVersion: Int = SingleJudgeDecisionRequest.CURRENT_SCHEMA_VERSION,

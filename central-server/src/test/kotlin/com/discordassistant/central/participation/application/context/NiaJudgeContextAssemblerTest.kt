@@ -7,10 +7,15 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
+import com.discordassistant.central.participation.application.judge.JudgeFewShotBadAlternativePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotExamplePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotRawMessagePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotSetPayload
 import com.discordassistant.central.participation.application.judge.JudgeMemoryRef
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneObservation
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -56,6 +61,7 @@ class NiaJudgeContextAssemblerTest {
                             ),
                         constraints = constraints(),
                         seed = 42L,
+                        fewShotSet = fewShotSet(),
                     ),
                 )
 
@@ -63,6 +69,11 @@ class NiaJudgeContextAssemblerTest {
         assertThat(request.rawContextWindow.messages[1].replyToRef).isEqualTo("msg_1")
         assertThat(request.rawContextWindow.quotedSceneData).contains("야 이럴땐 위로해줘")
         assertThat(request.memoryRefs.single().refId).isEqualTo("mem-1")
+        assertThat(request.fewShotSet.setId).isEqualTo(1L)
+        assertThat(request.fewShotSet.version).isEqualTo(2)
+        val examples = request.fewShotSet.examples
+        val example = examples.single()
+        assertThat(example.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
         assertThat(request.constraints.allowedActions).containsExactlyInAnyOrderElementsOf(SocialActionKind.entries)
         assertThat(request.featureVector.version).isEqualTo(FeatureCatalog.VERSION)
     }
@@ -89,5 +100,35 @@ class NiaJudgeContextAssemblerTest {
             speechAllowed = true,
             reactionAllowed = true,
             maxDelayMillis = 30_000,
+        )
+
+    private fun fewShotSet(): JudgeFewShotSetPayload =
+        JudgeFewShotSetPayload(
+            setId = 1L,
+            version = 2,
+            examples =
+                listOf(
+                    JudgeFewShotExamplePayload(
+                        exampleId = "fs_direct_reply",
+                        title = "direct reply request",
+                        rawMessages =
+                            listOf(
+                                JudgeFewShotRawMessagePayload(
+                                    ref = "m1",
+                                    authorRole = "member",
+                                    offsetMs = 0,
+                                    text = "야 이럴땐 위로해줘",
+                                ),
+                            ),
+                        expectedAction = NiaFewShotAction.SPEAK,
+                        reason = "Direct continuation with NIA should be judged from raw scene evidence.",
+                        evidenceRefs = setOf("m1"),
+                        badAlternative =
+                            JudgeFewShotBadAlternativePayload(
+                                action = NiaFewShotAction.WAIT,
+                                whyBad = "Waiting would make the direct request look ignored.",
+                            ),
+                    ),
+                ),
         )
 }

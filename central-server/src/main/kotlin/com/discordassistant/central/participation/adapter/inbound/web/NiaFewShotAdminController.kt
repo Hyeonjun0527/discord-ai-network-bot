@@ -4,6 +4,7 @@ import com.discordassistant.central.global.security.DashboardActor
 import com.discordassistant.central.participation.application.fewshot.ArchiveNiaFewShotVersionCommand
 import com.discordassistant.central.participation.application.fewshot.CreateNiaFewShotDraftCommand
 import com.discordassistant.central.participation.application.fewshot.CreateNiaFewShotDraftForSetCommand
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotEvalResult
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
 import com.discordassistant.central.participation.application.fewshot.PublishNiaFewShotVersionCommand
 import com.discordassistant.central.participation.application.fewshot.ReplaceNiaFewShotDraftCommand
@@ -132,8 +133,7 @@ class NiaFewShotAdminController(
         httpRequest: HttpServletRequest,
     ): NiaFewShotEvalDto {
         DashboardActor.from(httpRequest)
-        val target = service.version(setId, version)
-        return NiaFewShotEvalDto.from(target)
+        return NiaFewShotEvalDto.from(service.evaluate(setId, version))
     }
 
     @PostMapping("/sets/{setId}/versions/{version}/publish")
@@ -355,29 +355,19 @@ data class NiaFewShotEvalDto(
     val readyForPublish: Boolean,
     val checkedExamples: Int,
     val actionCoverage: Map<String, Int>,
+    val hardAmbiguousCount: Int,
     val failures: List<String>,
 ) {
     companion object {
-        fun from(version: NiaFewShotVersion): NiaFewShotEvalDto {
-            val actionCoverage =
-                version
-                    .examples
-                    .groupingBy { it.expectedAction.name }
-                    .eachCount()
-                    .toSortedMap()
-            val failures =
-                buildList {
-                    if (version.examples.isEmpty()) add("fewshot_examples_empty")
-                    if (actionCoverage.isEmpty()) add("fewshot_action_coverage_empty")
-                }
-            return NiaFewShotEvalDto(
-                status = if (failures.isEmpty()) "PASS" else "FAIL",
-                readyForPublish = failures.isEmpty(),
-                checkedExamples = version.examples.size,
-                actionCoverage = actionCoverage,
-                failures = failures,
+        fun from(result: NiaFewShotEvalResult): NiaFewShotEvalDto =
+            NiaFewShotEvalDto(
+                status = result.status,
+                readyForPublish = result.readyForPublish,
+                checkedExamples = result.checkedExamples,
+                actionCoverage = result.actionCoverage,
+                hardAmbiguousCount = result.hardAmbiguousCount,
+                failures = result.failures.map { it.toMessage() },
             )
-        }
     }
 }
 

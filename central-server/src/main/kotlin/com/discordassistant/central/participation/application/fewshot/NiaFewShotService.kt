@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class NiaFewShotService(
     private val store: NiaFewShotStorePort,
+    private val evalService: NiaFewShotEvalService,
 ) {
     @Transactional(readOnly = true)
     fun listSets(limit: Int = 100): List<NiaFewShotSet> = store.listSets(limit.coerceIn(1, 200))
@@ -30,6 +31,12 @@ class NiaFewShotService(
 
     @Transactional(readOnly = true)
     fun activeFor(scope: NiaFewShotLookupScope): NiaFewShotSet? = store.findActive(scope)
+
+    @Transactional(readOnly = true)
+    fun evaluate(
+        setId: Long,
+        version: Int,
+    ): NiaFewShotEvalResult = evalService.evaluate(version(setId, version))
 
     @Transactional
     fun createDraft(command: CreateNiaFewShotDraftCommand): NiaFewShotVersion {
@@ -51,8 +58,13 @@ class NiaFewShotService(
     }
 
     @Transactional
-    fun publish(command: PublishNiaFewShotVersionCommand): NiaFewShotSet =
-        store.publish(command.setId, command.version, command.reviewerUserId)
+    fun publish(command: PublishNiaFewShotVersionCommand): NiaFewShotSet {
+        val eval = evaluate(command.setId, command.version)
+        require(eval.readyForPublish) {
+            "fewshot_eval_failed:${eval.failures.joinToString(",") { it.code }}"
+        }
+        return store.publish(command.setId, command.version, command.reviewerUserId)
+    }
 
     @Transactional
     fun rollback(command: RollbackNiaFewShotVersionCommand): NiaFewShotSet =

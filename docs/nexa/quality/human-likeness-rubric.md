@@ -56,3 +56,46 @@ python3 scripts/nexa-human-likeness-eval.py --out docs/nexa/quality/baseline-rep
 
 원문 사용자 데이터·실제 토큰을 시나리오에 넣지 않는다(합성 대화만). 점수·근거만 리포트에 남기고
 키/원문은 남기지 않는다.
+
+## NIA Judge Few-Shot Seed Gate
+
+M9부터 publish gate는 외부 모델 채점이 아니라 deterministic seed validation을 기본으로 한다.
+대상은 `test-fixtures/nexa/quality/nia-fewshot-seed.yaml`이며 실행 명령은 다음과 같다.
+
+```bash
+python3 scripts/nia-judge-eval.py \
+  --fixtures test-fixtures/nexa/quality/nia-fewshot-seed.yaml \
+  --out docs/nexa/quality/nia-judge-report.md
+```
+
+이 gate는 사람다운 판단을 새 enum이나 phrase rule로 만들지 않는다. 각 example은 raw scene,
+expected action, evidence refs, bad alternative를 제공하고 judge가 contrast를 배우게 한다.
+
+### Action Quality
+
+허용 action은 정확히 다섯 개다.
+
+| Action | 품질 기준 | 대표 실패 |
+| --- | --- | --- |
+| `SPEAK` | 직접 이어진 요청, 명확한 도움 요청, 또는 방 전체의 자연스러운 참여 지점에서 말한다. | 직접 요청을 무시하거나 speech가 다시 말할지 판단한다. |
+| `WAIT` | 사람이 답변 중이거나 현재 원문이 미완성일 때 판단을 보류한다. | direct mention만 보고 자료가 오기 전 말한다. |
+| `REACT` | 말은 과하지만 작은 반응은 자연스러운 가벼운 인사, 농담, 축하에 반응한다. | reaction-only 장면을 긴 답변으로 키운다. |
+| `IGNORE` | 사적 대화, 다른 사람에게 향한 말, 인용된 mention, 도배, 위험한 유도에는 끼지 않는다. | 이름이 언급됐다는 이유만으로 답한다. |
+| `CANCEL` | pending 응답의 전제가 사라졌거나 이미 해결된 뒤에는 보내지 않는다. | 늦은 답변으로 현재 주제를 되돌린다. |
+
+### Risk Axes
+
+| 축 | 통과 기준 |
+| --- | --- |
+| action correctness | 모든 example의 `expectedAction`은 다섯 action 중 하나이고 `badAlternative.action`과 달라야 한다. |
+| over-talk | `over-talk-risk` example은 `SPEAK`를 기대하면 안 된다. |
+| under-talk | `missed-reply-risk` example은 `SPEAK`를 기대해야 한다. |
+| stale-memory override | `stale-memory-override` example은 가장 최근 raw message를 evidence로 인용해야 한다. |
+| ambiguous contrast | `hard-ambiguous` example은 나쁜 대안과 왜 나쁜지 설명해야 하며, 총 7개여야 한다. |
+| privacy | seed/report는 합성 또는 익명화 데이터만 허용하고 production raw text, Discord snowflake, mention, channel URL을 출력하지 않는다. |
+
+### Required Seed Coverage
+
+초기 seed는 총 40개이며 action coverage는 `SPEAK=10`, `WAIT=9`, `REACT=6`, `IGNORE=10`,
+`CANCEL=5`로 고정한다. `hard-ambiguous`는 여섯 번째 action이 아니라 위 40개 중 7개에 붙는
+orthogonal tag다. 리포트는 실패 example id만 남기고 raw text를 출력하지 않는다.

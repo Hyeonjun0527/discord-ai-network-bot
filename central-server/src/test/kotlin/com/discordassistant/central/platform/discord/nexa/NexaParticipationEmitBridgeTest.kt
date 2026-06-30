@@ -32,6 +32,7 @@ import com.discordassistant.central.participation.application.feature.FeatureCat
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipFeatures
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotEvalService
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
 import com.discordassistant.central.participation.application.judge.JudgeDecisionDelay
 import com.discordassistant.central.participation.application.judge.JudgeReactionCandidate
@@ -277,7 +278,7 @@ class NexaParticipationEmitBridgeTest {
                 judgeModeName = "shadow",
                 rawContextStore = rawStore,
                 judgeShadowService = NiaJudgeShadowService(judge, shadowStore, clock),
-                fewShotService = NiaFewShotService(FakeFewShotStore(activeSet = activeFewShotSet())),
+                fewShotService = NiaFewShotService(FakeFewShotStore(activeSet = activeFewShotSet()), NiaFewShotEvalService()),
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "오늘은 그냥 쉬자", rawText = "shadow 원문"))

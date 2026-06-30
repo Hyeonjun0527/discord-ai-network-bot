@@ -83,6 +83,7 @@ export type NiaFewShotEval = {
   readyForPublish: boolean;
   checkedExamples: number;
   actionCoverage: Record<string, number>;
+  hardAmbiguousCount: number;
   failures: string[];
 };
 

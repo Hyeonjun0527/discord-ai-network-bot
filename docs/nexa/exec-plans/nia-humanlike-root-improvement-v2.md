@@ -555,9 +555,25 @@ Owned files:
 
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/NiaSceneWindow.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/scene/NiaSceneWindowBuilder.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/context/JudgeContextWindow.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/context/NiaJudgeContextAssembler.kt`
+- tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/application/context/`
+- tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/application/judge/`
 - `test-fixtures/nexa/scenes/*.yaml`
 - `scripts/validate-nexa-conversation-fixtures.py` if schema changes are needed
+
+Discovery amendment:
+
+- Existing base already has `JudgeContextWindowBuilder` and single-judge
+  contract tests. Do not create a competing raw-window builder in participation.
+  Add conversation-owned `NiaSceneWindow`/`NiaSceneWindowBuilder`, then make the
+  existing participation builder consume that contract.
+- Existing raw entries do not carry a direct `nia` author role. M4 must support
+  `niaAuthorPseudonyms` for entries that are already known to be NIA, but must
+  not add deterministic reply behavior or force SPEAK from that role.
+- If runtime ingestion of NIA's own outgoing messages is missing, record it as a
+  later bridge/integration gap unless M4 tests prove the window contract itself
+  cannot represent NIA messages.
 
 Tasks:
 
@@ -571,6 +587,8 @@ Tasks:
 7. Make output deterministic for the same message set.
 8. Add anonymized fixture for the screenshot-like case.
 9. Add contrast fixtures where WAIT/IGNORE/REACT/CANCEL are correct.
+10. Ensure model-facing window refs do not expose raw Discord snowflakes,
+    guild/channel ids, or author pseudonyms.
 
 Acceptance:
 
@@ -1095,4 +1113,26 @@ Validation: focused *RawContext* tests passed; make central-build passed; git di
   default raw-context config scan shows nexa.raw-context.max-raw-chars-per-scope default is 200000.
 Blocked by: none
 Next: commit M3, then start M4 scene window assembler on feat/nia-scene-window.
+```
+
+```text
+2026-06-30 19:23 KST - M4 - completed
+Branch: feat/nia-scene-window
+Commit/PR: pending
+Task IDs: M4.1-M4.10
+Changed files: central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/NiaSceneWindow.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/scene/NiaSceneWindowBuilder.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/context/JudgeContextWindow.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/context/NiaJudgeContextAssembler.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/conversation/domain/service/scene/NiaSceneWindowBuilderTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/participation/application/context/JudgeContextWindowBuilderTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/participation/application/context/NiaJudgeContextAssemblerTest.kt,
+  test-fixtures/nexa/scenes/nia-window-direct-and-contrast.yaml,
+  docs/nexa/baseline/central-package-graph.md,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation: focused *Scene* and *JudgeContext* tests passed; python3 scripts/validate-nexa-conversation-fixtures.py passed;
+  python3 scripts/evaluate-conversation-scene.py passed; make central-build passed after ktlint import/line-wrap fixes;
+  docs gate passed after regenerating central package graph; git diff --check passed.
+Blocked by: none
+Next: commit M4, then start M5 single judge shadow mode on feat/nia-single-judge-shadow.
 ```

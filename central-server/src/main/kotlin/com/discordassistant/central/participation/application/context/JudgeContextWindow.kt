@@ -1,50 +1,41 @@
 package com.discordassistant.central.participation.application.context
 
-import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
-import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
+import com.discordassistant.central.conversation.domain.model.scene.NiaSceneContent
+import com.discordassistant.central.conversation.domain.model.scene.NiaSceneMessage
+import com.discordassistant.central.conversation.domain.service.scene.NiaSceneWindowBuilder
 import java.time.Instant
 
 class JudgeContextWindowBuilder(
     private val maxRawChars: Int,
+    private val niaAuthorPseudonyms: Set<String> = emptySet(),
 ) {
     init {
         require(maxRawChars > 0) { "maxRawChars 는 양수여야 한다: $maxRawChars" }
     }
 
     fun build(snapshot: RawContextSnapshot): JudgeContextWindow {
-        val selected = selectNewestWithinBudget(snapshot.entries)
-        val messages = selected.map { it.toJudgeMessage() }
+        val sceneWindow = NiaSceneWindowBuilder(maxRawChars, niaAuthorPseudonyms).build(snapshot)
+        val messages = sceneWindow.messages.map { it.toJudgeMessage() }
         return JudgeContextWindow(
-            scopeKey = snapshot.scope.stableKey,
+            scopeFingerprint = sceneWindow.scopeFingerprint,
+            maxChars = sceneWindow.maxChars,
             messages = messages,
-            omittedOldestCount = snapshot.entries.size - selected.size,
+            omittedOldestCount = sceneWindow.omittedOldestCount,
             quotedSceneData = serializeAsQuotedScene(messages),
         )
     }
 
-    private fun selectNewestWithinBudget(entries: List<RawContextEntry>): List<RawContextEntry> {
-        val selectedNewestFirst = mutableListOf<RawContextEntry>()
-        var used = 0
-        for (entry in entries.asReversed()) {
-            val next = entry.contentLength
-            if (used + next > maxRawChars) break
-            selectedNewestFirst += entry
-            used += next
-        }
-        return selectedNewestFirst.asReversed()
-    }
-
-    private fun RawContextEntry.toJudgeMessage(): JudgeContextMessage =
+    private fun NiaSceneMessage.toJudgeMessage(): JudgeContextMessage =
         JudgeContextMessage(
-            messageId = messageId,
-            authorPseudonym = authorPseudonym,
-            occurredAt = occurredAt,
-            replyToMessageId = replyToMessageId,
+            ref = ref,
+            authorRole = authorRole.wireName,
+            createdAt = createdAt,
+            replyToRef = replyToRef,
             content =
                 when (val value = content) {
-                    is RawContextContent.Available -> JudgeContextContent.Available(value.text)
-                    is RawContextContent.Unavailable -> JudgeContextContent.Unavailable(value.reason.wireName)
+                    is NiaSceneContent.Available -> JudgeContextContent.Available(value.text)
+                    is NiaSceneContent.Unavailable -> JudgeContextContent.Unavailable(value.reason)
                 },
         )
 
@@ -55,7 +46,8 @@ class JudgeContextWindowBuilder(
                 appendLine("(대사 없음)")
             } else {
                 messages.forEach { message ->
-                    appendLine("${sanitize(message.authorPseudonym)}: ${message.content.render()}")
+                    val reply = message.replyToRef?.let { " reply_to=$it" }.orEmpty()
+                    appendLine("${message.ref} ${message.authorRole}$reply: ${message.content.render()}")
                 }
             }
             appendLine()
@@ -86,34 +78,42 @@ class JudgeContextWindowBuilder(
 }
 
 data class JudgeContextWindow(
-    val scopeKey: String,
+    val scopeFingerprint: String,
+    val maxChars: Int,
     val messages: List<JudgeContextMessage>,
     val omittedOldestCount: Int,
     val quotedSceneData: String,
 ) {
     init {
-        require(scopeKey.isNotBlank()) { "scopeKey 는 비어 있을 수 없다" }
+        require(scopeFingerprint.isNotBlank()) { "scopeFingerprint 는 비어 있을 수 없다" }
+        require(maxChars > 0) { "maxChars 는 양수여야 한다: $maxChars" }
         require(omittedOldestCount >= 0) { "omittedOldestCount 는 음수일 수 없다: $omittedOldestCount" }
     }
 }
 
 data class JudgeContextMessage(
-    val messageId: Long,
-    val authorPseudonym: String,
-    val occurredAt: Instant,
-    val replyToMessageId: Long?,
+    val ref: String,
+    val authorRole: String,
+    val createdAt: Instant,
+    val replyToRef: String?,
     val content: JudgeContextContent,
 ) {
     init {
-        require(messageId > 0) { "messageId 는 양수여야 한다: $messageId" }
-        require(authorPseudonym.isNotBlank()) { "authorPseudonym 은 비어 있을 수 없다" }
+        require(ref.isNotBlank()) { "ref 는 비어 있을 수 없다" }
+        require(authorRole.isNotBlank()) { "authorRole 은 비어 있을 수 없다" }
+        replyToRef?.let {
+            require(it.isNotBlank()) { "replyToRef 는 공백일 수 없다" }
+            require(it != ref) { "replyToRef 는 자기 자신을 가리킬 수 없다: $ref" }
+        }
     }
 }
 
 sealed interface JudgeContextContent {
     data class Available(
         val text: String,
-    ) : JudgeContextContent
+    ) : JudgeContextContent {
+        override fun toString(): String = "Available(rawCharLength=${text.length})"
+    }
 
     data class Unavailable(
         val reason: String,

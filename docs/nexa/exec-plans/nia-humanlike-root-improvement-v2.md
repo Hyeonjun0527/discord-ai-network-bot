@@ -331,6 +331,11 @@ Owned files:
 
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt`
 - `central-server/src/test/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminControllerTest.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt`
+- `central-server/src/test/kotlin/com/discordassistant/central/web/AiNetworkApiSecurityFilterTest.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/fewshot/NiaFewShotService.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/NiaFewShotStorePort.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaNiaFewShotStore.kt`
 - `admin-console/src/api.ts`
 - `admin-console/src/App.tsx`
 - `admin-console/src/styles.css`
@@ -944,4 +949,26 @@ Validation: focused *NiaFewShot* tests passed; make central-build passed after r
   from 1280m to 1536m; docs gate passed after regenerating central package graph; git diff --check passed.
 Blocked by: none
 Next: commit M1, then start M2 on feat/nia-fewshot-admin from the accepted M1 base.
+```
+
+```text
+2026-06-30 19:00 KST - M2 - completed
+Branch: feat/nia-fewshot-admin
+Commit/PR: pending
+Changed files: central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminControllerTest.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/web/AiNetworkApiSecurityFilterTest.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/fewshot/NiaFewShotService.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/NiaFewShotStorePort.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaNiaFewShotStore.kt,
+  admin-console/src/api.ts,
+  admin-console/src/App.tsx,
+  admin-console/src/styles.css,
+  docs/nexa/baseline/central-package-graph.md,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation: focused *NiaFewShot* and AiNetworkApiSecurityFilter tests passed; make central-build passed;
+  cd admin-console && pnpm build passed; docs gate passed after regenerating central package graph.
+Blocked by: none
+Next: commit M2, then start M3 raw conversation brain on feat/nia-raw-context-brain.
 ```

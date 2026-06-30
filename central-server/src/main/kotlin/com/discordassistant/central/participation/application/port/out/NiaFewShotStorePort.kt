@@ -7,6 +7,10 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
 
 interface NiaFewShotStorePort {
+    fun listSets(limit: Int = 100): List<NiaFewShotSet>
+
+    fun findSet(setId: Long): NiaFewShotSet?
+
     fun findActive(lookup: NiaFewShotLookupScope): NiaFewShotSet?
 
     fun findByScope(scope: NiaFewShotScope): NiaFewShotSet?

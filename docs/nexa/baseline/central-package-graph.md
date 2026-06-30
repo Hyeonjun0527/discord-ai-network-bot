@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 720
-- Cross-node import edges: 587
+- Kotlin files scanned: 721
+- Cross-node import edges: 588
 
 ## Nodes
 
@@ -24,7 +24,7 @@
 | `licensing` | 19 |
 | `multiresponse` | 22 |
 | `onboarding` | 15 |
-| `participation` | 118 |
+| `participation` | 119 |
 | `platform` | 58 |
 | `preset` | 25 |
 | `provider` | 15 |
@@ -93,7 +93,7 @@
 | `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `onboarding` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.shared.RequestState` |
 | `participation` | `conversation` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/participation/application/SceneParticipationConnector.kt` | `com.discordassistant.central.conversation.domain.event.SceneUpdated` |
-| `participation` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/participation/application/NexaParticipationFlagService.kt` | `com.discordassistant.central.global.crypto.ScopedPseudonymizer` |
+| `participation` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt` | `com.discordassistant.central.global.security.DashboardActor` |
 | `platform` | `actionruntime` | 19 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |

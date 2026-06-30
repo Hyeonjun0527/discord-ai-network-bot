@@ -21,6 +21,8 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -38,6 +40,15 @@ class JpaNiaFewShotStore(
     private val clock: Clock = Clock.systemUTC(),
 ) : NiaFewShotStorePort {
     private val mapper = jacksonObjectMapper()
+
+    @Transactional(readOnly = true)
+    override fun listSets(limit: Int): List<NiaFewShotSet> {
+        val page = PageRequest.of(0, limit.coerceIn(1, 200))
+        return sets.findRecent(page).map { it.toDomain() }
+    }
+
+    @Transactional(readOnly = true)
+    override fun findSet(setId: Long): NiaFewShotSet? = sets.findById(setId).orElse(null)?.toDomain()
 
     @Transactional(readOnly = true)
     override fun findActive(lookup: NiaFewShotLookupScope): NiaFewShotSet? {
@@ -285,6 +296,9 @@ interface NiaFewShotSetRepository : JpaRepository<NiaFewShotSetEntity, Long> {
     fun findByScopeKey(scopeKey: String): NiaFewShotSetEntity?
 
     fun findByScopeKeyIn(scopeKeys: Collection<String>): List<NiaFewShotSetEntity>
+
+    @Query("SELECT s FROM NiaFewShotSetEntity s ORDER BY s.updatedAt DESC")
+    fun findRecent(pageable: Pageable): List<NiaFewShotSetEntity>
 }
 
 interface NiaFewShotVersionRepository : JpaRepository<NiaFewShotVersionEntity, Long> {

@@ -55,6 +55,7 @@ class AiNetworkApiSecurityFilter(
         val path = normalizedPath(request)
         val method = request.method.uppercase()
         val wantsAdminAudience = request.getParameter("audience")?.equals("admin", ignoreCase = true) == true
+        if (path.startsWith("/api/admin")) return true
         if (
             wantsAdminAudience &&
             (

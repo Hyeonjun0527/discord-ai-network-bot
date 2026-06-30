@@ -142,6 +142,19 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `api admin namespace is always dashboard token protected`() {
+            mvc
+                .perform(get("/api/admin/nia/few-shot/sets"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(
+                    get("/api/admin/nia/few-shot/sets")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+        }
+
+        @Test
         fun `channel ai reads and writes are admin token protected`() {
             mvc
                 .perform(get("/api/ai-network/channel-ai/100/200/history"))

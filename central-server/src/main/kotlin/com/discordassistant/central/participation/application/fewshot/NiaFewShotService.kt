@@ -14,12 +14,34 @@ class NiaFewShotService(
     private val store: NiaFewShotStorePort,
 ) {
     @Transactional(readOnly = true)
+    fun listSets(limit: Int = 100): List<NiaFewShotSet> = store.listSets(limit.coerceIn(1, 200))
+
+    @Transactional(readOnly = true)
+    fun set(setId: Long): NiaFewShotSet = store.findSet(setId) ?: throw IllegalArgumentException("fewshot_set_not_found")
+
+    @Transactional(readOnly = true)
+    fun version(
+        setId: Long,
+        version: Int,
+    ): NiaFewShotVersion = store.findVersion(setId, version) ?: throw IllegalArgumentException("fewshot_version_not_found")
+
+    @Transactional(readOnly = true)
+    fun exactScope(scope: NiaFewShotScope): NiaFewShotSet? = store.findByScope(scope)
+
+    @Transactional(readOnly = true)
     fun activeFor(scope: NiaFewShotLookupScope): NiaFewShotSet? = store.findActive(scope)
 
     @Transactional
     fun createDraft(command: CreateNiaFewShotDraftCommand): NiaFewShotVersion {
         validateExamples(command.examples)
         return store.createDraft(command.scope, command.examples, command.actorUserId)
+    }
+
+    @Transactional
+    fun createDraftForSet(command: CreateNiaFewShotDraftForSetCommand): NiaFewShotVersion {
+        validateExamples(command.examples)
+        val set = set(command.setId)
+        return store.createDraft(set.scope, command.examples, command.actorUserId)
     }
 
     @Transactional
@@ -54,6 +76,16 @@ data class CreateNiaFewShotDraftCommand(
     val examples: List<NiaFewShotExample>,
     val actorUserId: Long?,
 )
+
+data class CreateNiaFewShotDraftForSetCommand(
+    val setId: Long,
+    val examples: List<NiaFewShotExample>,
+    val actorUserId: Long?,
+) {
+    init {
+        require(setId > 0) { "setId 는 양수여야 한다" }
+    }
+}
 
 data class ReplaceNiaFewShotDraftCommand(
     val setId: Long,

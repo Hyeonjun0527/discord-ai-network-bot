@@ -253,6 +253,8 @@ Owned files:
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/NiaFewShotStorePort.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaNiaFewShotStore.kt`
 - tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/...`
+- `central-server/build.gradle.kts` only if `make central-build` fails from
+  test JVM heap exhaustion after the new package is added.
 
 Migration tables:
 
@@ -923,4 +925,23 @@ Validation: first docs gate failed on system Python missing yaml; second failed 
   architecture SSOT and link checks passed; full docs gate pending after generated baseline refresh
 Blocked by: none
 Next: run docs validation, then proceed to M1 on a new branch after M0 is committed or merged.
+```
+
+```text
+2026-06-30 18:45 KST - M1 - completed
+Branch: feat/nia-fewshot-backend
+Commit/PR: pending
+Changed files: central-server/src/main/resources/db/migration/V74__nexa_fewshot_sets.sql,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/fewshot/NiaFewShotModels.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/fewshot/NiaFewShotService.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/NiaFewShotStorePort.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaNiaFewShotStore.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/participation/domain/model/fewshot/NiaFewShotModelsTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaNiaFewShotStoreTest.kt,
+  central-server/build.gradle.kts,
+  docs/nexa/baseline/central-package-graph.md
+Validation: focused *NiaFewShot* tests passed; make central-build passed after raising default test JVM heap
+  from 1280m to 1536m; docs gate passed after regenerating central package graph; git diff --check passed.
+Blocked by: none
+Next: commit M1, then start M2 on feat/nia-fewshot-admin from the accepted M1 base.
 ```

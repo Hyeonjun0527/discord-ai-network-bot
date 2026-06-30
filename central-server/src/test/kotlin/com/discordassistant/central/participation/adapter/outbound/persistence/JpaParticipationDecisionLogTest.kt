@@ -88,6 +88,38 @@ class JpaParticipationDecisionLogTest
                 .containsExactlyInAnyOrder("raw_context_message:v1:abc-123", "raw_context_window:hash=def456")
         }
 
+        @Test
+        fun `judge trace metadata 는 원문 없이 라운드트립으로 보존된다`() {
+            log.append(
+                record("corr-trace", SocialActionKind.SPEAK, Instant.now())
+                    .copy(
+                        judgeModelVersion = "nia-single-judge-shadow-v1",
+                        judgePromptVersion = "nia-judge-prompt-v1",
+                        fewShotSetId = "fewshot.global.nia",
+                        fewShotVersion = 3,
+                        rawWindowHash = "sha256=abc123",
+                        rawWindowMessageRefs =
+                            setOf(
+                                "raw_context_message:msg_a",
+                                "raw_context_message:msg_b",
+                            ),
+                        shadowBaselineAction = SocialActionKind.WAIT,
+                        finalDecisionSource = "SINGLE_JUDGE_SHADOW",
+                    ),
+            )
+
+            val found = log.findByCorrelationId("corr-trace")
+            assertThat(found!!.judgeModelVersion).isEqualTo("nia-single-judge-shadow-v1")
+            assertThat(found.judgePromptVersion).isEqualTo("nia-judge-prompt-v1")
+            assertThat(found.fewShotSetId).isEqualTo("fewshot.global.nia")
+            assertThat(found.fewShotVersion).isEqualTo(3)
+            assertThat(found.rawWindowHash).isEqualTo("sha256=abc123")
+            assertThat(found.rawWindowMessageRefs)
+                .containsExactlyInAnyOrder("raw_context_message:msg_a", "raw_context_message:msg_b")
+            assertThat(found.shadowBaselineAction).isEqualTo(SocialActionKind.WAIT)
+            assertThat(found.finalDecisionSource).isEqualTo("SINGLE_JUDGE_SHADOW")
+        }
+
         private fun record(
             correlationId: String,
             kind: SocialActionKind,

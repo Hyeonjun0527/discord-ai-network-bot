@@ -13,6 +13,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechDecisionOu
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
+import com.discordassistant.central.speech.application.port.out.SpeechTraceContext
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.ConversationTurn
@@ -96,10 +97,19 @@ class NexaSpeechPipelineServiceTest {
         val log = CapturingLog()
         val result =
             pipeline(listOf(SpeechCandidate("c1", listOf("오 그거 좋네"))), gate, log)
-                .run("user_1", SpeechTrigger.SPEAK, packet(), seed = 1L)
+                .run(
+                    "user_1",
+                    SpeechTrigger.SPEAK,
+                    packet(),
+                    seed = 1L,
+                    traceContext = SpeechTraceContext(decisionId = "participation:thread_1:1"),
+                )
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
         assertThat(result.willSpeak).isTrue()
-        assertThat(log.records.last().outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        val last = log.records.last()
+        assertThat(last.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(last.decisionId).isEqualTo("participation:thread_1:1")
+        assertThat(last.selectedContentRef).isEqualTo("c1")
     }
 
     @Test
@@ -108,12 +118,22 @@ class NexaSpeechPipelineServiceTest {
         val log = CapturingLog()
         val result =
             pipeline(listOf(SpeechCandidate("c1", listOf("오 그거 좋네"))), gate, log)
-                .run("user_1", SpeechTrigger.SPEAK, packet(), seed = 1L)
+                .run(
+                    "user_1",
+                    SpeechTrigger.SPEAK,
+                    packet(),
+                    seed = 1L,
+                    traceContext = SpeechTraceContext(decisionId = "participation:thread_1:2"),
+                )
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.BLOCKED)
         assertThat(result.willSpeak).isFalse()
         assertThat(result.consentStage).isEqualTo(ProcessingStage.SPEECH_GENERATION)
         // 결정 로그에 동의 차단이 기록(외부 전송 0 의 증거).
-        assertThat(log.records.last().consentBlocked).isTrue()
+        val last = log.records.last()
+        assertThat(last.consentBlocked).isTrue()
+        assertThat(last.decisionId).isEqualTo("participation:thread_1:2")
+        assertThat(last.blockedStage).isEqualTo("SPEECH_GENERATION")
+        assertThat(last.blockedReason).isEqualTo("CONSENT_REVOKED")
     }
 
     @Test
@@ -270,6 +290,9 @@ class NexaSpeechPipelineServiceTest {
                 .run("user_1", SpeechTrigger.IGNORE, packet(), seed = 1L)
         assertThat(result.willSpeak).isFalse()
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.CANCEL)
-        assertThat(log.records.last().generatedCandidateCount).isZero()
+        val last = log.records.last()
+        assertThat(last.generatedCandidateCount).isZero()
+        assertThat(last.blockedStage).isEqualTo("GENERATION_GATE")
+        assertThat(last.blockedReason).isEqualTo("GENERATION_NOT_SPEAK")
     }
 }

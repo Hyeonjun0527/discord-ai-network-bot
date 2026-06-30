@@ -222,6 +222,7 @@ class NexaSpeechEmitServiceTest {
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = registry,
             correlationRecorder = correlationRecorder,
+            speechDecisionLog = speechLog,
         )
     }
 
@@ -373,12 +374,14 @@ class NexaSpeechEmitServiceTest {
     fun `M3 — banter 중단 신호면 안전 override 가 SPEAK 를 접어 발화하지 않는다`() {
         val scheduler = FakeScheduler()
         val participationLog = CapturingParticipationLog()
+        val speechLog = CapturingSpeechLog()
         val seam =
             seam(
                 candidates = listOf(SpeechCandidate("c1", listOf("계속 놀려줄게"))),
                 consent = ConsentDecision.OBSERVE_AND_SPEAK,
                 scheduler = scheduler,
                 participationLog = participationLog,
+                speechLog = speechLog,
             )
         // 대상이 명시 중단 신호 → BanterSafetyOverride 가 모든 비-침묵 발화 제거 → 최종 IGNORE.
         val stopped = request().copy(safetyContext = BanterSafetyContext(targetStopRequested = true))
@@ -390,6 +393,10 @@ class NexaSpeechEmitServiceTest {
         assertThat(scheduler.scheduled).isEmpty()
         // 안전 override 가 decision log 에 기록됐다(은폐 없는 감사성).
         assertThat(participationLog.records).isNotEmpty()
+        assertThat(speechLog.records.last().decisionId).isEqualTo("corr-1")
+        assertThat(speechLog.records.last().blockedStage).isEqualTo("SAFETY_OVERRIDE")
+        assertThat(speechLog.records.last().blockedReason).isEqualTo("FINAL_ACTION_IGNORE")
+        assertThat(speechLog.records.last().generatedCandidateCount).isZero()
     }
 
     @Test

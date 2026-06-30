@@ -46,6 +46,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.security.MessageDigest
 import java.time.Instant
 
 /**
@@ -522,44 +523,50 @@ class NexaParticipationEmitBridge(
                 rawContextSceneData = rawContextSceneDataForSpeech(signal),
             )
         val emitRequest =
-            NexaSpeechEmitRequest(
-                provenance =
-                    DecisionProvenance(
-                        correlationId = "participation:$channelKey:${signal.sceneSeq}",
-                        guildPseudonym = guildPseudonym,
-                        channelId = channelKey,
-                        contextVersion = signal.contextVersion,
-                        featureHash = featureHashOf(signal),
-                        featureVectorVersion = FeatureCatalog.VERSION,
-                        modelVersion = response.modelVersion,
-                        reasonCode = response.reasonCodeForDecision(),
-                        judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
-                        decisionDelayMillis =
-                            response.delayDistribution.mostLikelyBucket.lowerBound
-                                ?.toMillis(),
-                        lastWakeUpReason = signal.wakeUpReasonCode(),
-                        missingInputCodes = signal.missingInputCodes(),
-                        evidenceRefs = signal.evidenceRefs(guildPseudonym),
-                    ),
-                rawDistribution = response.toDomain(),
-                safetyContext = BanterSafetyContext(),
-                packet = packet,
-                consentSubjectPseudonym =
-                    PolicyBackedConsentGate.pseudonymOf(
-                        guildId = signal.guildId,
-                        userId = signal.userId,
-                        channelId = signal.channelId,
-                    ),
-                actionTarget =
-                    ActionTarget(
-                        guildPseudonym = guildPseudonym,
-                        channelId = channelKey,
-                        threadId = "discord:$guildPseudonym:$channelKey",
-                    ),
-                sampledActionIndex = 0,
-                seed = signal.seed,
-                executeAfter = Instant.now(),
-            )
+            rawWindowTrace(signal).let { rawTrace ->
+                NexaSpeechEmitRequest(
+                    provenance =
+                        DecisionProvenance(
+                            correlationId = "participation:$channelKey:${signal.sceneSeq}",
+                            guildPseudonym = guildPseudonym,
+                            channelId = channelKey,
+                            contextVersion = signal.contextVersion,
+                            featureHash = featureHashOf(signal),
+                            featureVectorVersion = FeatureCatalog.VERSION,
+                            modelVersion = response.modelVersion,
+                            rawWindowHash = rawTrace.hash,
+                            rawWindowMessageRefs = rawTrace.messageRefs,
+                            reasonCode = response.reasonCodeForDecision(),
+                            judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
+                            decisionDelayMillis =
+                                response.delayDistribution.mostLikelyBucket.lowerBound
+                                    ?.toMillis(),
+                            lastWakeUpReason = signal.wakeUpReasonCode(),
+                            missingInputCodes = signal.missingInputCodes(),
+                            evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                            shadowBaselineAction = null,
+                            finalDecisionSource = finalDecisionSourceFor(response),
+                        ),
+                    rawDistribution = response.toDomain(),
+                    safetyContext = BanterSafetyContext(),
+                    packet = packet,
+                    consentSubjectPseudonym =
+                        PolicyBackedConsentGate.pseudonymOf(
+                            guildId = signal.guildId,
+                            userId = signal.userId,
+                            channelId = signal.channelId,
+                        ),
+                    actionTarget =
+                        ActionTarget(
+                            guildPseudonym = guildPseudonym,
+                            channelId = channelKey,
+                            threadId = "discord:$guildPseudonym:$channelKey",
+                        ),
+                    sampledActionIndex = 0,
+                    seed = signal.seed,
+                    executeAfter = Instant.now(),
+                )
+            }
         val result = emit.emit(emitRequest)
         // 니아가 발화했으니 pingpong 앵커를 이 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들면 즉시 wake).
         // 니아 자기 메시지는 이 브리지로 안 오므로(봇 author early-return), 발화 시점을 여기서 앵커로 삼는다.
@@ -628,6 +635,11 @@ class NexaParticipationEmitBridge(
         userId: Long,
     ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = userId)
 
+    private fun channelPseudonym(
+        guildId: Long,
+        channelId: Long,
+    ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = channelId)
+
     private fun messagePseudonym(
         guildId: Long,
         messageId: Long,
@@ -669,6 +681,7 @@ class NexaParticipationEmitBridge(
         actionKind: SocialActionKind,
         reasonCode: String,
     ) {
+        val rawTrace = rawWindowTrace(signal)
         appendDecisionLog(
             DecisionLogRecord(
                 correlationId = correlationIdOf(signal),
@@ -679,6 +692,8 @@ class NexaParticipationEmitBridge(
                 featureHash = featureHashOf(signal),
                 featureVectorVersion = FeatureCatalog.VERSION,
                 modelVersion = RULE_FORCED_MODEL_VERSION,
+                rawWindowHash = rawTrace.hash,
+                rawWindowMessageRefs = rawTrace.messageRefs,
                 seed = signal.seed,
                 removedKinds = emptySet(),
                 reasonCode = reasonCode,
@@ -687,6 +702,7 @@ class NexaParticipationEmitBridge(
                 lastWakeUpReason = signal.wakeUpReasonCode(),
                 missingInputCodes = signal.missingInputCodes(),
                 evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                finalDecisionSource = "RULE_CORE",
                 consumedGenerationQuota = false,
                 decidedAt = recordedAtOf(signal),
             ),
@@ -702,6 +718,7 @@ class NexaParticipationEmitBridge(
         reasonCode: String,
         featureVector: FeatureVectorView? = null,
     ) {
+        val rawTrace = rawWindowTrace(signal)
         appendDecisionLog(
             DecisionLogRecord(
                 correlationId = correlationIdOf(signal),
@@ -712,6 +729,8 @@ class NexaParticipationEmitBridge(
                 featureHash = featureVector?.let { featureHashOf(it) } ?: featureHashOf(signal),
                 featureVectorVersion = FeatureCatalog.VERSION,
                 modelVersion = response.modelVersion,
+                rawWindowHash = rawTrace.hash,
+                rawWindowMessageRefs = rawTrace.messageRefs,
                 seed = signal.seed,
                 removedKinds = emptySet(),
                 reasonCode = reasonCode,
@@ -722,6 +741,7 @@ class NexaParticipationEmitBridge(
                 lastWakeUpReason = signal.wakeUpReasonCode(),
                 missingInputCodes = signal.missingInputCodes(),
                 evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                finalDecisionSource = finalDecisionSourceFor(response),
                 consumedGenerationQuota = actionKind == SocialActionKind.SPEAK,
                 decidedAt = recordedAtOf(signal),
             ),
@@ -745,6 +765,56 @@ class NexaParticipationEmitBridge(
             "${id.id}=${if (value.missing) "missing" else value.value}"
         }
 
+    private fun rawWindowTrace(signal: ParticipationMessageSignal): RawWindowTrace {
+        val store = rawContextStore ?: return RawWindowTrace.EMPTY
+        return try {
+            val snapshot =
+                store.readRecent(
+                    RawContextScope(
+                        guildId = signal.guildId,
+                        channelId = signal.channelId,
+                        threadId = signal.threadId,
+                    ),
+                )
+            val entries = snapshot.entries.sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
+            if (entries.isEmpty()) {
+                RawWindowTrace.EMPTY
+            } else {
+                val fingerprint =
+                    entries.joinToString("|") { entry ->
+                        val contentFingerprint =
+                            when (val content = entry.content) {
+                                is RawContextContent.Available -> content.text
+                                is RawContextContent.Unavailable -> content.reason.wireName
+                            }
+                        listOf(
+                            messagePseudonym(signal.guildId, entry.messageId),
+                            entry.occurredAt.toEpochMilli().toString(),
+                            entry.sourceType.name,
+                            entry.contentLength.toString(),
+                            contentFingerprint,
+                        ).joinToString(":")
+                    }
+                RawWindowTrace(
+                    hash = "sha256=${sha256Hex(fingerprint)}",
+                    messageRefs = entries.map { "raw_context_message:${messagePseudonym(signal.guildId, it.messageId)}" }.toSet(),
+                )
+            }
+        } catch (e: Exception) {
+            log.warn("NEXA participation raw window trace 계산 실패(channel={}) — {}", signal.channelId, e.message)
+            RawWindowTrace.EMPTY
+        }
+    }
+
+    private fun sha256Hex(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    private fun finalDecisionSourceFor(response: PolicyDecisionResponse): String =
+        if (response.modelVersion == RULE_FORCED_MODEL_VERSION) "RULE_CORE" else "POLICY_ARGMAX"
+
     private fun ParticipationMessageSignal.wakeUpReasonCode(): String =
         when {
             replyToNia -> "REPLY_TO_NIA"
@@ -762,7 +832,7 @@ class NexaParticipationEmitBridge(
 
     private fun ParticipationMessageSignal.evidenceRefs(guildPseudonym: String): Set<String> =
         setOf(
-            "raw_context_scope:g=$guildPseudonym:c=$channelId",
+            "raw_context_scope:g=$guildPseudonym:c=${channelPseudonym(guildId, channelId)}",
             "raw_context_message:${messagePseudonym(guildId, messageId)}",
         )
 
@@ -830,6 +900,15 @@ class NexaParticipationEmitBridge(
                     ),
                 interests = setOf("개발", "디스코드"),
             )
+    }
+}
+
+private data class RawWindowTrace(
+    val hash: String?,
+    val messageRefs: Set<String>,
+) {
+    companion object {
+        val EMPTY = RawWindowTrace(hash = null, messageRefs = emptySet())
     }
 }
 

@@ -20,9 +20,13 @@ import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.PipelineResult
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
+import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
+import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome
+import com.discordassistant.central.speech.application.port.out.SpeechTraceContext
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import org.springframework.stereotype.Service
+import java.time.Clock
 import java.time.Instant
 
 /**
@@ -60,6 +64,8 @@ class NexaSpeechEmitService(
     private val actionRouter: ParticipationActionRouter,
     private val modelRegistry: ShadowModelRegistry,
     private val correlationRecorder: NexaCorrelationRecorderPort,
+    private val speechDecisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * 한 participation 평가 결과([request])를 단일 seam 으로 emit 한다. 안전 override → (필요 시)LIVE 모델 검증 →
@@ -78,6 +84,7 @@ class NexaSpeechEmitService(
             )
         if (safe.finalAction != SocialActionKind.SPEAK) {
             // SPEAK 아님 — 발화·외부 전송 없음(예약하지 않음).
+            recordSpeechNotInvoked(request, safe)
             return NexaSpeechEmitResult.notSpeaking(safe)
         }
 
@@ -102,6 +109,11 @@ class NexaSpeechEmitService(
                 seed = request.seed,
                 stale = request.stale,
                 budget = request.budget,
+                traceContext =
+                    SpeechTraceContext(
+                        decisionId = request.provenance.correlationId,
+                        correlationId = request.provenance.correlationId,
+                    ),
             )
 
         // 4) 전송 예약 — 파이프라인이 실제 SPEAK 로 통과했을 때만 SPEAK 예약. 그 외에는 IGNORE 라우팅(예약 없음).
@@ -137,6 +149,34 @@ class NexaSpeechEmitService(
             safeDecision = safe,
             pipelineResult = pipelineResult,
             routeResult = routeResult,
+        )
+    }
+
+    private fun recordSpeechNotInvoked(
+        request: NexaSpeechEmitRequest,
+        safe: SafeDecision,
+    ) {
+        speechDecisionLog.record(
+            SpeechDecisionLog(
+                decisionId = request.provenance.correlationId,
+                correlationId = request.provenance.correlationId,
+                focusThreadKey = request.packet.focusThreadKey,
+                socialAct = request.packet.socialAct,
+                outcome =
+                    if (safe.finalAction == SocialActionKind.REACT) {
+                        SpeechDecisionOutcome.REACTION_ONLY
+                    } else {
+                        SpeechDecisionOutcome.CANCEL
+                    },
+                blockedStage = "SAFETY_OVERRIDE",
+                blockedReason = "FINAL_ACTION_${safe.finalAction.name}",
+                highRiskDowngraded = safe.safetyChanged,
+                consentBlocked = false,
+                generatedCandidateCount = 0,
+                criticBlockReasons = emptySet(),
+                selectedContentRef = null,
+                createdAt = Instant.now(clock),
+            ),
         )
     }
 }

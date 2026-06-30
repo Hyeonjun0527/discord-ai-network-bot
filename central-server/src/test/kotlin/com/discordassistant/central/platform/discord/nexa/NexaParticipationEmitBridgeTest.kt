@@ -1203,6 +1203,7 @@ class NexaParticipationEmitBridgeTest {
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
             correlationRecorder = NexaCorrelationRecorderPort.Noop,
+            speechDecisionLog = CapturingSpeechLog(),
         )
     }
 
@@ -1234,6 +1235,7 @@ class NexaParticipationEmitBridgeTest {
                 actionRouter = ParticipationActionRouter(scheduler),
                 modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
                 correlationRecorder = NexaCorrelationRecorderPort.Noop,
+                speechDecisionLog = CapturingSpeechLog(),
             )
         return CountingEmit(service, generationPort)
     }

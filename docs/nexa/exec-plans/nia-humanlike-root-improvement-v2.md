@@ -91,6 +91,9 @@ owned by the active milestone.
     If the fix needs another area, amend this plan first.
 18. Generated files may change only through their generator/check command, and the
     progress log must name that command.
+19. For M5-M11, section 13 is mandatory. Resume from the first unchecked `R###`
+    item, do not skip ahead, and split the item in this document first if it is
+    still too broad to implement without interpretation.
 
 ### 4.1 Resume Protocol
 
@@ -103,7 +106,9 @@ continues the work:
 4. Confirm all modified files are owned by the active milestone or already
    justified by a plan amendment.
 5. Re-run the last failed or pending validation command before adding new code.
-6. Identify the first incomplete task number in the active milestone.
+6. Identify the first incomplete task number in the active milestone. For
+   M5-M11, use the first unchecked `R###` item in section 13 as the current
+   task.
 7. Implement only that task and its directly required tests.
 8. If a missing file, new DB field, or unexpected existing implementation changes
    the design, update this plan before editing code.
@@ -612,13 +617,41 @@ Branch: `feat/nia-single-judge-shadow`
 
 Owned files:
 
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/SingleParticipationJudgePort.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/SingleJudgeDecisionGuard.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/SingleJudgeSceneSnapshotBuilder.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/NiaParticipationJudge.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/NiaJudgePromptAssembler.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/judge/NiaJudgeOutputParser.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/NiaJudgeLlmPort.kt`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/ShadowPredictionStorePort.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/judge/*`
+- `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/JpaShadowPredictionStore.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/application/shadow/*`
 - tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/application/judge/`
+- tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/application/shadow/`
+
+Discovery amendment:
+
+- Existing base already has `SingleParticipationJudgePort`,
+  `SingleJudgeDecisionRequest`, `SingleJudgeDecision`,
+  `SingleJudgeDecisionGuard`, and `SingleJudgeSceneSnapshotBuilder`. M5 must
+  extend these contracts; it must not create a parallel judge request/decision
+  hierarchy.
+- Existing base already has `ShadowPredictionStorePort`,
+  `JpaShadowPredictionStore`, `ShadowStatusService`, and shadow tests. M5 must
+  reuse that storage path and persist no raw text. If the current shadow schema
+  cannot store a needed comparison field, add only application-level derived
+  fields in M5 and defer DB schema expansion to M6 unless the plan is amended.
+- Runtime domain uses `SocialActionKind.CANCEL_PENDING`, while the judge output
+  contract exposes `CANCEL`. M5 maps output `CANCEL` to domain
+  `CANCEL_PENDING` and must not introduce a sixth judge action.
+- `SingleJudgeSceneSnapshotBuilder` may expose numeric/text-signal features to
+  the judge, but M5 must not add or rely on a feature rule that forces SPEAK.
+  The final action still comes from raw scene + few-shot + single judge.
+- `SingleJudgeDecisionRequest` currently lacks active few-shot set/version
+  data. M5 must add a compact few-shot reference/example payload to the request
+  and `NiaJudgeContextAssembler` input before prompt assembly.
 
 Tasks:
 
@@ -1136,3 +1169,221 @@ Validation: focused *Scene* and *JudgeContext* tests passed; python3 scripts/val
 Blocked by: none
 Next: commit M4, then start M5 single judge shadow mode on feat/nia-single-judge-shadow.
 ```
+
+```text
+2026-06-30 19:27 KST - M5 - planning lock completed
+Branch: feat/nia-single-judge-shadow
+Commit/PR: pending
+Task IDs: M5.R001-M5.R002
+Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation: docs gate passed; git diff --check passed.
+Blocked by: none
+Next: R003 add few-shot request payload types to the existing single-judge contract.
+```
+
+## 13. Remaining Atomic Checklist (M5-M11)
+
+This checklist is the execution ledger for the remaining work. Start at the
+first unchecked item. Mark an item only after its code/docs/tests are complete
+or after a progress-log entry records why it is deferred.
+
+### M5 Atomic Checklist - Single Judge Shadow
+
+- [x] R001 Inspect `SingleParticipationJudgePort.kt`,
+  `SingleJudgeDecisionGuard.kt`, `SingleJudgeSceneSnapshotBuilder.kt`,
+  `ShadowPredictionStorePort.kt`, `JpaShadowPredictionStore.kt`, and their
+  tests; record whether each is adopted or extended.
+- [x] R002 If R001 finds an unplanned contract or owned-file mismatch, amend
+  this ExecPlan before writing production code.
+- [ ] R003 Add few-shot request payload types to the existing single-judge
+  contract: active set id, version, examples, expected action, reason,
+  evidence refs, bad alternative, and privacy class.
+- [ ] R004 Extend `NiaJudgeContextInput` and `NiaJudgeContextAssembler` so the
+  judge request receives the active few-shot payload from M1/M2 contracts.
+- [ ] R005 Add `NiaJudgeLlmPort` with provider-neutral request/response DTOs;
+  no Spring, HTTP, provider SDK, Discord, or raw logging in the port.
+- [ ] R006 Add prompt-assembler tests proving the prompt includes raw scene
+  text, few-shot examples, secondary memory refs, constraints, and schema.
+- [ ] R007 Implement `NiaJudgePromptAssembler` using structured serialization;
+  prompt text must state SPEAK returns intent only, not final response text.
+- [ ] R008 Add parser tests for exactly five output actions:
+  `IGNORE`, `WAIT`, `REACT`, `SPEAK`, `CANCEL`.
+- [ ] R009 Implement strict JSON parsing for
+  `nia.participation-judge-output.v1`, rejecting malformed or unknown actions.
+- [ ] R010 Reject parser output when SPEAK contains final text/message/content
+  fields, and map wire `CANCEL` to domain `CANCEL_PENDING`.
+- [ ] R011 Enforce evidence refs for every non-IGNORE output in parser tests
+  and implementation.
+- [ ] R012 Add `NiaParticipationJudge` tests for first-call success,
+  one repair retry, and retry exhaustion degrading to WAIT or IGNORE.
+- [ ] R013 Implement `NiaParticipationJudge` behind
+  `SingleParticipationJudgePort`; apply `SingleJudgeDecisionGuard` after parse.
+- [ ] R014 Add shadow-service tests proving the judge result is persisted as
+  shadow comparison and cannot change runtime behavior in M5.
+- [ ] R015 Implement the M5 shadow service using existing
+  `ShadowPredictionStorePort`; store hashes/refs/actions only, never raw text.
+- [ ] R016 Run focused `*NiaJudge*` and `*Shadow*` tests and fix only M5-owned
+  files.
+- [ ] R017 Run `make central-build` with JDK 21 and fix only M5-owned files.
+- [ ] R018 Append the M5 progress entry, stage only M5-owned files, and commit
+  `feat/nia-single-judge-shadow`.
+
+### M6 Atomic Checklist - Durable Decision And Speech Tracing
+
+- [ ] R019 Inspect existing participation decision log, speech pipeline, and
+  `SpeechDecisionLogPort`; record adopt/extend/replace decisions.
+- [ ] R020 Choose Flyway migration numbers after checking tracked and
+  untracked migrations.
+- [ ] R021 Add participation trace fields for judge model, prompt, few-shot
+  set/version, raw window hash, refs, evidence refs, reason, baseline action,
+  and final decision source.
+- [ ] R022 Add speech decision log table or fields for decision id,
+  correlation id, outcome, blocked stage/reason, generation count, critic
+  reasons, selected content ref, and created time.
+- [ ] R023 Extend application ports and domain DTOs so trace data is carried
+  without raw text.
+- [ ] R024 Implement or extend `JpaParticipationDecisionLog` to persist the
+  new trace fields.
+- [ ] R025 Implement `JpaSpeechDecisionLog` and replace production Noop wiring
+  where the real DB sink is available.
+- [ ] R026 Log `BLOCKED` before every speech-pipeline return that prevents
+  generation, selection, scheduling, or send.
+- [ ] R027 Log when speech generation was never invoked and why.
+- [ ] R028 Link scheduled action id or durable block reason back to the
+  participation decision id.
+- [ ] R029 Add `scripts/diagnose-nia-decision.sh` that prints correlation
+  trace without raw text, snowflakes, or author ids.
+- [ ] R030 Add tests for consent-blocked SPEAK, successful scheduled SPEAK,
+  and no-generation blocked paths.
+- [ ] R031 Run focused `*DecisionLog*` and `*SpeechDecisionLog*` tests.
+- [ ] R032 Run `make central-build`, append M6 progress, and commit
+  `feat/nia-durable-tracing`.
+
+### M7 Atomic Checklist - DB Consent Adapter
+
+- [ ] R033 Inspect consent tables, current fail-closed config,
+  `PolicyBackedConsentGate`, ingestion, speech, and external GLM call sites.
+- [ ] R034 Amend this plan if real table/field names differ from section 7 M7.
+- [ ] R035 Add repository/query layer for guild consent, channel scope,
+  user opt-out, and participation channel flags.
+- [ ] R036 Implement `DbConsentPolicyAdapter` synthesis exactly as section 7
+  M7 states: disabled guild, user opt-out, observe denied, speak denied,
+  else observe-and-speak.
+- [ ] R037 Register DB-backed `ConsentPolicyPort` as production bean and keep
+  fail-closed only as `@ConditionalOnMissingBean`.
+- [ ] R038 Add startup health/status evidence when production has only the
+  fail-closed consent bean.
+- [ ] R039 Add ingestion tests proving DENIED stores no raw context.
+- [ ] R040 Add speech tests proving OBSERVE_ONLY blocks generation and logs
+  the durable reason.
+- [ ] R041 Add external GLM/request-boundary tests proving the same consent
+  decision is reused.
+- [ ] R042 Add empty-table tests proving fail-closed behavior.
+- [ ] R043 Add enabled guild/channel tests proving OBSERVE_AND_SPEAK reaches
+  generation/scheduling.
+- [ ] R044 Add opt-out revocation tests before scheduled send.
+- [ ] R045 Run focused `*Consent*` and `*PolicyBackedConsentGate*` tests.
+- [ ] R046 Run `make central-build`, append M7 progress, and commit
+  `feat/nia-db-consent-adapter`.
+
+### M8 Atomic Checklist - Judge Final Decision
+
+- [ ] R047 Inspect `NexaParticipationEmitBridge`, baseline policy config,
+  `CooldownHeuristicPolicy`, and `CoreInterventionRules` for any final SPEAK
+  forcing branches.
+- [ ] R048 Amend this plan if final decision wiring lives outside the M8-owned
+  files.
+- [ ] R049 Add `CENTRAL_NEXA_JUDGE_MODE=shadow|final|off` config parsing with
+  invalid values failing fast.
+- [ ] R050 In `off`, preserve the pre-M8 production path and still write a
+  durable reason for no judge call when tracing is present.
+- [ ] R051 In `shadow`, run the single judge and persist comparison while
+  preserving the current runtime action.
+- [ ] R052 In `final`, use the single judge output as the participation action.
+- [ ] R053 Keep baseline cooldown heuristic only as shadow comparison in final
+  mode.
+- [ ] R054 Change `CoreInterventionRules` so it can block unsafe/stale actions
+  but cannot force SPEAK as the final decision in final mode.
+- [ ] R055 Remove or bypass direct-mention/reply-to-NIA branches that return
+  SPEAK without judge evidence.
+- [ ] R056 Ensure WAIT, IGNORE, REACT, and CANCEL never call speech generation.
+- [ ] R057 Ensure SPEAK reaches speech and scheduler unless consent, guard, or
+  runtime blocks it with a durable reason.
+- [ ] R058 Map domain `CANCEL_PENDING` to actionruntime cancellation without
+  speech generation.
+- [ ] R059 Persist `final_decision_source=single_judge` in final mode and
+  `final_decision_source=baseline` in shadow/off modes.
+- [ ] R060 Add bridge tests for off, shadow, and final modes.
+- [ ] R061 Add regression tests proving direct-address cases are handled by
+  judge evidence, not deterministic SPEAK rules.
+- [ ] R062 Add tests proving no action other than SPEAK enters speech.
+- [ ] R063 Run focused `*NexaParticipationEmitBridge*`,
+  `*CoreInterventionRules*`, and `*CooldownHeuristic*` tests.
+- [ ] R064 Run `make central-build`, append M8 progress, and commit
+  `feat/nia-judge-final-decision`.
+
+### M9 Atomic Checklist - Evaluation Gates And Few-Shot Seed
+
+- [ ] R065 Inspect existing fixture schema and eval scripts before creating
+  the seed dataset.
+- [ ] R066 Add `test-fixtures/nexa/quality/nia-fewshot-seed.yaml` schema with
+  explicit ids, actions, evidence refs, and privacy class.
+- [ ] R067 Add exactly 40 synthetic/anonymized seed examples with the section
+  7 M9 composition.
+- [ ] R068 Add a validation check that fails if fixture text is marked or
+  shaped as production raw text.
+- [ ] R069 Implement `scripts/nia-judge-eval.py` action-correctness scoring.
+- [ ] R070 Add over-talk risk scoring.
+- [ ] R071 Add under-talk/missed-direct-request risk scoring.
+- [ ] R072 Add stale-memory override risk scoring where current raw text beats
+  old memory.
+- [ ] R073 Add ambiguous contrast-case scoring for cases where a nearby action
+  is tempting but wrong.
+- [ ] R074 Connect the M2 admin eval endpoint to the local eval service/script
+  without requiring production data.
+- [ ] R075 Fail few-shot publish when required seed eval thresholds fail.
+- [ ] R076 Write `docs/nexa/quality/human-likeness-rubric.md`.
+- [ ] R077 Generate `docs/nexa/quality/nia-judge-report.md` with failed ids,
+  not production raw text.
+- [ ] R078 Run `scripts/nia-judge-eval.py` on the seed fixture.
+- [ ] R079 Run `scripts/validate-nexa-eval-report.py`.
+- [ ] R080 Run docs gate and `make central-build`.
+- [ ] R081 Append M9 progress and commit `feat/nia-judge-eval-gates`.
+
+### M10 Atomic Checklist - Deploy And Operations Protection
+
+- [ ] R082 Inspect central deploy and CI workflows before editing YAML.
+- [ ] R083 Make intended central code commits unable to be hidden behind a
+  generated RAG skip path.
+- [ ] R084 Add deploy summary fields for app SHA, image SHA, migration
+  version, judge mode, few-shot set/version, and DB consent adapter status.
+- [ ] R085 Extend `scripts/diagnose-central-ops.sh` or
+  `scripts/diagnose-nia-decision.sh` for read-only production verification.
+- [ ] R086 Add manual deploy runbook steps with GitHub API polling limits.
+- [ ] R087 Add rollback runbook for judge mode and few-shot active version.
+- [ ] R088 Add docs for interpreting skipped, blocked, and successful deploys.
+- [ ] R089 Run docs gate.
+- [ ] R090 Run `actionlint`; if unavailable, record the local tool gap and rely
+  on GitHub CI.
+- [ ] R091 Append M10 progress and commit
+  `fix/nia-central-deploy-traceability`.
+
+### M11 Atomic Checklist - Staged Rollout
+
+- [ ] R092 Verify M1-M10 are merged, CI is green on `main`, and no release or
+  production approval gate is missing.
+- [ ] R093 Obtain explicit human approval before production deploy, DB
+  migration, Discord LIVE behavior, or target guild/channel enablement.
+- [ ] R094 Deploy with `CENTRAL_NEXA_JUDGE_MODE=shadow`.
+- [ ] R095 Verify app SHA, image SHA, migration version, active few-shot
+  set/version, and DB-backed consent adapter status.
+- [ ] R096 Run read-only diagnostics on known recent messages without exposing
+  raw text.
+- [ ] R097 Enable final judge for one approved target guild/channel only.
+- [ ] R098 Monitor no-reply-after-SPEAK, consent-blocked, malformed judge
+  output, timeout fallback, over-talk, and rollback events.
+- [ ] R099 If silent SPEAK drop or over-talk spike occurs, execute the planned
+  rollback path and keep diagnostic evidence.
+- [ ] R100 Record final rollout evidence that the screenshot-like regression no
+  longer produces unexplained silence and every no-reply case has a durable
+  reason.

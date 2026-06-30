@@ -1,25 +1,39 @@
 package com.discordassistant.central.platform.discord.nexa
 
+import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
+import com.discordassistant.central.participation.application.context.NiaJudgeContextAssembler
+import com.discordassistant.central.participation.application.context.NiaJudgeContextInput
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
+import com.discordassistant.central.participation.application.judge.JudgeFewShotBadAlternativePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotExamplePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotRawMessagePayload
+import com.discordassistant.central.participation.application.judge.JudgeFewShotSetPayload
+import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
+import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
+import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneBuildResult
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneObservation
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneSnapshotBuilder
+import com.discordassistant.central.participation.application.judge.SingleParticipationJudgePort
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
@@ -28,7 +42,19 @@ import com.discordassistant.central.participation.application.port.out.PolicyCon
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowResult
+import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowService
+import com.discordassistant.central.participation.domain.model.action.PendingActionId
+import com.discordassistant.central.participation.domain.model.action.ReactionCode
+import com.discordassistant.central.participation.domain.model.action.SocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.decision.ActionDelay
+import com.discordassistant.central.participation.domain.model.decision.ActionTargetDistribution
+import com.discordassistant.central.participation.domain.model.decision.BurstProfile
+import com.discordassistant.central.participation.domain.model.decision.DelayDistribution
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.AttentionGateConstants
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
@@ -47,6 +73,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.security.MessageDigest
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -89,12 +116,19 @@ class NexaParticipationEmitBridge(
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
     @param:Value("\${central.nexa.participation.speech.raw-context.max-chars:12000}")
     private val speechRawContextMaxChars: Int = 12_000,
+    @param:Value("\${central.nexa.judge.mode:off}") private val judgeModeName: String = NexaJudgeMode.DEFAULT.wireName,
     private val rawContextStore: RawContextStorePort? = null,
     private val decisionLog: ParticipationDecisionLogPort? = null,
     private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
+    private val judgeShadowService: NiaJudgeShadowService? = null,
+    private val singleJudge: SingleParticipationJudgePort? = null,
+    private val fewShotService: NiaFewShotService? = null,
+    private val actionRouter: ParticipationActionRouter? = null,
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
+    private val judgeMode = NexaJudgeMode.parse(judgeModeName)
     private val speechRawContextWindowBuilder = JudgeContextWindowBuilder(speechRawContextMaxChars)
+    private val judgeContextAssembler = NiaJudgeContextAssembler()
 
     /**
      * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
@@ -303,9 +337,11 @@ class NexaParticipationEmitBridge(
         val channelKey = signal.channelId.toString()
 
         // 0) core 결정론 규칙 게이트 먼저(CoreInterventionRules — hard_policy + rules 이식). 명백하면 즉결:
-        //    SPEAK → 정책 우회하고 바로 발화(rate limit·emit 안전 게이트는 그대로 통과). SILENT → emit 안 함.
-        //    WAIT → 이번 턴 발화 안 함(burst 미완·이어가는 연결어). CANDIDATE(모호) 일 때만 아래 정책 분포로 위임한다.
+        //    off/shadow 의 SPEAK 는 기존처럼 바로 발화한다. final 의 SPEAK 는 단일 judge 후보 신호로만 남긴다.
+        //    SILENT/WAIT 는 안전·stale guard 로 남아 emit 을 막고, CANDIDATE 는 아래 정책 또는 judge 로 위임한다.
         val verdict = CoreInterventionRules.evaluate(ruleInputOf(signal))
+        val sceneBuild = buildPolicyScene(signal, guildPseudonym, channelKey)
+        recordShadowJudge(signal, sceneBuild)
 
         // 0-b) attention 타이밍 게이트(ChannelAttentionGate — "언제 깨우나"). 끼어들기 **판단**(verdict)과 직교한다.
         //      WAKE_NOW(멘션/호명/reply/continuation/pingpong) → 즉시 통과. WAIT(min_gap 연타·typing) → 이번 턴 보류
@@ -347,15 +383,18 @@ class NexaParticipationEmitBridge(
                 return ParticipationEmitOutcome.RuleWait(verdict.reasonCode)
             }
             is CoreInterventionRules.Verdict.Speak -> {
-                // 규칙이 명백한 SPEAK 라 정책 분포를 묻지 않는다 — 결정론 ALWAYS_SPEAK 분포로 emit 한다.
-                return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, ruleForcedSpeakResponse())
+                if (judgeMode == NexaJudgeMode.FINAL) {
+                    Unit
+                } else {
+                    // 규칙이 명백한 SPEAK 라 정책 분포를 묻지 않는다 — 결정론 ALWAYS_SPEAK 분포로 emit 한다.
+                    return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, ruleForcedSpeakResponse())
+                }
             }
             CoreInterventionRules.Verdict.Candidate -> Unit // 모호 → 아래 정책 분포로 위임.
         }
 
         // 1) participation 평가 — Discord bridge도 단일 scene snapshot builder를 통해 feature vector를 만든다.
         //    예전 2-feature(mention/recent burst) 경로로 돌아가지 않도록 bridge hot path와 judge contract를 맞춘다.
-        val sceneBuild = buildPolicyScene(signal, guildPseudonym, channelKey)
         val request =
             PolicyDecisionRequest(
                 sceneSnapshotRef = sceneBuild.sceneSnapshot.ref,
@@ -370,6 +409,19 @@ class NexaParticipationEmitBridge(
                 schemaVersion = SCHEMA_VERSION,
                 seed = signal.seed,
             )
+
+        if (judgeMode == NexaJudgeMode.FINAL) {
+            val baselineResponse = baselineResponseOrNull(request, signal)
+            return evaluateFinalJudge(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                userPseudonym = userPseudonym,
+                channelKey = channelKey,
+                sceneBuild = sceneBuild,
+                baselineResponse = baselineResponse,
+            )
+        }
+
         val response = policy.decide(request)
 
         // 2) SPEAK 가 가장 유력하지 않으면 emit 를 부르지 않는다(IGNORE/REACT/WAIT 는 발화 없음). emit 가 안전 override 로
@@ -393,37 +445,223 @@ class NexaParticipationEmitBridge(
         signal: ParticipationMessageSignal,
         guildPseudonym: String,
         channelKey: String,
-    ): SingleJudgeSceneBuildResult =
-        SingleJudgeSceneSnapshotBuilder.build(
-            SingleJudgeSceneObservation(
-                ref =
-                    SceneSnapshotRef(
-                        guildPseudonym = guildPseudonym,
-                        channelId = channelKey,
-                        sceneSeq = signal.sceneSeq,
-                        contextVersion = signal.contextVersion,
+    ): SingleJudgeSceneBuildResult = SingleJudgeSceneSnapshotBuilder.build(sceneObservationOf(signal, guildPseudonym, channelKey))
+
+    private fun sceneObservationOf(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+    ): SingleJudgeSceneObservation =
+        SingleJudgeSceneObservation(
+            ref =
+                SceneSnapshotRef(
+                    guildPseudonym = guildPseudonym,
+                    channelId = channelKey,
+                    sceneSeq = signal.sceneSeq,
+                    contextVersion = signal.contextVersion,
+                ),
+            triggerText = signal.triggerText.takeIf { it.isNotBlank() },
+            directAddressed = signal.mentioned,
+            replyToNia = signal.replyToNia,
+            replyToHuman = signal.replyToHuman,
+            conversationMentionsNia = signal.conversationMentionsNia,
+            recentAgentBurstCount = signal.recentAgentBurstCount,
+            silenceMillis = signal.silenceMillis,
+            lastNiaSpokeAgeSeconds = signal.lastNiaSpokeAgeSeconds,
+            pendingActionIds = signal.pendingActionIds,
+            humanLikelyAnswering = signal.humanLikelyAnswering,
+            resolvedLikely = signal.resolvedLikely,
+            directAddressPressure = signal.directAddressPressure,
+            replyChainDepth = signal.replyChainDepth,
+            nicknameCall = signal.nicknameCall || signal.triggerText.contains(NexaIdentity.NIA_NAME),
+            previousIgnoredRequestCount = signal.previousIgnoredRequestCount,
+            humansTalkingToEachOtherLikely = signal.humansTalkingToEachOtherLikely,
+            rateLimitPressure = signal.rateLimitPressure,
+            antiSpamPressure = signal.antiSpamPressure,
+            relationshipObservation = signal.relationshipObservation,
+            memoryObservation = signal.memoryObservation,
+        )
+
+    private fun recordShadowJudge(
+        signal: ParticipationMessageSignal,
+        sceneBuild: SingleJudgeSceneBuildResult,
+    ) {
+        if (judgeMode != NexaJudgeMode.SHADOW) return
+        val shadowService = judgeShadowService ?: return
+        val request = singleJudgeRequest(signal, guildPseudonym(signal.guildId), signal.channelId.toString(), sceneBuild)
+        when (val result = shadowService.record(request)) {
+            is NiaJudgeShadowResult.Recorded -> Unit
+            is NiaJudgeShadowResult.Failed ->
+                log.warn("NEXA single judge shadow 기록 실패(sceneSeq={}) — {}", signal.sceneSeq, result.reason)
+        }
+    }
+
+    private fun evaluateFinalJudge(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        userPseudonym: String,
+        channelKey: String,
+        sceneBuild: SingleJudgeSceneBuildResult,
+        baselineResponse: PolicyDecisionResponse?,
+    ): ParticipationEmitOutcome {
+        val judge = singleJudge
+        val request = singleJudgeRequest(signal, guildPseudonym, channelKey, sceneBuild)
+        if (judge == null) {
+            logSingleJudgeDecision(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                channelKey = channelKey,
+                request = request,
+                decision = null,
+                actionKind = SocialActionKind.IGNORE,
+                reasonCode = "SINGLE_JUDGE_UNAVAILABLE",
+                featureVector = sceneBuild.featureVector,
+                shadowBaselineAction = baselineResponse?.mostLikelyAction,
+            )
+            return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
+        }
+
+        val decision =
+            try {
+                judge.decide(request)
+            } catch (e: Exception) {
+                log.warn("NEXA single judge final 판단 실패(sceneSeq={}) — {}", signal.sceneSeq, e::class.simpleName)
+                logSingleJudgeDecision(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    channelKey = channelKey,
+                    request = request,
+                    decision = null,
+                    actionKind = SocialActionKind.IGNORE,
+                    reasonCode = "SINGLE_JUDGE_FAILED",
+                    featureVector = sceneBuild.featureVector,
+                    shadowBaselineAction = baselineResponse?.mostLikelyAction,
+                )
+                return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
+            }
+
+        if (decision.action == SocialActionKind.SPEAK) {
+            return emitSpeak(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                userPseudonym = userPseudonym,
+                channelKey = channelKey,
+                response = decision.toPolicyResponse(),
+                featureVector = sceneBuild.featureVector,
+                attribution =
+                    decision.toSingleJudgeAttribution(
+                        request = request,
+                        shadowBaselineAction = baselineResponse?.mostLikelyAction,
                     ),
-                triggerText = signal.triggerText.takeIf { it.isNotBlank() },
-                directAddressed = signal.mentioned,
-                replyToNia = signal.replyToNia,
-                replyToHuman = signal.replyToHuman,
-                conversationMentionsNia = signal.conversationMentionsNia,
-                recentAgentBurstCount = signal.recentAgentBurstCount,
-                silenceMillis = signal.silenceMillis,
-                lastNiaSpokeAgeSeconds = signal.lastNiaSpokeAgeSeconds,
-                pendingActionIds = signal.pendingActionIds,
-                humanLikelyAnswering = signal.humanLikelyAnswering,
-                resolvedLikely = signal.resolvedLikely,
-                directAddressPressure = signal.directAddressPressure,
-                replyChainDepth = signal.replyChainDepth,
-                nicknameCall = signal.nicknameCall || signal.triggerText.contains(NexaIdentity.NIA_NAME),
-                previousIgnoredRequestCount = signal.previousIgnoredRequestCount,
-                humansTalkingToEachOtherLikely = signal.humansTalkingToEachOtherLikely,
-                rateLimitPressure = signal.rateLimitPressure,
-                antiSpamPressure = signal.antiSpamPressure,
-                relationshipObservation = signal.relationshipObservation,
-                memoryObservation = signal.memoryObservation,
+            )
+        }
+
+        logSingleJudgeDecision(
+            signal = signal,
+            guildPseudonym = guildPseudonym,
+            channelKey = channelKey,
+            request = request,
+            decision = decision,
+            actionKind = decision.action,
+            reasonCode = decision.reasonCode.code,
+            featureVector = sceneBuild.featureVector,
+            shadowBaselineAction = baselineResponse?.mostLikelyAction,
+        )
+        routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision)
+        return ParticipationEmitOutcome.NotSpeaking(decision.action)
+    }
+
+    private fun singleJudgeRequest(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+        sceneBuild: SingleJudgeSceneBuildResult,
+    ): SingleJudgeDecisionRequest =
+        judgeContextAssembler.assemble(
+            NiaJudgeContextInput(
+                rawContextSnapshot = rawContextSnapshot(signal),
+                sceneObservation = sceneObservationOf(signal, guildPseudonym, channelKey),
+                sceneBuild = sceneBuild,
+                constraints = judgeConstraints(),
+                seed = signal.seed,
+                fewShotSet = activeFewShotPayload(signal),
             ),
+        )
+
+    private fun baselineResponseOrNull(
+        request: PolicyDecisionRequest,
+        signal: ParticipationMessageSignal,
+    ): PolicyDecisionResponse? =
+        try {
+            policy.decide(request)
+        } catch (e: Exception) {
+            log.warn("NEXA baseline shadow 비교 실패(sceneSeq={}) — {}", signal.sceneSeq, e::class.simpleName)
+            null
+        }
+
+    private fun rawContextSnapshot(signal: ParticipationMessageSignal): RawContextSnapshot {
+        val scope = RawContextScope(guildId = signal.guildId, channelId = signal.channelId, threadId = signal.threadId)
+        val store = rawContextStore ?: return RawContextSnapshot(scope, emptyList())
+        return try {
+            store.readRecent(scope)
+        } catch (e: Exception) {
+            log.warn("NEXA judge raw context 조회 실패(sceneSeq={}) — {}", signal.sceneSeq, e.message)
+            RawContextSnapshot(scope, emptyList())
+        }
+    }
+
+    private fun judgeConstraints(): JudgeDecisionConstraints =
+        JudgeDecisionConstraints(
+            allowedActions = SocialActionKind.entries.toSet(),
+            speechAllowed = true,
+            reactionAllowed = true,
+            maxDelayMillis = 30_000,
+        )
+
+    private fun activeFewShotPayload(signal: ParticipationMessageSignal): JudgeFewShotSetPayload {
+        val set =
+            fewShotService
+                ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
+                ?: return JudgeFewShotSetPayload.EMPTY
+        val active = set.active ?: return JudgeFewShotSetPayload.EMPTY
+        val setId = set.id ?: return JudgeFewShotSetPayload.EMPTY
+        return active.toJudgePayload(setId)
+    }
+
+    private fun NiaFewShotVersion.toJudgePayload(setId: Long): JudgeFewShotSetPayload =
+        JudgeFewShotSetPayload(
+            setId = setId,
+            version = version,
+            examples =
+                examples
+                    .sortedWith(compareByDescending<NiaFewShotExample> { it.priority }.thenBy { it.id ?: Long.MAX_VALUE })
+                    .mapIndexed { index, example -> example.toJudgePayload(setId, version, index) },
+        )
+
+    private fun NiaFewShotExample.toJudgePayload(
+        setId: Long,
+        version: Int,
+        index: Int,
+    ): JudgeFewShotExamplePayload =
+        JudgeFewShotExamplePayload(
+            exampleId = "fewshot_${setId}_${version}_${id ?: index}",
+            title = title,
+            rawMessages =
+                rawMessages.map { message ->
+                    JudgeFewShotRawMessagePayload(
+                        ref = message.ref,
+                        authorRole = message.authorRole,
+                        offsetMs = message.offsetMs,
+                        text = message.text,
+                    )
+                },
+            expectedAction = expectedAction,
+            reason = reason,
+            evidenceRefs = evidenceRefs,
+            badAlternative = JudgeFewShotBadAlternativePayload(action = badAlternative.action, whyBad = badAlternative.whyBad),
+            tags = tags,
+            priority = priority,
+            privacyClass = privacyClass,
         )
 
     /**
@@ -491,6 +729,7 @@ class NexaParticipationEmitBridge(
         channelKey: String,
         response: PolicyDecisionResponse,
         featureVector: FeatureVectorView? = null,
+        attribution: DecisionAttribution = response.defaultAttribution(),
     ): ParticipationEmitOutcome {
         logPolicyDecision(
             signal = signal,
@@ -498,8 +737,9 @@ class NexaParticipationEmitBridge(
             channelKey = channelKey,
             response = response,
             actionKind = SocialActionKind.SPEAK,
-            reasonCode = response.reasonCodeForDecision(),
+            reasonCode = attribution.reasonCode,
             featureVector = featureVector,
+            attribution = attribution,
         )
 
         // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
@@ -519,7 +759,7 @@ class NexaParticipationEmitBridge(
                 socialAct = response.selectedSpeechSocialAct(),
                 burstShape = response.toSpeechBurstShape(),
                 identity = NIA_IDENTITY,
-                speechIntent = response.speechIntent(reasonCode = response.reasonCodeForDecision()),
+                speechIntent = attribution.speechIntent ?: response.speechIntent(reasonCode = attribution.reasonCode),
                 rawContextSceneData = rawContextSceneDataForSpeech(signal),
             )
         val emitRequest =
@@ -534,18 +774,20 @@ class NexaParticipationEmitBridge(
                             featureHash = featureHashOf(signal),
                             featureVectorVersion = FeatureCatalog.VERSION,
                             modelVersion = response.modelVersion,
+                            judgeModelVersion = attribution.judgeModelVersion,
+                            judgePromptVersion = attribution.judgePromptVersion,
+                            fewShotSetId = attribution.fewShotSetId,
+                            fewShotVersion = attribution.fewShotVersion,
                             rawWindowHash = rawTrace.hash,
                             rawWindowMessageRefs = rawTrace.messageRefs,
-                            reasonCode = response.reasonCodeForDecision(),
-                            judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
-                            decisionDelayMillis =
-                                response.delayDistribution.mostLikelyBucket.lowerBound
-                                    ?.toMillis(),
+                            reasonCode = attribution.reasonCode,
+                            judgeConfidence = attribution.judgeConfidence,
+                            decisionDelayMillis = attribution.decisionDelayMillis,
                             lastWakeUpReason = signal.wakeUpReasonCode(),
                             missingInputCodes = signal.missingInputCodes(),
                             evidenceRefs = signal.evidenceRefs(guildPseudonym),
-                            shadowBaselineAction = null,
-                            finalDecisionSource = finalDecisionSourceFor(response),
+                            shadowBaselineAction = attribution.shadowBaselineAction,
+                            finalDecisionSource = attribution.finalDecisionSource,
                         ),
                     rawDistribution = response.toDomain(),
                     safetyContext = BanterSafetyContext(),
@@ -702,7 +944,7 @@ class NexaParticipationEmitBridge(
                 lastWakeUpReason = signal.wakeUpReasonCode(),
                 missingInputCodes = signal.missingInputCodes(),
                 evidenceRefs = signal.evidenceRefs(guildPseudonym),
-                finalDecisionSource = "RULE_CORE",
+                finalDecisionSource = ruleFinalDecisionSource(),
                 consumedGenerationQuota = false,
                 decidedAt = recordedAtOf(signal),
             ),
@@ -717,6 +959,7 @@ class NexaParticipationEmitBridge(
         actionKind: SocialActionKind,
         reasonCode: String,
         featureVector: FeatureVectorView? = null,
+        attribution: DecisionAttribution = response.defaultAttribution(reasonCode = reasonCode),
     ) {
         val rawTrace = rawWindowTrace(signal)
         appendDecisionLog(
@@ -729,24 +972,172 @@ class NexaParticipationEmitBridge(
                 featureHash = featureVector?.let { featureHashOf(it) } ?: featureHashOf(signal),
                 featureVectorVersion = FeatureCatalog.VERSION,
                 modelVersion = response.modelVersion,
+                judgeModelVersion = attribution.judgeModelVersion,
+                judgePromptVersion = attribution.judgePromptVersion,
+                fewShotSetId = attribution.fewShotSetId,
+                fewShotVersion = attribution.fewShotVersion,
                 rawWindowHash = rawTrace.hash,
                 rawWindowMessageRefs = rawTrace.messageRefs,
                 seed = signal.seed,
                 removedKinds = emptySet(),
-                reasonCode = reasonCode,
-                judgeConfidence = (1.0 - response.uncertainty).coerceIn(0.0, 1.0),
-                decisionDelayMillis =
-                    response.delayDistribution.mostLikelyBucket.lowerBound
-                        ?.toMillis(),
+                reasonCode = attribution.reasonCode,
+                judgeConfidence = attribution.judgeConfidence,
+                decisionDelayMillis = attribution.decisionDelayMillis,
                 lastWakeUpReason = signal.wakeUpReasonCode(),
                 missingInputCodes = signal.missingInputCodes(),
                 evidenceRefs = signal.evidenceRefs(guildPseudonym),
-                finalDecisionSource = finalDecisionSourceFor(response),
+                shadowBaselineAction = attribution.shadowBaselineAction,
+                finalDecisionSource = attribution.finalDecisionSource,
                 consumedGenerationQuota = actionKind == SocialActionKind.SPEAK,
                 decidedAt = recordedAtOf(signal),
             ),
         )
     }
+
+    private fun logSingleJudgeDecision(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+        request: SingleJudgeDecisionRequest,
+        decision: SingleJudgeDecision?,
+        actionKind: SocialActionKind,
+        reasonCode: String,
+        featureVector: FeatureVectorView,
+        shadowBaselineAction: SocialActionKind?,
+    ) {
+        val rawTrace = rawWindowTrace(signal)
+        appendDecisionLog(
+            DecisionLogRecord(
+                correlationId = correlationIdOf(signal),
+                guildPseudonym = guildPseudonym,
+                channelId = channelKey,
+                contextVersion = signal.contextVersion,
+                actionKind = actionKind,
+                featureHash = featureHashOf(featureVector),
+                featureVectorVersion = FeatureCatalog.VERSION,
+                modelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
+                judgeModelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
+                judgePromptVersion = NiaJudgePromptAssembler.PROMPT_VERSION,
+                fewShotSetId = request.fewShotSet.setId?.toString(),
+                fewShotVersion = request.fewShotSet.version,
+                rawWindowHash = rawTrace.hash,
+                rawWindowMessageRefs = rawTrace.messageRefs,
+                seed = signal.seed,
+                removedKinds = emptySet(),
+                reasonCode = reasonCode,
+                judgeConfidence = decision?.confidence,
+                decisionDelayMillis = decision?.delay?.millis,
+                lastWakeUpReason = signal.wakeUpReasonCode(),
+                missingInputCodes = signal.missingInputCodes(),
+                evidenceRefs = signal.evidenceRefs(guildPseudonym),
+                shadowBaselineAction = shadowBaselineAction,
+                finalDecisionSource = SINGLE_JUDGE_DECISION_SOURCE,
+                consumedGenerationQuota = false,
+                decidedAt = recordedAtOf(signal),
+            ),
+        )
+    }
+
+    private fun routeNonSpeechJudgeAction(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        channelKey: String,
+        decision: SingleJudgeDecision,
+    ) {
+        val socialAction = decision.toSocialAction(signal)
+        if (socialAction.kind != SocialActionKind.REACT && socialAction.kind != SocialActionKind.CANCEL_PENDING) return
+        val router = actionRouter
+        if (router == null) {
+            log.warn("NEXA final judge {} 라우터 없음(sceneSeq={}) — speech 없이 종료", socialAction.kind, signal.sceneSeq)
+            return
+        }
+        runCatching {
+            router.route(
+                decisionId = correlationIdOf(signal),
+                sampledActionIndex = 0,
+                action = socialAction,
+                target = actionTarget(guildPseudonym, channelKey),
+                executeAfter = Instant.now().plusMillis(decision.delay.millis),
+                contextVersion = signal.contextVersion,
+            )
+        }.onFailure { error ->
+            log.warn("NEXA final judge {} 라우팅 실패(sceneSeq={}) — {}", socialAction.kind, signal.sceneSeq, error::class.simpleName)
+        }
+    }
+
+    private fun SingleJudgeDecision.toSocialAction(signal: ParticipationMessageSignal): SocialAction =
+        when (action) {
+            SocialActionKind.IGNORE -> SocialAction.Ignore
+            SocialActionKind.WAIT -> SocialAction.Wait(delay.toActionDelay())
+            SocialActionKind.REACT ->
+                SocialAction.React(
+                    reactionCodes = listOf(ReactionCode(reactionCandidate?.reactionCode ?: DEFAULT_REACTION_CODE)),
+                    delay = delay.toActionDelay(),
+                )
+            SocialActionKind.SPEAK ->
+                SocialAction.Speak(
+                    speechRequest =
+                        com.discordassistant.central.participation.domain.model.action.SpeechRequestRef(
+                            correlationIdOf(signal),
+                        ),
+                    delay = delay.toActionDelay(),
+                )
+            SocialActionKind.CANCEL_PENDING ->
+                SocialAction.CancelPending(
+                    PendingActionId(signal.pendingActionIds.firstOrNull() ?: correlationIdOf(signal)),
+                )
+        }
+
+    private fun com.discordassistant.central.participation.application.judge.JudgeDecisionDelay.toActionDelay(): ActionDelay =
+        if (millis <= 0) ActionDelay.IMMEDIATE else ActionDelay.fire(Duration.ofMillis(millis))
+
+    private fun SingleJudgeDecision.toPolicyResponse(): PolicyDecisionResponse =
+        PolicyDecisionResponse(
+            actionWeights = mapOf(SocialActionKind.SPEAK to 1.0),
+            targetDistribution = ActionTargetDistribution.none(resolverVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION),
+            delayDistribution = DelayDistribution.IMMEDIATE,
+            socialActWeights = emptyMap(),
+            burstProfile = BurstProfile.singleLine(),
+            uncertainty = (1.0 - confidence).coerceIn(0.0, 1.0),
+            modelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
+        )
+
+    private fun SingleJudgeDecision.toSingleJudgeAttribution(
+        request: SingleJudgeDecisionRequest,
+        shadowBaselineAction: SocialActionKind?,
+    ): DecisionAttribution =
+        DecisionAttribution(
+            reasonCode = reasonCode.code,
+            judgeConfidence = confidence,
+            decisionDelayMillis = delay.millis,
+            shadowBaselineAction = shadowBaselineAction,
+            finalDecisionSource = SINGLE_JUDGE_DECISION_SOURCE,
+            judgeModelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
+            judgePromptVersion = NiaJudgePromptAssembler.PROMPT_VERSION,
+            fewShotSetId = request.fewShotSet.setId?.toString(),
+            fewShotVersion = request.fewShotSet.version,
+            speechIntent = speechIntent?.toPromptIntent(reasonCode.code),
+        )
+
+    private fun com.discordassistant.central.participation.application.judge.JudgeSpeechIntent.toPromptIntent(reasonCode: String): String =
+        buildString {
+            append("participation_action=SPEAK; ")
+            append("reason_code=$reasonCode; ")
+            append("intent_summary=$intentSummary; ")
+            append("scene_direction=$sceneDirection; ")
+            actHint?.let { append("act_hint=$it; ") }
+            append("speech는 말할지 여부를 다시 판단하지 않고 이 방향의 실제 문구만 만든다.")
+        }
+
+    private fun actionTarget(
+        guildPseudonym: String,
+        channelKey: String,
+    ): ActionTarget =
+        ActionTarget(
+            guildPseudonym = guildPseudonym,
+            channelId = channelKey,
+            threadId = "discord:$guildPseudonym:$channelKey",
+        )
 
     private fun appendDecisionLog(record: DecisionLogRecord) {
         val sink = decisionLog ?: return
@@ -813,7 +1204,32 @@ class NexaParticipationEmitBridge(
             .joinToString("") { "%02x".format(it) }
 
     private fun finalDecisionSourceFor(response: PolicyDecisionResponse): String =
-        if (response.modelVersion == RULE_FORCED_MODEL_VERSION) "RULE_CORE" else "POLICY_ARGMAX"
+        if (response.modelVersion == RULE_FORCED_MODEL_VERSION) {
+            ruleFinalDecisionSource()
+        } else {
+            when (judgeMode) {
+                NexaJudgeMode.OFF -> "JUDGE_OFF_POLICY_ARGMAX"
+                NexaJudgeMode.SHADOW -> BASELINE_DECISION_SOURCE
+                NexaJudgeMode.FINAL -> SINGLE_JUDGE_DECISION_SOURCE
+            }
+        }
+
+    private fun ruleFinalDecisionSource(): String =
+        when (judgeMode) {
+            NexaJudgeMode.OFF -> "JUDGE_OFF_RULE_CORE"
+            NexaJudgeMode.SHADOW -> "RULE_CORE"
+            NexaJudgeMode.FINAL -> "RULE_CORE_GUARD"
+        }
+
+    private fun PolicyDecisionResponse.defaultAttribution(reasonCode: String = reasonCodeForDecision()): DecisionAttribution =
+        DecisionAttribution(
+            reasonCode = reasonCode,
+            judgeConfidence = (1.0 - uncertainty).coerceIn(0.0, 1.0),
+            decisionDelayMillis =
+                delayDistribution.mostLikelyBucket.lowerBound
+                    ?.toMillis(),
+            finalDecisionSource = finalDecisionSourceFor(this),
+        )
 
     private fun ParticipationMessageSignal.wakeUpReasonCode(): String =
         when {
@@ -888,6 +1304,11 @@ class NexaParticipationEmitBridge(
         /** core 규칙 즉결 SPEAK 분포의 추적용 모델 버전(어떤 경로로 나온 발화인지 식별). */
         private const val RULE_FORCED_MODEL_VERSION: String = "core-intervention-rules-1"
 
+        private const val SINGLE_JUDGE_FINAL_MODEL_VERSION: String = "nia-single-judge-final-v1"
+        private const val SINGLE_JUDGE_DECISION_SOURCE: String = "SINGLE_JUDGE"
+        private const val BASELINE_DECISION_SOURCE: String = "BASELINE"
+        private const val DEFAULT_REACTION_CODE: String = "ack"
+
         /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
         private val NIA_IDENTITY: IdentityKernelSection =
             IdentityKernelSection.of(
@@ -911,6 +1332,19 @@ private data class RawWindowTrace(
         val EMPTY = RawWindowTrace(hash = null, messageRefs = emptySet())
     }
 }
+
+private data class DecisionAttribution(
+    val reasonCode: String,
+    val judgeConfidence: Double?,
+    val decisionDelayMillis: Long?,
+    val finalDecisionSource: String,
+    val shadowBaselineAction: SocialActionKind? = null,
+    val judgeModelVersion: String? = null,
+    val judgePromptVersion: String? = null,
+    val fewShotSetId: String? = null,
+    val fewShotVersion: Int? = null,
+    val speechIntent: String? = null,
+)
 
 /**
  * NEXA participation 자발 발화 평가 입력(raw Discord 메시지 신호). 원문 user id 등은 브리지가 가명화하므로 raw 식별자를
@@ -1080,7 +1514,7 @@ sealed interface ParticipationEmitOutcome {
     /** flag OFF(legacy) 또는 비활성 — 자발 발화 경로 미진입(기존 동작 보존). */
     data object Inactive : ParticipationEmitOutcome
 
-    /** 정책이 SPEAK 가 아님(IGNORE/REACT/WAIT) — emit 미호출(발화 없음). */
+    /** 최종 행동이 SPEAK 가 아님(IGNORE/REACT/WAIT/CANCEL) — speech emit 미호출. REACT/CANCEL 은 actionruntime 만 쓸 수 있다. */
     data class NotSpeaking(
         val action: com.discordassistant.central.participation.domain.model.action.SocialActionKind,
     ) : ParticipationEmitOutcome

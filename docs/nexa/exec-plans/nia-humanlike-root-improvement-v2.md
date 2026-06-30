@@ -878,10 +878,39 @@ Owned files:
 - `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt`
 - optional `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeModeProperties.kt`
   or equivalent local config type if no existing config object can own the mode.
+- optional `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeRuntimeConfig.kt`
+  or equivalent local runtime wiring config if existing M5 judge classes need
+  Spring bean registration.
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/CooldownHeuristicPolicy.kt`
 - `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/CoreInterventionRules.kt`
 - tests under `central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/`
 - tests under `central-server/src/test/kotlin/com/discordassistant/central/participation/domain/service/`
+
+Discovery amendment:
+
+- Current final SPEAK paths are not yet judge-owned. `NexaParticipationEmitBridge`
+  first runs `CoreInterventionRules`; `Verdict.Speak` bypasses policy and calls
+  `emitSpeak` with `RULE_FORCED_MODEL_VERSION`. If core returns `Candidate`,
+  bridge asks `ParticipationPolicyPort`; any response whose `mostLikelyAction`
+  is `SPEAK` also reaches `emitSpeak`.
+- `CoreInterventionRules` currently forces SPEAK for Discord mention, direct
+  NIA name/vocative markers, reply-to-NIA, and continuation token overlap. It
+  also intentionally lets direct-address plus burst/duplicate override WAIT or
+  SILENT as repeated-call SPEAK.
+- `CooldownHeuristicPolicy` currently forces SPEAK when mentioned, or when the
+  recent NIA burst count is below cooldown. M8 must keep this only as baseline
+  comparison in `final`, not as final action source.
+- Existing M5 contracts already provide `SingleParticipationJudgePort`,
+  `NiaParticipationJudge`, `NiaJudgeContextAssembler`, and
+  `NiaJudgeShadowService`, but no production Spring bean wiring for the judge or
+  shadow service was found. M8 may add local runtime config above; if no
+  `NiaJudgeLlmPort` exists, `final` mode must not silently fall back to baseline
+  SPEAK.
+- Existing few-shot admin/service contracts provide `NiaFewShotService.activeFor`
+  and scope fallback, but no mapper from active few-shot domain models to
+  `JudgeFewShotSetPayload` was found. M8 bridge wiring must pass active
+  few-shot examples into the single judge when the service is available; it may
+  degrade to an empty payload only when the service or active set is absent.
 
 Tasks:
 
@@ -1479,6 +1508,108 @@ Blocked by: none
 Next: commit M7, then start M8 at R047 on `feat/nia-judge-final-decision`.
 ```
 
+```text
+2026-06-30 20:42 KST - M8 - final decision discovery locked
+Branch: feat/nia-judge-final-decision
+Commit/PR: pending
+Task IDs: M8.R047-M8.R048
+Changed files: docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Current final SPEAK branches:
+  1. `NexaParticipationEmitBridge.evaluateAndEmit` calls `CoreInterventionRules.evaluate` before policy.
+     `Verdict.Speak` bypasses policy and calls `emitSpeak` with `RULE_FORCED_MODEL_VERSION`.
+  2. `CoreInterventionRules` returns SPEAK for Discord mention, direct NIA markers/vocatives,
+     reply-to-NIA, continuation overlap, and direct-address plus burst/duplicate repeated-call cases.
+  3. Candidate flow asks `ParticipationPolicyPort`; any `PolicyDecisionResponse.mostLikelyAction == SPEAK`
+     reaches `emitSpeak`.
+  4. `CooldownHeuristicPolicy` returns SPEAK for mention or below-cooldown recent burst count.
+Current trace sources: bridge records `RULE_CORE` for rule-forced decisions and `POLICY_ARGMAX` for policy
+  decisions. `baseline-cooldown-heuristic-1` can still be the production policy model version.
+Existing judge contracts: `SingleParticipationJudgePort`, `NiaParticipationJudge`, `NiaJudgeContextAssembler`,
+  and `NiaJudgeShadowService` exist, but production Spring bean wiring for `SingleParticipationJudgePort` or
+  `NiaJudgeShadowService` was not found; no `NiaJudgeLlmPort` adapter was found.
+Plan amendment: added optional M8 owned runtime config file for judge mode/runtime wiring. `final` mode must not
+  silently fall back to baseline SPEAK when judge wiring is absent.
+Validation: discovery only; implementation/tests start at R049.
+Blocked by: none
+Next: R049 add `CENTRAL_NEXA_JUDGE_MODE=shadow|final|off` parsing with invalid values failing fast.
+```
+
+```text
+2026-06-30 20:47 KST - M8 - judge off mode locked
+Branch: feat/nia-judge-final-decision
+Commit/PR: pending
+Task IDs: M8.R049-M8.R050
+Changed files:
+  central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeMode.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeModeTest.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridgeTest.kt,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Implementation: `central.nexa.judge.mode` now parses `off`, `shadow`, and `final`; blank defaults to `off`;
+  invalid values fail fast. `NexaParticipationEmitBridge` parses the property at bean construction.
+Off-mode behavior: pre-M8 core/baseline action path is preserved, but decision logs now record
+  `JUDGE_OFF_RULE_CORE` or `JUDGE_OFF_POLICY_ARGMAX` as `finalDecisionSource`, so traces explain that
+  no single judge was called.
+Validation: `central-server/gradlew -p central-server test --no-daemon --console=plain --tests '*NexaJudgeModeTest' --tests '*NexaParticipationEmitBridgeTest'` passed.
+Blocked by: none
+Next: R051 run the single judge in `shadow` mode and persist comparison without changing runtime action.
+```
+
+```text
+2026-06-30 21:06 KST - M8 - judge shadow wiring locked
+Branch: feat/nia-judge-final-decision
+Commit/PR: pending
+Task IDs: M8.R051
+Changed files:
+  central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaJudgeRuntimeConfig.kt,
+  central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridgeTest.kt,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Implementation: `shadow` mode now assembles the same raw-context-backed single-judge request used by M5,
+  includes the active admin-managed few-shot set when present, records the judge prediction through
+  `NiaJudgeShadowService`, and leaves the existing runtime action path unchanged. Runtime config conditionally
+  registers `SingleParticipationJudgePort` and `NiaJudgeShadowService` only when a concrete judge LLM port exists,
+  so default deployments stay off.
+Validation: `central-server/gradlew -p central-server test --no-daemon --console=plain --tests '*NexaJudgeModeTest' --tests '*NexaParticipationEmitBridgeTest'` passed.
+Blocked by: none
+Next: R052 use the single judge output as the final participation action when mode is `final`.
+```
+
+```text
+2026-06-30 21:36 KST - M8 - final judge routing locked
+Branch: feat/nia-judge-final-decision
+Commit/PR: pending
+Task IDs: M8.R052-M8.R062
+Changed files:
+  central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt,
+  central-server/src/test/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridgeTest.kt,
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Implementation: `final` mode now treats the single judge as the only final participation action source. Baseline
+  cooldown policy is still evaluated only as `shadowBaselineAction` comparison metadata. Core rules can still block
+  SILENT/WAIT guard cases, but core direct-mention/reply SPEAK no longer bypasses the judge in final mode. Judge
+  WAIT/IGNORE never call speech generation; judge REACT routes only through actionruntime; judge CANCEL_PENDING routes
+  cancellation without speech; judge SPEAK enters the existing speech seam with `finalDecisionSource=SINGLE_JUDGE`.
+Validation: `central-server/gradlew -p central-server test --no-daemon --console=plain --tests '*NexaJudgeModeTest' --tests '*NexaParticipationEmitBridgeTest'` passed. Tests cover baseline-ignore + judge-SPEAK, direct mention + judge-IGNORE, judge WAIT/REACT no-speech, and judge CANCEL_PENDING no-speech cancellation.
+Blocked by: none
+Next: run M8 broad validation, append validation evidence, and commit `feat/nia-judge-final-decision`.
+```
+
+```text
+2026-06-30 21:50 KST - M8 - validation passed
+Branch: feat/nia-judge-final-decision
+Commit/PR: pending
+Task IDs: M8.R063-M8.R064
+Changed files:
+  docs/nexa/exec-plans/nia-humanlike-root-improvement-v2.md
+Validation:
+  1. `central-server/gradlew -p central-server test --no-daemon --console=plain --tests '*NexaParticipationEmitBridge*' --tests '*CoreInterventionRules*' --tests '*CooldownHeuristic*'` passed.
+  2. `make central-build` passed after ktlint formatting of the M8-owned source/test files.
+  3. `PATH=/Users/osuma/coding_stuffs/discord-assitant/.venv/bin:$PATH ./scripts/nexa-verify.sh docs` passed
+     after regenerating `docs/nexa/baseline/central-package-graph.md` with `python3 scripts/central-package-graph.py`.
+Blocked by: none
+Next: inspect diff/status, stage only M8-owned files, and commit `feat/nia-judge-final-decision`.
+```
+
 ## 13. Remaining Atomic Checklist (M5-M11)
 
 This checklist is the execution ledger for the remaining work. Start at the
@@ -1586,38 +1717,38 @@ or after a progress-log entry records why it is deferred.
 
 ### M8 Atomic Checklist - Judge Final Decision
 
-- [ ] R047 Inspect `NexaParticipationEmitBridge`, baseline policy config,
+- [x] R047 Inspect `NexaParticipationEmitBridge`, baseline policy config,
   `CooldownHeuristicPolicy`, and `CoreInterventionRules` for any final SPEAK
   forcing branches.
-- [ ] R048 Amend this plan if final decision wiring lives outside the M8-owned
+- [x] R048 Amend this plan if final decision wiring lives outside the M8-owned
   files.
-- [ ] R049 Add `CENTRAL_NEXA_JUDGE_MODE=shadow|final|off` config parsing with
+- [x] R049 Add `CENTRAL_NEXA_JUDGE_MODE=shadow|final|off` config parsing with
   invalid values failing fast.
-- [ ] R050 In `off`, preserve the pre-M8 production path and still write a
+- [x] R050 In `off`, preserve the pre-M8 production path and still write a
   durable reason for no judge call when tracing is present.
-- [ ] R051 In `shadow`, run the single judge and persist comparison while
+- [x] R051 In `shadow`, run the single judge and persist comparison while
   preserving the current runtime action.
-- [ ] R052 In `final`, use the single judge output as the participation action.
-- [ ] R053 Keep baseline cooldown heuristic only as shadow comparison in final
+- [x] R052 In `final`, use the single judge output as the participation action.
+- [x] R053 Keep baseline cooldown heuristic only as shadow comparison in final
   mode.
-- [ ] R054 Change `CoreInterventionRules` so it can block unsafe/stale actions
+- [x] R054 Change `CoreInterventionRules` so it can block unsafe/stale actions
   but cannot force SPEAK as the final decision in final mode.
-- [ ] R055 Remove or bypass direct-mention/reply-to-NIA branches that return
+- [x] R055 Remove or bypass direct-mention/reply-to-NIA branches that return
   SPEAK without judge evidence.
-- [ ] R056 Ensure WAIT, IGNORE, REACT, and CANCEL never call speech generation.
-- [ ] R057 Ensure SPEAK reaches speech and scheduler unless consent, guard, or
+- [x] R056 Ensure WAIT, IGNORE, REACT, and CANCEL never call speech generation.
+- [x] R057 Ensure SPEAK reaches speech and scheduler unless consent, guard, or
   runtime blocks it with a durable reason.
-- [ ] R058 Map domain `CANCEL_PENDING` to actionruntime cancellation without
+- [x] R058 Map domain `CANCEL_PENDING` to actionruntime cancellation without
   speech generation.
-- [ ] R059 Persist `final_decision_source=single_judge` in final mode and
+- [x] R059 Persist `final_decision_source=single_judge` in final mode and
   `final_decision_source=baseline` in shadow/off modes.
-- [ ] R060 Add bridge tests for off, shadow, and final modes.
-- [ ] R061 Add regression tests proving direct-address cases are handled by
+- [x] R060 Add bridge tests for off, shadow, and final modes.
+- [x] R061 Add regression tests proving direct-address cases are handled by
   judge evidence, not deterministic SPEAK rules.
-- [ ] R062 Add tests proving no action other than SPEAK enters speech.
-- [ ] R063 Run focused `*NexaParticipationEmitBridge*`,
+- [x] R062 Add tests proving no action other than SPEAK enters speech.
+- [x] R063 Run focused `*NexaParticipationEmitBridge*`,
   `*CoreInterventionRules*`, and `*CooldownHeuristic*` tests.
-- [ ] R064 Run `make central-build`, append M8 progress, and commit
+- [x] R064 Run `make central-build`, append M8 progress, and commit
   `feat/nia-judge-final-decision`.
 
 ### M9 Atomic Checklist - Evaluation Gates And Few-Shot Seed

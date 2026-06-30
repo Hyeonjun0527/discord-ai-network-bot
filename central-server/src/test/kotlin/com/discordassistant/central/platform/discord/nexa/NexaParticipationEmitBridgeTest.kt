@@ -5,6 +5,7 @@ import com.discordassistant.central.actionruntime.application.port.out.ActionSch
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
+import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.conversation.application.port.out.ConsentPolicyPort
@@ -30,16 +31,31 @@ import com.discordassistant.central.participation.application.feature.FeatureCat
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipFeatures
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.judge.JudgeDecisionDelay
+import com.discordassistant.central.participation.application.judge.JudgeReactionCandidate
+import com.discordassistant.central.participation.application.judge.JudgeReasonCode
+import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
+import com.discordassistant.central.participation.application.judge.JudgeToneAxes
+import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
+import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
+import com.discordassistant.central.participation.application.judge.SingleParticipationJudgePort
 import com.discordassistant.central.participation.application.model.ShadowModelRegistry
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
+import com.discordassistant.central.participation.application.port.out.NiaFewShotStorePort
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse
 import com.discordassistant.central.participation.application.port.out.PolicyEngineCapabilities
+import com.discordassistant.central.participation.application.port.out.SceneKey
 import com.discordassistant.central.participation.application.port.out.ShadowModeState
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
+import com.discordassistant.central.participation.application.port.out.ShadowPredictionRecord
+import com.discordassistant.central.participation.application.port.out.ShadowPredictionStorePort
+import com.discordassistant.central.participation.application.port.out.ShadowPredictionSummary
+import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowService
 import com.discordassistant.central.participation.domain.model.action.SocialAct
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.config.ParticipationLane
@@ -47,6 +63,15 @@ import com.discordassistant.central.participation.domain.model.decision.ActionTa
 import com.discordassistant.central.participation.domain.model.decision.BurstProfile
 import com.discordassistant.central.participation.domain.model.decision.DelayBucket
 import com.discordassistant.central.participation.domain.model.decision.DelayDistribution
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotRawMessage
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotScope
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotSet
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersionStatus
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.model.shadow.ShadowModeAudit
 import com.discordassistant.central.quota.application.InMemoryRateLimitStore
@@ -152,12 +177,216 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled).isEmpty()
         assertThat(decisionLog.records.single().correlationId).isEqualTo("participation:3:10")
         assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.IGNORE)
+        assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("JUDGE_OFF_POLICY_ARGMAX")
         assertThat(
             decisionLog.records
                 .single()
                 .evidenceRefs
                 .joinToString(","),
         ).doesNotContain("안녕")
+    }
+
+    @Test
+    fun `judge off mode preserves rule path but logs no judge rule source`() {
+        val scheduler = FakeScheduler()
+        val decisionLog = CapturingParticipationLog()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                decisionLog = decisionLog,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "준호야 너 표 있어?", speakerLabel = "user_2"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.RuleSilent::class.java)
+        assertThat(scheduler.scheduled).isEmpty()
+        assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.IGNORE)
+        assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("JUDGE_OFF_RULE_CORE")
+    }
+
+    @Test
+    fun `judge shadow mode records single judge comparison without changing runtime action`() {
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        val shadowStore = FakeShadowPredictionStore()
+        val judge = CapturingJudge(speakDecision())
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "shadow",
+                rawContextStore = rawStore,
+                judgeShadowService = NiaJudgeShadowService(judge, shadowStore, clock),
+                fewShotService = NiaFewShotService(FakeFewShotStore(activeSet = activeFewShotSet())),
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "오늘은 그냥 쉬자", rawText = "shadow 원문"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java)
+        assertThat(scheduler.scheduled).isEmpty()
+        assertThat(shadowStore.records.single().sampledAction).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(judge.lastRequest!!.rawContextWindow.quotedSceneData).contains("shadow 원문")
+        assertThat(judge.lastRequest!!.fewShotSet.setId).isEqualTo(101L)
+        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(3)
+        assertThat(
+            judge.lastRequest!!
+                .fewShotSet
+                .examples
+                .single()
+                .exampleId,
+        ).isEqualTo("fewshot_101_3_201")
+    }
+
+    @Test
+    fun `judge final mode uses single judge SPEAK even when baseline would ignore`() {
+        val scheduler = FakeScheduler()
+        val decisionLog = CapturingParticipationLog()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(speakDecision()),
+                actionRouter = ParticipationActionRouter(scheduler),
+                decisionLog = decisionLog,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "오늘은 그냥 쉬자"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+        assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(decisionLog.records.single().shadowBaselineAction).isEqualTo(SocialActionKind.IGNORE)
+        assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("SINGLE_JUDGE")
+    }
+
+    @Test
+    fun `judge final mode direct mention does not force SPEAK when judge ignores`() {
+        val scheduler = FakeScheduler()
+        val decisionLog = CapturingParticipationLog()
+        val counting = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = counting.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(ignoreDecision()),
+                actionRouter = ParticipationActionRouter(scheduler),
+                decisionLog = decisionLog,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = "니아야 답해줘"))
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE))
+        assertThat(counting.calls).isZero()
+        assertThat(scheduler.scheduled).isEmpty()
+        assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.IGNORE)
+        assertThat(decisionLog.records.single().shadowBaselineAction).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("SINGLE_JUDGE")
+    }
+
+    @Test
+    fun `judge final mode WAIT and REACT do not call speech generation`() {
+        val waitScheduler = FakeScheduler()
+        val waitCounting = countingEmitSeam(waitScheduler)
+        val waitBridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = waitCounting.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(waitDecision()),
+                actionRouter = ParticipationActionRouter(waitScheduler),
+            )
+
+        val waitOutcome = waitBridge.onMessage(signal(mentioned = false, triggerText = "좀 보자"))
+
+        assertThat(waitOutcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.WAIT))
+        assertThat(waitCounting.calls).isZero()
+        assertThat(waitScheduler.scheduled).isEmpty()
+
+        val reactScheduler = FakeScheduler()
+        val reactCounting = countingEmitSeam(reactScheduler)
+        val reactBridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = reactCounting.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(reactDecision()),
+                actionRouter = ParticipationActionRouter(reactScheduler),
+            )
+
+        val reactOutcome = reactBridge.onMessage(signal(mentioned = false, triggerText = "ㅋㅋ"))
+
+        assertThat(reactOutcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.REACT))
+        assertThat(reactCounting.calls).isZero()
+        assertThat(reactScheduler.scheduled.single().type).isEqualTo(ScheduledActionType.REACT)
+    }
+
+    @Test
+    fun `judge final mode CANCEL_PENDING cancels actionruntime without speech generation`() {
+        val scheduler = FakeScheduler()
+        val counting = countingEmitSeam(scheduler)
+        val pending =
+            ScheduledSocialAction
+                .create(
+                    decisionId = "participation:3:10",
+                    sampledActionIndex = 0,
+                    type = ScheduledActionType.SPEAK,
+                    target = ActionTarget(guildPseudonym = "g", channelId = "3", threadId = "t"),
+                    executeAfter = Instant.parse("2026-06-30T00:00:00Z"),
+                    contextVersion = 1,
+                ).markScheduled()
+        scheduler.scheduled += pending
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = counting.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(cancelDecision()),
+                actionRouter = ParticipationActionRouter(scheduler),
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = false,
+                    triggerText = "이미 해결된 듯",
+                    pendingActionIds = listOf(pending.identity.value),
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.CANCEL_PENDING))
+        assertThat(counting.calls).isZero()
+        assertThat(scheduler.cancelled).containsExactly(pending.identity)
     }
 
     @Test
@@ -1259,6 +1488,198 @@ class NexaParticipationEmitBridgeTest {
         }
     }
 
+    private fun speakDecision(): SingleJudgeDecision =
+        SingleJudgeDecision(
+            action = SocialActionKind.SPEAK,
+            confidence = 0.8,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = null,
+            speechIntent = JudgeSpeechIntent(intentSummary = "answer direct social request", sceneDirection = "one short reply"),
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge.shadow"),
+        )
+
+    private fun ignoreDecision(): SingleJudgeDecision =
+        SingleJudgeDecision(
+            action = SocialActionKind.IGNORE,
+            confidence = 0.82,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = null,
+            speechIntent = null,
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge.ignore"),
+        )
+
+    private fun waitDecision(): SingleJudgeDecision =
+        SingleJudgeDecision(
+            action = SocialActionKind.WAIT,
+            confidence = 0.71,
+            delay = JudgeDecisionDelay(1_000, wakeUpHint = "wait_for_more_context"),
+            reactionCandidate = null,
+            speechIntent = null,
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge.wait"),
+        )
+
+    private fun reactDecision(): SingleJudgeDecision =
+        SingleJudgeDecision(
+            action = SocialActionKind.REACT,
+            confidence = 0.76,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = JudgeReactionCandidate("smile"),
+            speechIntent = null,
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge.react"),
+        )
+
+    private fun cancelDecision(): SingleJudgeDecision =
+        SingleJudgeDecision(
+            action = SocialActionKind.CANCEL_PENDING,
+            confidence = 0.84,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = null,
+            speechIntent = null,
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge.cancel"),
+        )
+
+    private fun activeFewShotSet(): NiaFewShotSet {
+        val now = Instant.parse("2026-06-30T00:00:00Z")
+        val example =
+            NiaFewShotExample(
+                id = 201L,
+                title = "direct request",
+                rawMessages =
+                    listOf(
+                        NiaFewShotRawMessage(
+                            ref = "m1",
+                            authorRole = "member",
+                            offsetMs = 0,
+                            text = "니아야 답해줘",
+                        ),
+                    ),
+                expectedAction = NiaFewShotAction.SPEAK,
+                reason = "Direct social requests need an answer.",
+                evidenceRefs = setOf("m1"),
+                badAlternative =
+                    NiaFewShotBadAlternative(
+                        action = NiaFewShotAction.WAIT,
+                        whyBad = "Waiting would read as ignoring the user.",
+                    ),
+                tags = setOf("direct-address"),
+                priority = 100,
+            )
+        val activeVersion =
+            NiaFewShotVersion(
+                id = 301L,
+                setId = 101L,
+                version = 3,
+                status = NiaFewShotVersionStatus.ACTIVE,
+                examples = listOf(example),
+                createdBy = null,
+                reviewedBy = null,
+                publishedAt = now,
+                rollbackOfVersion = null,
+                createdAt = now,
+                updatedAt = now,
+            )
+        return NiaFewShotSet(
+            id = 101L,
+            scope = NiaFewShotScope.global(),
+            activeVersion = 3,
+            versions = listOf(activeVersion),
+            createdAt = now,
+            updatedAt = now,
+        )
+    }
+
+    private class CapturingJudge(
+        private val decision: SingleJudgeDecision,
+    ) : SingleParticipationJudgePort {
+        var lastRequest: SingleJudgeDecisionRequest? = null
+            private set
+
+        override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
+            lastRequest = request
+            return decision
+        }
+    }
+
+    private class FakeShadowPredictionStore : ShadowPredictionStorePort {
+        val records = mutableListOf<ShadowPredictionRecord>()
+
+        override fun append(record: ShadowPredictionRecord) {
+            records += record
+        }
+
+        override fun findByScene(scene: SceneKey): List<ShadowPredictionRecord> = records.filter { it.scene == scene }
+
+        override fun summarizeGuild(guildPseudonym: String): ShadowPredictionSummary {
+            val scoped = records.filter { it.scene.guildPseudonym == guildPseudonym }
+            return ShadowPredictionSummary(
+                predictionCount = scoped.size.toLong(),
+                firstPredictedAt = scoped.minOfOrNull { it.predictedAt },
+                lastPredictedAt = scoped.maxOfOrNull { it.predictedAt },
+            )
+        }
+
+        override fun purgeExpired(olderThan: Instant): Int {
+            val before = records.size
+            records.removeIf { it.predictedAt.isBefore(olderThan) }
+            return before - records.size
+        }
+    }
+
+    private class FakeFewShotStore(
+        private val activeSet: NiaFewShotSet?,
+    ) : NiaFewShotStorePort {
+        override fun listSets(limit: Int): List<NiaFewShotSet> = activeSet?.let(::listOf).orEmpty()
+
+        override fun findSet(setId: Long): NiaFewShotSet? = activeSet?.takeIf { it.id == setId }
+
+        override fun findActive(lookup: NiaFewShotLookupScope): NiaFewShotSet? = activeSet
+
+        override fun findByScope(scope: NiaFewShotScope): NiaFewShotSet? = activeSet?.takeIf { it.scope == scope }
+
+        override fun findVersion(
+            setId: Long,
+            version: Int,
+        ): NiaFewShotVersion? =
+            activeSet
+                ?.takeIf { it.id == setId }
+                ?.versions
+                ?.firstOrNull { it.version == version }
+
+        override fun createDraft(
+            scope: NiaFewShotScope,
+            examples: List<NiaFewShotExample>,
+            actorUserId: Long?,
+        ): NiaFewShotVersion = error("unused in bridge test")
+
+        override fun replaceDraftExamples(
+            setId: Long,
+            version: Int,
+            examples: List<NiaFewShotExample>,
+        ): NiaFewShotVersion = error("unused in bridge test")
+
+        override fun publish(
+            setId: Long,
+            version: Int,
+            reviewerUserId: Long?,
+        ): NiaFewShotSet = error("unused in bridge test")
+
+        override fun rollback(
+            setId: Long,
+            targetVersion: Int,
+            reviewerUserId: Long?,
+        ): NiaFewShotSet = error("unused in bridge test")
+
+        override fun archive(
+            setId: Long,
+            version: Int,
+        ): NiaFewShotVersion = error("unused in bridge test")
+    }
+
     private class FakeGenerationPort(
         private val candidates: List<SpeechCandidate>,
     ) : SpeechGenerationPort {
@@ -1339,6 +1760,7 @@ class NexaParticipationEmitBridgeTest {
 
     private class FakeScheduler : ActionSchedulerPort {
         val scheduled = mutableListOf<ScheduledSocialAction>()
+        val cancelled = mutableListOf<ActionIdentity>()
 
         override fun schedule(action: ScheduledSocialAction): Boolean {
             scheduled.add(action)
@@ -1359,7 +1781,9 @@ class NexaParticipationEmitBridgeTest {
             attempt: Int,
         ) = Unit
 
-        override fun cancel(identity: ActionIdentity) = Unit
+        override fun cancel(identity: ActionIdentity) {
+            cancelled += identity
+        }
 
         override fun complete(identity: ActionIdentity) = Unit
 
@@ -1368,7 +1792,7 @@ class NexaParticipationEmitBridgeTest {
             reason: ActionFailureReason,
         ) = Unit
 
-        override fun find(identity: ActionIdentity): ScheduledSocialAction? = null
+        override fun find(identity: ActionIdentity): ScheduledSocialAction? = scheduled.firstOrNull { it.identity == identity }
     }
 
     private class InMemoryRegistryStore : com.discordassistant.central.participation.application.port.out.ShadowModelRegistryPort {

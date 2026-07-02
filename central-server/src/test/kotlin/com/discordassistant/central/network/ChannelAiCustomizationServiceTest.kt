@@ -117,11 +117,11 @@ class ChannelAiCustomizationServiceTest
                     ),
                 )
 
-            assertEquals("코드 니아", draft["name"])
-            assertTrue(draft["job"].toString().contains("개발 질문"))
-            assertTrue(draft["constitution"].toString().contains("민감정보"))
-            assertTrue(draft["constitution"].toString().contains("코드는 실행 가능한 예시"))
-            assertTrue(draft["preview"].toString().contains("코드 니아"))
+            assertEquals("코드 니아", draft.name)
+            assertTrue(draft.job.contains("개발 질문"))
+            assertTrue(draft.constitution.contains("민감정보"))
+            assertTrue(draft.constitution.contains("코드는 실행 가능한 예시"))
+            assertTrue(draft.preview.contains("코드 니아"))
         }
 
         @Test
@@ -139,21 +139,21 @@ class ChannelAiCustomizationServiceTest
                     ),
                     adminRequest(userId = 77),
                 )
-            val proposalId = created["proposalId"] as Long
-            val behaviorId = created["behaviorVersionId"] as Long
+            val proposalId = created.proposalId
+            val behaviorId = created.behaviorVersionId
 
-            assertEquals("pending", created["status"])
+            assertEquals("pending", created.status)
             assertNull(channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
             assertEquals(1, controller.pending(100).size)
 
             val approved = controller.approve(proposalId, ReviewChannelAiProposalRequest(reason = "운영진 검토 완료"), adminRequest(userId = 88))
 
-            assertEquals("approved", approved["status"])
-            assertEquals("운영진 검토 완료", approved["reason"])
+            assertEquals("approved", approved.status)
+            assertEquals("운영진 검토 완료", approved.reason)
             assertEquals("운영진 검토 완료", proposals.findById(proposalId).orElseThrow().reason)
             assertEquals(behaviorId, channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
             val history = controller.history(100, 200)
-            assertTrue(history["audits"].toString().contains("approve"))
+            assertTrue(history.audits.toString().contains("approve"))
         }
 
         @Test
@@ -169,8 +169,8 @@ class ChannelAiCustomizationServiceTest
                     ),
                     adminRequest(userId = 77),
                 )
-            val proposalId = created["proposalId"] as Long
-            val behaviorId = created["behaviorVersionId"] as Long
+            val proposalId = created.proposalId
+            val behaviorId = created.behaviorVersionId
             assertNotNull(proposals.findById(proposalId).orElseThrow().payloadHash)
 
             val channelAi = channelAis.findByGuildIdAndChannelId(100, 207)!!
@@ -186,7 +186,13 @@ class ChannelAiCustomizationServiceTest
             assertEquals(ProposalStatus.STALE, stale.status)
             assertEquals("proposal payload changed after review request", stale.reason)
             assertNull(channelAis.findByGuildIdAndChannelId(100, 207)!!.activeBehaviorVersionId)
-            assertTrue(controller.history(100, 207)["audits"].toString().contains("stale_payload"))
+            assertTrue(
+                controller
+                    .history(100, 207)
+                    .audits
+                    .toString()
+                    .contains("stale_payload"),
+            )
         }
 
         // 직접 발행(requireApproval=false 즉시 active)은 Discord/내부 호출 경로(서비스 직접)에서만 가능하다.
@@ -230,9 +236,9 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 77),
                 )
 
-            assertEquals("pending", created["status"])
+            assertEquals("pending", created.status)
             assertNull(channelAis.findByGuildIdAndChannelId(100, 212)!!.activeBehaviorVersionId)
-            assertEquals(1, controller.pending(100).count { it["channelId"] == 212L })
+            assertEquals(1, controller.pending(100).count { it.channelId == 212L })
         }
 
         @Test
@@ -251,12 +257,12 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 77),
                 )
 
-            assertEquals("pending", created["status"])
-            assertTrue(created["approvalReason"].toString().contains("risky"))
+            assertEquals("pending", created.status)
+            assertTrue(created.approvalReason.toString().contains("risky"))
             assertNull(channelAis.findByGuildIdAndChannelId(100, 204)!!.activeBehaviorVersionId)
-            assertEquals(1, controller.pending(100).count { it["channelId"] == 204L })
+            assertEquals(1, controller.pending(100).count { it.channelId == 204L })
             val history = controller.history(100, 204)
-            assertTrue(history["audits"].toString().contains("propose"))
+            assertTrue(history.audits.toString().contains("propose"))
         }
 
         // per-guild AI-admin 역할 게이트는 **Discord actor 경로(서비스 직접 호출)** 에서 강제된다.
@@ -300,7 +306,13 @@ class ChannelAiCustomizationServiceTest
 
             assertTrue(denied.message!!.contains("AI 관리자 역할"))
             assertNull(channelAis.findByGuildIdAndChannelId(100, 209))
-            assertTrue(controller.history(100, 209)["audits"].toString().contains("ai_admin_denied"))
+            assertTrue(
+                controller
+                    .history(100, 209)
+                    .audits
+                    .toString()
+                    .contains("ai_admin_denied"),
+            )
 
             // AI-admin 역할을 가진 Discord actor 는 허용된다.
             val allowed =
@@ -365,9 +377,9 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 5000),
                 )
 
-            assertEquals("pending", created["status"])
+            assertEquals("pending", created.status)
             // requestedBy 는 인증 주체의 user id 여야 한다(audit 추적성).
-            assertEquals(5000L, proposals.findById(created["proposalId"] as Long).orElseThrow().requestedBy)
+            assertEquals(5000L, proposals.findById(created.proposalId).orElseThrow().requestedBy)
         }
 
         @Test
@@ -525,15 +537,21 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 88),
                 )
 
-            assertEquals("approved", rollback["status"])
-            assertEquals(3, rollback["version"])
+            assertEquals("approved", rollback.status)
+            assertEquals(3, rollback.version)
             val channelAi = channelAis.findByGuildIdAndChannelId(100, 205)!!
-            assertEquals(rollback["behaviorVersionId"], channelAi.activeBehaviorVersionId)
+            assertEquals(rollback.behaviorVersionId, channelAi.activeBehaviorVersionId)
             val active = versions.findByChannelAiIdAndId(channelAi.id, channelAi.activeBehaviorVersionId!!)!!
             assertTrue(active.purpose.contains("개발 질문"))
             assertEquals("짧고 명확하게", active.tone)
             assertTrue(active.changeSummary!!.contains("rollback to v1"))
-            assertTrue(controller.history(100, 205)["audits"].toString().contains("rollback_publish"))
+            assertTrue(
+                controller
+                    .history(100, 205)
+                    .audits
+                    .toString()
+                    .contains("rollback_publish"),
+            )
         }
 
         @Test
@@ -572,11 +590,17 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 88),
                 )
 
-            assertEquals("pending", rollback["status"])
+            assertEquals("pending", rollback.status)
             assertEquals(beforeActive, channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId)
-            controller.approve(rollback["proposalId"] as Long, ReviewChannelAiProposalRequest(), adminRequest(userId = 99))
-            assertEquals(rollback["behaviorVersionId"], channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId)
-            assertTrue(controller.history(100, 206)["audits"].toString().contains("rollback_propose"))
+            controller.approve(rollback.proposalId, ReviewChannelAiProposalRequest(), adminRequest(userId = 99))
+            assertEquals(rollback.behaviorVersionId, channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId)
+            assertTrue(
+                controller
+                    .history(100, 206)
+                    .audits
+                    .toString()
+                    .contains("rollback_propose"),
+            )
         }
 
         @Test
@@ -608,7 +632,7 @@ class ChannelAiCustomizationServiceTest
                     constitution = null,
                     requireApproval = false,
                 )
-            assertEquals("pending", pending["status"])
+            assertEquals("pending", pending.status)
             assertEquals("approved", approved.status)
 
             val summary = controller.proposalSummary(100)
@@ -658,7 +682,7 @@ class ChannelAiCustomizationServiceTest
                     adminRequest(userId = 88),
                 )
 
-            assertEquals("rejected", rejected["status"])
+            assertEquals("rejected", rejected.status)
             assertNull(channelAis.findByGuildIdAndChannelId(100, 202)!!.activeBehaviorVersionId)
             assertTrue(controller.history(100, 202).toString().contains("rejected"))
         }

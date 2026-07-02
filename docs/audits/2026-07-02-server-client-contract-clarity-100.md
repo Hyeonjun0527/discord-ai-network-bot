@@ -23,6 +23,7 @@
 - `FIXED-2026-07-02-E`: 다섯 번째 배치에서 보완.
 - `FIXED-2026-07-02-F`: 여섯 번째 배치에서 보완.
 - `FIXED-2026-07-02-G`: 일곱 번째 배치에서 보완.
+- `FIXED-2026-07-02-H`: 여덟 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -61,9 +62,9 @@
 32. [x] `MultiResponseResponses.kt`에 `mapOf` 응답 조립 14건. 보완: DTO serializer. 상태: `FIXED-2026-07-02-F`.
 33. [x] `KnowledgeResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed knowledge response DTO. 상태: `FIXED-2026-07-02-G`.
 34. [x] `KnowledgeResponses.kt`에 `mapOf` 조립 6건. 보완: map factory 제거. 상태: `FIXED-2026-07-02-G`.
-35. [ ] `ChannelAiCustomizationResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed channel AI DTO.
-36. [ ] `ChannelAiCustomizationResponses.kt`에 `mapOf` 조립 6건. 보완: nested DTO.
-37. [ ] `ChannelAiCustomizationController`에 `Map<String, Any?>` 응답 7건. 보완: DTO 반환형.
+35. [x] `ChannelAiCustomizationResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed channel AI DTO. 상태: `FIXED-2026-07-02-H`.
+36. [x] `ChannelAiCustomizationResponses.kt`에 `mapOf` 조립 6건. 보완: nested DTO. 상태: `FIXED-2026-07-02-H`.
+37. [x] `ChannelAiCustomizationController`에 `Map<String, Any?>` 응답 7건. 보완: DTO 반환형. 상태: `FIXED-2026-07-02-H`.
 38. [ ] `NexaSettingsController`에 `Map<String, Any?>`/`mapOf` 응답 6건. 보완: settings DTO.
 39. [ ] `DashboardWriteController`에 쓰기 성공을 `Map`으로 반환. 보완: `DashboardWriteResult` DTO.
 40. [ ] `ConversationProjectionOpsController`가 `mapOf`와 `IllegalArgumentException`을 섞음. 보완: request validation DTO + domain exception.

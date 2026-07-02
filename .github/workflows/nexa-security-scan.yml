@@ -118,23 +118,37 @@ jobs:
         with:
           python-version: "3.12"
           activate-environment: true
-      - name: central-server 테스트 실행(prod 프로파일 파일 로그 생성)
+      - name: central-server redaction focused 테스트 실행(prod 프로파일 파일 로그 생성)
         working-directory: central-server
         env:
           SPRING_PROFILES_ACTIVE: prod
-          LOG_DIR: ${{ github.workspace }}/central-server/logs
-        run: ./gradlew test --no-daemon --console=plain
-      - name: 로그 금지 문자열 스캔(snowflake/API key/Bearer 토큰 0건 강제)
+          LOG_DIR: ${{ runner.temp }}/nexa-log-redaction-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
+          set -euo pipefail
+          rm -rf "$LOG_DIR"
+          mkdir -p "$LOG_DIR"
+          ./gradlew cleanTest test --no-daemon --console=plain \
+            --tests "*SensitiveLoggingTest" \
+            --tests "*RedactingMessageConverterTest"
+      - name: 로그 금지 문자열 스캔(snowflake/API key/Bearer 토큰 0건 강제)
+        env:
+          LOG_DIR: ${{ runner.temp }}/nexa-log-redaction-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
           shopt -s nullglob
-          logs=(central-server/logs/*.log central-server/logs/*.log.gz)
-          if [ ${#logs[@]} -eq 0 ]; then
-            echo "스캔할 로그 파일 없음(파일 appender 미생성) — 스킵"
-            exit 0
+          logs=("$LOG_DIR"/*.log "$LOG_DIR"/*.log.gz)
+          if [ "${#logs[@]}" -eq 0 ]; then
+            echo "::error::redaction focused test did not create log files under LOG_DIR"
+            exit 1
           fi
           # .gz 도 펼쳐서 스캔.
-          for f in central-server/logs/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
-          uv run python scripts/scan-sensitive-logs.py central-server/logs/*.log
+          for f in "$LOG_DIR"/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
+          logs=("$LOG_DIR"/*.log)
+          if [ "${#logs[@]}" -eq 0 ]; then
+            echo "::error::redaction focused test did not leave .log files after gunzip"
+            exit 1
+          fi
+          uv run python scripts/scan-sensitive-logs.py "${logs[@]}"
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:

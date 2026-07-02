@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.adapter.inbound.web
 
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceResponse
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceRequest
@@ -73,7 +74,13 @@ class KnowledgeIngestionController(
     ) = indexingService().completeIndexJobSafely(guildId, jobId, request.status, request.reason)
 
     private fun indexingService(): KnowledgeIndexingService =
-        indexing ?: throw IllegalStateException("knowledge indexing service is not configured")
+        indexing
+            ?: throw PreconditionFailedException(
+                message = "knowledge indexing service is not configured",
+                failedCondition = "knowledge_indexing_service_configured",
+                blockedAction = "KNOWLEDGE_INDEXING_OPERATION",
+                actionGuide = "KnowledgeIndexingService 를 등록한 뒤 index job API 를 호출해 주세요.",
+            )
 
     @PostMapping("/{guildId}/spaces")
     fun createSpace(

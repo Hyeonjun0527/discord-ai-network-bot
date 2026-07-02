@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.knowledge.adapter.inbound.web.KnowledgeIngestionController
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceRequest
@@ -45,6 +46,17 @@ class KnowledgeIngestionServiceTest
             )
         private val searchService = KnowledgeSearchService(sources, spaces)
         private val controller = KnowledgeIngestionController(service, searchService)
+
+        @Test
+        fun `index job endpoints require configured indexing service precondition`() {
+            val ex =
+                assertThrows(PreconditionFailedException::class.java) {
+                    controller.indexJobs(guildId = 100)
+                }
+
+            assertEquals("knowledge_indexing_service_configured", ex.failedCondition)
+            assertEquals("KNOWLEDGE_INDEXING_OPERATION", ex.blockedAction)
+        }
 
         @Test
         fun `rag ingestion metadata reads obey feature kill switch`() {

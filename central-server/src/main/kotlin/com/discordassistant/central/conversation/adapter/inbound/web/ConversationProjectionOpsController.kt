@@ -8,6 +8,7 @@ import com.discordassistant.central.conversation.application.replay.ReplayReport
 import com.discordassistant.central.conversation.domain.model.event.ChannelId
 import com.discordassistant.central.conversation.domain.model.event.EventId
 import com.discordassistant.central.conversation.domain.model.event.GuildId
+import com.discordassistant.central.global.error.InvalidRequestException
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.time.format.DateTimeParseException
 
 /**
  * conversation projection **운영 내부 도구**(NEXA-P03-T018/T019). dead-letter 조사·재처리와 내부 replay 를
@@ -50,10 +52,7 @@ class ConversationProjectionOpsController(
     @PostMapping("/dead-letters/clear")
     fun clearDeadLetter(
         @RequestBody req: ClearReq,
-    ): Map<String, Boolean> {
-        require(req.eventId.isNotBlank()) { "eventId 는 비어 있을 수 없습니다" }
-        return mapOf("cleared" to ledger.clearDeadLetter(EventId(req.eventId)))
-    }
+    ): ClearDeadLetterResponse = ClearDeadLetterResponse(cleared = ledger.clearDeadLetter(req.toEventId()))
 
     /**
      * 내부 replay 를 실행한다 — guild/channel/time range 를 새 projection version 으로 재생한다. Discord 전송
@@ -63,16 +62,7 @@ class ConversationProjectionOpsController(
     fun replay(
         @RequestBody req: ReplayReq,
     ): ReplayReport {
-        require(req.guildId > 0) { "guildId 는 양수여야 합니다: ${req.guildId}" }
-        require(req.projectionVersion >= 0) { "projectionVersion 은 음수일 수 없습니다: ${req.projectionVersion}" }
-        val criteria =
-            ReplayCriteria(
-                guildId = GuildId(req.guildId),
-                channelId = req.channelId?.let { ChannelId(it) },
-                from = Instant.parse(req.from),
-                to = Instant.parse(req.to),
-                projectionVersion = req.projectionVersion,
-            )
+        val criteria = req.toCriteria()
         return replayService.replay(criteria)
     }
 
@@ -96,6 +86,17 @@ class ConversationProjectionOpsController(
 
     data class ClearReq(
         val eventId: String,
+    ) {
+        fun toEventId(): EventId {
+            if (eventId.isBlank()) {
+                throw InvalidRequestException("eventId 는 비어 있을 수 없습니다")
+            }
+            return EventId(eventId)
+        }
+    }
+
+    data class ClearDeadLetterResponse(
+        val cleared: Boolean,
     )
 
     data class ReplayReq(
@@ -105,5 +106,36 @@ class ConversationProjectionOpsController(
         val from: String,
         val to: String,
         val projectionVersion: Int,
-    )
+    ) {
+        fun toCriteria(): ReplayCriteria {
+            if (guildId <= 0) {
+                throw InvalidRequestException("guildId 는 양수여야 합니다: $guildId")
+            }
+            if (projectionVersion < 0) {
+                throw InvalidRequestException("projectionVersion 은 음수일 수 없습니다: $projectionVersion")
+            }
+            val fromInstant = parseInstant(field = "from", value = from)
+            val toInstant = parseInstant(field = "to", value = to)
+            if (fromInstant.isAfter(toInstant)) {
+                throw InvalidRequestException("replay 범위 from 은 to 이후일 수 없습니다: from=$from to=$to")
+            }
+            return ReplayCriteria(
+                guildId = GuildId(guildId),
+                channelId = channelId?.let { ChannelId(it) },
+                from = fromInstant,
+                to = toInstant,
+                projectionVersion = projectionVersion,
+            )
+        }
+
+        private fun parseInstant(
+            field: String,
+            value: String,
+        ): Instant =
+            try {
+                Instant.parse(value)
+            } catch (ex: DateTimeParseException) {
+                throw InvalidRequestException("$field 는 ISO-8601 UTC 시각이어야 합니다: $value", ex)
+            }
+    }
 }

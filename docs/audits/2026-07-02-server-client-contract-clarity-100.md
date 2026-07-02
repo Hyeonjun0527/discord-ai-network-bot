@@ -25,6 +25,7 @@
 - `FIXED-2026-07-02-G`: 일곱 번째 배치에서 보완.
 - `FIXED-2026-07-02-H`: 여덟 번째 배치에서 보완.
 - `FIXED-2026-07-02-I`: 아홉 번째 배치에서 보완.
+- `FIXED-2026-07-02-J`: 열 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -67,9 +68,9 @@
 36. [x] `ChannelAiCustomizationResponses.kt`에 `mapOf` 조립 6건. 보완: nested DTO. 상태: `FIXED-2026-07-02-H`.
 37. [x] `ChannelAiCustomizationController`에 `Map<String, Any?>` 응답 7건. 보완: DTO 반환형. 상태: `FIXED-2026-07-02-H`.
 38. [x] `NexaSettingsController`에 `Map<String, Any?>`/`mapOf` 응답 6건. 보완: settings DTO. 상태: `FIXED-2026-07-02-I`.
-39. [ ] `DashboardWriteController`에 쓰기 성공을 `Map`으로 반환. 보완: `DashboardWriteResult` DTO.
-40. [ ] `ConversationProjectionOpsController`가 `mapOf`와 `IllegalArgumentException`을 섞음. 보완: request validation DTO + domain exception.
-41. [ ] `KnowledgeIngestionController`가 `IllegalStateException`을 경계 밖으로 흘릴 수 있음. 보완: `ConflictException`/`PreconditionFailedException`.
+39. [x] `DashboardWriteController`에 쓰기 성공을 `Map`으로 반환. 보완: `DashboardWriteResult` DTO. 상태: `FIXED-2026-07-02-J`.
+40. [x] `ConversationProjectionOpsController`가 `mapOf`와 `IllegalArgumentException`을 섞음. 보완: request validation DTO + domain exception. 상태: `FIXED-2026-07-02-J`.
+41. [x] `KnowledgeIngestionController`가 `IllegalStateException`을 경계 밖으로 흘릴 수 있음. 보완: `ConflictException`/`PreconditionFailedException`. 상태: `FIXED-2026-07-02-J`.
 42. [ ] `LicenseController`가 `ResponseStatusException` 4건을 직접 던짐. 보완: license domain exception.
 43. [ ] `PaddleWebhookController`가 `ResponseStatusException` 2건과 map 응답을 섞음. 보완: webhook response DTO + domain exception.
 44. [ ] `ProviderAdminController`가 `ResponseEntity.body(mapOf(...))` 2건으로 error envelope를 우회. 보완: `ApiErrorResponse` 또는 domain exception.

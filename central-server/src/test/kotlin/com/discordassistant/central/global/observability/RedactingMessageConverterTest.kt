@@ -2,11 +2,16 @@ package com.discordassistant.central.global.observability
 
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.PatternLayout
+import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.classic.spi.LoggingEvent
+import ch.qos.logback.core.FileAppender
+import ch.qos.logback.core.encoder.LayoutWrappingEncoder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.slf4j.helpers.MessageFormatter
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * NEXA-P17-T013 enforcement: redaction 이 **실제 logback 출력 경로**에 바인딩됐는지 검증한다.
@@ -19,22 +24,17 @@ class RedactingMessageConverterTest {
     private fun renderThrough(vararg messages: Pair<String, Array<Any>>): String {
         val context = LoggerFactory.getILoggerFactory() as LoggerContext
         val logger = context.getLogger("nexa.redaction.test")
-        val layout =
-            PatternLayout().apply {
-                this.context = context
-                // 운영 logback-spring.xml 의 <conversionRule conversionWord="redactedMsg" .../> 과 동치 바인딩.
-                // logback 1.5.13+ 에서 instanceConverterMap 값 타입이 클래스명(String)→Supplier<DynamicConverter>
-                // 로 바뀌어, 컨버터 생성자를 supplier 로 등록한다(동일 바인딩, 동작 불변).
-                instanceConverterMap["redactedMsg"] = java.util.function.Supplier { RedactingMessageConverter() }
-                pattern = "%redactedMsg%n"
-                start()
+        val layout = redactingPatternLayout(context)
+        return try {
+            buildString {
+                messages.forEach { (msg, args) ->
+                    val formatted = MessageFormatter.arrayFormat(msg, args).message
+                    val event = LoggingEvent("FQCN", logger, ch.qos.logback.classic.Level.INFO, formatted, null, null)
+                    append(layout.doLayout(event))
+                }
             }
-        return buildString {
-            messages.forEach { (msg, args) ->
-                val formatted = MessageFormatter.arrayFormat(msg, args).message
-                val event = LoggingEvent("FQCN", logger, ch.qos.logback.classic.Level.INFO, formatted, null, null)
-                append(layout.doLayout(event))
-            }
+        } finally {
+            layout.stop()
         }
     }
 
@@ -60,4 +60,65 @@ class RedactingMessageConverterTest {
         assertThat(rendered).contains("user_3")
         assertThat(rendered).contains("status=SPEAK")
     }
+
+    @Test
+    fun `file appender output is redacted and scanner-visible`() {
+        val logDir = logDirectory()
+        Files.createDirectories(logDir)
+        val logFile = logDir.resolve("redacting-message-converter-test.log")
+        Files.deleteIfExists(logFile)
+
+        val context = LoggerFactory.getILoggerFactory() as LoggerContext
+        val logger = context.getLogger("nexa.redaction.file-test")
+        val layout = redactingPatternLayout(context)
+        val encoder =
+            LayoutWrappingEncoder<ILoggingEvent>().apply {
+                this.context = context
+                this.layout = layout
+                start()
+            }
+        val appender =
+            FileAppender<ILoggingEvent>().apply {
+                this.context = context
+                file = logFile.toString()
+                isAppend = false
+                this.encoder = encoder
+                start()
+            }
+
+        try {
+            val rendered =
+                "file log user 123456789012345678 key sk-ABCDEFGHIJKLMNOP1234 " +
+                    "and Bearer abcdefgh1234"
+            appender.doAppend(LoggingEvent("FQCN", logger, ch.qos.logback.classic.Level.INFO, rendered, null, null))
+        } finally {
+            appender.stop()
+            encoder.stop()
+            layout.stop()
+        }
+
+        val output = Files.readString(logFile)
+        assertThat(output).contains("[redacted-id]", "[redacted-key]", "[redacted-token]")
+        assertThat(SensitiveLogRedactor.containsSensitive(output)).isFalse()
+    }
+
+    private fun logDirectory(): Path {
+        val configured = System.getenv("LOG_DIR")
+        return if (configured.isNullOrBlank()) {
+            Files.createTempDirectory("nexa-redaction-file-test")
+        } else {
+            Path.of(configured)
+        }
+    }
+
+    private fun redactingPatternLayout(context: LoggerContext): PatternLayout =
+        PatternLayout().apply {
+            this.context = context
+            // 운영 logback-spring.xml 의 <conversionRule conversionWord="redactedMsg" .../> 과 동치 바인딩.
+            // logback 1.5.13+ 에서 instanceConverterMap 값 타입이 클래스명(String)→Supplier<DynamicConverter>
+            // 로 바뀌어, 컨버터 생성자를 supplier 로 등록한다(동일 바인딩, 동작 불변).
+            instanceConverterMap["redactedMsg"] = java.util.function.Supplier { RedactingMessageConverter() }
+            pattern = "%redactedMsg%n"
+            start()
+        }
 }

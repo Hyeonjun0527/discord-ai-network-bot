@@ -17,6 +17,7 @@
 상태 표기:
 
 - `FIXED-2026-07-02-A`: 이번 배치에서 보완.
+- `FIXED-2026-07-02-B`: 두 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -34,10 +35,10 @@
 11. [x] admin-console이 서버 에러 JSON 필드 타입을 검증하지 않고 그대로 신뢰할 수 있음. 보완: `optionalString`/`optionalNumber`/`isRecord` sanitizing. 상태: `FIXED-2026-07-02-A`.
 12. [x] Bugsink API 컨텍스트가 서버 에러 코드를 태그로 받지 못함. 보완: `errorCode` 태그. 상태: `FIXED-2026-07-02-A`.
 13. [x] Bugsink API 컨텍스트가 클라이언트 생성 requestId와 서버 requestId를 구분하지 못함. 보완: `serverRequestId`. 상태: `FIXED-2026-07-02-A`.
-14. [ ] `GlobalExceptionHandler`가 예상 못 한 `Exception`을 Spring 기본 HTML/기본 JSON으로 내보낼 수 있음. 보완: 내부 원인 비노출 `INTERNAL_SERVER_ERROR` envelope와 Sentry capture.
-15. [ ] `GlobalExceptionHandler`가 `IllegalStateException`을 모두 미처리해 경계 상태 오류가 500 기본 응답으로 보일 수 있음. 보완: 경계용 domain exception으로 변환하거나 명시 handler 추가.
-16. [ ] `ResponseStatusException` 변환이 `reason`만 message로 쓰고 `actionGuide`를 제공하지 않음. 보완: 401/403/503 등 공통 guide 매핑.
-17. [ ] `HttpMessageNotReadableException` 응답에 `failedCondition`이 없어 body parse 실패임을 코드 외에는 알기 어려움. 보완: `failedCondition=request_body_json_parseable`.
+14. [x] `GlobalExceptionHandler`가 예상 못 한 `Exception`을 Spring 기본 HTML/기본 JSON으로 내보낼 수 있음. 보완: 내부 원인 비노출 `INTERNAL_SERVER_ERROR` envelope와 Sentry capture. 상태: `FIXED-2026-07-02-B`.
+15. [x] `GlobalExceptionHandler`가 `IllegalStateException`을 모두 미처리해 경계 상태 오류가 500 기본 응답으로 보일 수 있음. 보완: `INVALID_SERVER_STATE` envelope 명시 handler. 상태: `FIXED-2026-07-02-B`.
+16. [x] `ResponseStatusException` 변환이 `reason`만 message로 쓰고 `actionGuide`를 제공하지 않음. 보완: 401/403/503 등 공통 guide 매핑. 상태: `FIXED-2026-07-02-B`.
+17. [x] `HttpMessageNotReadableException` 응답에 `failedCondition`이 없어 body parse 실패임을 코드 외에는 알기 어려움. 보완: `failedCondition=request_body_json_parseable`. 상태: `FIXED-2026-07-02-B`.
 18. [ ] `ApiErrorResponse`의 `code` 문자열 enum/레지스트리가 없어 서버/클라이언트 분기 코드가 drift될 수 있음. 보완: central error-code registry 문서 또는 generated contract.
 19. [ ] `ApiErrorResponse.details`가 자유 `Map`이라 필드별 스키마가 없음. 보완: error code별 details schema.
 20. [ ] 필터 단계 에러와 MVC advice 에러가 같은 serializer 설정을 쓰는지 회귀 테스트가 부족함. 보완: filter/advice shared JSON contract test.

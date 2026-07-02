@@ -9,6 +9,7 @@ import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.global.security.RequestIdFilter
 import org.junit.jupiter.api.Test
 import org.slf4j.MDC
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
  * 전역 예외 처리 검증(예외 원칙 9). 더미 컨트롤러가 도메인/검증 예외를 던지면
@@ -77,6 +79,15 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/test/framework-status")
         fun frameworkStatus(): Nothing = throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "결제 비활성")
+
+        @GetMapping("/test/missing-resource")
+        fun missingResource(): Nothing = throw NoResourceFoundException(HttpMethod.GET, "/assets/missing.exe")
+
+        @GetMapping("/test/illegal-state")
+        fun illegalState(): Nothing = throw IllegalStateException("license upsert race unresolved: token=secret")
+
+        @GetMapping("/test/unexpected")
+        fun unexpected(): Nothing = throw RuntimeException("database password leaked detail")
 
         @PostMapping("/test/body")
         fun body(
@@ -180,6 +191,7 @@ class GlobalExceptionHandlerTest {
             .andExpect(jsonPath("$.status").value(503))
             .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
             .andExpect(jsonPath("$.error.message").value("결제 비활성"))
+            .andExpect(jsonPath("$.error.actionGuide").exists())
     }
 
     @Test
@@ -189,5 +201,50 @@ class GlobalExceptionHandlerTest {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
             .andExpect(jsonPath("$.error.message").value("요청 본문을 해석할 수 없습니다"))
+            .andExpect(jsonPath("$.error.failedCondition").value("request_body_json_parseable"))
+            .andExpect(jsonPath("$.error.blockedAction").value("PARSE_REQUEST_BODY"))
+            .andExpect(jsonPath("$.error.actionGuide").exists())
+    }
+
+    @Test
+    fun `missing static resource stays 404 and does not become internal server error`() {
+        mvc
+            .perform(get("/test/missing-resource"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.status").value(404))
+            .andExpect(jsonPath("$.error.code").value("NOT_FOUND"))
+            .andExpect(jsonPath("$.error.message").value("요청한 리소스를 찾을 수 없습니다."))
+            .andExpect(jsonPath("$.error.failedCondition").value("resource_exists"))
+            .andExpect(jsonPath("$.error.blockedAction").value("GET /test/missing-resource"))
+            .andExpect(jsonPath("$.error.actionGuide").exists())
+    }
+
+    @Test
+    fun `illegal state maps to explicit server-state envelope without leaking state detail`() {
+        mvc
+            .perform(get("/test/illegal-state"))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.status").value(500))
+            .andExpect(jsonPath("$.error.code").value("INVALID_SERVER_STATE"))
+            .andExpect(jsonPath("$.error.message").value("서버 상태가 요청을 처리할 준비가 아닙니다."))
+            .andExpect(jsonPath("$.error.failedCondition").value("server_state_allows_request"))
+            .andExpect(jsonPath("$.error.blockedAction").value("GET /test/illegal-state"))
+            .andExpect(jsonPath("$.error.actionGuide").exists())
+    }
+
+    @Test
+    fun `unexpected exception maps to internal envelope without leaking implementation detail`() {
+        mvc
+            .perform(get("/test/unexpected"))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.status").value(500))
+            .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
+            .andExpect(jsonPath("$.error.message").value("서버가 요청을 처리하지 못했습니다."))
+            .andExpect(jsonPath("$.error.failedCondition").value("server_request_processing"))
+            .andExpect(jsonPath("$.error.blockedAction").value("GET /test/unexpected"))
+            .andExpect(jsonPath("$.error.actionGuide").exists())
     }
 }

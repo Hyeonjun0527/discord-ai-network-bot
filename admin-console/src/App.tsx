@@ -16,21 +16,22 @@ import { useEffect, useMemo, useState } from "react";
 
 import { captureConsoleError, wasBugsinkReported } from "./bugsink";
 import {
-  createFewShotDraft,
-  DashboardState,
-  evalFewShotDraft,
   archiveFewShotVersion,
+  createFewShotDraft,
+  evalFewShotDraft,
   loadDashboard,
   loadFewShotSets,
-  NiaFewShotEval,
-  NiaFewShotExample,
-  NiaFewShotPreview,
-  NiaFewShotScope,
-  NiaFewShotSet,
   previewFewShotDraft,
   publishFewShotVersion,
   replaceFewShotDraft,
   rollbackFewShotVersion,
+  type DashboardPanel,
+  type DashboardState,
+  type NiaFewShotEval,
+  type NiaFewShotExample,
+  type NiaFewShotPreview,
+  type NiaFewShotScope,
+  type NiaFewShotSet,
 } from "./api";
 
 const API_BASE_STORAGE_KEY = "nexa-console-api-base";
@@ -151,6 +152,17 @@ function scopeKey(scope: NiaFewShotScope) {
   if (scope.type === "GUILD") return `guild:${scope.guildId}:${scope.persona ?? "nia"}`;
   if (scope.type === "PERSONA") return `persona:${scope.persona ?? "nia"}`;
   return "global";
+}
+
+function panelLabel(panel: DashboardPanel): string {
+  switch (panel) {
+    case "aiNetwork":
+      return "AI Network";
+    case "requests":
+      return "Requests";
+    case "usageTrend":
+      return "Usage Trend";
+  }
 }
 
 function App() {
@@ -381,6 +393,26 @@ function App() {
             <span>{error}</span>
           </div>
         )}
+
+        {state?.partialErrors.length ? (
+          <section className="partial-errors" role="status" aria-label="부분 API 오류">
+            <div className="partial-errors-title">
+              <ShieldAlert size={18} />
+              <strong>일부 패널 오류</strong>
+              <span>{state.partialErrors.length}건</span>
+            </div>
+            <ul>
+              {state.partialErrors.map((partialError) => (
+                <li key={`${partialError.panel}:${partialError.path}:${partialError.code ?? partialError.message}`}>
+                  <span>{panelLabel(partialError.panel)}</span>
+                  <code>{partialError.code ?? `HTTP_${partialError.status ?? "UNKNOWN"}`}</code>
+                  <p>{partialError.message}</p>
+                  {partialError.serverRequestId ? <small>requestId={partialError.serverRequestId}</small> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <section id="overview" className="metric-grid">
           {overviewMetrics.map(([label, value]) => (

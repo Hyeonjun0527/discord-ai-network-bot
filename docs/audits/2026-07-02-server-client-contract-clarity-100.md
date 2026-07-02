@@ -19,6 +19,7 @@
 - `FIXED-2026-07-02-A`: 이번 배치에서 보완.
 - `FIXED-2026-07-02-B`: 두 번째 배치에서 보완.
 - `FIXED-2026-07-02-C`: 세 번째 배치에서 보완.
+- `FIXED-2026-07-02-D`: 네 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -43,11 +44,11 @@
 18. [x] `ApiErrorResponse`의 `code` 문자열 enum/레지스트리가 없어 서버/클라이언트 분기 코드가 drift될 수 있음. 보완: `ApiErrorCodes` registry + [docs/contracts/rest-error-envelope.md](../contracts/rest-error-envelope.md). 상태: `FIXED-2026-07-02-C`.
 19. [x] `ApiErrorResponse.details`가 자유 `Map`이라 필드별 스키마가 없음. 보완: `ApiErrorDetailsSchemas` + details schema 문서. 상태: `FIXED-2026-07-02-C`.
 20. [x] 필터 단계 에러와 MVC advice 에러가 같은 serializer 설정을 쓰는지 회귀 테스트가 부족함. 보완: `ApiErrorEnvelopeContractTest`에서 filter/advice shared JSON envelope 검증. 상태: `FIXED-2026-07-02-C`.
-21. [ ] `admin-console`이 optional panel 실패를 여전히 `null`/`[]`로 숨김. 보완: panel별 `partialErrors`를 상태에 포함.
-22. [ ] `admin-console`의 `buildApiContext.method`가 항상 `GET`이라 향후 쓰기 API에서 오해 가능. 보완: request method를 옵션화.
-23. [ ] `admin-console`의 base URL이 빈 문자열이면 fetch URL이 path만 되어 Bugsink `serverBaseUrl`과 실제 URL이 어긋날 수 있음. 보완: URL builder를 단일화.
-24. [ ] `admin-console` 성공 응답 JSON parse 실패가 구조화되지 않음. 보완: `INVALID_RESPONSE_JSON` client-side error.
-25. [ ] `admin-console`에는 API parser 단위 테스트가 없음. 보완: 최소 test runner 또는 타입-레벨 fixture 검증.
+21. [x] `admin-console`이 optional panel 실패를 여전히 `null`/`[]`로 숨김. 보완: panel별 `partialErrors`를 상태와 UI에 포함. 상태: `FIXED-2026-07-02-D`.
+22. [x] `admin-console`의 `buildApiContext.method`가 항상 `GET`이라 향후 쓰기 API에서 오해 가능. 보완: request method를 옵션화. 상태: `FIXED-2026-07-02-D`.
+23. [x] `admin-console`의 base URL이 빈 문자열이면 fetch URL이 path만 되어 Bugsink `serverBaseUrl`과 실제 URL이 어긋날 수 있음. 보완: URL builder를 단일화. 상태: `FIXED-2026-07-02-D`.
+24. [x] `admin-console` 성공 응답 JSON parse 실패가 구조화되지 않음. 보완: `INVALID_RESPONSE_JSON` client-side error. 상태: `FIXED-2026-07-02-D`.
+25. [x] `admin-console`에는 API parser 단위 테스트가 없음. 보완: TypeScript emit + Node 내장 test runner fixture 검증. 상태: `FIXED-2026-07-02-D`.
 26. [ ] `PresetRegistryController`에 `Map<String, Any?>` 응답 27건. 보완: endpoint별 response DTO.
 27. [ ] `PresetRegistryController`에 `mapOf` 응답 조립 13건. 보완: DTO factory로 필드명 고정.
 28. [ ] `PresetRegistryResponses.kt`에 `Map<String, Any?>` 변환 11건. 보완: nested DTO로 contract 고정.

@@ -239,6 +239,70 @@ h1 {
   background: #fff0e8;
 }
 
+.partial-errors {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 18px;
+  border: 1px solid #efd78a;
+  border-radius: 8px;
+  padding: 14px;
+  color: #594300;
+  background: #fff8df;
+}
+
+.partial-errors-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.partial-errors-title span {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.partial-errors ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.partial-errors li {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(120px, auto) 1fr;
+  gap: 8px 10px;
+  align-items: start;
+  border-top: 1px solid rgba(89, 67, 0, 0.15);
+  padding-top: 8px;
+}
+
+.partial-errors li span {
+  font-weight: 900;
+}
+
+.partial-errors li code {
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: #2e2500;
+  background: rgba(89, 67, 0, 0.1);
+  font-size: 12px;
+}
+
+.partial-errors li p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.partial-errors li small {
+  grid-column: 3;
+  color: #806509;
+  overflow-wrap: anywhere;
+}
+
 .metric-grid {
   margin: 18px 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -484,6 +548,14 @@ th {
 
   .workspace-header {
     flex-direction: column;
+  }
+
+  .partial-errors li {
+    grid-template-columns: 1fr;
+  }
+
+  .partial-errors li small {
+    grid-column: auto;
   }
 
   h1 {

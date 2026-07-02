@@ -86,6 +86,60 @@ export type NiaFewShotPreview = Record<string, unknown>;
 
 const REQUEST_ID_HEADER = "X-Request-Id";
 
+type ApiErrorPayload = {
+  success?: boolean;
+  status?: number;
+  requestId?: string;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+    currentState?: string;
+    requiredState?: string;
+    failedCondition?: string;
+    blockedAction?: string;
+    actionGuide?: string;
+  };
+};
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly path: string;
+  readonly code?: string;
+  readonly serverMessage?: string;
+  readonly requestId?: string;
+  readonly details?: Record<string, unknown>;
+  readonly currentState?: string;
+  readonly requiredState?: string;
+  readonly failedCondition?: string;
+  readonly blockedAction?: string;
+  readonly actionGuide?: string;
+
+  constructor(path: string, response: Response, payload: ApiErrorPayload | null) {
+    const status = payload?.status ?? response.status;
+    const code = payload?.error?.code;
+    const serverMessage = payload?.error?.message;
+    const requestId = payload?.requestId ?? response.headers.get(REQUEST_ID_HEADER) ?? undefined;
+    const actionGuide = payload?.error?.actionGuide;
+    const explanation = serverMessage ?? "서버가 구조화되지 않은 에러 응답을 보냈습니다.";
+    const suffix = actionGuide ? ` (${actionGuide})` : "";
+    const requestSuffix = requestId ? ` [requestId=${requestId}]` : "";
+    super(`${status} ${path}: ${code ? `${code}: ` : ""}${explanation}${suffix}${requestSuffix}`);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.path = path;
+    this.code = code;
+    this.serverMessage = serverMessage;
+    this.requestId = requestId;
+    this.details = payload?.error?.details;
+    this.currentState = payload?.error?.currentState;
+    this.requiredState = payload?.error?.requiredState;
+    this.failedCondition = payload?.error?.failedCondition;
+    this.blockedAction = payload?.error?.blockedAction;
+    this.actionGuide = actionGuide;
+  }
+}
+
 function apiBase(baseUrl: string) {
   return baseUrl.trim().replace(/\/$/, "");
 }
@@ -104,14 +158,55 @@ function buildApiContext(
   requestId: string,
   method: string,
   httpStatus?: number,
+  serverRequestId?: string,
+  errorCode?: string,
 ): BugsinkApiContext {
   return {
     requestId,
+    serverRequestId,
     method,
     apiEndpoint: path.split("?")[0] || path,
     httpStatus,
+    errorCode,
     serverBaseUrl: resolveServerBaseUrl(options.baseUrl),
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function parseApiErrorPayload(body: string): ApiErrorPayload | null {
+  if (!body.trim()) return null;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed) || !isRecord(parsed.error)) return null;
+    return {
+      success: typeof parsed.success === "boolean" ? parsed.success : undefined,
+      status: optionalNumber(parsed.status),
+      requestId: optionalString(parsed.requestId),
+      error: {
+        code: optionalString(parsed.error.code),
+        message: optionalString(parsed.error.message),
+        details: isRecord(parsed.error.details) ? parsed.error.details : undefined,
+        currentState: optionalString(parsed.error.currentState),
+        requiredState: optionalString(parsed.error.requiredState),
+        failedCondition: optionalString(parsed.error.failedCondition),
+        blockedAction: optionalString(parsed.error.blockedAction),
+        actionGuide: optionalString(parsed.error.actionGuide),
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function requestJson<T>(
@@ -143,8 +238,11 @@ async function requestJson<T>(
   }
   if (!response.ok) {
     const body = await response.text();
-    const error = new Error(`${response.status} ${path}${body ? `: ${body.slice(0, 180)}` : ""}`);
-    captureConsoleError(error, buildApiContext(path, options, requestId, method, response.status));
+    const error = new ApiRequestError(path, response, parseApiErrorPayload(body));
+    captureConsoleError(
+      error,
+      buildApiContext(path, options, requestId, method, response.status, error.requestId, error.code),
+    );
     throw error;
   }
   return (await response.json()) as T;
@@ -152,7 +250,7 @@ async function requestJson<T>(
 
 export async function loadDashboard(guildId: string, options: ApiOptions): Promise<DashboardState> {
   const [guilds, overview, aiNetwork, requests, usageTrend] = await Promise.all([
-    requestJson<GuildSummary[]>("/api/dashboard/guilds", options).catch(() => []),
+    requestJson<GuildSummary[]>("/api/dashboard/guilds", options),
     guildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${guildId}/overview`, options) : null,
     guildId
       ? requestJson<Record<string, unknown>>(`/api/ai-network/${guildId}/dashboard`, options).catch(() => null)

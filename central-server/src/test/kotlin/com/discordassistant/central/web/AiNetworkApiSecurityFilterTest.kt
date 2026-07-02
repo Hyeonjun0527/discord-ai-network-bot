@@ -11,6 +11,7 @@ import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 @SpringBootTest
@@ -41,15 +42,16 @@ class AiNetworkApiSecurityFilterTest
 
         @Test
         fun `admin audience is rejected without dashboard token`() {
-            val response =
-                mvc
-                    .perform(get("/api/dashboard/provider/123/history?audience=admin"))
-                    .andExpect(status().isForbidden)
-                    .andReturn()
-                    .response
-                    .contentAsString
-
-            assertTrue(response.contains("dashboard_admin_required"))
+            mvc
+                .perform(get("/api/dashboard/provider/123/history?audience=admin").header("X-Request-Id", "admin-req-1"))
+                .andExpect(status().isForbidden)
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.requestId").value("admin-req-1"))
+                .andExpect(jsonPath("$.error.code").value("DASHBOARD_ADMIN_REQUIRED"))
+                .andExpect(jsonPath("$.error.failedCondition").value("dashboard_admin_authenticated"))
+                .andExpect(jsonPath("$.error.blockedAction").value("AI_NETWORK_ADMIN_ACCESS"))
+                .andExpect(jsonPath("$.error.actionGuide").exists())
         }
 
         @Test

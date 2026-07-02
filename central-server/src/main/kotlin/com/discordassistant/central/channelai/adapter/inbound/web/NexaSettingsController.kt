@@ -46,7 +46,7 @@ class NexaSettingsController(
         @PathVariable guildId: Long,
         @RequestBody request: NexaLaneChangeRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> {
+    ): NexaSettingsMutationResponse {
         val actor = DashboardActor.from(httpRequest)
         settings.setGuildLane(
             guildId = guildId,
@@ -55,7 +55,7 @@ class NexaSettingsController(
             actorUserId = actor.userId,
             reason = request.reasonOrDefault(),
         )
-        return mapOf("success" to true)
+        return NexaSettingsMutationResponse.success()
     }
 
     @PostMapping("/{guildId}/channel/{channelId}/lane")
@@ -64,7 +64,7 @@ class NexaSettingsController(
         @PathVariable channelId: Long,
         @RequestBody request: NexaChannelLaneChangeRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> {
+    ): NexaSettingsMutationResponse {
         val actor = DashboardActor.from(httpRequest)
         settings.setChannelLane(
             guildId = guildId,
@@ -73,7 +73,7 @@ class NexaSettingsController(
             authority = authorityOf(request.confirmLiveSend),
             actorUserId = actor.userId,
         )
-        return mapOf("success" to true)
+        return NexaSettingsMutationResponse.success()
     }
 
     @PostMapping("/{guildId}/channel/{channelId}/excluded")
@@ -82,7 +82,7 @@ class NexaSettingsController(
         @PathVariable channelId: Long,
         @RequestBody request: NexaChannelExclusionRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> {
+    ): NexaSettingsMutationResponse {
         DashboardActor.from(httpRequest)
         // 제외(kill switch)는 끄는 방향이라 항상 허용(realSend 권한 불필요).
         settings.setChannelExcluded(
@@ -91,7 +91,7 @@ class NexaSettingsController(
             excluded = request.excluded,
             authority = authorityOf(confirmLiveSend = false),
         )
-        return mapOf("success" to true)
+        return NexaSettingsMutationResponse.success()
     }
 
     /**
@@ -125,3 +125,12 @@ data class NexaChannelLaneChangeRequest(
 data class NexaChannelExclusionRequest(
     val excluded: Boolean,
 )
+
+/** NEXA 설정 변경 성공 응답. 기존 JSON shape: `{ "success": true }`. */
+data class NexaSettingsMutationResponse(
+    val success: Boolean,
+) {
+    companion object {
+        fun success(): NexaSettingsMutationResponse = NexaSettingsMutationResponse(success = true)
+    }
+}

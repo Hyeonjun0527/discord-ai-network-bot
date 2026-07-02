@@ -1,5 +1,6 @@
 package com.discordassistant.central.global.adapter.inbound.web
 
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.DomainException
 import com.discordassistant.central.global.observability.BugsinkScope
 import com.discordassistant.central.global.security.RequestIdFilter
@@ -99,7 +100,7 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(400).body(
             ApiErrorResponse(
                 // 단순 입력 오류 — code+message 만으로 충분(상태·조건 필드 억지로 넣지 않음).
-                error = ApiError(code = "INVALID_REQUEST", message = ex.message ?: "잘못된 요청입니다"),
+                error = ApiError(code = ApiErrorCodes.INVALID_REQUEST, message = ex.message ?: "잘못된 요청입니다"),
                 status = 400,
                 requestId = requestId,
             ),
@@ -115,7 +116,7 @@ class GlobalExceptionHandler {
     fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<ApiErrorResponse> {
         val requestId = MDC.get(RequestIdFilter.MDC_KEY)
         val status = ex.statusCode.value()
-        val code = HttpStatus.resolve(status)?.name ?: "ERROR"
+        val code = HttpStatus.resolve(status)?.name ?: ApiErrorCodes.ERROR
         if (status >= 500) {
             log.error("프레임워크 예외({}) code={} requestId={}: {}", status, code, requestId, ex.reason, ex)
         } else {
@@ -144,7 +145,7 @@ class GlobalExceptionHandler {
             ApiErrorResponse(
                 error =
                     ApiError(
-                        code = "INVALID_REQUEST",
+                        code = ApiErrorCodes.INVALID_REQUEST,
                         message = "요청 본문을 해석할 수 없습니다",
                         failedCondition = "request_body_json_parseable",
                         blockedAction = "PARSE_REQUEST_BODY",
@@ -172,7 +173,7 @@ class GlobalExceptionHandler {
             ApiErrorResponse(
                 error =
                     ApiError(
-                        code = "NOT_FOUND",
+                        code = ApiErrorCodes.NOT_FOUND,
                         message = "요청한 리소스를 찾을 수 없습니다.",
                         failedCondition = "resource_exists",
                         blockedAction = "${request.method} ${request.requestURI}",
@@ -196,7 +197,7 @@ class GlobalExceptionHandler {
             ApiErrorResponse(
                 error =
                     ApiError(
-                        code = "INVALID_SERVER_STATE",
+                        code = ApiErrorCodes.INVALID_SERVER_STATE,
                         message = "서버 상태가 요청을 처리할 준비가 아닙니다.",
                         failedCondition = "server_state_allows_request",
                         blockedAction = "${request.method} ${request.requestURI}",
@@ -220,7 +221,7 @@ class GlobalExceptionHandler {
             ApiErrorResponse(
                 error =
                     ApiError(
-                        code = "INTERNAL_SERVER_ERROR",
+                        code = ApiErrorCodes.INTERNAL_SERVER_ERROR,
                         message = "서버가 요청을 처리하지 못했습니다.",
                         failedCondition = "server_request_processing",
                         blockedAction = "${request.method} ${request.requestURI}",

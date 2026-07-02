@@ -45,25 +45,25 @@ abstract class DomainException(
 class NotFoundException(
     message: String,
     cause: Throwable? = null,
-) : DomainException(httpStatus = 404, errorCode = "NOT_FOUND", message = message, cause = cause)
+) : DomainException(httpStatus = 404, errorCode = ApiErrorCodes.NOT_FOUND, message = message, cause = cause)
 
 /** 클라이언트 입력이 잘못됨(검증 실패) → 400. `require()` 대용으로 도메인 의미를 담아 던진다. */
 class InvalidRequestException(
     message: String,
     cause: Throwable? = null,
-) : DomainException(httpStatus = 400, errorCode = "INVALID_REQUEST", message = message, cause = cause)
+) : DomainException(httpStatus = 400, errorCode = ApiErrorCodes.INVALID_REQUEST, message = message, cause = cause)
 
 /** 현재 상태와 충돌(중복/이미 처리됨/버전 충돌 등) → 409. */
 class ConflictException(
     message: String,
     cause: Throwable? = null,
-) : DomainException(httpStatus = 409, errorCode = "CONFLICT", message = message, cause = cause)
+) : DomainException(httpStatus = 409, errorCode = ApiErrorCodes.CONFLICT, message = message, cause = cause)
 
 /** 권한 없음(인증은 됐으나 해당 작업 불가) → 403. */
 class ForbiddenException(
     message: String,
     cause: Throwable? = null,
-) : DomainException(httpStatus = 403, errorCode = "FORBIDDEN", message = message, cause = cause)
+) : DomainException(httpStatus = 403, errorCode = ApiErrorCodes.FORBIDDEN, message = message, cause = cause)
 
 /**
  * 상태 머신이 있는 도메인에서 **현재 상태에서는 할 수 없는 전이**를 시도했을 때 → 409.
@@ -78,7 +78,7 @@ class InvalidStateTransitionException(
     requiredState: String,
     blockedAction: String? = null,
     actionGuide: String? = null,
-    errorCode: String = "INVALID_STATE_TRANSITION",
+    errorCode: String = ApiErrorCodes.INVALID_STATE_TRANSITION,
     cause: Throwable? = null,
 ) : DomainException(
         httpStatus = 409,
@@ -105,7 +105,7 @@ class PreconditionFailedException(
     blockedAction: String? = null,
     actionGuide: String? = null,
     httpStatus: Int = 422,
-    errorCode: String = "PRECONDITION_FAILED",
+    errorCode: String = ApiErrorCodes.PRECONDITION_FAILED,
     cause: Throwable? = null,
     captureAsServerError: Boolean = true,
 ) : DomainException(

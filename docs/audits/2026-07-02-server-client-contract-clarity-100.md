@@ -18,6 +18,7 @@
 
 - `FIXED-2026-07-02-A`: 이번 배치에서 보완.
 - `FIXED-2026-07-02-B`: 두 번째 배치에서 보완.
+- `FIXED-2026-07-02-C`: 세 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -39,9 +40,9 @@
 15. [x] `GlobalExceptionHandler`가 `IllegalStateException`을 모두 미처리해 경계 상태 오류가 500 기본 응답으로 보일 수 있음. 보완: `INVALID_SERVER_STATE` envelope 명시 handler. 상태: `FIXED-2026-07-02-B`.
 16. [x] `ResponseStatusException` 변환이 `reason`만 message로 쓰고 `actionGuide`를 제공하지 않음. 보완: 401/403/503 등 공통 guide 매핑. 상태: `FIXED-2026-07-02-B`.
 17. [x] `HttpMessageNotReadableException` 응답에 `failedCondition`이 없어 body parse 실패임을 코드 외에는 알기 어려움. 보완: `failedCondition=request_body_json_parseable`. 상태: `FIXED-2026-07-02-B`.
-18. [ ] `ApiErrorResponse`의 `code` 문자열 enum/레지스트리가 없어 서버/클라이언트 분기 코드가 drift될 수 있음. 보완: central error-code registry 문서 또는 generated contract.
-19. [ ] `ApiErrorResponse.details`가 자유 `Map`이라 필드별 스키마가 없음. 보완: error code별 details schema.
-20. [ ] 필터 단계 에러와 MVC advice 에러가 같은 serializer 설정을 쓰는지 회귀 테스트가 부족함. 보완: filter/advice shared JSON contract test.
+18. [x] `ApiErrorResponse`의 `code` 문자열 enum/레지스트리가 없어 서버/클라이언트 분기 코드가 drift될 수 있음. 보완: `ApiErrorCodes` registry + [docs/contracts/rest-error-envelope.md](../contracts/rest-error-envelope.md). 상태: `FIXED-2026-07-02-C`.
+19. [x] `ApiErrorResponse.details`가 자유 `Map`이라 필드별 스키마가 없음. 보완: `ApiErrorDetailsSchemas` + details schema 문서. 상태: `FIXED-2026-07-02-C`.
+20. [x] 필터 단계 에러와 MVC advice 에러가 같은 serializer 설정을 쓰는지 회귀 테스트가 부족함. 보완: `ApiErrorEnvelopeContractTest`에서 filter/advice shared JSON envelope 검증. 상태: `FIXED-2026-07-02-C`.
 21. [ ] `admin-console`이 optional panel 실패를 여전히 `null`/`[]`로 숨김. 보완: panel별 `partialErrors`를 상태에 포함.
 22. [ ] `admin-console`의 `buildApiContext.method`가 항상 `GET`이라 향후 쓰기 API에서 오해 가능. 보완: request method를 옵션화.
 23. [ ] `admin-console`의 base URL이 빈 문자열이면 fetch URL이 path만 되어 Bugsink `serverBaseUrl`과 실제 URL이 어긋날 수 있음. 보완: URL builder를 단일화.

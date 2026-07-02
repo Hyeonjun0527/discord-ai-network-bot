@@ -1,6 +1,7 @@
 package com.discordassistant.central.web
 
 import com.discordassistant.central.global.adapter.inbound.web.GlobalExceptionHandler
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.ConflictException
 import com.discordassistant.central.global.error.DomainException
 import com.discordassistant.central.global.error.InvalidStateTransitionException
@@ -36,7 +37,7 @@ class GlobalExceptionHandlerTest {
     class ServerFailureException :
         DomainException(
             httpStatus = 503,
-            errorCode = "CENTRAL_UPSTREAM_FAILED",
+            errorCode = ApiErrorCodes.SERVICE_UNAVAILABLE,
             message = "central upstream failed",
         )
 
@@ -71,7 +72,6 @@ class GlobalExceptionHandlerTest {
                 details = mapOf("allowedValues" to listOf("image/jpeg", "image/png"), "actualValue" to "image/heic"),
                 blockedAction = "UPDATE_PROFILE_IMAGE",
                 actionGuide = "JPEG 또는 PNG 이미지를 올려 주세요.",
-                errorCode = "PROFILE_IMAGE_MIME_NOT_ALLOWED",
             )
 
         @GetMapping("/test/server-failure")
@@ -177,7 +177,7 @@ class GlobalExceptionHandlerTest {
             .perform(get("/test/server-failure"))
             .andExpect(status().isServiceUnavailable)
             .andExpect(jsonPath("$.status").value(503))
-            .andExpect(jsonPath("$.error.code").value("CENTRAL_UPSTREAM_FAILED"))
+            .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
             .andExpect(jsonPath("$.error.message").value("central upstream failed"))
     }
 

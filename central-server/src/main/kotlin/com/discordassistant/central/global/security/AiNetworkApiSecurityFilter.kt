@@ -2,8 +2,8 @@ package com.discordassistant.central.global.security
 
 import com.discordassistant.central.global.adapter.inbound.web.ApiError
 import com.discordassistant.central.global.adapter.inbound.web.ApiErrorResponse
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -18,7 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 class AiNetworkApiSecurityFilter(
     @param:Value("\${central.dashboard.admin-token:}") private val adminToken: String,
     @param:Value("\${central.dashboard.admin-user-ids:}") private val adminUserIdsRaw: String,
-    private val objectMapper: ObjectMapper = jacksonObjectMapper(),
+    private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
     // 관리자 Discord user id 허용목록(콤마 구분). 비면 OAuth 로그인만으로는 관리자 권한을 주지 않는다.
     private val adminUserIds: Set<String> =
@@ -55,7 +55,7 @@ class AiNetworkApiSecurityFilter(
             ApiErrorResponse(
                 error =
                     ApiError(
-                        code = "DASHBOARD_ADMIN_REQUIRED",
+                        code = ApiErrorCodes.DASHBOARD_ADMIN_REQUIRED,
                         message = "AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다.",
                         failedCondition = "dashboard_admin_authenticated",
                         blockedAction = "AI_NETWORK_ADMIN_ACCESS",

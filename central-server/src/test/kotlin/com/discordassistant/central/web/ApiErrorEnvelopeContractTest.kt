@@ -4,6 +4,7 @@ import com.discordassistant.central.global.adapter.inbound.web.GlobalExceptionHa
 import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.ApiErrorDetailKeys
 import com.discordassistant.central.global.error.ApiErrorDetailsSchemas
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.global.security.RequestIdFilter
 import com.fasterxml.jackson.databind.JsonNode
@@ -33,6 +34,16 @@ class ApiErrorEnvelopeContractTest {
         fun badRequest() {
             require(false) { "contract bad request" }
         }
+
+        @GetMapping("/contract/precondition")
+        fun precondition(): Nothing =
+            throw PreconditionFailedException(
+                message = "contract precondition failed",
+                failedCondition = "contract_condition",
+                details = mapOf(ApiErrorDetailKeys.ACTUAL_VALUE to "bad"),
+                blockedAction = "CONTRACT_ACTION",
+                actionGuide = "계약 조건을 충족한 뒤 다시 요청해 주세요.",
+            )
     }
 
     private val adviceMvc =
@@ -81,6 +92,36 @@ class ApiErrorEnvelopeContractTest {
             expectedRequestId = "advice-contract-1",
         )
         assertThat(objectMapper.readTree(adviceBody).path("error").has("details")).isFalse()
+    }
+
+    @Test
+    fun `domain exception metadata is carried through the envelope with requestId`() {
+        MDC.put(RequestIdFilter.MDC_KEY, "metadata-contract-1")
+        val body =
+            adviceMvc
+                .perform(get("/contract/precondition"))
+                .andExpect(status().isUnprocessableEntity)
+                .andReturn()
+                .response
+                .contentAsString
+
+        val root = objectMapper.readTree(body)
+        assertThat(root.path("success").asBoolean()).isFalse()
+        assertThat(root.path("status").asInt()).isEqualTo(422)
+        assertThat(root.path("requestId").asText()).isEqualTo("metadata-contract-1")
+        assertThat(root.path("error").path("code").asText()).isEqualTo(ApiErrorCodes.PRECONDITION_FAILED)
+        assertThat(
+            root
+                .path("error")
+                .path("details")
+                .path(ApiErrorDetailKeys.ACTUAL_VALUE)
+                .asText(),
+        ).isEqualTo("bad")
+        assertThat(root.path("error").path("failedCondition").asText()).isEqualTo("contract_condition")
+        assertThat(root.path("error").path("blockedAction").asText()).isEqualTo("CONTRACT_ACTION")
+        assertThat(root.path("error").path("actionGuide").asText()).contains("계약 조건")
+        assertThat(root.path("error").has("currentState")).isFalse()
+        assertThat(root.path("error").has("requiredState")).isFalse()
     }
 
     @Test

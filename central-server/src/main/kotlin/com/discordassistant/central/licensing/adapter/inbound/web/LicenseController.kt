@@ -1,5 +1,6 @@
 package com.discordassistant.central.licensing.adapter.inbound.web
 
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.licensing.application.EntitlementView
 import com.discordassistant.central.licensing.application.EventClaimService
@@ -68,16 +69,7 @@ class LicenseController(
         val userId = authedUserId(req.durableToken, "CREATE_LICENSE_CHECKOUT")
         val url =
             checkout.createCheckoutUrl(userId)
-                ?: throw PreconditionFailedException(
-                    message = "결제가 현재 비활성 상태입니다",
-                    failedCondition = "license_checkout_enabled",
-                    blockedAction = "CREATE_LICENSE_CHECKOUT",
-                    actionGuide = "앱에서 결제가 다시 활성화된 뒤 시도해 주세요.",
-                    httpStatus = 503,
-                    errorCode = "SERVICE_UNAVAILABLE",
-                    // 결제 미설정은 운영자가 통제하는 예상된 상태다 — 503 계약은 유지하되 Sentry 서버결함 캡처는 끈다.
-                    captureAsServerError = false,
-                )
+                ?: throw checkoutUnavailable()
         return CheckoutResponse(url)
     }
 
@@ -87,23 +79,41 @@ class LicenseController(
         blockedAction: String,
     ): Long {
         if (!durableToken.startsWith("dv1.")) {
-            throw PreconditionFailedException(
-                message = "durable 토큰이 필요합니다",
-                failedCondition = "durable_token_present",
-                blockedAction = blockedAction,
-                actionGuide = "데스크톱 앱에서 다시 로그인한 뒤 요청해 주세요.",
-                httpStatus = 401,
-                errorCode = "UNAUTHORIZED",
-            )
+            throw durableTokenRequired(blockedAction)
         }
         return tokens.verify(durableToken)?.providerId
-            ?: throw PreconditionFailedException(
-                message = "유효하지 않은 토큰입니다",
-                failedCondition = "durable_token_valid",
-                blockedAction = blockedAction,
-                actionGuide = "데스크톱 앱에서 다시 로그인한 뒤 요청해 주세요.",
-                httpStatus = 401,
-                errorCode = "UNAUTHORIZED",
-            )
+            ?: throw invalidDurableToken(blockedAction)
     }
+
+    private fun durableTokenRequired(blockedAction: String): PreconditionFailedException =
+        PreconditionFailedException(
+            message = "durable 토큰이 필요합니다",
+            failedCondition = "durable_token_present",
+            blockedAction = blockedAction,
+            actionGuide = "provider-agent 동기화로 발급된 durable 토큰을 포함해 다시 요청해 주세요.",
+            httpStatus = 401,
+            errorCode = ApiErrorCodes.UNAUTHORIZED,
+        )
+
+    private fun invalidDurableToken(blockedAction: String): PreconditionFailedException =
+        PreconditionFailedException(
+            message = "유효하지 않은 토큰",
+            failedCondition = "durable_token_valid",
+            blockedAction = blockedAction,
+            actionGuide = "provider-agent에서 라이선스 동기화를 다시 실행해 주세요.",
+            httpStatus = 401,
+            errorCode = ApiErrorCodes.UNAUTHORIZED,
+        )
+
+    private fun checkoutUnavailable(): PreconditionFailedException =
+        PreconditionFailedException(
+            message = "결제가 현재 비활성 상태입니다",
+            failedCondition = "license_checkout_enabled",
+            blockedAction = "CREATE_LICENSE_CHECKOUT",
+            actionGuide = "앱에서 결제가 다시 활성화된 뒤 시도해 주세요.",
+            httpStatus = 503,
+            errorCode = ApiErrorCodes.SERVICE_UNAVAILABLE,
+            // 결제 미설정은 운영자가 통제하는 예상된 상태다 — 503 계약은 유지하되 Sentry 서버결함 캡처는 끈다.
+            captureAsServerError = false,
+        )
 }

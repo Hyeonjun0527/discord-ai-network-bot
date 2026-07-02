@@ -8,6 +8,7 @@ import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
@@ -534,7 +535,7 @@ class ProviderAdminControllerTest
 
         private fun assertNiaPersonaForbidden(ex: PreconditionFailedException) {
             assertEquals(403, ex.httpStatus)
-            assertEquals("FORBIDDEN", ex.errorCode)
+            assertEquals(ApiErrorCodes.FORBIDDEN, ex.errorCode)
             assertEquals("project_admin_authenticated", ex.failedCondition)
             assertEquals("READ_NIA_PERSONA", ex.blockedAction)
             assertTrue(ex.actionGuide!!.contains("프로젝트 관리자 durable 토큰"))

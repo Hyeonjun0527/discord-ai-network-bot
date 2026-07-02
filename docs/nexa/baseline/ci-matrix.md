@@ -12,7 +12,7 @@ This baseline separates the workflow files NEXA work may need to touch from rele
 
 | Workflow file | Name | Trigger | Jobs / runners | Main build or action target | Secrets / elevated permissions | Cache / artifact surface | NEXA edit lane |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `.github/workflows/central-server-ci.yml` | central-server CI | `push`, `pull_request`, `workflow_dispatch`; path-filtered to `central-server/**` and this workflow | `build`, `integration` on `[self-hosted, ARM64]` | `./gradlew build`; `./gradlew test -PdockerTests` | no explicit secrets; default token only | uploads test reports; no explicit cache action | **Allowed/minimal for NEXA central Kotlin/test CI only** |
+| `.github/workflows/central-server-ci.yml` | central-server CI | `push`, `pull_request`, `workflow_dispatch`; path-filtered to `central-server/**`, `scripts/cleanup-testcontainers.sh`, and this workflow | `build`, `integration` on `[self-hosted, ARM64]` | `./gradlew build`; `./gradlew test -PdockerTests`; Testcontainers label-scoped cleanup on `always()` | no explicit secrets; default token only | uploads test reports; no explicit cache action; prunes only Docker resources with `org.testcontainers=true` | **Allowed/minimal for NEXA central Kotlin/test CI only** |
 | `.github/workflows/provider-agent-ci.yml` | provider-agent CI | `push`, `pull_request`, `workflow_dispatch`; path-filtered to `provider-agent/**`, `packaging/**`, `i18n/**`, `docs/**`, `specs/**`, selected scripts, and this workflow | `agent`, `docs-links` on `[self-hosted, ARM64]` | provider pytest/ruff/mypy; docs links; packaging/i18n checks | no explicit secrets | no explicit cache action | **Allowed only for provider-agent/docs check coverage; do not add central deploy behavior here** |
 | `.github/workflows/agent-autorelease.yml` | agent-autorelease | `push` to `main` on `provider-agent/src/**` or `provider-agent/pyproject.toml`; `workflow_dispatch` | `tag` on `[self-hosted, yeon-arm]` | computes next `agent-v*`, edits version files, pushes tag, dispatches agent build | `contents: write`, `actions: write` | no explicit cache | **Do not touch for NEXA social behavior work** |
 | `.github/workflows/agent-build.yml` | agent-build | `workflow_dispatch`; `push` tags `agent-v*` | model URL check, matrix binary build, release, package-manager publication, central download placement | PyInstaller binaries, signing/notarization, SBOM/provenance, GitHub Release, Homebrew/Scoop/winget PRs | many signing/package secrets: `MACOS_*`, `APPLE_*`, `WINDOWS_*`, `ES_*`, `PKG_APP_*`, `WINGET_GH_TOKEN`; write/id-token/attestations permissions | uploads release/package artifacts; no explicit cache action | **Do not touch unless task is agent release/packaging** |
@@ -34,7 +34,7 @@ Default NEXA social-behavior work should avoid workflow edits. Use local verific
 
 If a future NEXA task truly needs CI wiring, the minimum candidate workflows are:
 
-1. `central-server-ci.yml` — for new central-server Kotlin tests, ArchUnit rules, Cucumber/Testcontainers gates, or deterministic test enforcement.
+1. `central-server-ci.yml` — for new central-server Kotlin tests, ArchUnit rules, Cucumber/Testcontainers gates, deterministic test enforcement, or Testcontainers cleanup policy.
 2. `provider-agent-ci.yml` — only when NEXA work changes provider-agent, docs link checks, i18n, packaging checks, or shared scripts already covered by that workflow.
 
 Do not add deploy, release, signing, package publication, registry cleanup, or self-hosted production behavior to a NEXA feature task unless the task explicitly names that workflow and includes rollback/approval evidence.
@@ -57,6 +57,8 @@ Reason: these workflows have write permissions, release tags, self-hosted runner
 ## Cache and runner notes
 
 - No workflow currently uses `actions/cache` directly.
+- `nexa-security-scan.yml` has a `changes` preflight job. Pull requests run only the security jobs whose dependency surface changed; scheduled and manual runs still perform the full security scan.
+- `central-server-ci.yml` runs Testcontainers cleanup after the Docker-dependent integration job. Cleanup is limited to resources labeled `org.testcontainers=true`.
 - `central-deploy.yml` and `central-server-image.yml` use `docker/build-push-action@v6`; the YAML does not declare `cache-from` or `cache-to`.
 - `central-deploy.yml`, `agent-build.yml` `publish-central`, `ai-rag-rebuild.yml`, and deprecated `central-server-deploy.yml` use self-hosted runners. Treat these as operational surfaces, not ordinary feature-test surfaces.
 - `ai-rag-rebuild.yml` is docs-triggered on `main` (`docs/**/*.md`) and can commit generated metadata. Docs-only NEXA changes should not modify this workflow unless the RAG trigger policy itself is being changed.

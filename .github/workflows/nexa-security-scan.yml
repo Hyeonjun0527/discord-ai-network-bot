@@ -29,6 +29,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 5
+    outputs:
+      gradle_deps: ${{ steps.scope.outputs.gradle_deps }}
+      python_deps: ${{ steps.scope.outputs.python_deps }}
+      log_redaction: ${{ steps.scope.outputs.log_redaction }}
+      container_central: ${{ steps.scope.outputs.container_central }}
+      container_provider: ${{ steps.scope.outputs.container_provider }}
+      container_rag: ${{ steps.scope.outputs.container_rag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        name: 변경 범위 계산
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          changed_files="$(mktemp)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$changed_files"
+          else
+            printf '__full_security_scan__\n' > "$changed_files"
+          fi
+
+          matches() {
+            local pattern="$1"
+            if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+              return 0
+            fi
+            grep -Eq "$pattern" "$changed_files"
+          }
+
+          set_output() {
+            local name="$1"
+            local pattern="$2"
+            if matches "$pattern"; then
+              printf '%s=true\n' "$name" >> "$GITHUB_OUTPUT"
+            else
+              printf '%s=false\n' "$name" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          set_output 'gradle_deps' '^(central-server/|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'python_deps' '^(provider-agent/|ml/social-policy/|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'log_redaction' '^(central-server/|scripts/nexa-verify\.sh$|scripts/scan-sensitive-logs\.py$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_central' '^(central-server/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_provider' '^(provider-agent/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_rag' '^(docker/rag/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+
   # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).
   exception-policy:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
@@ -51,10 +105,10 @@ jobs:
 
   # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
   gradle-deps:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.gradle_deps == 'true' }}
     runs-on: [self-hosted, ARM64]
     timeout-minutes: 15
-    needs: exception-policy
+    needs: [exception-policy, changes]
     defaults:
       run:
         working-directory: central-server
@@ -80,10 +134,10 @@ jobs:
 
   # Python 의존성 취약점(ml/social-policy, provider-agent).
   python-deps:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.python_deps == 'true' }}
     runs-on: [self-hosted, ARM64]
     timeout-minutes: 10
-    needs: exception-policy
+    needs: [exception-policy, changes]
     steps:
       - uses: actions/checkout@v4
       # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
@@ -108,10 +162,10 @@ jobs:
   # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).
   # 이로써 redactor 바인딩(logback-spring.xml %redactedMsg)이 실제 파일 출력에서 작동함을 CI 가 강제한다.
   log-redaction-scan:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.log_redaction == 'true' }}
     runs-on: [self-hosted, ARM64]
     timeout-minutes: 10
-    needs: exception-policy
+    needs: [exception-policy, changes]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -125,10 +179,10 @@ jobs:
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && (needs.changes.outputs.container_central == 'true' || needs.changes.outputs.container_provider == 'true' || needs.changes.outputs.container_rag == 'true') }}
     runs-on: [self-hosted, ARM64]
     timeout-minutes: 10
-    needs: exception-policy
+    needs: [exception-policy, changes]
     strategy:
       matrix:
         image:
@@ -137,7 +191,27 @@ jobs:
           - docker/rag/Dockerfile
     steps:
       - uses: actions/checkout@v4
+      - id: image-scope
+        name: 이미지 스캔 범위 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.image }}" in
+            central-server/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_central }}" >> "$GITHUB_OUTPUT"
+              ;;
+            provider-agent/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_provider }}" >> "$GITHUB_OUTPUT"
+              ;;
+            docker/rag/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_rag }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              printf 'enabled=false\n' >> "$GITHUB_OUTPUT"
+              ;;
+          esac
       - name: Trivy config scan(Dockerfile 취약 설정·베이스 이미지)
+        if: ${{ steps.image-scope.outputs.enabled == 'true' }}
         # v0.28.0 은 yank 된 setup-trivy@v0.2.1 참조로 resolve 실패. v0.36.0 은 setup-trivy 를 commit SHA(v0.2.6)로
         # 핀해 안정적이다(번들 trivy v0.70.0). scan-type/severity/exit-code 게이트는 그대로 유지.
         uses: aquasecurity/trivy-action@v0.36.0

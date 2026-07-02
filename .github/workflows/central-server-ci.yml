@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, closed]
     paths:
       - "central-server/**"
+      - "scripts/cleanup-testcontainers.sh"
       - ".github/workflows/central-server-ci.yml"
   workflow_dispatch:
 
@@ -61,6 +62,9 @@ jobs:
           java-version: "21"
       - name: BDD + Testcontainers (실 Postgres 핵심 흐름 시나리오)
         run: ./gradlew test -PdockerTests --no-daemon --console=plain
+      - name: Testcontainers/Ryuk 잔류 정리(취소·실패 포함)
+        if: always()
+        run: ../scripts/cleanup-testcontainers.sh --prune
       - name: Cucumber 리포트 업로드(요구사항 시나리오 통과/실패 가시화)
         if: always()
         # 진단용 리포트 업로드일 뿐 게이트가 아니다. 계정 저장소 쿼터 초과 같은 환경 이슈로

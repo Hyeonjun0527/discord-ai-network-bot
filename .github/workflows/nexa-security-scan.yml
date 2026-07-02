@@ -30,6 +30,7 @@ jobs:
   exception-policy:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
@@ -49,6 +50,7 @@ jobs:
   gradle-deps:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 15
     needs: exception-policy
     defaults:
       run:
@@ -77,6 +79,7 @@ jobs:
   python-deps:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 10
     needs: exception-policy
     steps:
       - uses: actions/checkout@v4
@@ -104,6 +107,7 @@ jobs:
   log-redaction-scan:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 10
     needs: exception-policy
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +158,7 @@ jobs:
   container-scan:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 10
     needs: exception-policy
     strategy:
       matrix:

@@ -17,6 +17,7 @@ jobs:
   agent:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: [self-hosted, yeon-arm]
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: provider-agent

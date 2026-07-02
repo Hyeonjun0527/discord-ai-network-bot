@@ -20,7 +20,6 @@ import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.multiresponse.adapter.inbound.web.MultiResponseController
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.AdoptCandidateRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.CompleteBestMultiResponseRunRequest
-import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.MultiResponseOperationsDashboardResponse
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.PseudoStreamPlanRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.RecordCandidateRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.SaveMultiResponsePolicyRequest
@@ -44,6 +43,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
 import com.discordassistant.central.shared.ModelQualityTier
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -85,6 +85,7 @@ class MultiResponseServiceTest
         private val events: AiNetworkEventRepository,
     ) {
         private val fixedClock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
+        private val objectMapper = jacksonObjectMapper()
         private val service =
             MultiResponseService(
                 policies = policies,
@@ -162,7 +163,7 @@ class MultiResponseServiceTest
                     SaveMultiResponsePolicyRequest(channelId = 199, mode = "compare", maxCandidates = 10, synthesisEnabled = true),
                 )
 
-            assertEquals(2, saved["maxCandidates"])
+            assertEquals(2, saved.maxCandidates)
             assertEquals(2, policies.findByGuildIdAndChannelId(100, 199)!!.maxCandidates)
         }
 
@@ -209,10 +210,10 @@ class MultiResponseServiceTest
                 )
             val started = cappedController.startRun(101, StartMultiResponseRunRequest(channelId = 201, requestId = "fanout-1"))
 
-            assertEquals(1, saved["maxCandidates"])
+            assertEquals(1, saved.maxCandidates)
             assertEquals(false, policies.findByGuildIdAndChannelId(101, 201)!!.synthesisEnabled)
-            assertEquals(1, started["candidateCount"])
-            assertEquals(1, candidates.findByRunId(started["id"] as Long).size)
+            assertEquals(1, started.candidateCount)
+            assertEquals(1, candidates.findByRunId(started.id).size)
         }
 
         @Test
@@ -246,8 +247,8 @@ class MultiResponseServiceTest
             assertEquals("single", savedPolicy.mode)
             assertEquals(1, savedPolicy.maxCandidates)
             assertEquals(false, savedPolicy.synthesisEnabled)
-            assertEquals(1, started["candidateCount"])
-            assertEquals(1, candidates.findByRunId(started["id"] as Long).size)
+            assertEquals(1, started.candidateCount)
+            assertEquals(1, candidates.findByRunId(started.id).size)
         }
 
         @Test
@@ -285,7 +286,7 @@ class MultiResponseServiceTest
                     StartMultiResponseRunRequest(channelId = 203, requestId = "dashboard-off-keeps-fanout"),
                 )
 
-            assertEquals(1, started["candidateCount"])
+            assertEquals(1, started.candidateCount)
             assertThrows(IllegalStateException::class.java) { dashboardOffController.recentRuns(153) }
             assertThrows(IllegalStateException::class.java) { dashboardOffController.operationsSummary(153) }
         }
@@ -330,8 +331,8 @@ class MultiResponseServiceTest
             assertEquals("fanout_recommended", recommendation.status)
             assertEquals(2, recommendation.recommendedCandidateCount)
             assertEquals(2, recommendation.providers.size)
-            assertEquals("fanout_recommended", apiRecommendation["status"])
-            assertEquals(2, apiRecommendation["recommendedCandidateCount"])
+            assertEquals("fanout_recommended", apiRecommendation.status)
+            assertEquals(2, apiRecommendation.recommendedCandidateCount)
             assertEquals(runCountBefore, runs.count())
             assertEquals(candidateCountBefore, candidates.count())
         }
@@ -412,9 +413,9 @@ class MultiResponseServiceTest
             )
 
             val started = capacityAwareController.startRun(152, StartMultiResponseRunRequest(channelId = 252, requestId = "busy-provider"))
-            val planned = candidates.findByRunId(started["id"] as Long)
+            val planned = candidates.findByRunId(started.id)
 
-            assertEquals(1, started["candidateCount"])
+            assertEquals(1, started.candidateCount)
             assertEquals(listOf(202L), planned.map { it.providerUserId })
         }
 
@@ -478,9 +479,9 @@ class MultiResponseServiceTest
                     153,
                     StartMultiResponseRunRequest(channelId = 253, requestId = "daily-exhausted"),
                 )
-            val planned = candidates.findByRunId(started["id"] as Long)
+            val planned = candidates.findByRunId(started.id)
 
-            assertEquals(1, started["candidateCount"])
+            assertEquals(1, started.candidateCount)
             assertEquals(listOf(302L), planned.map { it.providerUserId })
         }
 
@@ -513,11 +514,11 @@ class MultiResponseServiceTest
             )
 
             val started = controller.startRun(154, StartMultiResponseRunRequest(channelId = 254, requestId = "guild-disabled"))
-            val run = runs.findById(started["id"] as Long).get()
+            val run = runs.findById(started.id).get()
 
-            assertEquals("disabled_by_policy", started["status"])
-            assertEquals(0, started["candidateCount"])
-            assertEquals("skipped_policy_disabled", started["ragContextStatus"])
+            assertEquals("disabled_by_policy", started.status)
+            assertEquals(0, started.candidateCount)
+            assertEquals("skipped_policy_disabled", started.ragContextStatus)
             assertTrue(run.failureReason!!.contains("guild policy"))
             assertTrue(run.failureReason!!.contains("provider rest window"))
             assertTrue(candidates.findByRunId(run.id).isEmpty())
@@ -555,9 +556,9 @@ class MultiResponseServiceTest
             )
 
             val started = controller.startRun(155, StartMultiResponseRunRequest(channelId = 255, requestId = "fanout-exclusion"))
-            val planned = candidates.findByRunId(started["id"] as Long)
+            val planned = candidates.findByRunId(started.id)
 
-            assertEquals(1, started["candidateCount"])
+            assertEquals(1, started.candidateCount)
             assertEquals(listOf(502L), planned.map { it.providerUserId })
         }
 
@@ -682,12 +683,12 @@ class MultiResponseServiceTest
                         synthesisEnabled = true,
                     ),
                 )
-            assertEquals(2, policy["maxCandidates"])
+            assertEquals(2, policy.maxCandidates)
 
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 200, requestId = "req-1"))
-            val runId = started["id"] as Long
-            assertEquals("running", started["status"])
-            assertEquals(2, started["candidateCount"])
+            val runId = started.id
+            assertEquals("running", started.status)
+            assertEquals(2, started.candidateCount)
             val planned = candidates.findByRunId(runId)
             assertEquals(listOf(1L, 2L), planned.map { it.providerUserId })
 
@@ -703,9 +704,9 @@ class MultiResponseServiceTest
                     SynthesizeRunRequest(answerRef = "answer:req-1:final", selectedCandidateIds = listOf(first.id)),
                 )
 
-            assertEquals("completed", synthesis["status"])
-            assertEquals("best_by_heuristic", synthesis["strategy"])
-            assertEquals("no candidate safety flags", synthesis["safetySummary"])
+            assertEquals("completed", synthesis.status)
+            assertEquals("best_by_heuristic", synthesis.strategy)
+            assertEquals("no candidate safety flags", synthesis.safetySummary)
             assertEquals(
                 "completed",
                 runs
@@ -717,22 +718,24 @@ class MultiResponseServiceTest
             assertNotNull(syntheses.findByRunId(runId))
             assertEquals("no candidate safety flags", syntheses.findByRunId(runId)?.safetySummary)
             val detail = controller.runDetail(runId)
-            assertEquals("completed", detail["status"])
-            assertEquals("avg=90.0, best=90, scored=1", detail["qualitySummary"])
-            assertEquals(2, (detail["candidates"] as List<*>).size)
-            val publicCandidate = (detail["candidates"] as List<*>).first() as Map<*, *>
-            assertEquals(null, publicCandidate["providerUserId"])
-            assertTrue(publicCandidate["providerLabel"].toString().startsWith("Provider "))
-            assertTrue(!publicCandidate.containsKey("answerRef"))
-            assertTrue(!(detail["synthesis"] as Map<*, *>).containsKey("answerRef"))
+            assertEquals("completed", detail.status)
+            assertEquals("avg=90.0, best=90, scored=1", detail.qualitySummary)
+            assertEquals(2, detail.candidates.size)
+            val publicCandidate = detail.candidates.first()
+            assertEquals(null, publicCandidate.providerUserId)
+            assertTrue(publicCandidate.providerLabel.startsWith("Provider "))
+            assertEquals(null, publicCandidate.answerRef)
+            val publicDetailJson = objectMapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(detail)
+            assertTrue(!publicDetailJson["candidates"].first().has("answerRef"))
+            assertTrue(!publicDetailJson["synthesis"].has("answerRef"))
             val adminDetail = controller.runDetail(runId, audience = "admin")
-            val adminCandidate = (adminDetail["candidates"] as List<*>).first() as Map<*, *>
-            assertEquals(1L, adminCandidate["providerUserId"])
-            assertEquals("answer:req-1:a", adminCandidate["answerRef"])
+            val adminCandidate = adminDetail.candidates.first()
+            assertEquals(1L, adminCandidate.providerUserId)
+            assertEquals("answer:req-1:a", adminCandidate.answerRef)
             val stats = controller.stats(100)
-            assertEquals(1, stats["recentRunCount"])
-            assertEquals(1, stats["completedRunCount"])
-            assertEquals(2.0, stats["averageActualFanout"])
+            assertEquals(1, stats.recentRunCount)
+            assertEquals(1, stats.completedRunCount)
+            assertEquals(2.0, stats.averageActualFanout)
             assertEquals(1, controller.recentRuns(100).size)
         }
 
@@ -761,10 +764,10 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            val run = runs.findById(started["id"] as Long).get()
+            val run = runs.findById(started.id).get()
             assertTrue(run.requestId.startsWith("redacted-"))
             assertTrue(!run.requestId.contains("super-secret-value"))
-            assertEquals(run.requestId, controller.recentRuns(100).first()["requestId"])
+            assertEquals(run.requestId, controller.recentRuns(100).first().requestId)
         }
 
         @Test
@@ -791,7 +794,7 @@ class MultiResponseServiceTest
                 ),
             )
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 201, requestId = "adopt-1"))
-            val runId = started["id"] as Long
+            val runId = started.id
             val candidate = candidates.findByRunId(runId).single()
             controller.recordCandidate(
                 runId,
@@ -806,11 +809,11 @@ class MultiResponseServiceTest
                     AdoptCandidateRequest(userId = 99, rating = 1, reason = "token=abc123 이 답이 제일 정확"),
                 )
 
-            assertEquals("completed", adopted["status"])
-            assertEquals(candidate.id, adopted["selectedCandidateId"])
-            assertEquals(100, adopted["candidateQualityScore"])
-            assertNotNull(adopted["synthesisId"])
-            assertNotNull(adopted["feedbackId"])
+            assertEquals("completed", adopted.status)
+            assertEquals(candidate.id, adopted.selectedCandidateId)
+            assertEquals(100, adopted.candidateQualityScore)
+            assertNotNull(adopted.synthesisId)
+            assertNotNull(adopted.feedbackId)
             assertEquals(candidate.id, runs.findById(runId).get().selectedCandidateId)
             assertEquals("user_selected_candidate", syntheses.findByRunId(runId)?.strategy)
             val feedback = feedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 201).single()
@@ -849,7 +852,7 @@ class MultiResponseServiceTest
                 100,
                 SaveMultiResponsePolicyRequest(channelId = 202, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
             )
-            val firstRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-1"))["id"] as Long
+            val firstRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-1")).id
             val firstCandidates = candidates.findByRunId(firstRunId)
             controller.recordCandidate(
                 firstRunId,
@@ -861,7 +864,7 @@ class MultiResponseServiceTest
                 firstCandidates.first { it.providerUserId == 72L }.id,
                 RecordCandidateRequest(status = "timeout", latencyMs = 15_000),
             )
-            val secondRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-2"))["id"] as Long
+            val secondRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-2")).id
             val secondCandidates = candidates.findByRunId(secondRunId)
             controller.recordCandidate(
                 secondRunId,
@@ -922,7 +925,7 @@ class MultiResponseServiceTest
                 SaveMultiResponsePolicyRequest(channelId = 205, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
             )
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 205, requestId = "req-best-effort"))
-            val runId = started["id"] as Long
+            val runId = started.id
             val planned = candidates.findByRunId(runId)
             val good = planned.first { it.providerUserId == 51L }
             val timedOut = planned.first { it.providerUserId == 52L }
@@ -939,9 +942,9 @@ class MultiResponseServiceTest
 
             val completed = controller.completeBest(runId, CompleteBestMultiResponseRunRequest())
 
-            assertEquals("completed", completed["status"])
-            assertEquals(good.id, completed["selectedCandidateId"])
-            assertEquals("answer:req-best-effort:good", completed["answerRef"])
+            assertEquals("completed", completed.status)
+            assertEquals(good.id, completed.selectedCandidateId)
+            assertEquals("answer:req-best-effort:good", completed.answerRef)
             assertEquals(
                 "completed",
                 runs
@@ -969,7 +972,7 @@ class MultiResponseServiceTest
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 206, mode = "compare", maxCandidates = 1))
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 206, requestId = "req-all-fail"))
-            val runId = started["id"] as Long
+            val runId = started.id
             val planned = candidates.findByRunId(runId).single()
             controller.recordCandidate(
                 runId,
@@ -979,8 +982,8 @@ class MultiResponseServiceTest
 
             val completed = controller.completeBest(runId, CompleteBestMultiResponseRunRequest())
 
-            assertEquals("failed", completed["status"])
-            assertNotNull(completed["fallbackReason"])
+            assertEquals("failed", completed.status)
+            assertNotNull(completed.fallbackReason)
             assertEquals(
                 "failed",
                 runs
@@ -1008,11 +1011,11 @@ class MultiResponseServiceTest
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 1))
             val firstRun = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-a"))
             val secondRun = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-b"))
-            val foreignCandidate = candidates.findByRunId(firstRun["id"] as Long).first()
+            val foreignCandidate = candidates.findByRunId(firstRun.id).first()
 
             assertThrows(IllegalArgumentException::class.java) {
                 controller.synthesize(
-                    secondRun["id"] as Long,
+                    secondRun.id,
                     SynthesizeRunRequest(answerRef = "answer:req-b:final", selectedCandidateIds = listOf(foreignCandidate.id)),
                 )
             }
@@ -1035,8 +1038,8 @@ class MultiResponseServiceTest
 
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 200, requestId = "req-2"))
 
-            assertEquals("no_provider", started["status"])
-            assertEquals(0, started["candidateCount"])
+            assertEquals("no_provider", started.status)
+            assertEquals(0, started.candidateCount)
         }
 
         @Test
@@ -1089,9 +1092,9 @@ class MultiResponseServiceTest
 
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 201, requestId = "req-distinct"))
 
-            assertEquals("running", started["status"])
-            assertEquals(1, started["candidateCount"])
-            val planned = candidates.findByRunId(started["id"] as Long)
+            assertEquals("running", started.status)
+            assertEquals(1, started.candidateCount)
+            val planned = candidates.findByRunId(started.id)
             assertEquals(listOf(10L), planned.map { it.providerUserId })
         }
 
@@ -1121,10 +1124,10 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            assertEquals("blocked_sensitive", started["status"])
-            assertEquals("skipped_sensitive_prompt", started["ragContextStatus"])
-            assertEquals(0, candidates.findByRunId(started["id"] as Long).size)
-            val sensitiveRun = runs.findById(started["id"] as Long).get()
+            assertEquals("blocked_sensitive", started.status)
+            assertEquals("skipped_sensitive_prompt", started.ragContextStatus)
+            assertEquals(0, candidates.findByRunId(started.id).size)
+            val sensitiveRun = runs.findById(started.id).get()
             assertEquals("skipped_sensitive_prompt", sensitiveRun.ragContextStatus)
             assertEquals(
                 "multi-response fan-out disabled for sensitive-looking prompt",
@@ -1140,9 +1143,9 @@ class MultiResponseServiceTest
                         promptPreview = "이 password 값이 안전한지 여러 모델로 비교해줘",
                     ),
                 )
-            assertEquals("blocked_sensitive", passwordOnly["status"])
-            assertEquals("skipped_sensitive_prompt", passwordOnly["ragContextStatus"])
-            assertEquals(0, candidates.findByRunId(passwordOnly["id"] as Long).size)
+            assertEquals("blocked_sensitive", passwordOnly.status)
+            assertEquals("skipped_sensitive_prompt", passwordOnly.ragContextStatus)
+            assertEquals(0, candidates.findByRunId(passwordOnly.id).size)
         }
 
         @Test
@@ -1163,16 +1166,16 @@ class MultiResponseServiceTest
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 2))
 
             val beforeOptOut = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-opt-in"))
-            assertEquals("running", beforeOptOut["status"])
-            assertEquals(listOf(21L), candidates.findByRunId(beforeOptOut["id"] as Long).map { it.providerUserId })
+            assertEquals("running", beforeOptOut.status)
+            assertEquals(listOf(21L), candidates.findByRunId(beforeOptOut.id).map { it.providerUserId })
 
             provider.capabilityTags = "coding"
             providerCapabilities.saveAndFlush(provider)
 
             val afterOptOut = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-opt-out"))
-            assertEquals("no_provider", afterOptOut["status"])
-            assertEquals(0, afterOptOut["candidateCount"])
-            assertEquals(0, candidates.findByRunId(afterOptOut["id"] as Long).size)
+            assertEquals("no_provider", afterOptOut.status)
+            assertEquals(0, afterOptOut.candidateCount)
+            assertEquals(0, candidates.findByRunId(afterOptOut.id).size)
         }
 
         @Test
@@ -1205,11 +1208,10 @@ class MultiResponseServiceTest
 
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 203, requestId = "req-critical"))
             val summary = service.operationsSummary(100, channelId = 203)
-            val rawApiSummary = controller.operationsSummary(100, channelId = 203)["summary"]
-            val apiSummary = rawApiSummary as MultiResponseOperationsDashboardResponse
+            val apiSummary = controller.operationsSummary(100, channelId = 203).summary
 
-            assertEquals("no_provider", started["status"])
-            assertEquals(0, started["candidateCount"])
+            assertEquals("no_provider", started.status)
+            assertEquals(0, started.candidateCount)
             assertEquals(1, summary.providerProtectionBlockedCount)
             assertEquals(1, apiSummary.providerProtectionBlockedCount)
             assertTrue(summary.riskCodes.contains("provider_protection_blocked"))
@@ -1243,10 +1245,10 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            assertEquals("running", started["status"])
-            assertEquals("ready", started["ragContextStatus"])
-            assertEquals(1, started["candidateCount"])
-            val run = runs.findById(started["id"] as Long).get()
+            assertEquals("running", started.status)
+            assertEquals("ready", started.ragContextStatus)
+            assertEquals(1, started.candidateCount)
+            val run = runs.findById(started.id).get()
             assertEquals("ready", run.ragContextStatus)
             assertNotNull(run.ragContextSourceIds)
             assertEquals(1, run.ragContextSourceIds!!.split(",").size)
@@ -1314,9 +1316,9 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            assertEquals("running", started["status"])
-            assertEquals("fallback:no_indexed_knowledge_match", started["ragContextStatus"])
-            val run = runs.findById(started["id"] as Long).get()
+            assertEquals("running", started.status)
+            assertEquals("fallback:no_indexed_knowledge_match", started.ragContextStatus)
+            val run = runs.findById(started.id).get()
             assertNull(run.ragContextSourceIds)
             assertEquals(0, run.ragContextChars)
             assertEquals(1, candidates.findByRunId(run.id).size)
@@ -1367,9 +1369,9 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            assertEquals("running", started["status"])
-            assertEquals("fallback:IllegalStateException", started["ragContextStatus"])
-            val run = runs.findById(started["id"] as Long).get()
+            assertEquals("running", started.status)
+            assertEquals("fallback:IllegalStateException", started.ragContextStatus)
+            val run = runs.findById(started.id).get()
             assertNull(run.ragContextSourceIds)
             assertEquals(0, run.ragContextChars)
             assertEquals(1, candidates.findByRunId(run.id).size)
@@ -1409,9 +1411,9 @@ class MultiResponseServiceTest
 
             val started = safetyController.startRun(300, StartMultiResponseRunRequest(channelId = 230, requestId = "req-safe-plan"))
 
-            assertEquals("running", started["status"])
-            assertEquals(1, started["candidateCount"])
-            assertEquals(listOf(101L), candidates.findByRunId(started["id"] as Long).map { it.providerUserId })
+            assertEquals("running", started.status)
+            assertEquals(1, started.candidateCount)
+            assertEquals(listOf(101L), candidates.findByRunId(started.id).map { it.providerUserId })
         }
 
         @Test
@@ -1427,11 +1429,11 @@ class MultiResponseServiceTest
                     ),
                 )
 
-            assertEquals(200, response["finalLength"])
-            assertEquals(true, response["truncated"])
-            assertEquals(1200, response["editIntervalMs"])
-            assertEquals("discord_message_truncated_to_200", response["warning"])
-            val snapshots = response["snapshots"] as List<*>
+            assertEquals(200, response.finalLength)
+            assertEquals(true, response.truncated)
+            assertEquals(1200, response.editIntervalMs)
+            assertEquals("discord_message_truncated_to_200", response.warning)
+            val snapshots = response.snapshots
             assertEquals(3, snapshots.size)
             val first = snapshots[0] as PseudoStreamSnapshot
             val second = snapshots[1] as PseudoStreamSnapshot
@@ -1464,10 +1466,10 @@ class MultiResponseServiceTest
 
             val started = safetyController.startRun(301, StartMultiResponseRunRequest(channelId = 231, requestId = "req-safe-block"))
 
-            assertEquals("no_provider", started["status"])
-            assertEquals(0, started["candidateCount"])
-            assertEquals(0, candidates.findByRunId(started["id"] as Long).size)
-            assertNotNull(runs.findById(started["id"] as Long).get().failureReason)
+            assertEquals("no_provider", started.status)
+            assertEquals(0, started.candidateCount)
+            assertEquals(0, candidates.findByRunId(started.id).size)
+            assertNotNull(runs.findById(started.id).get().failureReason)
         }
 
         @Test
@@ -1500,7 +1502,7 @@ class MultiResponseServiceTest
                 100,
                 SaveMultiResponsePolicyRequest(channelId = 208, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
             )
-            val runId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 208, requestId = "decision-1"))["id"] as Long
+            val runId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 208, requestId = "decision-1")).id
             val planned = candidates.findByRunId(runId)
             val selected = planned.first { it.providerUserId == 81L }
             val timedOut = planned.first { it.providerUserId == 82L }
@@ -1518,18 +1520,18 @@ class MultiResponseServiceTest
 
             val response = controller.decisionSummary(100, channelId = 208, limit = 10)
 
-            assertEquals(1, response["recentRunCount"])
-            assertEquals(1, response["completedRunCount"])
-            assertEquals(2, response["totalCandidateCount"])
-            assertEquals(1, response["acceptedCandidateCount"])
-            assertEquals(1, response["timeoutCandidateCount"])
-            assertEquals(92.0, response["averageQualityScore"])
-            assertEquals(1.0, response["adoptionRate"])
-            assertTrue((response["riskCodes"] as List<*>).contains("high_timeout_rate"))
-            val statusCounts = response["statusCounts"] as Map<*, *>
+            assertEquals(1, response.recentRunCount)
+            assertEquals(1, response.completedRunCount)
+            assertEquals(2, response.totalCandidateCount)
+            assertEquals(1, response.acceptedCandidateCount)
+            assertEquals(1, response.timeoutCandidateCount)
+            assertEquals(92.0, response.averageQualityScore)
+            assertEquals(1.0, response.adoptionRate)
+            assertTrue(response.riskCodes.contains("high_timeout_rate"))
+            val statusCounts = response.statusCounts
             assertEquals(1, statusCounts["completed"])
             assertEquals(1, statusCounts["timeout"])
-            val decisions = response["recentDecisions"] as List<*>
+            val decisions = response.recentDecisions
             val selectedDecision =
                 decisions.first {
                     (it as MultiResponseDecisionItem).candidateId == selected.id
@@ -1574,7 +1576,7 @@ class MultiResponseServiceTest
                 420,
                 SaveMultiResponsePolicyRequest(channelId = 520, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
             )
-            val runId = controller.startRun(420, StartMultiResponseRunRequest(channelId = 520, requestId = "ops-1"))["id"] as Long
+            val runId = controller.startRun(420, StartMultiResponseRunRequest(channelId = 520, requestId = "ops-1")).id
             val planned = candidates.findByRunId(runId)
             val selected = planned.first { it.providerUserId == 181L }
             val timedOut = planned.first { it.providerUserId == 182L }
@@ -1591,7 +1593,7 @@ class MultiResponseServiceTest
             controller.synthesize(runId, SynthesizeRunRequest("answer:ops-1:final", listOf(selected.id)))
 
             val response = controller.operationsSummary(420, channelId = 520)
-            val summary = response["summary"] as MultiResponseOperationsDashboardResponse
+            val summary = response.summary
 
             assertEquals("blocked", summary.status)
             assertEquals(false, summary.safeToEnableAdvanced)
@@ -1610,8 +1612,7 @@ class MultiResponseServiceTest
             assertEquals(2, summary.decisionSummary.totalCandidateCount)
 
             val adminResponse = controller.operationsSummary(420, channelId = 520, audience = "admin")
-            val adminSummary =
-                adminResponse["summary"] as MultiResponseOperationsDashboardResponse
+            val adminSummary = adminResponse.summary
             assertTrue(adminSummary.providerLoads.any { it.providerUserId == 182L })
         }
 

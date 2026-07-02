@@ -48,7 +48,7 @@ class MultiResponseController(
     fun savePolicy(
         @PathVariable guildId: Long,
         @RequestBody request: SaveMultiResponsePolicyRequest,
-    ): Map<String, Any?> =
+    ): SavePolicyResponse =
         SavePolicyResponse
             .from(
                 service.savePolicy(
@@ -63,23 +63,22 @@ class MultiResponseController(
                     synthesisEnabled = request.synthesisEnabled,
                     disabledReason = request.disabledReason,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/{guildId}/runs")
     fun startRun(
         @PathVariable guildId: Long,
         @RequestBody request: StartMultiResponseRunRequest,
-    ): Map<String, Any?> =
+    ): StartRunResponse =
         StartRunResponse
             .from(service.startRun(guildId, request.channelId, request.requestId, request.promptPreview, request.responseMode))
-            .toMap()
 
     @PostMapping("/runs/{runId}/candidates/{candidateId}")
     fun recordCandidate(
         @PathVariable runId: Long,
         @PathVariable candidateId: Long,
         @RequestBody request: RecordCandidateRequest,
-    ): Map<String, Any?> =
+    ): RecordCandidateResponse =
         RecordCandidateResponse
             .from(
                 service.recordCandidate(
@@ -91,13 +90,13 @@ class MultiResponseController(
                     safetyFlags = request.safetyFlags,
                     qualityScore = request.qualityScore,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/runs/{runId}/synthesis")
     fun synthesize(
         @PathVariable runId: Long,
         @RequestBody request: SynthesizeRunRequest,
-    ): Map<String, Any?> =
+    ): SynthesizeResponse =
         SynthesizeResponse
             .from(
                 service.synthesize(
@@ -108,46 +107,45 @@ class MultiResponseController(
                     qualitySummary = request.qualitySummary,
                     safetySummary = request.safetySummary,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/runs/{runId}/candidates/{candidateId}/adopt")
     fun adoptCandidate(
         @PathVariable runId: Long,
         @PathVariable candidateId: Long,
         @RequestBody request: AdoptCandidateRequest,
-    ): Map<String, Any?> =
+    ): AdoptCandidateResponse =
         AdoptCandidateResponse
             .from(service.adoptCandidate(runId, candidateId, request.userId, request.rating, request.reason))
-            .toMap()
 
     @PostMapping("/runs/{runId}/complete-best")
     fun completeBest(
         @PathVariable runId: Long,
         @RequestBody request: CompleteBestMultiResponseRunRequest = CompleteBestMultiResponseRunRequest(),
-    ): Map<String, Any?> = CompleteBestResponse.from(service.completeBestEffort(runId, request.strategy)).toMap()
+    ): CompleteBestResponse = CompleteBestResponse.from(service.completeBestEffort(runId, request.strategy))
 
     @PostMapping("/runs/{runId}/fail")
     fun fail(
         @PathVariable runId: Long,
         @RequestBody request: FailMultiResponseRunRequest,
-    ): Map<String, Any?> = FailRunResponse.from(service.failRun(runId, request.reason)).toMap()
+    ): FailRunResponse = FailRunResponse.from(service.failRun(runId, request.reason))
 
     @PostMapping("/pseudo-stream-plan")
     fun pseudoStreamPlan(
         @RequestBody request: PseudoStreamPlanRequest,
-    ): Map<String, Any?> =
-        PseudoStreamPlanResponse.from(service.pseudoStreamPlan(request.answer, request.steps, request.maxDiscordChars)).toMap()
+    ): PseudoStreamPlanResponse =
+        PseudoStreamPlanResponse.from(service.pseudoStreamPlan(request.answer, request.steps, request.maxDiscordChars))
 
     @GetMapping("/{guildId}/runs")
     fun recentRuns(
         @PathVariable guildId: Long,
-    ): List<Map<String, Any?>> = service.listRecent(guildId).map { RecentRunResponse.from(it).toMap() }
+    ): List<RecentRunResponse> = service.listRecent(guildId).map(RecentRunResponse::from)
 
     @GetMapping("/runs/{runId}")
     fun runDetail(
         @PathVariable runId: Long,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): Map<String, Any?> = RunDetailResponse.from(service.runDetail(runId), audience).toMap()
+    ): RunDetailResponse = RunDetailResponse.from(service.runDetail(runId), audience)
 
     @GetMapping("/{guildId}/provider-load")
     fun providerLoad(
@@ -163,12 +161,12 @@ class MultiResponseController(
         @PathVariable guildId: Long,
         @RequestParam(required = false) channelId: Long? = null,
         @RequestParam(defaultValue = "20") limit: Int = 20,
-    ): Map<String, Any?> = DecisionSummaryResponse.from(service.decisionSummary(guildId, channelId, limit)).toMap()
+    ): DecisionSummaryResponse = DecisionSummaryResponse.from(service.decisionSummary(guildId, channelId, limit))
 
     @GetMapping("/{guildId}/stats")
     fun stats(
         @PathVariable guildId: Long,
-    ): Map<String, Any?> = StatsResponse.from(service.dailyStats(guildId)).toMap()
+    ): StatsResponse = StatsResponse.from(service.dailyStats(guildId))
 
     @GetMapping("/{guildId}/recommendation")
     fun fanoutRecommendation(
@@ -177,20 +175,19 @@ class MultiResponseController(
         @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
         @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): Map<String, Any?> =
+    ): FanoutRecommendationResponse =
         FanoutRecommendationResponse
             .from(
                 service.recommendFanout(guildId, channelId, responseMode, requestedCandidates),
                 DashboardAudience.from(audience),
-            ).toMap()
+            )
 
     @GetMapping("/{guildId}/operations-summary")
     fun operationsSummary(
         @PathVariable guildId: Long,
         @RequestParam(required = false) channelId: Long? = null,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): Map<String, Any?> =
+    ): OperationsSummaryResponse =
         OperationsSummaryResponse
             .from(service.operationsSummary(guildId, channelId), DashboardAudience.from(audience))
-            .toMap()
 }

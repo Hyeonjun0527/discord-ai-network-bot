@@ -115,44 +115,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      # java(setup-java)·gradle 은 그대로(정상). python 만 uv 로 교체 — self-hosted arm64 에 setup-python
-      # prebuilt 가 없어 실패하므로, 마지막 스캔 스크립트를 uv 보장 3.12 venv 에서 실행한다.
-      - name: uv 설치(self-hosted arm64 python 3.12 보장)
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          activate-environment: true
-      - name: central-server redaction focused 테스트 실행(prod 프로파일 파일 로그 생성)
-        working-directory: central-server
-        env:
-          SPRING_PROFILES_ACTIVE: prod
-          LOG_DIR: ${{ runner.temp }}/nexa-log-redaction-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          set -euo pipefail
-          rm -rf "$LOG_DIR"
-          mkdir -p "$LOG_DIR"
-          ./gradlew cleanTest test --no-daemon --console=plain \
-            --tests "*SensitiveLoggingTest" \
-            --tests "*RedactingMessageConverterTest"
-      - name: 로그 금지 문자열 스캔(snowflake/API key/Bearer 토큰 0건 강제)
+      - name: central-server redaction focused 테스트 + 로그 스캔
         env:
           LOG_DIR: ${{ runner.temp }}/nexa-log-redaction-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          logs=("$LOG_DIR"/*.log "$LOG_DIR"/*.log.gz)
-          if [ "${#logs[@]}" -eq 0 ]; then
-            echo "::error::redaction focused test did not create log files under LOG_DIR"
-            exit 1
-          fi
-          # .gz 도 펼쳐서 스캔.
-          for f in "$LOG_DIR"/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
-          logs=("$LOG_DIR"/*.log)
-          if [ "${#logs[@]}" -eq 0 ]; then
-            echo "::error::redaction focused test did not leave .log files after gunzip"
-            exit 1
-          fi
-          uv run python scripts/scan-sensitive-logs.py "${logs[@]}"
+        run: ./scripts/nexa-verify.sh security-redaction
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:

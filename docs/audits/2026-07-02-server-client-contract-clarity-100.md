@@ -20,6 +20,7 @@
 - `FIXED-2026-07-02-B`: 두 번째 배치에서 보완.
 - `FIXED-2026-07-02-C`: 세 번째 배치에서 보완.
 - `FIXED-2026-07-02-D`: 네 번째 배치에서 보완.
+- `FIXED-2026-07-02-E`: 다섯 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -49,10 +50,10 @@
 23. [x] `admin-console`의 base URL이 빈 문자열이면 fetch URL이 path만 되어 Bugsink `serverBaseUrl`과 실제 URL이 어긋날 수 있음. 보완: URL builder를 단일화. 상태: `FIXED-2026-07-02-D`.
 24. [x] `admin-console` 성공 응답 JSON parse 실패가 구조화되지 않음. 보완: `INVALID_RESPONSE_JSON` client-side error. 상태: `FIXED-2026-07-02-D`.
 25. [x] `admin-console`에는 API parser 단위 테스트가 없음. 보완: TypeScript emit + Node 내장 test runner fixture 검증. 상태: `FIXED-2026-07-02-D`.
-26. [ ] `PresetRegistryController`에 `Map<String, Any?>` 응답 27건. 보완: endpoint별 response DTO.
-27. [ ] `PresetRegistryController`에 `mapOf` 응답 조립 13건. 보완: DTO factory로 필드명 고정.
-28. [ ] `PresetRegistryResponses.kt`에 `Map<String, Any?>` 변환 11건. 보완: nested DTO로 contract 고정.
-29. [ ] `PresetRegistryResponses.kt`에 `mapOf` 변환 11건. 보완: `toMap()` 제거.
+26. [x] `PresetRegistryController`에 `Map<String, Any?>` 응답 27건. 보완: endpoint별 response DTO. 상태: `FIXED-2026-07-02-E`.
+27. [x] `PresetRegistryController`에 `mapOf` 응답 조립 13건. 보완: DTO factory로 필드명 고정. 상태: `FIXED-2026-07-02-E`.
+28. [x] `PresetRegistryResponses.kt`에 `Map<String, Any?>` 변환 11건. 보완: nested DTO로 contract 고정. 상태: `FIXED-2026-07-02-E`.
+29. [x] `PresetRegistryResponses.kt`에 `mapOf` 변환 11건. 보완: `toMap()` 제거. 상태: `FIXED-2026-07-02-E`.
 30. [ ] `MultiResponseController`에 `Map<String, Any?>` 응답 14건. 보완: multi-response DTO.
 31. [ ] `MultiResponseResponses.kt`에 `Map<String, Any?>` 응답 14건. 보완: typed response tree.
 32. [ ] `MultiResponseResponses.kt`에 `mapOf` 응답 조립 14건. 보완: DTO serializer.

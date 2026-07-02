@@ -17,7 +17,7 @@ jobs:
   # 단위/ArchUnit/요구사항 추적성/springdoc 스모크 + Kover 커버리지 게이트(빠름, Docker 불필요).
   build:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
     timeout-minutes: 30
     defaults:
       run:
@@ -48,7 +48,7 @@ jobs:
   # Docker 의존이라 build 잡과 분리(플레이키함 격리). 두 잡 모두 그린이어야 머지.
   integration:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
     timeout-minutes: 20
     defaults:
       run:

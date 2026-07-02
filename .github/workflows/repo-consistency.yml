@@ -25,7 +25,7 @@ concurrency:
 jobs:
   consistency:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

@@ -25,11 +25,19 @@ This baseline separates the workflow files NEXA work may need to touch from rele
 
 ## Minimal workflow surface for NEXA
 
-Default NEXA social-behavior work should avoid workflow edits. Use local verification first:
+Default NEXA social-behavior work should avoid workflow edits. Use local verification first. For broad
+agent-generated branches, run the representative pre-push gate so the same redaction scanner that CI runs is not skipped:
+
+```bash
+./scripts/nexa-verify.sh ci
+```
+
+For narrow documentation-only or central-only changes, the smaller scopes remain available:
 
 ```bash
 ./scripts/nexa-verify.sh docs
 ./scripts/nexa-verify.sh central
+./scripts/nexa-verify.sh security-redaction
 ```
 
 If a future NEXA task truly needs CI wiring, the minimum candidate workflows are:
@@ -66,7 +74,8 @@ Reason: these workflows have write permissions, release tags, self-hosted runner
 ## Verification for this snapshot
 
 ```bash
-./scripts/nexa-verify.sh docs
+./scripts/nexa-verify.sh ci
 ```
 
-The docs scope now validates the task graph, checks the generated central package graph snapshot, checks links, and runs `git diff --check`.
+The `ci` scope runs docs, central, provider-agent, i18n, protocol, and security redaction checks in the same local
+wrapper agents should use before pushing broad branches.

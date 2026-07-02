@@ -27,8 +27,9 @@ scope:
   i18n      i18n SSOT completeness + generated artifact drift
   protocol  wire contract drift + 양측 contract 테스트
   security-redaction  focused log redaction test + scanner gate
+  ci        docs, central, agent, i18n, protocol, security-redaction 순서로 모두 실행
   contracts protocol 과 동일한 alias
-  all       docs, central, agent, protocol 순서로 모두 실행
+  all       ci 와 동일한 alias
 
 환경 변수:
   NEXA_JAVA_HOME   central-server 검증에 사용할 JDK 21 경로
@@ -101,6 +102,11 @@ verify_security_redaction() {
     log_dir="$(mktemp -d "${TMPDIR:-/tmp}/nexa-log-redaction.XXXXXX")"
   fi
 
+  if [[ "$log_dir" == "/" || "$log_dir" == "$REPO_ROOT" ]]; then
+    printf 'unsafe LOG_DIR for redaction verification: %s\n' "$log_dir" >&2
+    exit 2
+  fi
+
   rm -rf "$log_dir"
   mkdir -p "$log_dir"
   (
@@ -138,6 +144,7 @@ verify_all() {
   verify_agent
   verify_i18n
   verify_protocol
+  verify_security_redaction
 }
 
 run_scope() {
@@ -150,7 +157,7 @@ run_scope() {
     i18n) verify_i18n ;;
     security-redaction|redaction) verify_security_redaction ;;
     protocol|contracts) verify_protocol ;;
-    all) verify_all ;;
+    ci|all) verify_all ;;
     -h|--help|help)
       show_usage
       ;;

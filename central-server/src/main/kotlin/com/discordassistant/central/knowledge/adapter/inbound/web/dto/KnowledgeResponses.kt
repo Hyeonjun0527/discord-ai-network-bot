@@ -5,9 +5,7 @@ import com.discordassistant.central.knowledge.application.KnowledgeSourceMutatio
 import com.discordassistant.central.knowledge.application.KnowledgeSpaceMutationResult
 import com.discordassistant.central.knowledge.application.RemoveKnowledgeSourceResult
 
-// 응답 DTO (인바운드 웹 어댑터). 조립 책임만 컨트롤러 인라인 mapOf 에서 흡수했다.
-// 각 toMap() 은 원본 mapOf 의 키 이름·값·순서·null·조건부키를 1바이트도 바꾸지 않고 그대로 재현한다
-// (OpenApiContractTest·클라이언트 계약). 입력은 application 의 *Result DTO 만 참조한다(엔티티/리포지토리 의존 금지).
+// 응답 DTO (인바운드 웹 어댑터). 기존 JSON field 이름은 유지하되 Map 기반 응답 조립을 제거한다.
 
 /** createSpace 응답. */
 data class CreateKnowledgeSpaceResponse(
@@ -15,8 +13,6 @@ data class CreateKnowledgeSpaceResponse(
     val status: String,
     val displayName: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status, "displayName" to displayName)
-
     companion object {
         fun from(result: KnowledgeSpaceMutationResult): CreateKnowledgeSpaceResponse =
             CreateKnowledgeSpaceResponse(id = result.id, status = result.status, displayName = result.displayName)
@@ -25,22 +21,27 @@ data class CreateKnowledgeSpaceResponse(
 
 /** addSource(+인라인 색인) 응답. status 는 effectiveStatus. */
 data class AddKnowledgeSourceResponse(
-    val result: AddKnowledgeSourceResult,
+    val id: Long,
+    val status: String,
+    val riskLevel: String,
+    val inlineIndexed: Boolean,
+    val indexSkippedReason: String?,
+    val documentId: Long?,
+    val indexJobId: Long?,
+    val chunkCount: Int,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "id" to result.id,
-            "status" to result.effectiveStatus,
-            "riskLevel" to result.riskLevel,
-            "inlineIndexed" to result.inlineIndexed,
-            "indexSkippedReason" to result.indexSkippedReason,
-            "documentId" to result.documentId,
-            "indexJobId" to result.indexJobId,
-            "chunkCount" to result.chunkCount,
-        )
-
     companion object {
-        fun from(result: AddKnowledgeSourceResult): AddKnowledgeSourceResponse = AddKnowledgeSourceResponse(result)
+        fun from(result: AddKnowledgeSourceResult): AddKnowledgeSourceResponse =
+            AddKnowledgeSourceResponse(
+                id = result.id,
+                status = result.effectiveStatus,
+                riskLevel = result.riskLevel,
+                inlineIndexed = result.inlineIndexed,
+                indexSkippedReason = result.indexSkippedReason,
+                documentId = result.documentId,
+                indexJobId = result.indexJobId,
+                chunkCount = result.chunkCount,
+            )
     }
 }
 
@@ -50,8 +51,6 @@ data class ApproveKnowledgeSourceResponse(
     val status: String,
     val riskLevel: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status, "riskLevel" to riskLevel)
-
     companion object {
         fun from(result: KnowledgeSourceMutationResult): ApproveKnowledgeSourceResponse =
             ApproveKnowledgeSourceResponse(id = result.id, status = result.status, riskLevel = result.riskLevel)
@@ -64,8 +63,6 @@ data class MarkKnowledgeSourceIndexedResponse(
     val status: String,
     val indexedAt: String?,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status, "indexedAt" to indexedAt)
-
     companion object {
         fun from(result: KnowledgeSourceMutationResult): MarkKnowledgeSourceIndexedResponse =
             MarkKnowledgeSourceIndexedResponse(id = result.id, status = result.status, indexedAt = result.indexedAt?.toString())
@@ -74,20 +71,23 @@ data class MarkKnowledgeSourceIndexedResponse(
 
 /** removeSource(+삭제 색인 tombstone) 응답. */
 data class RemoveKnowledgeSourceResponse(
-    val result: RemoveKnowledgeSourceResult,
+    val id: Long,
+    val status: String,
+    val deletionIndexJobId: Long?,
+    val tombstonedDocumentCount: Int,
+    val tombstonedChunkCount: Int,
+    val remainingReadyChunkCount: Int?,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "id" to result.id,
-            "status" to result.status,
-            "deletionIndexJobId" to result.deletionIndexJobId,
-            "tombstonedDocumentCount" to result.tombstonedDocumentCount,
-            "tombstonedChunkCount" to result.tombstonedChunkCount,
-            "remainingReadyChunkCount" to result.remainingReadyChunkCount,
-        )
-
     companion object {
-        fun from(result: RemoveKnowledgeSourceResult): RemoveKnowledgeSourceResponse = RemoveKnowledgeSourceResponse(result)
+        fun from(result: RemoveKnowledgeSourceResult): RemoveKnowledgeSourceResponse =
+            RemoveKnowledgeSourceResponse(
+                id = result.id,
+                status = result.status,
+                deletionIndexJobId = result.deletionIndexJobId,
+                tombstonedDocumentCount = result.tombstonedDocumentCount,
+                tombstonedChunkCount = result.tombstonedChunkCount,
+                remainingReadyChunkCount = result.remainingReadyChunkCount,
+            )
     }
 }
 
@@ -96,8 +96,6 @@ data class RejectKnowledgeSourceResponse(
     val id: Long,
     val status: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status)
-
     companion object {
         fun from(result: KnowledgeSourceMutationResult): RejectKnowledgeSourceResponse =
             RejectKnowledgeSourceResponse(id = result.id, status = result.status)

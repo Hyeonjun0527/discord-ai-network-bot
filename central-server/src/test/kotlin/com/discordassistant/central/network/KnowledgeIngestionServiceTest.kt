@@ -198,7 +198,7 @@ class KnowledgeIngestionServiceTest
                         indexName = "guild-100-channel-200",
                     ),
                 )
-            val spaceId = spaceResponse["id"] as Long
+            val spaceId = spaceResponse.id
 
             val sourceResponse =
                 controller.addSource(
@@ -212,8 +212,8 @@ class KnowledgeIngestionServiceTest
                         actorUserId = 77,
                     ),
                 )
-            val sourceId = sourceResponse["id"] as Long
-            assertEquals("normal", sourceResponse["riskLevel"])
+            val sourceId = sourceResponse.id
+            assertEquals("normal", sourceResponse.riskLevel)
             assertNotNull(sources.findByKnowledgeSpaceId(spaceId).single().contentHash)
 
             val indexed =
@@ -223,7 +223,7 @@ class KnowledgeIngestionServiceTest
                     sourceId,
                     MarkKnowledgeSourceIndexedRequest(chunkCount = 12),
                 )
-            assertEquals("indexed", indexed["status"])
+            assertEquals("indexed", indexed.status)
             assertEquals(12, spaces.findByGuildIdAndId(100, spaceId)!!.chunkCount)
             assertEquals("ready", spaces.findByGuildIdAndId(100, spaceId)!!.status.wire)
         }
@@ -410,7 +410,7 @@ class KnowledgeIngestionServiceTest
                     source.id,
                     RejectKnowledgeSourceRequest("secret detected"),
                 )
-            assertTrue(rejected["status"].toString().startsWith("rejected"))
+            assertTrue(rejected.status.startsWith("rejected"))
         }
 
         @Test
@@ -810,12 +810,12 @@ class KnowledgeIngestionServiceTest
                     nonHttps.id,
                     ApproveKnowledgeSourceRequest("trusted internal migration note"),
                 )
-            assertEquals("pending", approved["status"])
+            assertEquals("pending", approved.status)
             controller.markIndexed(100, space.id, nonHttps.id, MarkKnowledgeSourceIndexedRequest(chunkCount = 2))
             assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, nonHttps.id)?.status?.wire)
 
             val rejected = controller.reject(100, space.id, badType.id, RejectKnowledgeSourceRequest("token=secret should hide"))
-            assertEquals("rejected:[redacted] should hide", rejected["status"])
+            assertEquals("rejected:[redacted] should hide", rejected.status)
 
             val afterReview = controller.spaceStatus(100, space.id)
             assertEquals(1, afterReview.indexedSourceCount)

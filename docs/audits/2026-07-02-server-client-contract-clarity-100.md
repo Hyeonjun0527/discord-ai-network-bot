@@ -22,6 +22,7 @@
 - `FIXED-2026-07-02-D`: 네 번째 배치에서 보완.
 - `FIXED-2026-07-02-E`: 다섯 번째 배치에서 보완.
 - `FIXED-2026-07-02-F`: 여섯 번째 배치에서 보완.
+- `FIXED-2026-07-02-G`: 일곱 번째 배치에서 보완.
 - `OPEN`: 아직 보완 필요. 다음 배치에서 하나씩 닫는다.
 
 ## 체크리스트
@@ -58,8 +59,8 @@
 30. [x] `MultiResponseController`에 `Map<String, Any?>` 응답 14건. 보완: multi-response DTO. 상태: `FIXED-2026-07-02-F`.
 31. [x] `MultiResponseResponses.kt`에 `Map<String, Any?>` 응답 14건. 보완: typed response tree. 상태: `FIXED-2026-07-02-F`.
 32. [x] `MultiResponseResponses.kt`에 `mapOf` 응답 조립 14건. 보완: DTO serializer. 상태: `FIXED-2026-07-02-F`.
-33. [ ] `KnowledgeResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed knowledge response DTO.
-34. [ ] `KnowledgeResponses.kt`에 `mapOf` 조립 6건. 보완: map factory 제거.
+33. [x] `KnowledgeResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed knowledge response DTO. 상태: `FIXED-2026-07-02-G`.
+34. [x] `KnowledgeResponses.kt`에 `mapOf` 조립 6건. 보완: map factory 제거. 상태: `FIXED-2026-07-02-G`.
 35. [ ] `ChannelAiCustomizationResponses.kt`에 `Map<String, Any?>` 응답 6건. 보완: typed channel AI DTO.
 36. [ ] `ChannelAiCustomizationResponses.kt`에 `mapOf` 조립 6건. 보완: nested DTO.
 37. [ ] `ChannelAiCustomizationController`에 `Map<String, Any?>` 응답 7건. 보완: DTO 반환형.

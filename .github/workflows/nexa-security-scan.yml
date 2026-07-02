@@ -12,6 +12,9 @@ on:
       - "ml/social-policy/**"
       - "provider-agent/**"
       - "docs/nexa/security/scan-exceptions.yaml"
+      - "scripts/nexa-verify.sh"
+      - "scripts/scan-sensitive-logs.py"
+      - "scripts/validate-nexa-scan-exceptions.py"
       - ".github/workflows/nexa-security-scan.yml"
   schedule:
     # 신규 advisory 를 잡기 위해 주간 재스캔(코드 변경 없어도 새 CVE 가 뜰 수 있음).

@@ -2,6 +2,7 @@ package com.discordassistant.central.conversation.application.port.out
 
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextDiagnostics
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
@@ -15,6 +16,8 @@ interface RawContextStorePort {
     fun readRecent(scope: RawContextScope): RawContextSnapshot
 
     fun readTombstones(scope: RawContextScope): List<RawContextTombstone>
+
+    fun diagnostics(scope: RawContextScope): RawContextDiagnostics
 
     fun redact(
         scope: RawContextScope,

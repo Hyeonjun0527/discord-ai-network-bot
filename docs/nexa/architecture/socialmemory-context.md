@@ -9,6 +9,9 @@
 NEXA가 사람과 사건에 대해 **관찰로 알게 된 것**을, 시간 유효성을 가진 기억으로 보관한다 —
 일화·사실·관계·보류 의도. **문서 검색(knowledge RAG)도, 전역 호감도 점수(ainetwork)도 아니다.**
 
+ADR 0016 이후 socialmemory는 judge 입력의 보조 기억이다. 현재 장면의 raw conversation window를
+대체하거나, "외로움이면 말하기" 같은 행동 규칙을 소유하지 않는다.
+
 ## 소유 (Owns)
 
 | 개념 | 설명 |
@@ -26,6 +29,8 @@ NEXA가 사람과 사건에 대해 **관찰로 알게 된 것**을, 시간 유�
 - **니아 정체성·전역 호감도 스칼라** → `ainetwork`(ADR 0010에서 경계·브리지 확정)
 - **관찰 원천 이벤트** → `conversation`(socialmemory는 거기서 추출)
 - **행동 결정** → `participation`(기억을 입력으로만 읽음)
+- **현재 장면 원문 window** → `conversation`
+- **few-shot 판단 헌법** → participation/admin 운영 자산
 
 ## knowledge RAG · ainetwork 호감도와의 차이 (acceptance 핵심)
 
@@ -57,3 +62,4 @@ NEXA가 사람과 사건에 대해 **관찰로 알게 된 것**을, 시간 유�
 2. socialmemory는 행동을 결정하지 않는다 — 읽히기만 한다.
 3. ainetwork 호감도를 복제 저장하지 않는다(SSOT 단일성, ADR 0010).
 4. 개인정보 삭제 요청 시 관련 일화/사실이 함께 만료·삭제 가능해야 한다(P03 이벤트 삭제와 연계).
+5. socialmemory는 raw context보다 우선하지 않는다. 오래된 기억이 최신 원문과 충돌하면 judge 입력에서 보조 근거로만 취급한다.

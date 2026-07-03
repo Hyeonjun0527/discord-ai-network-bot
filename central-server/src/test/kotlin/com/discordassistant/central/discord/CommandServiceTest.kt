@@ -1015,12 +1015,13 @@ class CommandServiceTest
                     )
                 knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
 
-                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+                commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+                val prompt = conn.lastInfer!!.prompt
 
-                assertTrue(r.content.contains("[채널 지식 컨텍스트]"))
-                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"))
-                assertTrue(r.content.contains("[질문 실행 입력]"))
-                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"))
+                assertTrue(prompt.contains("[채널 지식 컨텍스트]"))
+                assertTrue(prompt.contains("Kotlin Spring 운영 가이드"))
+                assertTrue(prompt.contains("[질문 실행 입력]"))
+                assertTrue(prompt.contains("[사용자 질문]\nKotlin Spring 설정 알려줘"), prompt)
             } finally {
                 registry.unregister(s)
             }
@@ -1059,15 +1060,16 @@ class CommandServiceTest
                     )
                 knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
 
-                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘", requestedResponseMode = "deep")
+                commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘", requestedResponseMode = "deep")
+                val prompt = conn.lastInfer!!.prompt
 
-                assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
-                assertTrue(r.content.contains("이름: 코드 니아"), r.content)
-                assertTrue(r.content.contains("코드는 검증 방법을 먼저 제안합니다."), r.content)
-                assertTrue(r.content.contains("[우선순위 4: 채널 지식/RAG]"), r.content)
-                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"), r.content)
-                assertTrue(r.content.contains("[사용자 질문]"), r.content)
-                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"), r.content)
+                assertTrue(prompt.contains("[우선순위 2: 채널 AI 정체성]"), prompt)
+                assertTrue(prompt.contains("이름: 코드 니아"), prompt)
+                assertTrue(prompt.contains("코드는 검증 방법을 먼저 제안합니다."), prompt)
+                assertTrue(prompt.contains("[우선순위 4: 채널 지식/RAG]"), prompt)
+                assertTrue(prompt.contains("Kotlin Spring 운영 가이드"), prompt)
+                assertTrue(prompt.contains("[사용자 질문]"), prompt)
+                assertTrue(prompt.endsWith("Kotlin Spring 설정 알려줘"), prompt)
             } finally {
                 registry.unregister(s)
             }

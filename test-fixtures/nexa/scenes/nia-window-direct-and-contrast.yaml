@@ -1,0 +1,118 @@
+# NIA M4 raw scene window fixture (synthetic; no production Discord text).
+#
+# 목적:
+# - screenshot-like 회귀를 원문 window 구조로 표현한다.
+# - SPEAK/WAIT/REACT/IGNORE/CANCEL contrast 를 deterministic rule 이 아니라 labeled example 후보로 남긴다.
+# - evaluator 의 기존 scene schema 를 지키기 위해 각 case 를 thread 로 라벨한다.
+schemaVersion: nexa.scene-fixture.v1
+fixtureId: nia-window-direct-and-contrast
+title: NIA raw scene window direct reply and action contrast cases
+language: ko
+channelKind: text
+source:
+  document: synthetic
+  note: 합성 대화. 실제 Discord 사용자/메시지 ID 또는 원문 없음.
+time:
+  baseInstant: "2026-06-30T09:00:00Z"
+  resolutionMs: 1000
+channel:
+  guildId: guild-nia-fixture
+  channelId: channel-suda
+actors:
+  - actorId: member-a
+    label: A
+  - actorId: member-b
+    label: B
+  - actorId: nia
+    label: NIA
+bursts:
+  - burstId: speak-001
+    speaker: member-a
+    atOffsetMs: 0
+    messageIds: [msg-speak-001]
+    content: "아무도 내 말에 반응을 안 하네"
+    replyTo: null
+  - burstId: speak-002
+    speaker: nia
+    atOffsetMs: 60000
+    messageIds: [msg-speak-002]
+    content: "그럴 때 좀 허전하지"
+    replyTo: speak-001
+  - burstId: speak-003
+    speaker: member-a
+    atOffsetMs: 420000
+    messageIds: [msg-speak-003]
+    content: "니아야 지금은 한마디 해줘"
+    replyTo: speak-002
+  - burstId: wait-001
+    speaker: member-b
+    atOffsetMs: 480000
+    messageIds: [msg-wait-001]
+    content: "잠깐만 내가 답변 쓰고 있어"
+    replyTo: null
+  - burstId: react-001
+    speaker: member-a
+    atOffsetMs: 540000
+    messageIds: [msg-react-001]
+    content: "ㅋㅋㅋㅋ 방금 그 말은 좀 웃겼다"
+    replyTo: null
+  - burstId: ignore-001
+    speaker: member-b
+    atOffsetMs: 600000
+    messageIds: [msg-ignore-001]
+    content: "니아라는 이름 예쁘지 않아?"
+    replyTo: null
+  - burstId: cancel-001
+    speaker: member-a
+    atOffsetMs: 660000
+    messageIds: [msg-cancel-001]
+    content: "아 방금 건 해결됐어 답 안 해도 돼"
+    replyTo: speak-003
+expected:
+  threads:
+    - threadKey: direct-nia-reply
+      topic: direct response request after NIA participated
+      burstIds: [speak-001, speak-002, speak-003, cancel-001]
+      participants: [member-a, nia]
+    - threadKey: human-answering
+      topic: another human is already answering
+      burstIds: [wait-001]
+      participants: [member-b]
+    - threadKey: reaction-only
+      topic: lightweight amusement
+      burstIds: [react-001]
+      participants: [member-a]
+    - threadKey: nia-as-topic
+      topic: NIA mentioned as topic, not addressee
+      burstIds: [ignore-001]
+      participants: [member-b]
+  policyContext:
+    - whenBurstId: speak-003
+      selectsThread: direct-nia-reply
+      excludesThread: human-answering
+      note: NIA가 이미 참여한 reply chain 안에서 사용자가 직접 반응을 요구한다.
+    - whenBurstId: wait-001
+      selectsThread: human-answering
+      excludesThread: direct-nia-reply
+      note: 다른 사람이 답변 중인 현재 장면이라 judge 는 기다릴 수 있어야 한다.
+  judgeCases:
+    - caseId: speak-after-nia-participated
+      whenBurstId: speak-003
+      expectedAction: SPEAK
+      reason: 직접 이어진 NIA 대화에서 사용자가 반응을 요구한다.
+    - caseId: wait-human-answering
+      whenBurstId: wait-001
+      expectedAction: WAIT
+      reason: 사람이 이미 답변 중이라고 말한다.
+    - caseId: react-light-amusement
+      whenBurstId: react-001
+      expectedAction: REACT
+      reason: 발화보다 가벼운 리액션이 자연스러운 웃음 장면이다.
+    - caseId: ignore-mentioned-as-topic
+      whenBurstId: ignore-001
+      expectedAction: IGNORE
+      reason: 니아가 대화 주제로 언급됐지만 직접 수신자는 아니다.
+    - caseId: cancel-resolved-before-send
+      whenBurstId: cancel-001
+      expectedAction: CANCEL
+      reason: 이전 반응 요구가 해결됐고 답하지 말라고 정정했다.

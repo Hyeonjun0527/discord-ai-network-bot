@@ -3,6 +3,8 @@ package com.discordassistant.central.participation.adapter.outbound.persistence
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -46,6 +48,12 @@ class JpaParticipationDecisionLog(
         entity.featureHash = record.featureHash
         entity.featureVectorVersion = record.featureVectorVersion
         entity.modelVersion = record.modelVersion
+        entity.judgeModelVersion = record.judgeModelVersion
+        entity.judgePromptVersion = record.judgePromptVersion
+        entity.fewShotSetId = record.fewShotSetId
+        entity.fewShotVersion = record.fewShotVersion
+        entity.rawWindowHash = record.rawWindowHash
+        entity.rawWindowMessageRefsJson = record.rawWindowMessageRefs.toJsonArray()
         entity.seed = record.seed
         entity.removedKinds = record.removedKinds.joinToString(",") { it.wireName }
         entity.reasonCode = record.reasonCode
@@ -54,6 +62,8 @@ class JpaParticipationDecisionLog(
         entity.lastWakeUpReason = record.lastWakeUpReason
         entity.missingInputCodes = record.missingInputCodes.joinToString(",")
         entity.evidenceRefs = record.evidenceRefs.joinToString(",")
+        entity.shadowBaselineAction = record.shadowBaselineAction?.wireName
+        entity.finalDecisionSource = record.finalDecisionSource
         entity.consumedGenerationQuota = record.consumedGenerationQuota
         entity.decidedAt = record.decidedAt
         logs.save(entity)
@@ -75,6 +85,12 @@ class JpaParticipationDecisionLog(
             featureHash = featureHash,
             featureVectorVersion = featureVectorVersion,
             modelVersion = modelVersion,
+            judgeModelVersion = judgeModelVersion,
+            judgePromptVersion = judgePromptVersion,
+            fewShotSetId = fewShotSetId,
+            fewShotVersion = fewShotVersion,
+            rawWindowHash = rawWindowHash,
+            rawWindowMessageRefs = rawWindowMessageRefsJson.toJsonSet(),
             seed = seed,
             removedKinds =
                 removedKinds
@@ -88,6 +104,8 @@ class JpaParticipationDecisionLog(
             lastWakeUpReason = lastWakeUpReason,
             missingInputCodes = missingInputCodes.toCodeSet(),
             evidenceRefs = evidenceRefs.toCodeSet(),
+            shadowBaselineAction = shadowBaselineAction?.let { code -> SocialActionKind.entries.firstOrNull { it.wireName == code } },
+            finalDecisionSource = finalDecisionSource,
             consumedGenerationQuota = consumedGenerationQuota,
             decidedAt = decidedAt,
         )
@@ -109,6 +127,12 @@ class NexaPolicyDecisionLogEntity(
     @Column(name = "feature_hash") var featureHash: String = "",
     @Column(name = "feature_vector_version") var featureVectorVersion: Int = 1,
     @Column(name = "model_version") var modelVersion: String = "",
+    @Column(name = "judge_model_version") var judgeModelVersion: String? = null,
+    @Column(name = "judge_prompt_version") var judgePromptVersion: String? = null,
+    @Column(name = "fewshot_set_id") var fewShotSetId: String? = null,
+    @Column(name = "fewshot_version") var fewShotVersion: Int? = null,
+    @Column(name = "raw_window_hash") var rawWindowHash: String? = null,
+    @Column(name = "raw_window_message_refs_json", length = 2048) var rawWindowMessageRefsJson: String = "[]",
     @Column(name = "seed") var seed: Long = 0,
     @Column(name = "removed_kinds") var removedKinds: String = "",
     @Column(name = "reason_code") var reasonCode: String? = null,
@@ -117,6 +141,8 @@ class NexaPolicyDecisionLogEntity(
     @Column(name = "last_wake_up_reason") var lastWakeUpReason: String? = null,
     @Column(name = "missing_input_codes") var missingInputCodes: String = "",
     @Column(name = "evidence_refs") var evidenceRefs: String = "",
+    @Column(name = "shadow_baseline_action") var shadowBaselineAction: String? = null,
+    @Column(name = "final_decision_source") var finalDecisionSource: String? = null,
     @Column(name = "consumed_generation_quota") var consumedGenerationQuota: Boolean = false,
     @Column(name = "decided_at") var decidedAt: Instant = Instant.EPOCH,
 ) {
@@ -139,3 +165,15 @@ private fun String.toCodeSet(): Set<String> =
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .toSet()
+
+private val jsonMapper = jacksonObjectMapper()
+private val stringListType = object : TypeReference<List<String>>() {}
+
+private fun Set<String>.toJsonArray(): String = jsonMapper.writeValueAsString(toList().sorted())
+
+private fun String.toJsonSet(): Set<String> =
+    if (isBlank()) {
+        emptySet()
+    } else {
+        runCatching { jsonMapper.readValue(this, stringListType).toSet() }.getOrDefault(emptySet())
+    }

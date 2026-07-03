@@ -1,0 +1,115 @@
+package com.discordassistant.central.conversation.domain.service.scene
+
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
+import com.discordassistant.central.conversation.domain.model.scene.NiaSceneAuthorRole
+import com.discordassistant.central.conversation.domain.model.scene.NiaSceneContent
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
+import java.time.Instant
+
+class NiaSceneWindowBuilderTest {
+    private val scope = RawContextScope(guildId = 123L, channelId = 456L, threadId = 789L)
+    private val t0 = Instant.parse("2026-06-29T00:00:00Z")
+
+    @Test
+    fun `scene window 는 원문을 시간순 ref role reply 로 조립하고 식별자를 노출하지 않는다`() {
+        val window =
+            NiaSceneWindowBuilder(maxRawChars = 100, niaAuthorPseudonyms = setOf("nia-pseudo"))
+                .build(
+                    RawContextSnapshot(
+                        scope,
+                        listOf(
+                            entry(100L, "member-a", t0, RawContextSourceType.HUMAN, "야 니아?"),
+                            entry(200L, "nia-pseudo", t0.plusSeconds(1), RawContextSourceType.BOT, "응", replyToMessageId = 100L),
+                            entry(300L, "bot-pseudo", t0.plusSeconds(2), RawContextSourceType.BOT, "bot notice"),
+                            entry(
+                                400L,
+                                "system-pseudo",
+                                t0.plusSeconds(3),
+                                RawContextSourceType.SYSTEM,
+                                content = RawContextContent.Unavailable(RawContextUnavailableReason.REDACTED),
+                            ),
+                        ),
+                    ),
+                )
+
+        assertThat(window.messages.map { it.ref }).containsExactly("msg_1", "msg_2", "msg_3", "msg_4")
+        assertThat(window.messages.map { it.authorRole })
+            .containsExactly(
+                NiaSceneAuthorRole.MEMBER,
+                NiaSceneAuthorRole.NIA,
+                NiaSceneAuthorRole.BOT,
+                NiaSceneAuthorRole.SYSTEM,
+            )
+        assertThat(window.messages[1].replyToRef).isEqualTo("msg_1")
+        assertThat((window.messages[0].content as NiaSceneContent.Available).text).isEqualTo("야 니아?")
+
+        val surface = window.toString()
+        assertThat(window.scopeFingerprint).hasSize(64)
+        assertThat(surface)
+            .doesNotContain("guildId=123", "channelId=456", "threadId=789", "messageId=100", "member-a", "nia-pseudo", "야 니아?")
+    }
+
+    @Test
+    fun `char budget 을 넘으면 오래된 원문부터 생략하고 ref 를 다시 결정론적으로 부여한다`() {
+        val window =
+            NiaSceneWindowBuilder(maxRawChars = 8)
+                .build(
+                    RawContextSnapshot(
+                        scope,
+                        listOf(
+                            entry(10L, "a", t0, RawContextSourceType.HUMAN, "old1"),
+                            entry(11L, "b", t0.plusSeconds(1), RawContextSourceType.HUMAN, "new2"),
+                            entry(12L, "c", t0.plusSeconds(2), RawContextSourceType.HUMAN, "new3"),
+                        ),
+                    ),
+                )
+
+        assertThat(window.omittedOldestCount).isEqualTo(1)
+        assertThat(window.messages.map { it.ref }).containsExactly("msg_1", "msg_2")
+        assertThat(window.messages.map { (it.content as NiaSceneContent.Available).text }).containsExactly("new2", "new3")
+    }
+
+    @Test
+    fun `reply 대상이 budget 밖으로 생략되면 replyToRef 는 null 이다`() {
+        val window =
+            NiaSceneWindowBuilder(maxRawChars = 4)
+                .build(
+                    RawContextSnapshot(
+                        scope,
+                        listOf(
+                            entry(10L, "a", t0, RawContextSourceType.HUMAN, "old1"),
+                            entry(11L, "b", t0.plusSeconds(1), RawContextSourceType.HUMAN, "new2", replyToMessageId = 10L),
+                        ),
+                    ),
+                )
+
+        assertThat(window.messages).hasSize(1)
+        assertThat(window.messages.single().ref).isEqualTo("msg_1")
+        assertThat(window.messages.single().replyToRef).isNull()
+    }
+
+    private fun entry(
+        messageId: Long,
+        authorPseudonym: String,
+        occurredAt: Instant,
+        sourceType: RawContextSourceType,
+        text: String = "hello",
+        replyToMessageId: Long? = null,
+        content: RawContextContent = RawContextContent.Available(text),
+    ): RawContextEntry =
+        RawContextEntry(
+            scope = scope,
+            messageId = messageId,
+            authorPseudonym = authorPseudonym,
+            occurredAt = occurredAt,
+            replyToMessageId = replyToMessageId,
+            sourceType = sourceType,
+            content = content,
+        )
+}

@@ -10,6 +10,8 @@ import com.discordassistant.central.participation.application.feature.FeatureCat
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -26,9 +28,25 @@ class SingleParticipationJudgeContractTest {
         val props = SingleJudgeDecisionRequest::class.memberProperties.map { it.name }
 
         assertThat(props)
-            .contains("rawContextWindow", "sceneSnapshot", "featureVector", "memoryRefs", "constraints")
+            .contains("rawContextWindow", "sceneSnapshot", "featureVector", "fewShotSet", "memoryRefs", "constraints")
         assertThat(request.rawContextWindow.quotedSceneData).contains("위로하라고")
         assertThat(request.rawContextWindow.quotedSceneData).contains(JudgeContextWindowBuilder.REASSERT)
+    }
+
+    @Test
+    fun `single judge request 는 active few-shot constitution 을 함께 운반한다`() {
+        val request = sampleRequest()
+        val fewShotSet = request.fewShotSet
+        val example = fewShotSet.examples.single()
+
+        assertThat(fewShotSet.setId).isEqualTo(1L)
+        assertThat(fewShotSet.version).isEqualTo(3)
+        assertThat(example.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(example.evidenceRefs).containsExactly("m2", "m3")
+        assertThat(example.badAlternative.action).isEqualTo(NiaFewShotAction.WAIT)
+        assertThat(fewShotSet.toString()).doesNotContain("위로하라고")
+        assertThat(example.toString()).doesNotContain("위로하라고")
+        assertThat(example.rawMessages.joinToString()).doesNotContain("위로하라고")
     }
 
     @Test
@@ -154,6 +172,7 @@ class SingleParticipationJudgeContractTest {
                     silenceMillis = 8_000,
                 ),
             featureVector = FeatureVectorView.empty(version = FeatureCatalog.VERSION),
+            fewShotSet = sampleFewShotSet(),
             memoryRefs =
                 listOf(
                     JudgeMemoryRef(
@@ -174,4 +193,43 @@ class SingleParticipationJudgeContractTest {
             seed = 99L,
         )
     }
+
+    private fun sampleFewShotSet(): JudgeFewShotSetPayload =
+        JudgeFewShotSetPayload(
+            setId = 1L,
+            version = 3,
+            examples =
+                listOf(
+                    JudgeFewShotExamplePayload(
+                        exampleId = "fs_example_direct_reply",
+                        title = "direct reply request after ignored NIA turn",
+                        rawMessages =
+                            listOf(
+                                JudgeFewShotRawMessagePayload(
+                                    ref = "m2",
+                                    authorRole = "nia",
+                                    offsetMs = -120_000,
+                                    text = "그래, 그게 내가 뭘 잘못한 거지?",
+                                ),
+                                JudgeFewShotRawMessagePayload(
+                                    ref = "m3",
+                                    authorRole = "member",
+                                    offsetMs = 0,
+                                    text = "야 이럴땐 위로하라고",
+                                ),
+                            ),
+                        expectedAction = NiaFewShotAction.SPEAK,
+                        reason = "The user is continuing a direct exchange with NIA.",
+                        evidenceRefs = setOf("m2", "m3"),
+                        badAlternative =
+                            JudgeFewShotBadAlternativePayload(
+                                action = NiaFewShotAction.WAIT,
+                                whyBad = "Waiting longer would read as ignoring the direct request.",
+                            ),
+                        tags = setOf("direct-address"),
+                        priority = 100,
+                        privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                    ),
+                ),
+        )
 }

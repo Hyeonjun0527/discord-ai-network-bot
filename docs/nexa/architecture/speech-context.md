@@ -10,6 +10,9 @@
 participation이 `SPEAK`를 고른 **뒤에만**, 장면·기억·정체성을 사용해 **후보 문구와 버스트
 계획**을 만든다. **말할지 여부는 정하지 않고, JDA로 직접 보내지도 않는다.**
 
+ADR 0016의 judge v2 경로에서도 speech는 judge의 `SPEAK` 결정 이후에만 실행된다. judge reason과
+evidence refs는 문장 생성을 돕는 입력일 수 있지만, speech가 action을 재선택하지 않는다.
+
 ## 소유 (Owns)
 
 | 개념 | 설명 |
@@ -21,6 +24,7 @@ participation이 `SPEAK`를 고른 **뒤에만**, 장면·기억·정체성을 �
 ## 비소유 (Does NOT own)
 
 - **말할지 여부** → `participation`(speech는 SPEAK 이후에만 호출됨)
+- **few-shot 판단 헌법** → participation/admin. speech prompt 예시가 아니라 participation judge 예시다
 - **전송·재시도·타이밍** → `actionruntime`
 - **외부 모델 제공자 선택·쿼터·요청 로그** → `routing`(provider-neutral)
 - **정체성 SSOT** → `ainetwork`(speech는 페르소나를 읽어 프롬프트에 주입만)
@@ -61,3 +65,4 @@ participation이 `SPEAK`를 고른 **뒤에만**, 장면·기억·정체성을 �
 2. speech의 모든 외부 모델 호출은 routing `CloudLlm` 포트를 거친다(직접 외부 HTTP 금지).
 3. speech는 발화 계획을 반환할 뿐 전송하지 않는다.
 4. 발화 계획은 actionruntime의 재평가로 폐기될 수 있다(speech는 전송을 보장받지 않음).
+5. speech는 WAIT/IGNORE/REACT/CANCEL을 SPEAK로 승격하지 않는다.

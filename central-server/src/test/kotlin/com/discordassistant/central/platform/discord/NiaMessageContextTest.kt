@@ -14,7 +14,7 @@ class NiaMessageContextTest {
     }
 
     @Test
-    fun `내용 없는 니아 호명은 빠른 AI 응답 대상으로 구분한다`() {
+    fun `내용 없는 니아 호명은 마지막 트리거가 비어 있음을 구분한다`() {
         assertThat(isBareNiaDirectAddress("니아야")).isTrue()
         assertThat(isBareNiaDirectAddress("니아야?")).isTrue()
         assertThat(isBareNiaDirectAddress("니아야!!!")).isTrue()
@@ -23,32 +23,26 @@ class NiaMessageContextTest {
     }
 
     @Test
-    fun `짧은 니아 호명은 없는 소란을 지어내지 말라는 힌트를 추가한다`() {
-        val prompt = buildBareNiaDirectAddressPrompt("니아야?", recentBareCallCount = 1)
+    fun `짧은 니아 호명도 되묻기 전용 땜빵이 아니라 전체 원문 장면 계약을 탄다`() {
+        val prompt = buildNiaAddressedPrompt("니아야?", "니아야?")
 
-        assertThat(prompt).startsWith("니아야?")
-        assertThat(prompt).contains("없는 사건이나 소란을 지어내지 말고")
+        assertThat(prompt).contains("[현재 트리거 원문]\n니아야?")
+        assertThat(prompt).contains("최근 채널 대화 원문 전체를 1차 소스")
+        assertThat(prompt).contains("앞 요구에 답한다")
+        assertThat(prompt).contains("그 말의 뜻을 설명하거나")
+        assertThat(prompt).contains("문장 끝에 ASCII 마침표(.)를 붙이지 않는다")
+        assertThat(prompt).doesNotContain("왜 불렀는지 되물으세요")
         assertThat(prompt).doesNotContain("최근 10번 연속")
     }
 
     @Test
-    fun `반복 니아 호명은 모델 입력에 버스트 상황을 힌트로 추가한다`() {
-        val prompt = buildBareNiaDirectAddressPrompt("니아야?", recentBareCallCount = 10)
+    fun `니아 답변 직후 후속 발화 후보는 자기 발화 수습 계약으로 감싼다`() {
+        val prompt = buildNiaContinuationPrompt("??? 어휘력 없음이 뭔말이야")
 
-        assertThat(prompt).startsWith("니아야?")
-        assertThat(prompt).contains("최근 10번 연속")
-        assertThat(prompt).contains("지금 한 번만 사람처럼 반응")
-        assertThat(prompt).contains("없는 사건이나 소란을 지어내지 말고")
-        assertThat(prompt).doesNotContain("왜 이렇게 불러댐")
-    }
-
-    @Test
-    fun `니아 답변 직후 후속 발화 후보는 의미 판단 힌트로 감싼다`() {
-        val prompt = buildNiaContinuationPrompt("무슨소란\n니아야")
-
-        assertThat(prompt).contains("[현재 사용자의 원문 메시지]\n무슨소란\n니아야")
-        assertThat(prompt).contains("최근 채널 대화 원문을 기준")
-        assertThat(prompt).contains("단순 조건문처럼 판단하지 말고")
+        assertThat(prompt).contains("[현재 트리거 원문]\n??? 어휘력 없음이 뭔말이야")
+        assertThat(prompt).contains("사용자가 니아의 직전 말을 되묻거나 따지면")
+        assertThat(prompt).contains("같은 말을 반복하지 말고")
+        assertThat(prompt).contains("오타·짧은 말·거친 말")
     }
 
     @Test
@@ -57,9 +51,9 @@ class NiaMessageContextTest {
             buildNiaContinuationPromptFromRecentMessages(
                 messages =
                     listOf(
-                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야"),
-                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "어디서 소란 피우는 거야."),
-                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "무슨소란"),
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "너머함"),
+                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "어휘력 없음"),
+                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "??? 어휘력 없음이 뭔말이야"),
                     ),
                 currentMessageId = 3,
                 botUserId = 99,
@@ -67,23 +61,37 @@ class NiaMessageContextTest {
             )
 
         assertThat(prompt).isNotNull
-        assertThat(prompt!!).contains("[현재 사용자의 원문 메시지]\n무슨소란")
-        assertThat(prompt).contains("최근 채널 대화 원문을 기준")
+        assertThat(prompt!!).contains("[현재 트리거 원문]\n??? 어휘력 없음이 뭔말이야")
+        assertThat(prompt).contains("표현 의도를 설명")
     }
 
     @Test
     fun `직접 호명 프롬프트는 현재 원문과 호명 제거 내용을 함께 전달한다`() {
         val prompt = buildNiaAddressedPrompt("무슨소란   니아야\n진짜?", "무슨소란   \n진짜?")
 
-        assertThat(prompt).contains("[현재 사용자의 원문 메시지]\n무슨소란   니아야\n진짜?")
-        assertThat(prompt).contains("[니아 호명 제거 후 핵심 내용]\n무슨소란   \n진짜?")
+        assertThat(prompt).contains("[현재 트리거 원문]\n무슨소란   니아야\n진짜?")
+        assertThat(prompt).contains("[현재 트리거에서 분리한 직접 요청]\n무슨소란   \n진짜?")
     }
 
     @Test
-    fun `최근 bare 호명 답변 직후에는 추가 응답을 억제한다`() {
-        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = 2_500)).isTrue()
-        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = 1_999)).isFalse()
-        assertThat(shouldSuppressBareNiaDirectAddress(nowEpochMillis = 10_000, lastResponseEpochMillis = null)).isFalse()
+    fun `자동응답 프롬프트도 마지막 메시지가 아니라 원문 장면 계약을 탄다`() {
+        val prompt = buildNiaAutoRespondPrompt("돈들어")
+
+        assertThat(prompt).contains("[트리거 출처]\nauto-respond-channel")
+        assertThat(prompt).contains("마지막 트리거 하나만 보지 말고")
+    }
+
+    @Test
+    fun `니아 채팅 스타일은 문장 끝 ASCII 마침표를 제거하되 숫자 구조는 보존한다`() {
+        val reply =
+            Reply(
+                content = "그거 내가 먼저 한 말인데.\n버전 v1.2는 그대로.",
+                ephemeral = false,
+                pseudoStream = ReplyPseudoStream(editIntervalMs = 1, snapshots = listOf("뭐 갑자기.", "아니... 왜")),
+            ).withNiaChatStyle()
+
+        assertThat(reply.content).isEqualTo("그거 내가 먼저 한 말인데\n버전 v1.2는 그대로")
+        assertThat(reply.pseudoStream!!.snapshots).containsExactly("뭐 갑자기", "아니 왜")
     }
 
     @Test
@@ -100,7 +108,7 @@ class NiaMessageContextTest {
                 messages =
                     listOf(
                         msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야\n니아야   니아야"),
-                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "응?\n왜 불러."),
+                        msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "응?\n왜 불러"),
                         msg(id = 3, authorId = 11, authorLabel = "yeon", content = "니아야 싸가지가 없네"),
                         msg(id = 4, authorId = 10, authorLabel = "HJ", content = "CURRENT_TRIGGER_니아야"),
                     ),
@@ -111,11 +119,33 @@ class NiaMessageContextTest {
         assertThat(turns.map { it.role }).containsExactly("user", "assistant", "user", "user")
         assertThat(turns[0].content).contains("speaker=HJ")
         assertThat(turns[0].content).contains("content:\n니아야\n니아야   니아야")
-        assertThat(turns[1].content).isEqualTo("응?\n왜 불러.")
+        assertThat(turns[1].content).isEqualTo("응?\n왜 불러")
         assertThat(turns[2].content).contains("speaker=yeon")
         assertThat(turns[2].content).contains("content:\n니아야 싸가지가 없네")
         assertThat(turns.joinToString("\n") { it.content }).doesNotContain("CURRENT_TRIGGER_니아야")
         assertThat(turns.last().content).contains("최근 채널 대화 원문을 그대로 참고")
+    }
+
+    @Test
+    fun `최근 채널 맥락은 오래된 원문부터 char budget 밖이면 버린다`() {
+        val turns =
+            buildDiscordRecentContextTurns(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "오래된말".repeat(80)),
+                        msg(id = 2, authorId = 11, authorLabel = "yeon", content = "바로 앞 말"),
+                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "CURRENT"),
+                    ),
+                currentMessageId = 3,
+                botUserId = 99,
+                maxTurns = 10,
+                maxRawChars = 140,
+            )
+
+        val joined = turns.joinToString("\n") { it.content }
+        assertThat(joined).contains("바로 앞 말")
+        assertThat(joined).doesNotContain("오래된말")
+        assertThat(joined).doesNotContain("CURRENT")
     }
 
     private fun msg(

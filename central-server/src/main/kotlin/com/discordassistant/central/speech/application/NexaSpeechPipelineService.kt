@@ -14,10 +14,13 @@ import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome
+import com.discordassistant.central.speech.application.port.out.SpeechTraceContext
 import com.discordassistant.central.speech.application.safety.HighRiskDirective
 import com.discordassistant.central.speech.application.safety.HighRiskFallbackBoundary
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.service.critic.SpeechCritic
+import java.time.Clock
+import java.time.Instant
 
 /**
  * NEXA 발화 파이프라인 오케스트레이터(NEXA-P17 보안 enforcement seam, application).
@@ -50,6 +53,7 @@ class NexaSpeechPipelineService(
     private val highRiskBoundary: HighRiskFallbackBoundary = HighRiskFallbackBoundary(),
     private val fallbackPolicy: FallbackSpeechPolicy = FallbackSpeechPolicy(),
     private val decisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * 한 SPEAK 결정에 대해 실제 발화 파이프라인을 구동한다. [subjectPseudonym] 의 동의가 살아 있을 때만 생성·전송하고,
@@ -62,33 +66,58 @@ class NexaSpeechPipelineService(
         seed: Long,
         stale: Boolean = false,
         budget: GenerationBudget = GenerationBudget.DEFAULT,
+        traceContext: SpeechTraceContext = SpeechTraceContext.UNLINKED,
     ): PipelineResult {
         // 1) 동의 게이트(생성 직전). 철회/미동의면 생성 포트를 한 번도 호출하지 않고 차단.
         try {
             consentGate.checkAllowed(subjectPseudonym, ProcessingStage.SPEECH_GENERATION)
         } catch (e: ConsentRevokedException) {
-            return blocked(packet, consentStage = e.stage)
+            return blocked(packet, traceContext, consentStage = e.stage)
         }
 
         // 2) 고위험 fallback 평가 — 고위험/분류실패면 발화를 취소(조롱·확신 차단).
         val directive = highRiskBoundary.evaluate(packet)
         if (directive.suppressConfidence && !directive.isNormal) {
             // 고위험 맥락: 안전쪽으로 발화 취소(canned 장문 금지 — 침묵). 결정 로그에 하강 기록.
-            return downgraded(packet, directive)
+            return downgraded(packet, traceContext, directive)
         }
 
-        // 3) SPEAK·not stale·동의 유효일 때만 generation 포트 호출(SpeechGenerationGate 가 강제).
-        val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
-        if (!gate.invokedGeneration) {
-            // SPEAK 아님/stale — 무발화로 마무리(외부 전송 0).
-            return cancel(packet, directive, generated = 0, criticReasons = emptySet())
+        // 3) SPEAK 이 아니거나 stale 이면 generation 포트를 호출하지 않는다. 이 경우 외부 요청 자체가 없으므로
+        //    EXTERNAL_GLM_REQUEST 동의까지 요구하지 않는다.
+        if (trigger != SpeechTrigger.SPEAK || stale) {
+            val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
+            return cancel(
+                packet,
+                traceContext,
+                directive,
+                generated = 0,
+                criticReasons = emptySet(),
+                blockedStage = "GENERATION_GATE",
+                blockedReason = "GENERATION_${gate.skipReason?.name ?: "SKIPPED"}",
+            )
         }
 
-        // 4) 외부 전송 직전 동의 재확인(철회는 즉시 효력 — 늦은 전송 차단).
+        // 4) 외부 GLM 요청 직전 동의 재확인. SpeechGenerationPort 는 외부 routing/cloud LLM 어댑터로 이어지므로,
+        //    발화 동의가 없으면 generation 포트를 호출하기 전에 막아 외부 요청 자체를 0 으로 만든다.
         try {
             consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)
         } catch (e: ConsentRevokedException) {
-            return blocked(packet, consentStage = e.stage)
+            return blocked(packet, traceContext, consentStage = e.stage)
+        }
+
+        // 5) SPEAK·not stale·동의 유효일 때만 generation 포트 호출(SpeechGenerationGate 가 강제).
+        val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
+        if (!gate.invokedGeneration) {
+            // 방어적 fallback. 위 preflight 에서 이미 걸러져야 한다.
+            return cancel(
+                packet,
+                traceContext,
+                directive,
+                generated = 0,
+                criticReasons = emptySet(),
+                blockedStage = "GENERATION_GATE",
+                blockedReason = "GENERATION_${gate.skipReason?.name ?: "SKIPPED"}",
+            )
         }
 
         // 5) critic 검열 + 확률 선택(비밀/AI 정체성 critic 포함 — 전송될 후보에 대해 전송 전 실행).
@@ -103,62 +132,128 @@ class NexaSpeechPipelineService(
         // 6) fallback 정책 — critic 통과 후보가 없으면 침묵/리액션으로 안전 하강.
         return when (selection) {
             is SelectionResult.Selected ->
-                speak(packet, directive, selection.candidate, generated.size, criticReasons)
+                speak(packet, traceContext, directive, selection.candidate, generated.size, criticReasons)
             SelectionResult.Silence ->
                 when (fallbackPolicy.decide(gate.result, packet)) {
-                    SpeechOutcome.ReactionOnly -> reactionOnly(packet, directive, generated.size, criticReasons)
-                    SpeechOutcome.Cancel -> cancel(packet, directive, generated.size, criticReasons)
-                    is SpeechOutcome.Speak -> cancel(packet, directive, generated.size, criticReasons) // critic 전원 탈락 → 침묵.
+                    SpeechOutcome.ReactionOnly ->
+                        reactionOnly(
+                            packet,
+                            traceContext,
+                            directive,
+                            generated.size,
+                            criticReasons,
+                            blockedStage = "CANDIDATE_SELECTION",
+                            blockedReason = "FALLBACK_REACTION_ONLY",
+                        )
+                    SpeechOutcome.Cancel ->
+                        cancel(
+                            packet,
+                            traceContext,
+                            directive,
+                            generated.size,
+                            criticReasons,
+                            blockedStage = "CANDIDATE_SELECTION",
+                            blockedReason = "FALLBACK_CANCEL",
+                        )
+                    is SpeechOutcome.Speak ->
+                        cancel(
+                            packet,
+                            traceContext,
+                            directive,
+                            generated.size,
+                            criticReasons,
+                            blockedStage = "CANDIDATE_SELECTION",
+                            blockedReason = "CRITIC_REJECTED_ALL",
+                        ) // critic 전원 탈락 → 침묵.
                 }
         }
     }
 
     private fun blocked(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         consentStage: ProcessingStage,
     ): PipelineResult {
         val log =
-            decisionFor(packet, SpeechDecisionOutcome.BLOCKED, highRisk = false, consentBlocked = true, 0, emptySet())
+            decisionFor(
+                packet,
+                traceContext,
+                SpeechDecisionOutcome.BLOCKED,
+                highRisk = false,
+                consentBlocked = true,
+                generated = 0,
+                criticReasons = emptySet(),
+                blockedStage = consentStage.name,
+                blockedReason = "CONSENT_REVOKED",
+            )
         decisionLog.record(log)
         return PipelineResult(SpeechDecisionOutcome.BLOCKED, selected = null, consentStage = consentStage)
     }
 
     private fun downgraded(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         directive: HighRiskDirective,
     ): PipelineResult {
-        val log = decisionFor(packet, SpeechDecisionOutcome.CANCEL, highRisk = true, consentBlocked = false, 0, emptySet())
+        val log =
+            decisionFor(
+                packet,
+                traceContext,
+                SpeechDecisionOutcome.CANCEL,
+                highRisk = true,
+                consentBlocked = false,
+                generated = 0,
+                criticReasons = emptySet(),
+                blockedStage = "HIGH_RISK_BOUNDARY",
+                blockedReason = "HIGH_RISK_${directive.level.name}",
+            )
         decisionLog.record(log)
         return PipelineResult(SpeechDecisionOutcome.CANCEL, selected = null, highRiskDirective = directive)
     }
 
     private fun speak(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         directive: HighRiskDirective,
         candidate: SpeechCandidate,
         generated: Int,
         criticReasons: Set<String>,
     ): PipelineResult {
         val log =
-            decisionFor(packet, SpeechDecisionOutcome.SPEAK, !directive.isNormal, consentBlocked = false, generated, criticReasons)
+            decisionFor(
+                packet,
+                traceContext,
+                SpeechDecisionOutcome.SPEAK,
+                !directive.isNormal,
+                consentBlocked = false,
+                generated,
+                criticReasons,
+                selectedContentRef = candidate.candidateId,
+            )
         decisionLog.record(log)
         return PipelineResult(SpeechDecisionOutcome.SPEAK, selected = candidate, highRiskDirective = directive)
     }
 
     private fun reactionOnly(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         directive: HighRiskDirective,
         generated: Int,
         criticReasons: Set<String>,
+        blockedStage: String? = null,
+        blockedReason: String? = null,
     ): PipelineResult {
         val log =
             decisionFor(
                 packet,
+                traceContext,
                 SpeechDecisionOutcome.REACTION_ONLY,
                 !directive.isNormal,
                 consentBlocked = false,
                 generated,
                 criticReasons,
+                blockedStage = blockedStage,
+                blockedReason = blockedReason,
             )
         decisionLog.record(log)
         return PipelineResult(SpeechDecisionOutcome.REACTION_ONLY, selected = null, highRiskDirective = directive)
@@ -166,32 +261,55 @@ class NexaSpeechPipelineService(
 
     private fun cancel(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         directive: HighRiskDirective,
         generated: Int,
         criticReasons: Set<String>,
+        blockedStage: String? = null,
+        blockedReason: String? = null,
     ): PipelineResult {
         val log =
-            decisionFor(packet, SpeechDecisionOutcome.CANCEL, !directive.isNormal, consentBlocked = false, generated, criticReasons)
+            decisionFor(
+                packet,
+                traceContext,
+                SpeechDecisionOutcome.CANCEL,
+                !directive.isNormal,
+                consentBlocked = false,
+                generated,
+                criticReasons,
+                blockedStage = blockedStage,
+                blockedReason = blockedReason,
+            )
         decisionLog.record(log)
         return PipelineResult(SpeechDecisionOutcome.CANCEL, selected = null, highRiskDirective = directive)
     }
 
     private fun decisionFor(
         packet: SpeechScenePacket,
+        traceContext: SpeechTraceContext,
         outcome: SpeechDecisionOutcome,
         highRisk: Boolean,
         consentBlocked: Boolean,
         generated: Int,
         criticReasons: Set<String>,
+        blockedStage: String? = null,
+        blockedReason: String? = null,
+        selectedContentRef: String? = null,
     ): SpeechDecisionLog =
         SpeechDecisionLog(
+            decisionId = traceContext.decisionId,
+            correlationId = traceContext.correlationId,
             focusThreadKey = packet.focusThreadKey,
             socialAct = packet.socialAct,
             outcome = outcome,
+            blockedStage = blockedStage,
+            blockedReason = blockedReason,
             highRiskDowngraded = highRisk,
             consentBlocked = consentBlocked,
             generatedCandidateCount = generated,
             criticBlockReasons = criticReasons,
+            selectedContentRef = selectedContentRef,
+            createdAt = Instant.now(clock),
         )
 
     companion object {

@@ -48,6 +48,18 @@ data class DecisionLogRecord(
     val featureVectorVersion: Int,
     /** 결정을 만든 모델 버전. */
     val modelVersion: String,
+    /** 단일 judge 모델 버전. legacy/rule path 는 null 가능. */
+    val judgeModelVersion: String? = null,
+    /** judge prompt schema/version. legacy/rule path 는 null 가능. */
+    val judgePromptVersion: String? = null,
+    /** active few-shot set id. few-shot 미적용 path 는 null 가능. */
+    val fewShotSetId: String? = null,
+    /** active few-shot version. few-shot 미적용 path 는 null 가능. */
+    val fewShotVersion: Int? = null,
+    /** raw scene/window hash. 원문은 저장하지 않는다. */
+    val rawWindowHash: String? = null,
+    /** raw scene/window message refs. 원문·snowflake 원본은 저장하지 않는다. */
+    val rawWindowMessageRefs: Set<String> = emptySet(),
     /** 결정론 seed(재현 키). */
     val seed: Long,
     /** 하드 제약으로 제거된 action kind 들(안전 후처리 근거, T021). */
@@ -64,6 +76,10 @@ data class DecisionLogRecord(
     val missingInputCodes: Set<String> = emptySet(),
     /** raw context/eval evidence 참조. 원문과 원시 Discord snowflake 를 직접 담지 않는다. */
     val evidenceRefs: Set<String> = emptySet(),
+    /** shadow/baseline 비교 action. 없으면 null. */
+    val shadowBaselineAction: SocialActionKind? = null,
+    /** 최종 결정 출처 안정 코드(rule, policy, judge, guard 등). */
+    val finalDecisionSource: String? = null,
     /** 이 결정이 generation quota 를 소모했는가(SPEAK 만 true). */
     val consumedGenerationQuota: Boolean,
     /** 결정 발생 시각(보존/삭제 정책의 기준). */
@@ -77,13 +93,22 @@ data class DecisionLogRecord(
         require(modelVersion.isNotBlank()) { "modelVersion 은 비어 있을 수 없다" }
         require(featureVectorVersion >= 1) { "featureVectorVersion 은 1 이상이어야 한다" }
         require(contextVersion >= 0) { "contextVersion 은 음수일 수 없다" }
+        judgeModelVersion?.let { require(it.isStableLooseRef()) { "judgeModelVersion 은 안정 참조여야 한다: $it" } }
+        judgePromptVersion?.let { require(it.isStableLooseRef()) { "judgePromptVersion 은 안정 참조여야 한다: $it" } }
+        fewShotSetId?.let { require(it.isStableLooseRef()) { "fewShotSetId 는 안정 참조여야 한다: $it" } }
+        fewShotVersion?.let { require(it >= 1) { "fewShotVersion 은 1 이상이어야 한다: $it" } }
+        rawWindowHash?.let { require(it.isStableCodeRef()) { "rawWindowHash 는 안정 참조여야 한다: $it" } }
+        rawWindowMessageRefs.forEach { require(it.isStableCodeRef()) { "rawWindowMessageRefs 는 안정 참조여야 한다" } }
         judgeConfidence?.let { require(it in 0.0..1.0) { "judgeConfidence 는 [0,1] 범위여야 한다: $it" } }
         decisionDelayMillis?.let { require(it >= 0) { "decisionDelayMillis 는 음수일 수 없다: $it" } }
         missingInputCodes.forEach { require(it.isStableCode()) { "missingInputCodes 는 안정 코드여야 한다" } }
         evidenceRefs.forEach { require(it.isStableCodeRef()) { "evidenceRefs 는 안정 참조여야 한다" } }
+        finalDecisionSource?.let { require(it.isStableCode()) { "finalDecisionSource 는 안정 코드여야 한다: $it" } }
     }
 }
 
 private fun String.isStableCode(): Boolean = matches(Regex("[A-Z0-9_:-]{1,96}"))
 
 private fun String.isStableCodeRef(): Boolean = matches(Regex("[A-Za-z0-9_:.=-]{1,160}"))
+
+private fun String.isStableLooseRef(): Boolean = matches(Regex("[A-Za-z0-9_.:-]{1,160}"))

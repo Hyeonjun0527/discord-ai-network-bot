@@ -100,6 +100,8 @@ class CandidateGenerationService(
             }
             appendLine(socialActCompiler.compile(packet.socialAct))
             appendLine(burstCompiler.compile(packet.burstShape))
+            appendLine("최근 원문 장면 전체를 보고 실제 문구만 만든다. 니아의 직전 말을 되묻는 장면이면 같은 말을 반복하지 말고 뜻을 설명하거나 짧게 수습한다.")
+            appendLine("각 bubble 은 Discord 채팅 한마디처럼 쓰고, ASCII 마침표(.)로 끝내지 않는다.")
             appendLine()
             appendLine(OUTPUT_FORMAT_INSTRUCTION)
         }.trim()

@@ -4,6 +4,7 @@ import com.discordassistant.central.conversation.application.port.out.RawContext
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextDiagnostics
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRedactionResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRetentionPolicy
@@ -34,8 +35,8 @@ import java.util.HexFormat
 class JpaRawContextStore(
     private val rows: NexaRawContextMessageRepository,
     private val tombstones: NexaRawContextTombstoneRepository,
-    @Value("\${nexa.raw-context.max-raw-chars-per-scope:300000}")
-    maxRawCharsPerScope: Int = 300_000,
+    @Value("\${nexa.raw-context.max-raw-chars-per-scope:200000}")
+    maxRawCharsPerScope: Int = RawContextRetentionPolicy.DEFAULT_MAX_RAW_CHARS,
     private val clock: Clock = Clock.systemUTC(),
 ) : RawContextStorePort {
     private val retention = RawContextRetentionPolicy(maxRawCharsPerScope)
@@ -66,6 +67,19 @@ class JpaRawContextStore(
     @Transactional(readOnly = true)
     override fun readTombstones(scope: RawContextScope): List<RawContextTombstone> =
         tombstones.findByScopeFingerprintOrderByOccurredAtAscMessageFingerprintAsc(scope.fingerprint()).map { it.toDomain() }
+
+    @Transactional(readOnly = true)
+    override fun diagnostics(scope: RawContextScope): RawContextDiagnostics {
+        val currentRows = rows.findByScope(scope)
+        return RawContextDiagnostics(
+            scopeFingerprint = scope.fingerprint(),
+            messageCount = currentRows.size,
+            retainedRawChars = currentRows.sumOf { it.contentLength },
+            tombstoneCount = tombstones.countByScopeFingerprint(scope.fingerprint()),
+            firstOccurredAt = currentRows.firstOrNull()?.occurredAt,
+            lastOccurredAt = currentRows.lastOrNull()?.occurredAt,
+        )
+    }
 
     @Transactional
     override fun redact(
@@ -246,6 +260,8 @@ interface NexaRawContextTombstoneRepository : JpaRepository<NexaRawContextTombst
     ): NexaRawContextTombstoneEntity?
 
     fun findByScopeFingerprintOrderByOccurredAtAscMessageFingerprintAsc(scopeFingerprint: String): List<NexaRawContextTombstoneEntity>
+
+    fun countByScopeFingerprint(scopeFingerprint: String): Long
 }
 
 private fun NexaRawContextMessageRepository.findByScopeAndMessage(

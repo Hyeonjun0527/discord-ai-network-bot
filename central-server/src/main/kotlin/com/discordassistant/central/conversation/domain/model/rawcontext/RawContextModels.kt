@@ -73,7 +73,7 @@ enum class RawContextUnavailableReason(
 }
 
 data class RawContextRetentionPolicy(
-    val maxRawChars: Int,
+    val maxRawChars: Int = DEFAULT_MAX_RAW_CHARS,
 ) {
     init {
         require(maxRawChars > 0) { "maxRawChars 는 양수여야 한다: $maxRawChars" }
@@ -84,6 +84,10 @@ data class RawContextRetentionPolicy(
             "single raw context entry exceeds maxRawChars: messageId=${entry.messageId}, " +
                 "contentLength=${entry.contentLength}, maxRawChars=$maxRawChars"
         }
+    }
+
+    companion object {
+        const val DEFAULT_MAX_RAW_CHARS = 200_000
     }
 }
 
@@ -125,5 +129,21 @@ data class RawContextBulkRedactionResult(
 ) {
     init {
         require(removedCount >= 0) { "removedCount 는 음수일 수 없다: $removedCount" }
+    }
+}
+
+data class RawContextDiagnostics(
+    val scopeFingerprint: String,
+    val messageCount: Int,
+    val retainedRawChars: Int,
+    val tombstoneCount: Long,
+    val firstOccurredAt: Instant?,
+    val lastOccurredAt: Instant?,
+) {
+    init {
+        require(scopeFingerprint.isNotBlank()) { "scopeFingerprint 은 비어 있을 수 없다" }
+        require(messageCount >= 0) { "messageCount 는 음수일 수 없다: $messageCount" }
+        require(retainedRawChars >= 0) { "retainedRawChars 는 음수일 수 없다: $retainedRawChars" }
+        require(tombstoneCount >= 0) { "tombstoneCount 는 음수일 수 없다: $tombstoneCount" }
     }
 }

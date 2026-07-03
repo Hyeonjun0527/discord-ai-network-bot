@@ -21,8 +21,10 @@ scope:
   agent     provider-agent pytest/ruff/mypy
   i18n      i18n SSOT completeness + generated artifact drift
   protocol  wire contract drift + 양측 contract 테스트
+  security-redaction  focused log redaction test + scanner gate
+  ci        docs, central, agent, i18n, protocol, security-redaction 순서로 모두 실행
   contracts protocol 과 동일한 alias
-  all       docs, central, agent, protocol 순서로 모두 실행
+  all       ci 와 동일한 alias
 "@ | Write-Host
 }
 
@@ -106,12 +108,120 @@ function Verify-Protocol {
     Invoke-WithCentralJavaHome { Invoke-External "make" @("contract") }
 }
 
+function Expand-GzipLog {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    $target = $Path.Substring(0, $Path.Length - 3)
+    $sourceStream = [System.IO.File]::OpenRead($Path)
+    try {
+        $targetStream = [System.IO.File]::Create($target)
+        try {
+            $gzipStream = [System.IO.Compression.GzipStream]::new($sourceStream, [System.IO.Compression.CompressionMode]::Decompress)
+            try {
+                $gzipStream.CopyTo($targetStream)
+            }
+            finally {
+                $gzipStream.Dispose()
+            }
+        }
+        finally {
+            $targetStream.Dispose()
+        }
+    }
+    finally {
+        $sourceStream.Dispose()
+    }
+}
+
+function Verify-SecurityRedaction {
+    $logDir = $env:LOG_DIR
+    if ([string]::IsNullOrWhiteSpace($logDir)) {
+        $logDir = Join-Path ([System.IO.Path]::GetTempPath()) ("nexa-log-redaction." + [System.Guid]::NewGuid().ToString("N"))
+    }
+
+    $fullLogDir = [System.IO.Path]::GetFullPath($logDir)
+    $fullRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
+    $rootPath = [System.IO.Path]::GetPathRoot($fullLogDir)
+    if ($fullLogDir -eq $rootPath -or $fullLogDir -eq $fullRepoRoot) {
+        Write-Error "unsafe LOG_DIR for redaction verification: $logDir"
+        exit 2
+    }
+
+    if (Test-Path $fullLogDir) {
+        Remove-Item -Recurse -Force $fullLogDir
+    }
+    New-Item -ItemType Directory -Force -Path $fullLogDir | Out-Null
+
+    $previousSpringProfile = $env:SPRING_PROFILES_ACTIVE
+    $previousLogDir = $env:LOG_DIR
+    $env:SPRING_PROFILES_ACTIVE = "prod"
+    $env:LOG_DIR = $fullLogDir
+    try {
+        Push-Location "central-server"
+        try {
+            Invoke-WithCentralJavaHome {
+                Invoke-External "./gradlew" @(
+                    "cleanTest",
+                    "test",
+                    "--no-daemon",
+                    "--console=plain",
+                    "--tests",
+                    "*SensitiveLoggingTest",
+                    "--tests",
+                    "*RedactingMessageConverterTest"
+                )
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    finally {
+        if ($null -eq $previousSpringProfile) {
+            Remove-Item Env:SPRING_PROFILES_ACTIVE -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:SPRING_PROFILES_ACTIVE = $previousSpringProfile
+        }
+
+        if ($null -eq $previousLogDir) {
+            Remove-Item Env:LOG_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:LOG_DIR = $previousLogDir
+        }
+    }
+
+    $logs = @(
+        Get-ChildItem -Path $fullLogDir -File -Filter "*.log"
+        Get-ChildItem -Path $fullLogDir -File -Filter "*.log.gz"
+    )
+    if ($logs.Count -eq 0) {
+        Write-Error "redaction focused test did not create log files under LOG_DIR: $fullLogDir"
+        exit 1
+    }
+
+    foreach ($gzLog in @(Get-ChildItem -Path $fullLogDir -File -Filter "*.log.gz")) {
+        Expand-GzipLog $gzLog.FullName
+    }
+
+    $plainLogs = @(Get-ChildItem -Path $fullLogDir -File -Filter "*.log")
+    if ($plainLogs.Count -eq 0) {
+        Write-Error "redaction focused test did not leave .log files after gzip expansion under LOG_DIR: $fullLogDir"
+        exit 1
+    }
+
+    $scanArgs = @("scripts/scan-sensitive-logs.py") + @($plainLogs | ForEach-Object { $_.FullName })
+    Invoke-External "python3" $scanArgs
+}
+
 function Verify-All {
     Verify-Docs
     Verify-Central
     Verify-Agent
     Verify-I18n
     Verify-Protocol
+    Verify-SecurityRedaction
 }
 
 function Invoke-Scope {
@@ -122,8 +232,11 @@ function Invoke-Scope {
         "central" { Verify-Central; break }
         "agent" { Verify-Agent; break }
         "i18n" { Verify-I18n; break }
+        "security-redaction" { Verify-SecurityRedaction; break }
+        "redaction" { Verify-SecurityRedaction; break }
         "protocol" { Verify-Protocol; break }
         "contracts" { Verify-Protocol; break }
+        "ci" { Verify-All; break }
         "all" { Verify-All; break }
         { $_ -in @("-h", "--help", "help") } { Show-Usage; break }
         default {

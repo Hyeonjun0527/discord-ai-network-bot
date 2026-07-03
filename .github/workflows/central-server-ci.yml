@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, closed]
     paths:
       - "central-server/**"
+      - "scripts/cleanup-testcontainers.sh"
       - ".github/workflows/central-server-ci.yml"
   workflow_dispatch:
 
@@ -17,7 +18,8 @@ jobs:
   # 단위/ArchUnit/요구사항 추적성/springdoc 스모크 + Kover 커버리지 게이트(빠름, Docker 불필요).
   build:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: central-server
@@ -47,7 +49,8 @@ jobs:
   # Docker 의존이라 build 잡과 분리(플레이키함 격리). 두 잡 모두 그린이어야 머지.
   integration:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: central-server
@@ -59,6 +62,9 @@ jobs:
           java-version: "21"
       - name: BDD + Testcontainers (실 Postgres 핵심 흐름 시나리오)
         run: ./gradlew test -PdockerTests --no-daemon --console=plain
+      - name: Testcontainers/Ryuk 잔류 정리(취소·실패 포함)
+        if: always()
+        run: ../scripts/cleanup-testcontainers.sh --prune
       - name: Cucumber 리포트 업로드(요구사항 시나리오 통과/실패 가시화)
         if: always()
         # 진단용 리포트 업로드일 뿐 게이트가 아니다. 계정 저장소 쿼터 초과 같은 환경 이슈로

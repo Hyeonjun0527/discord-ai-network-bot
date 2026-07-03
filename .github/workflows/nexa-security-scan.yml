@@ -12,6 +12,9 @@ on:
       - "ml/social-policy/**"
       - "provider-agent/**"
       - "docs/nexa/security/scan-exceptions.yaml"
+      - "scripts/nexa-verify.sh"
+      - "scripts/scan-sensitive-logs.py"
+      - "scripts/validate-nexa-scan-exceptions.py"
       - ".github/workflows/nexa-security-scan.yml"
   schedule:
     # 신규 advisory 를 잡기 위해 주간 재스캔(코드 변경 없어도 새 CVE 가 뜰 수 있음).
@@ -26,14 +29,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 5
+    outputs:
+      gradle_deps: ${{ steps.scope.outputs.gradle_deps }}
+      python_deps: ${{ steps.scope.outputs.python_deps }}
+      log_redaction: ${{ steps.scope.outputs.log_redaction }}
+      container_central: ${{ steps.scope.outputs.container_central }}
+      container_provider: ${{ steps.scope.outputs.container_provider }}
+      container_rag: ${{ steps.scope.outputs.container_rag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        name: 변경 범위 계산
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          changed_files="$(mktemp)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > "$changed_files"
+          else
+            printf '__full_security_scan__\n' > "$changed_files"
+          fi
+
+          matches() {
+            local pattern="$1"
+            if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+              return 0
+            fi
+            grep -Eq "$pattern" "$changed_files"
+          }
+
+          set_output() {
+            local name="$1"
+            local pattern="$2"
+            if matches "$pattern"; then
+              printf '%s=true\n' "$name" >> "$GITHUB_OUTPUT"
+            else
+              printf '%s=false\n' "$name" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          set_output 'gradle_deps' '^(central-server/|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'python_deps' '^(provider-agent/|ml/social-policy/|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'log_redaction' '^(central-server/|scripts/nexa-verify\.sh$|scripts/scan-sensitive-logs\.py$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_central' '^(central-server/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_provider' '^(provider-agent/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+          set_output 'container_rag' '^(docker/rag/Dockerfile$|\.github/workflows/nexa-security-scan\.yml$|docs/nexa/security/scan-exceptions\.yaml$)'
+
   # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).
   exception-policy:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
-      # uv 가 python-build-standalone arm64 Linux prebuilt 로 3.12 를 보장한다(arch·tool-cache 무관).
+      # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
+      # uv 가 python-build-standalone 로 3.12 를 보장한다(arch·tool-cache 무관).
       # activate-environment=true 로 .venv 를 만들어 활성화 → 이후 uv pip / uv run 이 그 3.12 venv 사용.
       - name: uv 설치(self-hosted arm64 python 3.12 보장)
         uses: astral-sh/setup-uv@v5
@@ -47,9 +105,10 @@ jobs:
 
   # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
   gradle-deps:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
-    needs: exception-policy
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.gradle_deps == 'true' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 15
+    needs: [exception-policy, changes]
     defaults:
       run:
         working-directory: central-server
@@ -75,13 +134,14 @@ jobs:
 
   # Python 의존성 취약점(ml/social-policy, provider-agent).
   python-deps:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
-    needs: exception-policy
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.python_deps == 'true' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 10
+    needs: [exception-policy, changes]
     steps:
       - uses: actions/checkout@v4
-      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
-      # uv 가 arm64 Linux prebuilt 로 3.12 를 보장(arch·tool-cache 무관). UV_PYTHON=3.12 가 설정되어
+      # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
+      # uv 가 3.12 를 보장(arch·tool-cache 무관). UV_PYTHON=3.12 가 설정되어
       # uvx 가 띄우는 pip-audit 도 3.12 런타임에서 동작한다(venv 불필요 — uvx 격리 실행).
       - name: uv 설치(self-hosted arm64 python 3.12 보장)
         uses: astral-sh/setup-uv@v5
@@ -102,45 +162,27 @@ jobs:
   # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).
   # 이로써 redactor 바인딩(logback-spring.xml %redactedMsg)이 실제 파일 출력에서 작동함을 CI 가 강제한다.
   log-redaction-scan:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
-    needs: exception-policy
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.log_redaction == 'true' }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 10
+    needs: [exception-policy, changes]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
-      # java(setup-java)·gradle 은 그대로(정상). python 만 uv 로 교체 — self-hosted arm64 에 setup-python
-      # prebuilt 가 없어 실패하므로, 마지막 스캔 스크립트를 uv 보장 3.12 venv 에서 실행한다.
-      - name: uv 설치(self-hosted arm64 python 3.12 보장)
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          activate-environment: true
-      - name: central-server 테스트 실행(prod 프로파일 파일 로그 생성)
-        working-directory: central-server
+      - name: central-server redaction focused 테스트 + 로그 스캔
         env:
-          SPRING_PROFILES_ACTIVE: prod
-          LOG_DIR: ${{ github.workspace }}/central-server/logs
-        run: ./gradlew test --no-daemon --console=plain
-      - name: 로그 금지 문자열 스캔(snowflake/API key/Bearer 토큰 0건 강제)
-        run: |
-          shopt -s nullglob
-          logs=(central-server/logs/*.log central-server/logs/*.log.gz)
-          if [ ${#logs[@]} -eq 0 ]; then
-            echo "스캔할 로그 파일 없음(파일 appender 미생성) — 스킵"
-            exit 0
-          fi
-          # .gz 도 펼쳐서 스캔.
-          for f in central-server/logs/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
-          uv run python scripts/scan-sensitive-logs.py central-server/logs/*.log
+          LOG_DIR: ${{ runner.temp }}/nexa-log-redaction-${{ github.run_id }}-${{ github.run_attempt }}
+        run: ./scripts/nexa-verify.sh security-redaction
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
-    needs: exception-policy
+    if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && (needs.changes.outputs.container_central == 'true' || needs.changes.outputs.container_provider == 'true' || needs.changes.outputs.container_rag == 'true') }}
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 10
+    needs: [exception-policy, changes]
     strategy:
       matrix:
         image:
@@ -149,7 +191,27 @@ jobs:
           - docker/rag/Dockerfile
     steps:
       - uses: actions/checkout@v4
+      - id: image-scope
+        name: 이미지 스캔 범위 확인
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.image }}" in
+            central-server/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_central }}" >> "$GITHUB_OUTPUT"
+              ;;
+            provider-agent/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_provider }}" >> "$GITHUB_OUTPUT"
+              ;;
+            docker/rag/Dockerfile)
+              printf 'enabled=%s\n' "${{ needs.changes.outputs.container_rag }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              printf 'enabled=false\n' >> "$GITHUB_OUTPUT"
+              ;;
+          esac
       - name: Trivy config scan(Dockerfile 취약 설정·베이스 이미지)
+        if: ${{ steps.image-scope.outputs.enabled == 'true' }}
         # v0.28.0 은 yank 된 setup-trivy@v0.2.1 참조로 resolve 실패. v0.36.0 은 setup-trivy 를 commit SHA(v0.2.6)로
         # 핀해 안정적이다(번들 trivy v0.70.0). scan-type/severity/exit-code 게이트는 그대로 유지.
         uses: aquasecurity/trivy-action@v0.36.0

@@ -16,14 +16,15 @@ concurrency:
 jobs:
   agent:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, ARM64]
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: provider-agent
     steps:
       - uses: actions/checkout@v4
-      # self-hosted arm64(Debian)에는 setup-python prebuilt 가 없어 실패한다.
-      # uv 가 arm64 Linux prebuilt 로 3.12 를 보장(arch·tool-cache 무관).
+      # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
+      # uv 가 3.12 런타임을 보장한다(arch·tool-cache 무관).
       # setup-uv 에 python-version 을 주면 repo root 에 .venv·VIRTUAL_ENV 를 깔아, working-directory(provider-agent)
       # 의 .venv 와 충돌한다(uv pip 는 root, uv run 은 cwd .venv → 'No module named ruff'). 그래서 uv 바이너리만
       # 설치하고, python 3.12 는 아래 uv venv 가 cwd(provider-agent)에 받게 한다 — 단일 .venv 로 pip/run 일치.

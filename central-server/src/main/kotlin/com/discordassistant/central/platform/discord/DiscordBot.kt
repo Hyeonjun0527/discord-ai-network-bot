@@ -48,7 +48,6 @@ import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -71,18 +70,17 @@ private val DM_COMMANDS =
         "settings",
     )
 
-private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 30
+private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 120
 private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
-private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 24
-private const val NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS = 1_200L
-private const val NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS = 8_000L
-private const val NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS = 15_000L
+private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 80
+private const val RECENT_CHANNEL_CONTEXT_MAX_RAW_CHARS = 12_000
 private const val NIA_CONTINUATION_TTL_MS = 90_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
 private val NIA_DIRECT_ADDRESS_SUFFIX = Regex("""(?:^|\s)니아(?:야|아)?[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '~', '！', '？', '。', '，')
 private val NIA_DIRECT_ADDRESS_NON_VOCATIVE_PREFIX_ENDINGS = listOf("은", "는", "이", "가", "을", "를")
+private val NIA_SENTENCE_PERIOD_RUN = Regex("""(?<!\d)\.+(?!\d)(?=\s|$)""")
 
 internal fun niaDirectAddressPrompt(raw: String): String? {
     val trimmed = raw.trim()
@@ -112,55 +110,68 @@ internal fun isBareNiaDirectAddress(raw: String): Boolean {
     return NIA_DIRECT_ADDRESS_DECORATION.matches(rest)
 }
 
-internal fun buildBareNiaDirectAddressPrompt(
+internal fun stripNiaSentencePeriods(text: String): String =
+    text
+        .lines()
+        .joinToString("\n") { line -> line.replace(NIA_SENTENCE_PERIOD_RUN, "").trimEnd() }
+        .trimEnd()
+
+internal fun Reply.withNiaChatStyle(): Reply =
+    copy(
+        content = stripNiaSentencePeriods(content),
+        pseudoStream =
+            pseudoStream?.copy(
+                snapshots = pseudoStream.snapshots.map(::stripNiaSentencePeriods),
+                warning = pseudoStream.warning?.let(::stripNiaSentencePeriods),
+            ),
+    )
+
+internal fun buildNiaSceneResponsePrompt(
     raw: String,
-    recentBareCallCount: Int,
-): String {
-    val prompt = raw.trim().ifBlank { "니아야" }
-    if (recentBareCallCount < 3) {
-        return """
-            $prompt
-
-            [상황 힌트: 사용자가 니아를 짧게 불렀습니다. 없는 사건이나 소란을 지어내지 말고, 짧고 자연스럽게 왜 불렀는지 되물으세요.]
-            """.trimIndent()
+    addressedContent: String?,
+    triggerSource: String,
+): String =
+    buildString {
+        val currentRaw = raw.trim().ifBlank { raw }
+        val currentCore = addressedContent?.trim().orEmpty()
+        appendLine("[현재 트리거 원문]")
+        appendLine(currentRaw)
+        appendLine()
+        appendLine("[현재 트리거에서 분리한 직접 요청]")
+        appendLine(currentCore.ifBlank { "(비어 있음: 이 메시지만 용건 없음으로 단정하지 말고 최근 원문 장면에서 이미 나온 요구·불만·질문을 찾는다)" })
+        appendLine()
+        appendLine("[트리거 출처]")
+        appendLine(triggerSource)
+        appendLine()
+        appendLine("[응답 계약]")
+        appendLine("- 마지막 트리거 하나만 보지 말고, 함께 제공되는 최근 채널 대화 원문 전체를 1차 소스로 판단한다.")
+        appendLine("- 사용자가 이전부터 답변·반응을 요구했으면 마지막이 단순 호명이어도 그 이전 요구에 이어 짧게 답한다.")
+        appendLine("- 사용자가 니아의 직전 말을 되묻거나 따지면, 같은 말을 반복하지 말고 그 말의 뜻을 설명하거나 이상했으면 짧게 인정하고 수습한다.")
+        appendLine("- 오타·짧은 말·거친 말은 능력 비난으로 받아치지 말고, 전체 흐름상 의도를 먼저 추정한다. 불확실하면 짧게 확인한다.")
+        appendLine("- 없는 사건·소란·관계를 지어내지 않는다. 감정지원 같은 라벨을 먼저 붙이지 말고 원문에 실제로 이어지는 말을 고른다.")
+        appendLine("- 문장 끝에 ASCII 마침표(.)를 붙이지 않는다.")
+        appendLine()
+        appendLine("[대화 장면 few-shot]")
+        appendLine("1. 앞 원문에 '대답해줘', '심심하다'가 있고 마지막 트리거가 '니아야'뿐이면, '왜 불러'가 아니라 앞 요구에 답한다.")
+        appendLine("2. 니아가 이상한 표현을 한 뒤 사용자가 '그게 뭔말이야'라고 물으면, '내가 먼저 한 말인데'를 반복하지 말고 표현 의도를 설명하거나 수습한다.")
+        append("3. 사용자가 거칠게 말해도 상대 말을 그대로 반사하지 말고, 장면에 맞는 짧은 한마디로 받아친다.")
     }
-    return """
-        $prompt
-
-        [상황 힌트: 같은 사용자가 최근 ${recentBareCallCount}번 연속으로 니아를 불렀습니다. 모든 호출에 따로 답하지 말고, 지금 한 번만 사람처럼 반응하세요. 없는 사건이나 소란을 지어내지 말고, 반복해서 부른 점만 자연스럽게 언급해도 됩니다.]
-        """.trimIndent()
-}
-
-internal fun shouldSuppressBareNiaDirectAddress(
-    nowEpochMillis: Long,
-    lastResponseEpochMillis: Long?,
-    cooldownMillis: Long = NIA_BARE_DIRECT_ADDRESS_COOLDOWN_MS,
-): Boolean = lastResponseEpochMillis != null && nowEpochMillis - lastResponseEpochMillis < cooldownMillis
 
 internal fun buildNiaContinuationPrompt(raw: String): String =
-    buildString {
-        appendLine("[현재 사용자의 원문 메시지]")
-        appendLine(raw)
-        appendLine()
-        appendLine("[응답 지시]")
-        appendLine("최근 채널 대화 원문을 기준으로, 이 메시지가 니아의 직전 발화나 방금 흐름에 대한 반응이면 자연스럽게 이어 답하세요.")
-        append("새 주제라면 새 주제에 맞게 짧게 반응하세요. 단순 조건문처럼 판단하지 말고 대화 흐름을 보세요.")
-    }
+    buildNiaSceneResponsePrompt(raw = raw, addressedContent = null, triggerSource = "nia-continuation-after-recent-nia-reply")
 
 internal fun buildNiaAddressedPrompt(
     raw: String,
     addressedContent: String,
 ): String =
-    buildString {
-        appendLine("[현재 사용자의 원문 메시지]")
-        appendLine(raw)
-        appendLine()
-        appendLine("[니아 호명 제거 후 핵심 내용]")
-        appendLine(addressedContent)
-        appendLine()
-        appendLine("[응답 지시]")
-        append("원문 메시지와 최근 채널 대화 원문을 함께 보고 자연스럽게 이어 답하세요. 원문에 없는 사건이나 소란을 지어내지 마세요.")
-    }
+    buildNiaSceneResponsePrompt(
+        raw = raw,
+        addressedContent = addressedContent.takeUnless { isBareNiaDirectAddress(raw) },
+        triggerSource = "nia-direct-address",
+    )
+
+internal fun buildNiaAutoRespondPrompt(raw: String): String =
+    buildNiaSceneResponsePrompt(raw = raw, addressedContent = raw.trim(), triggerSource = "auto-respond-channel")
 
 internal fun buildNiaContinuationPromptFromRecentMessages(
     messages: List<DiscordRecentPromptMessage>,
@@ -190,12 +201,15 @@ internal data class DiscordRecentPromptMessage(
     val bot: Boolean,
     val content: String,
     val createdAtEpochMillis: Long,
+    val replyToMessageId: Long? = null,
 )
 
 internal fun buildDiscordRecentContextTurns(
     messages: List<DiscordRecentPromptMessage>,
     currentMessageId: Long,
     botUserId: Long,
+    maxTurns: Int = RECENT_CHANNEL_CONTEXT_MAX_TURNS,
+    maxRawChars: Int = RECENT_CHANNEL_CONTEXT_MAX_RAW_CHARS,
 ): List<CloudTurn> {
     val contextTurns =
         messages
@@ -205,7 +219,7 @@ internal fun buildDiscordRecentContextTurns(
             .filter { !it.bot || it.authorId == botUserId }
             .sortedBy { it.createdAtEpochMillis }
             .toList()
-            .takeLast(RECENT_CHANNEL_CONTEXT_MAX_TURNS)
+            .takeRecentWithinBudget(maxTurns = maxTurns, maxRawChars = maxRawChars)
             .map { message ->
                 if (message.authorId == botUserId) {
                     CloudTurn("assistant", message.content)
@@ -230,11 +244,23 @@ internal fun buildDiscordRecentContextTurns(
         )
 }
 
-private data class BareNiaDirectAddressKey(
-    val guildId: Long,
-    val channelId: Long,
-    val userId: Long,
-)
+private fun List<DiscordRecentPromptMessage>.takeRecentWithinBudget(
+    maxTurns: Int,
+    maxRawChars: Int,
+): List<DiscordRecentPromptMessage> {
+    if (maxTurns <= 0 || maxRawChars <= 0) return emptyList()
+    val selected = ArrayDeque<DiscordRecentPromptMessage>()
+    var usedChars = 0
+    for (message in asReversed()) {
+        if (selected.size >= maxTurns) break
+        val cost = message.content.length + message.authorLabel.length + 64
+        if (selected.isNotEmpty() && usedChars + cost > maxRawChars) break
+        selected.addFirst(message)
+        usedChars += cost
+        if (usedChars >= maxRawChars) break
+    }
+    return selected.toList()
+}
 
 private fun elapsedMs(startNanos: Long): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
 
@@ -502,9 +528,6 @@ class DiscordBot(
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
         private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels, channelAllowList, participationFlags)
         private val recentMessagesByChannel = ConcurrentHashMap<Long, ArrayDeque<DiscordRecentPromptMessage>>()
-        private val pendingBareDirectNameReplies = ConcurrentHashMap<BareNiaDirectAddressKey, ScheduledFuture<*>>()
-        private val activeBareDirectNameReplies = ConcurrentHashMap<BareNiaDirectAddressKey, Boolean>()
-        private val bareDirectNameLastResponseAt = ConcurrentHashMap<BareNiaDirectAddressKey, Long>()
 
         // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
         private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
@@ -1237,10 +1260,12 @@ class DiscordBot(
                     .any { it.idLong == selfId }
             val directNamePrompt = niaDirectAddressPrompt(event.message.contentRaw)
             val directlyAddressed = directNamePrompt != null
-            // NEXA participation 자발 발화(단계 1): flag 활성 채널에서만 평가·emit. autoRespond/멘션과 **별개 경로**다.
+            // NEXA participation 자발 발화(단계 1): flag 활성 채널에서 평가·emit한다. 실제 전송 모드(CANARY/LIVE)는
+            // participation 이 답변 소유권을 갖고, legacy mention/direct/autorespond 경로는 중복·우회 발화를 만들지 않는다.
             // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
             // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
             forwardToParticipation(event, mentioned || directlyAddressed)
+            if (participationFlags.allowsRealSend(event.guild.idLong, event.channel.idLong)) return
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
@@ -1252,7 +1277,7 @@ class DiscordBot(
             val continuationPrompt = niaContinuationPrompt(event)
             if (continuationPrompt != null) {
                 metrics.record("name-ask-continuation")
-                respondInChannel(event, continuationPrompt, fastResponse = true)
+                respondInChannel(event, continuationPrompt, fastResponse = false)
                 return
             }
             handleAutoRespond(event)
@@ -1276,11 +1301,9 @@ class DiscordBot(
                     event.message.timeCreated
                         .toInstant()
                         .toEpochMilli()
-                val turn =
-                    com.discordassistant.central.speech.domain.model.ConversationTurn(
-                        speakerLabel = speakerLabel,
-                        text = contentRaw.ifBlank { "(빈 메시지)" }.take(500),
-                    )
+                val recentMessages = recentMessagesSnapshot(event.channel.idLong)
+                val recentTurns = recentParticipationTurns(recentMessages, selfId)
+                val recentRawMessages = recentParticipationRawMessages(recentMessages, selfId)
                 // core 결정론 규칙([CoreInterventionRules])용 raw 신호: 트리거 원문(짧게)·화자 라벨·니아 발화 reply 여부.
                 // referencedMessage 가 봇 자신(니아) 메시지면 reply-to-nia(RESPOND_NOW). 없으면 보수적 기본값(false).
                 // niaReply = 트리거가 reply 한 대상이 니아 메시지일 때만 그 메시지(아니면 null).
@@ -1329,7 +1352,8 @@ class DiscordBot(
                         replyToMessageId = event.message.referencedMessage?.idLong,
                         sourceType = participationSourceTypeOf(event),
                         mentioned = mentioned,
-                        recentTurns = listOf(turn),
+                        recentTurns = recentTurns,
+                        recentRawMessages = recentRawMessages,
                         triggerText = contentRaw.take(500),
                         rawText = contentRaw,
                         speakerLabel = speakerLabel,
@@ -1413,63 +1437,7 @@ class DiscordBot(
             prompt: String,
         ) {
             metrics.record("name-ask")
-            if (isBareNiaDirectAddress(event.message.contentRaw)) {
-                scheduleBareDirectNameAsk(event)
-                return
-            }
             respondInChannel(event, buildNiaAddressedPrompt(event.message.contentRaw, prompt), fastResponse = false)
-        }
-
-        private fun scheduleBareDirectNameAsk(event: MessageReceivedEvent) {
-            val key =
-                BareNiaDirectAddressKey(
-                    guildId = event.guild.idLong,
-                    channelId = event.channel.idLong,
-                    userId = event.author.idLong,
-                )
-            val now = System.currentTimeMillis()
-            if (
-                activeBareDirectNameReplies.containsKey(key) ||
-                shouldSuppressBareNiaDirectAddress(now, bareDirectNameLastResponseAt[key])
-            ) {
-                metrics.record("name-ask-bare-suppressed")
-                return
-            }
-
-            pendingBareDirectNameReplies.remove(key)?.cancel(false)
-            lateinit var scheduled: ScheduledFuture<*>
-            scheduled =
-                slowCommandExecutor.schedule(
-                    {
-                        if (!pendingBareDirectNameReplies.remove(key, scheduled)) return@schedule
-                        if (activeBareDirectNameReplies.putIfAbsent(key, true) != null) return@schedule
-                        val startedAt = System.currentTimeMillis()
-                        if (shouldSuppressBareNiaDirectAddress(startedAt, bareDirectNameLastResponseAt[key])) {
-                            activeBareDirectNameReplies.remove(key)
-                            metrics.record("name-ask-bare-suppressed")
-                            return@schedule
-                        }
-                        bareDirectNameLastResponseAt[key] = startedAt
-                        val prompt =
-                            buildBareNiaDirectAddressPrompt(
-                                event.message.contentRaw,
-                                recentBareDirectNameCallCount(
-                                    channelId = event.channel.idLong,
-                                    userId = event.author.idLong,
-                                    nowEpochMillis = startedAt,
-                                ),
-                            )
-                        try {
-                            respondInChannel(event, prompt, fastResponse = true)
-                        } finally {
-                            bareDirectNameLastResponseAt[key] = System.currentTimeMillis()
-                            activeBareDirectNameReplies.remove(key)
-                        }
-                    },
-                    NIA_BARE_DIRECT_ADDRESS_DEBOUNCE_MS,
-                    TimeUnit.MILLISECONDS,
-                )
-            pendingBareDirectNameReplies[key] = scheduled
         }
 
         /**
@@ -1492,7 +1460,7 @@ class DiscordBot(
                 return
             }
             metrics.record("auto-respond")
-            respondInChannel(event, content.trim())
+            respondInChannel(event, buildNiaAutoRespondPrompt(content))
         }
 
         /** 멘션/자동응답 공통: /ask → (프로필 있으면 웹훅 페르소나, 없으면 답장 스트림). 에러는 동일 처리. */
@@ -1531,7 +1499,7 @@ class DiscordBot(
                         },
                     )
                 val askStartedAt = System.nanoTime()
-                val reply =
+                val rawReply =
                     commands.ask(
                         ctx,
                         prompt,
@@ -1539,16 +1507,17 @@ class DiscordBot(
                         ambientHistory = ambientHistory,
                         fastResponse = fastResponse,
                     )
+                val reply = rawReply.withNiaChatStyle()
                 askMs = elapsedMs(askStartedAt)
                 val renderStartedAt = System.nanoTime()
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
-                    rememberNiaReply(event.channel.idLong, event.jda.selfUser.idLong, reply.content)
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
                         .queue({}, {})
                 } else {
                     answers.replyToMessageWithPseudoStream(event.message, reply)
                 }
+                rememberNiaReply(event.channel.idLong, event.jda.selfUser.idLong, reply.content)
                 renderMs = elapsedMs(renderStartedAt)
                 log.info(
                     "Discord message AI latency guild={} channel={} user={} fast={} webhook={} toneMs={} askMs={} renderMs={} totalMs={} replyChars={}",
@@ -1592,6 +1561,47 @@ class DiscordBot(
             )
         }
 
+        private fun recentParticipationTurns(
+            messages: List<DiscordRecentPromptMessage>,
+            botUserId: Long,
+        ): List<com.discordassistant.central.speech.domain.model.ConversationTurn> =
+            messages
+                .asSequence()
+                .filter { it.content.isNotBlank() }
+                .filter { !it.bot || it.authorId == botUserId }
+                .sortedBy { it.createdAtEpochMillis }
+                .toList()
+                .takeLast(RECENT_CHANNEL_CONTEXT_MAX_TURNS)
+                .map { message ->
+                    com.discordassistant.central.speech.domain.model.ConversationTurn(
+                        speakerLabel = if (message.bot && message.authorId == botUserId) "nia" else "user_${message.authorId % 100000}",
+                        text = message.content.take(500),
+                    )
+                }
+
+        private fun recentParticipationRawMessages(
+            messages: List<DiscordRecentPromptMessage>,
+            botUserId: Long,
+        ): List<com.discordassistant.central.platform.discord.nexa.ParticipationRawSceneMessage> =
+            messages
+                .asSequence()
+                .filter { it.content.isNotBlank() }
+                .filter { !it.bot || it.authorId == botUserId }
+                .sortedBy { it.createdAtEpochMillis }
+                .toList()
+                .takeLast(RECENT_CHANNEL_CONTEXT_MAX_TURNS)
+                .map { message ->
+                    com.discordassistant.central.platform.discord.nexa.ParticipationRawSceneMessage(
+                        messageId = message.id,
+                        authorId = message.authorId,
+                        authorLabel = message.authorLabel,
+                        bot = message.bot && message.authorId == botUserId,
+                        content = message.content,
+                        occurredAtMs = message.createdAtEpochMillis,
+                        replyToMessageId = message.replyToMessageId,
+                    )
+                }
+
         private fun rememberRecentMessage(event: MessageReceivedEvent) {
             val channelId = event.channel.idLong
             val message =
@@ -1605,6 +1615,7 @@ class DiscordBot(
                         event.message.timeCreated
                             .toInstant()
                             .toEpochMilli(),
+                    replyToMessageId = event.message.referencedMessage?.idLong,
                 )
             rememberRecentMessage(channelId, message)
         }
@@ -1660,20 +1671,6 @@ class DiscordBot(
                 nowEpochMillis = nowEpochMillis,
             )
         }
-
-        private fun recentBareDirectNameCallCount(
-            channelId: Long,
-            userId: Long,
-            nowEpochMillis: Long,
-        ): Int =
-            recentMessagesSnapshot(channelId)
-                .asReversed()
-                .takeWhile { message ->
-                    !message.bot &&
-                        message.authorId == userId &&
-                        nowEpochMillis - message.createdAtEpochMillis <= NIA_BARE_DIRECT_ADDRESS_BURST_WINDOW_MS &&
-                        isBareNiaDirectAddress(message.content)
-                }.count()
 
         /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */
         override fun onMessageReactionAdd(event: MessageReactionAddEvent) {

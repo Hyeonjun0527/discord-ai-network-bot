@@ -5,6 +5,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
+import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRetentionPolicy
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
@@ -52,8 +53,10 @@ import com.discordassistant.central.participation.domain.model.decision.ActionDe
 import com.discordassistant.central.participation.domain.model.decision.ActionTargetDistribution
 import com.discordassistant.central.participation.domain.model.decision.BurstProfile
 import com.discordassistant.central.participation.domain.model.decision.DelayDistribution
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.AttentionGateConstants
@@ -127,8 +130,15 @@ class NexaParticipationEmitBridge(
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
     private val judgeMode = NexaJudgeMode.parse(judgeModeName)
-    private val speechRawContextWindowBuilder = JudgeContextWindowBuilder(speechRawContextMaxChars)
-    private val judgeContextAssembler = NiaJudgeContextAssembler()
+    private val speechRawContextWindowBuilder =
+        JudgeContextWindowBuilder(speechRawContextMaxChars, niaAuthorPseudonyms = setOf(NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM))
+    private val judgeContextAssembler =
+        NiaJudgeContextAssembler(
+            JudgeContextWindowBuilder(
+                RawContextRetentionPolicy.DEFAULT_MAX_RAW_CHARS,
+                niaAuthorPseudonyms = setOf(NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM),
+            ),
+        )
 
     /**
      * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
@@ -601,14 +611,39 @@ class NexaParticipationEmitBridge(
 
     private fun rawContextSnapshot(signal: ParticipationMessageSignal): RawContextSnapshot {
         val scope = RawContextScope(guildId = signal.guildId, channelId = signal.channelId, threadId = signal.threadId)
-        val store = rawContextStore ?: return RawContextSnapshot(scope, emptyList())
-        return try {
-            store.readRecent(scope)
-        } catch (e: Exception) {
-            log.warn("NEXA judge raw context 조회 실패(sceneSeq={}) — {}", signal.sceneSeq, e.message)
-            RawContextSnapshot(scope, emptyList())
-        }
+        val recentEntries = signal.recentRawMessages.mapNotNull { it.toRawContextEntry(scope, signal.guildId) }
+        val stored =
+            try {
+                rawContextStore?.readRecent(scope) ?: RawContextSnapshot(scope, emptyList())
+            } catch (e: Exception) {
+                log.warn("NEXA judge raw context 조회 실패(sceneSeq={}) — {}", signal.sceneSeq, e.message)
+                RawContextSnapshot(scope, emptyList())
+            }
+        val merged =
+            (stored.entries + recentEntries)
+                .distinctBy { it.messageId }
+                .sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
+        return RawContextSnapshot(scope, merged)
     }
+
+    private fun ParticipationRawSceneMessage.toRawContextEntry(
+        scope: RawContextScope,
+        guildId: Long,
+    ): RawContextEntry? {
+        val text = content.trim()
+        if (text.isBlank()) return null
+        return RawContextEntry(
+            scope = scope,
+            messageId = positiveRawContextMessageId(messageId),
+            authorPseudonym = if (bot) NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM else userPseudonym(guildId, authorId),
+            occurredAt = if (occurredAtMs > 0) Instant.ofEpochMilli(occurredAtMs) else Instant.EPOCH,
+            replyToMessageId = replyToMessageId?.let(::positiveRawContextMessageId),
+            sourceType = if (bot) RawContextSourceType.BOT else RawContextSourceType.HUMAN,
+            content = RawContextContent.Available(text),
+        )
+    }
+
+    private fun positiveRawContextMessageId(id: Long): Long = if (id > 0) id else (Long.MAX_VALUE + id).coerceAtLeast(1L)
 
     private fun judgeConstraints(): JudgeDecisionConstraints =
         JudgeDecisionConstraints(
@@ -622,9 +657,9 @@ class NexaParticipationEmitBridge(
         val set =
             fewShotService
                 ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
-                ?: return JudgeFewShotSetPayload.EMPTY
-        val active = set.active ?: return JudgeFewShotSetPayload.EMPTY
-        val setId = set.id ?: return JudgeFewShotSetPayload.EMPTY
+                ?: return DEFAULT_FEW_SHOT_PAYLOAD
+        val active = set.active ?: return DEFAULT_FEW_SHOT_PAYLOAD
+        val setId = set.id ?: return DEFAULT_FEW_SHOT_PAYLOAD
         return active.toJudgePayload(setId)
     }
 
@@ -1252,23 +1287,16 @@ class NexaParticipationEmitBridge(
             "raw_context_message:${messagePseudonym(guildId, messageId)}",
         )
 
-    private fun rawContextSceneDataForSpeech(signal: ParticipationMessageSignal): String? {
-        val store = rawContextStore ?: return null
-        return try {
-            val snapshot =
-                store.readRecent(
-                    RawContextScope(
-                        guildId = signal.guildId,
-                        channelId = signal.channelId,
-                        threadId = signal.threadId,
-                    ),
-                )
-            speechRawContextWindowBuilder.build(snapshot).quotedSceneData
+    private fun rawContextSceneDataForSpeech(signal: ParticipationMessageSignal): String? =
+        try {
+            speechRawContextWindowBuilder
+                .build(rawContextSnapshot(signal))
+                .quotedSceneData
+                .takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             log.warn("NEXA speech raw context window 읽기 실패(channel={}) — {}", signal.channelId, e.message)
             null
         }
-    }
 
     /**
      * core 규칙이 명백한 SPEAK 로 즉결했을 때 쓰는 결정론 분포(SPEAK=1.0). 정책 분포를 묻지 않고 바로 발화하되,
@@ -1308,6 +1336,63 @@ class NexaParticipationEmitBridge(
         private const val SINGLE_JUDGE_DECISION_SOURCE: String = "SINGLE_JUDGE"
         private const val BASELINE_DECISION_SOURCE: String = "BASELINE"
         private const val DEFAULT_REACTION_CODE: String = "ack"
+        private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
+        private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
+        private const val DEFAULT_FEW_SHOT_VERSION: Int = 1
+
+        private val DEFAULT_FEW_SHOT_PAYLOAD: JudgeFewShotSetPayload =
+            JudgeFewShotSetPayload(
+                setId = DEFAULT_FEW_SHOT_SET_ID,
+                version = DEFAULT_FEW_SHOT_VERSION,
+                examples =
+                    listOf(
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_direct_reply_request",
+                            title = "direct call after ignored reply request",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "야 이럴땐 위로해줘야지"),
+                                    JudgeFewShotRawMessagePayload("m2", "member", 1_000, "대답해줘"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "나 외로움"),
+                                    JudgeFewShotRawMessagePayload("m4", "member", 3_000, "니아야"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason =
+                                "The last trigger is only a name call, but the raw scene already contains repeated " +
+                                    "requests for a response.",
+                            evidenceRefs = setOf("m1", "m2", "m3", "m4"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.WAIT,
+                                    whyBad = "Waiting or asking why ignores the prior raw requests in the same scene.",
+                                ),
+                            tags = setOf("direct-address", "whole-scene"),
+                            priority = 100,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_self_repair_question",
+                            title = "user asks what nia's previous line meant",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "nia", 0, "어휘력 없음"),
+                                    JudgeFewShotRawMessagePayload("m2", "member", 1_000, "어휘력 없음이 뭔말이야"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "갑자기 왜나와"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason = "The user is asking Nia to explain or repair Nia's own previous utterance.",
+                            evidenceRefs = setOf("m1", "m2", "m3"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.WAIT,
+                                    whyBad = "Silence or repeating the same line fails to repair the conversation.",
+                                ),
+                            tags = setOf("self-repair", "whole-scene"),
+                            priority = 90,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                    ),
+            )
 
         /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
         private val NIA_IDENTITY: IdentityKernelSection =
@@ -1371,6 +1456,8 @@ data class ParticipationMessageSignal(
     val recentAgentBurstCount: Int = 0,
     /** focus thread 의 최근 대화 turn(가명 라벨·짧은 본문, 원문 비저장). emit packet 입력. */
     val recentTurns: List<ConversationTurn>,
+    /** judge raw scene 보강용 최근 Discord 원문. bot 발화까지 포함해 니아 직전 발화를 judge 가 볼 수 있게 한다. */
+    val recentRawMessages: List<ParticipationRawSceneMessage> = emptyList(),
     /**
      * 트리거(이번) 메시지 본문(결정론 규칙 매칭용 짧은 텍스트). [CoreInterventionRules] 가 호명·연결어·타인지목·인용
      * 제외를 판정한다. 미관측이면 빈 문자열(보수적 — 규칙이 Candidate 로 위임해 기존 정책 분포에 맡긴다).
@@ -1468,6 +1555,21 @@ data class ParticipationRawContextRedactionSignal(
         require(channelId > 0) { "channelId 는 양수여야 한다: $channelId" }
         threadId?.let { require(it > 0) { "threadId 는 양수여야 한다: $it" } }
         require(messageId > 0) { "messageId 는 양수여야 한다: $messageId" }
+    }
+}
+
+data class ParticipationRawSceneMessage(
+    val messageId: Long,
+    val authorId: Long,
+    val authorLabel: String,
+    val bot: Boolean,
+    val content: String,
+    val occurredAtMs: Long,
+    val replyToMessageId: Long? = null,
+) {
+    init {
+        require(authorLabel.isNotBlank()) { "authorLabel 은 비어 있을 수 없다" }
+        require(occurredAtMs >= 0) { "occurredAtMs 는 음수일 수 없다: $occurredAtMs" }
     }
 }
 

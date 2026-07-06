@@ -15,7 +15,6 @@ data class Reply(
     val content: String,
     val ephemeral: Boolean = true,
     val pseudoStream: ReplyPseudoStream? = null,
-    val feedback: ReplyFeedback? = null,
     val imagePng: ByteArray? = null,
 )
 
@@ -24,11 +23,6 @@ data class ReplyPseudoStream(
     val editIntervalMs: Long,
     val snapshots: List<String>,
     val warning: String? = null,
-)
-
-/** 공개 AI 답변 아래에 붙는 품질 피드백 메타데이터. */
-data class ReplyFeedback(
-    val requestId: String,
 )
 
 /** 명령 호출 컨텍스트(JDA 이벤트에서 추출). */
@@ -129,14 +123,6 @@ class CommandService(
 
     /** 취소 버튼 → 진행 중 이미지 생성 중단. */
     fun cancelImage(requestId: String): Boolean = askCommands.cancelImage(requestId)
-
-    fun submitAskFeedback(
-        ctx: CommandContext,
-        requestId: String,
-        rating: Int,
-        feedbackType: String,
-        reason: String? = null,
-    ): Reply = askCommands.submitAskFeedback(ctx, requestId, rating, feedbackType, reason)
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
     fun autocompleteModels(ctx: CommandContext): List<String> = askCommands.autocompleteModels(ctx)

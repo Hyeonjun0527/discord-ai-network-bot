@@ -1,6 +1,5 @@
 package com.discordassistant.central.platform.discord.command
 
-import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
 import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
 import com.discordassistant.central.ainetwork.application.ModelChoiceDecision
 import com.discordassistant.central.ainetwork.application.NiaAffinityService
@@ -17,7 +16,6 @@ import com.discordassistant.central.multiresponse.application.MultiResponseServi
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.Replies
 import com.discordassistant.central.platform.discord.Reply
-import com.discordassistant.central.platform.discord.ReplyFeedback
 import com.discordassistant.central.platform.discord.ReplyPseudoStream
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
@@ -53,7 +51,6 @@ class AskCommandHandler(
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeSearch: KnowledgeSearchService,
     private val multiResponse: MultiResponseService,
-    private val qualityFeedback: AiQualityFeedbackService,
     private val niaAffinity: NiaAffinityService,
     // 이미지 안전 심사·번역을 central 이 직접 z.ai(GLM)로 처리하는 백엔드(ADR 0006 단계2). 키 있으면 isEnabled().
     private val cloudLlm: com.discordassistant.central.routing.application.CloudLlm,
@@ -210,7 +207,6 @@ class AskCommandHandler(
                 return completedAskReply(
                     local.text.orEmpty().withWebSources(local.sources),
                     modelChoice,
-                    local.requestId,
                     usedCloud = false,
                 )
             }
@@ -250,7 +246,7 @@ class AskCommandHandler(
                 val answer = cloud.text.orEmpty()
                 // 이번 turn(원문 질문 + 원문 답)을 기억에 append — 다음 질문이 맥락을 이어가게.
                 askMemory.append(ctx.channelId, ctx.userId, prompt, answer)
-                completedAskReply(answer.withWebSources(cloud.sources), modelChoice, cloud.requestId, usedCloud = true)
+                completedAskReply(answer.withWebSources(cloud.sources), modelChoice, usedCloud = true)
             }
             RequestState.REJECTED -> Replies.reject(cloud.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
             else -> Replies.warn(cloud.failReason ?: Messages.get(Messages.Key.ASK_FAILED, guards.lang(ctx)))
@@ -471,7 +467,6 @@ class AskCommandHandler(
     private fun completedAskReply(
         answer: String,
         modelChoice: ModelChoiceDecision,
-        requestId: String?,
         usedCloud: Boolean,
     ): Reply {
         // 클라우드 폴백 답변엔 "모델 대체" 문구를 더하지 않는다.
@@ -502,38 +497,7 @@ class AskCommandHandler(
             content = finalContent,
             ephemeral = false,
             pseudoStream = stream,
-            feedback = requestId?.trim()?.takeIf { it.isNotBlank() }?.let { ReplyFeedback(it) },
         )
-    }
-
-    fun submitAskFeedback(
-        ctx: CommandContext,
-        requestId: String,
-        rating: Int,
-        feedbackType: String,
-        reason: String? = null,
-    ): Reply {
-        val normalizedRequestId = requestId.trim()
-        if (normalizedRequestId.isBlank()) {
-            return Replies.warn("피드백 대상을 찾지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.")
-        }
-        val saved =
-            qualityFeedback.submit(
-                guildId = ctx.guildId,
-                channelId = ctx.channelId,
-                requestId = normalizedRequestId,
-                userId = ctx.userId,
-                rating = rating,
-                feedbackType = feedbackType,
-                reason = reason,
-            )
-        val message =
-            if (saved.status == "needs_review") {
-                "🚩 신고로 접수했어요. 관리자가 품질 피드백 대시보드에서 확인할 수 있습니다."
-            } else {
-                "고마워요. 이 피드백은 채널 AI 품질 개선 신호로만 사용됩니다."
-            }
-        return Reply(message, ephemeral = true)
     }
 
     private fun startRuntimeMultiResponseObservation(

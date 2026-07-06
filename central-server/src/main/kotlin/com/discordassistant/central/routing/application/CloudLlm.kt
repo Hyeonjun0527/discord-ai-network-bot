@@ -381,7 +381,7 @@ object CloudLlmResponseParser {
 class ZaiCloudLlm(
     @param:Value("\${central.cloud.zai-api-key:}") private val apiKey: String,
     @param:Value("\${central.cloud.zai-base-url:https://api.z.ai/api/paas/v4}") private val baseUrl: String,
-    @param:Value("\${central.cloud.llm-timeout-seconds:3}") private val timeoutSeconds: Long,
+    @param:Value("\${central.cloud.llm-timeout-seconds:4}") private val timeoutSeconds: Long,
     @param:Value("\${central.cloud.llm-max-retries:2}") private val maxRetries: Int = 2,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(ZaiCloudLlm::class.java)
@@ -459,11 +459,10 @@ class ZaiCloudLlm(
                 .apply {
                     val arr = putArray("messages")
                     messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
-                    // z.ai GLM thinking 속도 라우팅: {"thinking":{"type":"enabled"|"disabled"}}.
-                    // **중요**: z.ai 는 thinking 을 명시하지 않으면 서버 기본이 "생각 ON"(느림 — 실측 7~8초)이라
-                    // 3초 타임아웃(ADR 0006 fast-or-fail)을 항상 초과한다. 그래서 미지정(null)이면 disabled 를
-                    // 명시해 즉답(<2초)을 강제한다. 깊은 추론이 필요한 호출만 ENABLED 를 명시로 넘긴다.
-                    putObject("thinking").put("type", (thinking ?: CloudThinking.DISABLED).wire)
+                    // thinking 은 **무조건 disabled**(운영 결정, ADR 0006). z.ai 는 thinking ON 이면 7~8초 걸려
+                    // 4초 fast-or-fail 예산을 초과한다(disabled 는 실측 <2초). 즉답 채팅 봇에는 추론 지연이 해가
+                    // 되므로 어떤 호출이 ENABLED 를 넘겨도 켜지 않는다([thinking] 파라미터는 무시된다).
+                    putObject("thinking").put("type", CloudThinking.DISABLED.wire)
                     if (!toolsJson.isNullOrBlank()) {
                         // tools 는 OpenAI function schema 배열(카탈로그 SSOT 가 만든 JSON). 파싱 실패는 호출자 책임이 아니라
                         // 카탈로그 버그이므로 여기서 던져 빠르게 드러낸다(fail fast). tool_choice=auto 로 호출 여부는 GLM 이 결정.

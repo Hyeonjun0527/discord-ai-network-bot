@@ -45,10 +45,16 @@ participation 이 유효 정책을 조회할 때:
 - 중복 금지: 동일 의미(활성화/모드/talkativeness)를 guild와 channelai 양쪽에 저장하지 않는다.
 - ASSISTANT 모드 채널은 participation 관점에서 항상 SPEAK로 평가된다(무조건 답변).
 - **MEMBER 모드 직접 호명 = 반드시 응답**: MEMBER 채널은 평소 장면 기반으로 눈치껏 끼어들지만(IGNORE/WAIT/REACT/SPEAK),
-  **사용자가 니아를 직접 호명(@멘션 · 이름 호명 "니아야" 등) 하거나 니아 발화에 reply 하면 반드시 응답한다**. judge/policy 가
+  **사용자가 니아를 직접 호명(@멘션 · 이름 호명) 하거나 니아 발화에 reply 하면 반드시 응답한다**. judge/policy 가
   그 턴을 IGNORE 로 판단하더라도 무응답으로 끝내지 않는다 — participation 이 SPEAK 로 소유하거나, participation 이
   침묵하면 discord 어댑터가 legacy 직접응답 경로(mention/name-ask)로 **폴백**해 답한다. "관찰만 하다 부르면 반드시
   답하는 사람다움"이 MEMBER 모드의 계약이다.
+- **호명 판정은 문자열 매칭이 아니라 judge 의 의미 이해로 한다**: 이름 호명은 표기 변형이 무한하다("니아야", "니아",
+  로마자 "nia" · "nia야" · "nia ya", 오타·띄어쓰기·자모 분리). regex 로 이를 열거하는 접근은 항상 뒤처지므로,
+  **1차 판정은 participation judge(LLM)** 가 원문 trigger 를 읽고 "지금 이 사람이 니아를 부르는가"를 의도로 판단한다
+  (판정 규칙·few-shot 은 `NexaIdentity`/`CloudRawParticipationJudge` 프롬프트에 SSOT 로 둔다). discord 어댑터의
+  regex(`niaDirectAddressPrompt`)는 judge 가 꺼졌거나 실패했을 때만 쓰는 값싼 폴백 fast-path 이지 유일한 감지원이
+  아니다. 3인칭 언급("니아는 원래…")은 호명이 아니다.
 
 ## 불변식
 

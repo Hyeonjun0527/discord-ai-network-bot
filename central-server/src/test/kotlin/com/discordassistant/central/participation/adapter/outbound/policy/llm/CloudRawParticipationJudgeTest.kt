@@ -37,6 +37,10 @@ class CloudRawParticipationJudgeTest {
             .contains("니아: «어휘력 없음»")
             .contains("trigger_text=«??? 어휘력 없음이 뭔말이야»")
             .contains("JSON 하나로만 답하라")
+            // 이름 호명은 regex 매칭이 아니라 judge 의 의미 이해로 잡는다: 표기 무관 호명 규칙 + 로마자 few-shot 이 프롬프트에 실린다.
+            .contains("호명 판정")
+            .contains("nia ya")
+            .contains("3인칭으로 언급만 하는 것")
     }
 
     @Test

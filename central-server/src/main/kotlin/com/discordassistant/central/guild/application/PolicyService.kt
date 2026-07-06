@@ -297,12 +297,19 @@ class PolicyService(
     @Transactional(readOnly = true)
     fun allowedChannelPolicy(guildId: Long): AllowedChannelPolicy = cachedChannelPolicy(guildId)
 
-    /** 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true). */
+    /**
+     * 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true).
+     * **자동응답(ai채팅) 채널은 allow-list 와 무관하게 항상 허용**한다 — 그 채널은 정의상 모든 메시지에 답해야 하므로,
+     * allow-list 가 non-empty 인 서버에서 자동생성 ai채팅이 목록에 없어 "이 채널에서는 LLM 을 사용할 수 없습니다"로
+     * 막히는 문제를 근본 차단한다(등록 타이밍/누락과 무관하게 보장).
+     */
     @Transactional(readOnly = true)
     override fun isChannelAllowed(
         guildId: Long,
         channelId: Long,
-    ): Boolean = allowedChannelPolicy(guildId).allows(channelId)
+    ): Boolean =
+        allowedChannelPolicy(guildId).allows(channelId) ||
+            autoRespondChannels.autoRespondChannelIds(guildId).contains(channelId)
 
     // ── 역할 정책 ───────────────────────────────────────────────────────
     @Transactional

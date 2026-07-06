@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 50
       - id: fresh
         name: 최신 main 배포만 진행
         run: |
@@ -48,12 +48,23 @@ jobs:
             echo "should-deploy=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git fetch --no-tags --depth=1 origin main
+          git fetch --no-tags --depth=50 origin main
           latest="$(git rev-parse origin/main)"
           if [ "$latest" != "${{ github.sha }}" ]; then
-            echo "더 최신 main 커밋($latest)이 있어 이 배포는 스킵합니다."
-            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            # origin/main 이 이 커밋보다 앞서 있어도, 뒤따른 커밋이 '배포 트리거 경로'
+            # (central-server/** · 이 워크플로)를 건드리지 않았으면 그 커밋은 자기 deploy 를
+            # 트리거하지 않는다(예: rag 인덱스 [skip ci] 리빌드). 그 경우 이 실행이 여전히
+            # 최신 코드이므로 계속 진행한다. 예전엔 tip 이동만으로 무조건 스킵해서, 매 머지
+            # 뒤 자동으로 붙는 RAG 리빌드 커밋이 코드 배포를 통째로 삼켜 배포가 안 됐다.
+            newer="$(git diff --name-only "${{ github.sha }}" "$latest" -- \
+              'central-server/**' '.github/workflows/central-deploy.yml' 2>/dev/null || echo UNKNOWN)"
+            if [ -n "$newer" ]; then
+              echo "배포 경로를 건드린 더 최신 main 커밋($latest)이 있어 이 배포는 스킵합니다:"
+              echo "$newer"
+              echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "뒤따른 커밋은 배포 경로를 안 건드림(rag 인덱스 등) — 이 실행이 최신 코드, 계속 진행."
           fi
           echo "should-deploy=true" >> "$GITHUB_OUTPUT"
 

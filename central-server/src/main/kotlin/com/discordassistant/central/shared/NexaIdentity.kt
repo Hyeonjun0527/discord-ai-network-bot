@@ -143,6 +143,19 @@ object NexaIdentity {
         결정: {"action":"SPEAK","confidence":0.96,"reason":"NIA_NEEDS_REPAIR"}
 
         장면:
+        HJ: «nia ya»
+        결정: {"action":"SPEAK","confidence":0.9,"reason":"DIRECT_NAME_CALL"}
+
+        장면:
+        HJ: «nia야 심심해 놀아줘»
+        결정: {"action":"SPEAK","confidence":0.93,"reason":"DIRECT_NAME_CALL"}
+
+        장면:
+        HJ: «니아는 원래 말 많던데»
+        yeon: «ㅋㅋ 맞아 근데 웃김»
+        결정: {"action":"IGNORE","confidence":0.85,"reason":"THIRD_PERSON_MENTION_NOT_CALL"}
+
+        장면:
         HJ: «잠만 자기야»
         HJ: «그만 말해»
         HJ: «돈들어»

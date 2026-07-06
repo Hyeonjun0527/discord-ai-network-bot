@@ -44,6 +44,11 @@ participation 이 유효 정책을 조회할 때:
 
 - 중복 금지: 동일 의미(활성화/모드/talkativeness)를 guild와 channelai 양쪽에 저장하지 않는다.
 - ASSISTANT 모드 채널은 participation 관점에서 항상 SPEAK로 평가된다(무조건 답변).
+- **MEMBER 모드 직접 호명 = 반드시 응답**: MEMBER 채널은 평소 장면 기반으로 눈치껏 끼어들지만(IGNORE/WAIT/REACT/SPEAK),
+  **사용자가 니아를 직접 호명(@멘션 · 이름 호명 "니아야" 등) 하거나 니아 발화에 reply 하면 반드시 응답한다**. judge/policy 가
+  그 턴을 IGNORE 로 판단하더라도 무응답으로 끝내지 않는다 — participation 이 SPEAK 로 소유하거나, participation 이
+  침묵하면 discord 어댑터가 legacy 직접응답 경로(mention/name-ask)로 **폴백**해 답한다. "관찰만 하다 부르면 반드시
+  답하는 사람다움"이 MEMBER 모드의 계약이다.
 
 ## 불변식
 
@@ -51,3 +56,5 @@ participation 이 유효 정책을 조회할 때:
 2. 모드·talkativeness·롤아웃의 SSOT는 guild 정책 한 곳이며 channelai는 채널 프로필만 소유한다.
 3. 정책 편집 입구는 웹 관리 대시보드가 유일하다(디스코드 명령으로 변경 금지).
 4. participation은 합성된 단일 `EffectiveGuildPolicyView`만 읽는다(두 소스 직접 조회 금지).
+5. MEMBER 모드에서 **직접 호명(멘션/이름 호명)·니아 발화 reply 는 반드시 응답**한다(judge IGNORE 여도 폴백으로 답한다).
+   OFF/마스터 off 만 무응답이 허용된다(불변식 1).

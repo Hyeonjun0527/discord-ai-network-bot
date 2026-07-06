@@ -34,10 +34,11 @@ class CloudLlmResponseParserTest {
     }
 
     @Test
-    fun `업스트림 error 객체 → 일반화 예외`() {
-        val body = """{"error":{"message":"invalid api key"}}"""
+    fun `업스트림 error 객체 → 사유를 노출한다(운영자 진단)`() {
+        val body = """{"error":{"code":"1211","message":"model not found"}}"""
         val e = assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse(body, mapper) }
-        assertEquals(CloudLlmResponseParser.USER_ERROR_MESSAGE, e.message)
+        // 원인(code·message)을 그대로 노출해 운영자가 z.ai 실패 이유를 바로 진단하게 한다.
+        assertEquals("클라우드 AI 오류: 1211 model not found", e.message)
     }
 
     @Test

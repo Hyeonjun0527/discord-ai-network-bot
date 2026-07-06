@@ -82,8 +82,15 @@ private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '
 private val NIA_DIRECT_ADDRESS_NON_VOCATIVE_PREFIX_ENDINGS = listOf("은", "는", "이", "가", "을", "를")
 private val NIA_SENTENCE_PERIOD_RUN = Regex("""(?<!\d)\.+(?!\d)(?=\s|$)""")
 
+/**
+ * 한글 자모 분리(NFD)로 들어온 입력을 음절(NFC)로 합친다. macOS 등 일부 클라이언트는 "니아야"를
+ * "ㄴ+ㅣ+ㅇ+ㅏ…" 형태(decomposed)로 보내 "니아" 리터럴/정규식 매칭이 실패한다(호명 무응답 원인).
+ * 이름 호명 감지는 반드시 이 정규화를 거쳐 NFD/NFC 표기 차이에 영향받지 않게 한다.
+ */
+internal fun String.nfc(): String = java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFC)
+
 internal fun niaDirectAddressPrompt(raw: String): String? {
-    val trimmed = raw.trim()
+    val trimmed = raw.nfc().trim()
     if (NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) {
         val stripped =
             NIA_DIRECT_ADDRESS_PREFIX
@@ -104,7 +111,7 @@ internal fun niaDirectAddressPrompt(raw: String): String? {
 }
 
 internal fun isBareNiaDirectAddress(raw: String): Boolean {
-    val trimmed = raw.trim()
+    val trimmed = raw.nfc().trim()
     if (!NIA_DIRECT_ADDRESS_PREFIX.containsMatchIn(trimmed)) return false
     val rest = NIA_DIRECT_ADDRESS_PREFIX.replaceFirst(trimmed, "")
     return NIA_DIRECT_ADDRESS_DECORATION.matches(rest)
@@ -1335,7 +1342,7 @@ class DiscordBot(
                 }
 
                 // 히스토리 도출 신호(A4 중복·B1 burst 미완·B17 사적 핑퐁) — 채널별 사람 메시지 버퍼에서 도출(추가 JDA 조회 0).
-                val mentionsNiaInTrigger = mentioned || contentRaw.contains("니아")
+                val mentionsNiaInTrigger = mentioned || contentRaw.nfc().contains("니아")
                 val derived =
                     participationSignals.deriveAndRecord(
                         channelId = event.channel.idLong,

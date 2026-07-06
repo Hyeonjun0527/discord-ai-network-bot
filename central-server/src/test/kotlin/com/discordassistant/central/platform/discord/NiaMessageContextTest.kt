@@ -14,6 +14,17 @@ class NiaMessageContextTest {
     }
 
     @Test
+    fun `NFD 자모 분리로 들어온 호명도 인식한다`() {
+        // macOS 등 일부 클라이언트는 "니아야"를 자모 분해(NFD)해 보내 "니아" 매칭이 실패했다(호명 무응답 원인).
+        val decomposed = java.text.Normalizer.normalize("니아야", java.text.Normalizer.Form.NFD)
+        assertThat(decomposed).isNotEqualTo("니아야") // 실제로 분해됐는지 선확인
+        assertThat(niaDirectAddressPrompt(decomposed)).isEqualTo("니아야")
+        val decomposedWithBody = java.text.Normalizer.normalize("니아야 왜 답 안 해", java.text.Normalizer.Form.NFD)
+        assertThat(niaDirectAddressPrompt(decomposedWithBody)).isEqualTo("왜 답 안 해")
+        assertThat(isBareNiaDirectAddress(decomposed)).isTrue()
+    }
+
+    @Test
     fun `내용 없는 니아 호명은 마지막 트리거가 비어 있음을 구분한다`() {
         assertThat(isBareNiaDirectAddress("니아야")).isTrue()
         assertThat(isBareNiaDirectAddress("니아야?")).isTrue()

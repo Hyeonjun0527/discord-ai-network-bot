@@ -381,7 +381,7 @@ object CloudLlmResponseParser {
 class ZaiCloudLlm(
     @param:Value("\${central.cloud.zai-api-key:}") private val apiKey: String,
     @param:Value("\${central.cloud.zai-base-url:https://api.z.ai/api/paas/v4}") private val baseUrl: String,
-    @param:Value("\${central.cloud.llm-timeout-seconds:4}") private val timeoutSeconds: Long,
+    @param:Value("\${central.cloud.llm-timeout-seconds:20}") private val timeoutSeconds: Long,
     @param:Value("\${central.cloud.llm-max-retries:2}") private val maxRetries: Int = 2,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(ZaiCloudLlm::class.java)

@@ -63,20 +63,21 @@ interface CloudLlm {
 키가 없으면(`isEnabled()=false`) **기존 동작 그대로** — 에이전트 경유 `glm-*` 폴백(하위호환·
 롤백 안전). 로컬(Ollama 등 비-glm) 라우팅은 전혀 바뀌지 않는다(`sendInfer` 경로 보존).
 
-### 3. 텍스트 LLM 호출 — thinking 무조건 off + 4초 fast-or-fail (불변)
+### 3. 텍스트 LLM 호출 — thinking 무조건 off + 20초 타임아웃 (불변)
 
-`central.cloud.llm-timeout-seconds` 는 **4초**이고, 1회 시도가 4초를 넘으면 취소하고 최대
+`central.cloud.llm-timeout-seconds` 는 **20초**이고, 1회 시도가 이를 넘으면 취소하고 최대
 `llm-max-retries`(2)회만 재요청한다. **thinking(추론 모드)은 무조건 disabled** 로 전송한다.
 
 - **thinking off 근거(실측)**: z.ai GLM 은 thinking 을 명시 안 하면 서버 기본이 "생각 ON"이라 응답이 **7~8초**,
-  thinking:disabled 명시 시 **<2초**다. 즉답 채팅 봇에는 추론 지연이 해가 되고 4초 예산도 초과하므로,
+  thinking:disabled 명시 시 로컬 실측 **<2.5초**(큰 프롬프트 포함)다. 즉답 채팅 봇엔 추론 지연이 해이므로,
   `CloudLlm.postChat` 은 호출자가 무엇을 넘기든 **항상 `thinking:disabled`** 를 보낸다(ThinkingRouter/override 무효).
-- **4초 fast-or-fail 근거**: 니아는 **사람 속도로 반응**해야 한다(장면 참여·직접 호명 응답 모두 즉각성이 핵심).
-  느린 클라우드 응답을 오래 기다리면 대화 흐름이 끊긴다. thinking off 로 <2초라 4초면 즉답을 담고도 여유가 있다.
-  느리면 기다리지 않고 빨리 실패해 로컬 폴백/명확한 오류 노출로 넘긴다(slow success 보다 fast fail).
-- 따라서 "클라우드 AI 오류"가 잦다면 **타임아웃을 늘리는 것이 1차 해결책이 아니다.** 진짜 원인(z.ai 키 무효·잔액
-  부족·모델명 오류·네트워크·thinking 켜짐)을 먼저 본다. 실패 사유는 `CloudLlmResponseParser` 가 추출해
-  사용자(운영자)에게 카테고리로 노출한다(인증/모델없음/잔액/한도/서버오류/시간초과/연결실패).
+- **타임아웃 20초 근거**: thinking off 면 로컬에선 <2.5초지만, **원격 운영 서버(ssh.yeon.world)→api.z.ai 네트워크
+  지연이 로컬보다 커서** 3~4초로는 자주 초과했다(실운영 "시간 초과(3초·3회)" 관측). 20초로 여유를 둬 느린 연결도
+  담되, 이는 상한일 뿐 정상 응답은 여전히 수 초 내에 끝난다. thinking 이 켜져 있었다면 20초로도 부족했을 것이므로
+  **thinking off 가 선행 조건**이다(타임아웃만 올리는 건 thinking off 없이는 해결이 아니다).
+- 실패 사유는 `CloudLlmResponseParser` 가 추출해 사용자(운영자)에게 카테고리로 노출한다(인증/모델없음/잔액/한도/
+  서버오류/시간초과/연결실패). `ZAI_LLM_TIMEOUT_SECONDS` 는 compose 가 컨테이너 env 로 넘기지 않으므로 이
+  application.yml 기본값(20)이 운영에 그대로 적용된다.
 - thinking off·타임아웃 값을 바꾸려면 이 ADR 을 먼저 갱신한다(설정만 몰래 바꾸지 않는다).
 
 ### 비-목표 (이번 단계 제외)

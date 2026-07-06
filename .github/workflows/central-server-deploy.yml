@@ -31,7 +31,7 @@ jobs:
           docker compose --env-file .env up -d --build
       - name: Health check (Flyway 마이그레이션 포함)
         run: |
-          for i in $(seq 1 40); do
+          for _ in $(seq 1 40); do
             if curl -sf http://localhost:8085/actuator/health | grep -q '"status":"UP"'; then
               echo "central-server UP"; exit 0
             fi

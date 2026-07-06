@@ -86,11 +86,39 @@ class ParticipationSignalDeriverTest {
     }
 
     @Test
+    fun `유휴 경계는 maxTrackedContexts 상한으로 축출된다`() {
+        val d = ParticipationSignalDeriver(maxTrackedContexts = 1)
+        d.deriveAndRecord(1L, msg("u1", "채널1 첫 메시지", 1_000))
+        // 새 채널이 상한(1)을 넘겨 이전 채널(1) 버퍼를 축출한다(맵 무한 성장 방지).
+        d.deriveAndRecord(2L, msg("u2", "채널2", 2_000))
+        // 채널 1 은 축출됐으므로 다시 기록하면 빈 버퍼에서 시작 → 첫 메시지 신호(도출 semantics 자체는 불변).
+        val s = d.deriveAndRecord(1L, msg("u1", "채널1 재등장", 3_000))
+        assertThat(s.firstMessageText).isNull()
+    }
+
+    @Test
     fun `채널별로 버퍼가 분리된다`() {
         val d = ParticipationSignalDeriver()
         d.deriveAndRecord(1L, msg("u1", "A", 1_000))
         val s = d.deriveAndRecord(2L, msg("u1", "B", 1_000))
         // 채널 2 는 비어 있었으므로 첫 메시지 신호.
         assertThat(s.firstMessageText).isNull()
+    }
+
+    @Test
+    fun `같은 부모 채널이어도 thread forum boundary 가 다르면 사적 핑퐁 히스토리를 섞지 않는다`() {
+        val d = ParticipationSignalDeriver()
+        val parentChannel = 10L
+        val threadA = 100L
+        val threadB = 200L
+
+        d.deriveAndRecord(parentChannel, contextBoundaryId = threadA, trigger = msg("u1", "준호야 봤어?", 1_000))
+        d.deriveAndRecord(parentChannel, contextBoundaryId = threadA, trigger = msg("u2", "응 봤어", 2_000))
+
+        val s = d.deriveAndRecord(parentChannel, contextBoundaryId = threadB, trigger = msg("u1", "여긴 다른 글타래", 3_000))
+
+        assertThat(s.firstMessageText).isNull()
+        assertThat(s.priorHumanSpeakerLabels).isEmpty()
+        assertThat(s.conversationMentionsNia).isFalse()
     }
 }

@@ -1,6 +1,7 @@
 package com.discordassistant.central.speech.adapter.outbound.routing
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -8,7 +9,15 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.time.Clock
+import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * routing anti-corruption adapter(NEXA-P14-T002, adapter/outbound/routing).
@@ -65,7 +74,7 @@ class RoutingCloudSpeechGenerationAdapter(
             if (budget.isStale(clock.instant())) return SpeechGenerationResult.EMPTY // 호출 전 deadline 초과.
             val result =
                 try {
-                    cloudLlm.generate(prompt, modelConfig.model)
+                    generateBounded(prompt, budget.perCallTimeout)
                 } catch (e: Exception) {
                     // 상세는 로그로만 — 사용자/도메인에 업스트림 노출 금지(예외 원칙). 재시도 가능하면 계속.
                     log.warn("발화 생성 호출 실패(attempt {}/{}): {}", attempt, budget.maxAttempts, e.javaClass.simpleName)
@@ -86,6 +95,26 @@ class RoutingCloudSpeechGenerationAdapter(
             )
         }
         return SpeechGenerationResult.EMPTY
+    }
+
+    /**
+     * [CloudLlm.generate] 를 [timeout] 안에서만 기다린다 — 업스트림이 매달려도 파이프라인 스레드를 최대 [timeout]
+     * 까지만 점유하도록 벽시계 상한을 **실효화**한다(T014 perCallTimeout). [CloudLlm] 에 timeout 오버로드가 없어
+     * bounded executor + [Future.get] 로 감싼다. 초과 시 호출을 취소하고 [TimeoutException] 을 던져 상위
+     * 재시도/EMPTY fail-safe 로 흡수시킨다(호출 실패와 동일 취급).
+     */
+    private fun generateBounded(
+        prompt: String,
+        timeout: Duration,
+    ): CloudLlmResult {
+        val future: Future<CloudLlmResult> =
+            CALL_EXECUTOR.submit(Callable { cloudLlm.generate(prompt, modelConfig.model) })
+        return try {
+            future.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            future.cancel(true) // 매달린 호출을 끊어 스레드 누수를 줄인다(HTTP 는 인터럽트에 즉시 반응 안 할 수 있음).
+            throw e
+        }
     }
 
     private fun recordUsage(
@@ -115,4 +144,14 @@ class RoutingCloudSpeechGenerationAdapter(
             appendLine("[맥락]")
             append(request.userPrompt)
         }
+
+    companion object {
+        /** perCallTimeout 을 강제하는 bounded daemon 풀(전 인스턴스 공유). 매달린 호출로부터 벽시계 상한을 지킨다. */
+        private const val CALL_THREADS: Int = 8
+        private val CALL_EXECUTOR: ExecutorService =
+            Executors.newFixedThreadPool(
+                CALL_THREADS,
+                ThreadFactory { r -> Thread(r, "speech-cloud-call").also { it.isDaemon = true } },
+            )
+    }
 }

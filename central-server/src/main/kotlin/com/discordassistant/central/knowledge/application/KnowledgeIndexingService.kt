@@ -389,7 +389,34 @@ class KnowledgeIndexingService(
             .split(Regex("\\n\\s*\\n"))
             .map { it.trim() }
             .filter { it.isNotBlank() }
-            .ifEmpty { listOf(text.take(2000)) }
+            .ifEmpty { listOf(text.trim()) }
+            .flatMap { enforceMaxLength(it) }
+
+    /**
+     * 미리보기/검색 한도([CHUNK_MAX_CHARS])를 넘는 청크를 더 잘게 나눈다. 빈 줄 문단 경계가 없어 하나의
+     * 큰 청크가 되면 [contentPreview] 가 잘려 나머지가 영구히 검색 불가가 되므로, 문장→공백→하드캡 순으로
+     * 잘라 모든 내용이 색인되게 한다. 한도 이하 청크는 그대로 반환해 기존 청크 해싱/개수 의미를 보존한다.
+     */
+    private fun enforceMaxLength(chunk: String): List<String> {
+        if (chunk.length <= CHUNK_MAX_CHARS) return listOf(chunk)
+        val parts = mutableListOf<String>()
+        var start = 0
+        while (start < chunk.length) {
+            val end = (start + CHUNK_MAX_CHARS).coerceAtMost(chunk.length)
+            val window = chunk.substring(start, end)
+            val splitLen =
+                if (end < chunk.length) {
+                    (window.lastIndexOfAny(SENTENCE_BOUNDARY) + 1).takeIf { it > CHUNK_MIN_SPLIT }
+                        ?: (window.lastIndexOf(' ') + 1).takeIf { it > CHUNK_MIN_SPLIT }
+                        ?: window.length
+                } else {
+                    window.length
+                }
+            chunk.substring(start, start + splitLen).trim().takeIf { it.isNotBlank() }?.let { parts += it }
+            start += splitLen
+        }
+        return parts.ifEmpty { listOf(chunk.take(CHUNK_MAX_CHARS)) }
+    }
 
     private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
 
@@ -420,6 +447,13 @@ class KnowledgeIndexingService(
     private companion object {
         val INLINE_INDEXABLE_SOURCE_TYPES = setOf("text", "faq", "constitution", "preset")
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
+
+        /** 청크 미리보기/검색 한도(contentPreview take 값과 일치) — 이 길이를 넘으면 더 잘게 나눈다. */
+        const val CHUNK_MAX_CHARS = 2000
+
+        /** 이 위치 미만에서 발견된 문장/공백 경계는 무시(너무 작은 조각 방지, 진행성 보장은 하드캡). */
+        const val CHUNK_MIN_SPLIT = 200
+        val SENTENCE_BOUNDARY = charArrayOf('.', '!', '?', '\n', '。', '！', '？')
     }
 }
 

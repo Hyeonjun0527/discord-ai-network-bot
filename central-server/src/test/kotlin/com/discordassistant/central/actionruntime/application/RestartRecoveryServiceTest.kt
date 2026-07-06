@@ -2,10 +2,12 @@ package com.discordassistant.central.actionruntime.application
 
 import com.discordassistant.central.actionruntime.application.recovery.RecoveryDisposition
 import com.discordassistant.central.actionruntime.application.recovery.RestartRecoveryService
+import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.actionruntime.support.InMemoryActionAudit
 import com.discordassistant.central.actionruntime.support.InMemoryActionScheduler
 import com.discordassistant.central.actionruntime.support.MutableTestClock
 import org.assertj.core.api.Assertions.assertThat
@@ -19,7 +21,8 @@ import java.time.Instant
 class RestartRecoveryServiceTest {
     private val clock = MutableTestClock(Instant.parse("2026-01-01T00:00:00Z"))
     private val scheduler = InMemoryActionScheduler(clock)
-    private val service = RestartRecoveryService(scheduler, clock)
+    private val audit = InMemoryActionAudit()
+    private val service = RestartRecoveryService(scheduler, audit, clock)
 
     private fun action(
         status: ActionStatus,
@@ -68,6 +71,10 @@ class RestartRecoveryServiceTest {
         // COMPLETED 로 종결 → 같은 버블을 다시 보내지 않는다(T010 핵심).
         assertThat(scheduler.find(action(ActionStatus.PARTIALLY_SENT, index = 1).identity)!!.status)
             .isEqualTo(ActionStatus.COMPLETED)
+        assertThat(audit.phasesOf(action(ActionStatus.PARTIALLY_SENT, index = 1).identity.value))
+            .containsExactly(ActionAuditPhase.RECOVERED_NO_RESEND)
+        assertThat(audit.findByAction(action(ActionStatus.PARTIALLY_SENT, index = 1).identity.value).single().reason)
+            .isEqualTo("partial_recovery_no_resend")
     }
 
     @Test

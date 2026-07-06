@@ -1,24 +1,41 @@
 package com.discordassistant.central.licensing
 
+import com.discordassistant.central.licensing.adapter.outbound.persistence.BillingEventRepository
+import com.discordassistant.central.licensing.adapter.outbound.persistence.LicenseRepository
 import com.discordassistant.central.licensing.application.BillingService
 import com.discordassistant.central.licensing.application.LicenseService
 import com.discordassistant.central.licensing.application.WebhookOutcome
 import com.discordassistant.central.licensing.domain.model.LicenseStatus
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.transaction.annotation.Transactional
 
-/** Paddle webhook 이벤트 처리·멱등·매칭(실 H2). 서명은 PaddleSignatureVerifierTest 가 커버. */
+/**
+ * Paddle webhook 이벤트 처리·멱등·매칭(실 H2). 서명은 PaddleSignatureVerifierTest 가 커버.
+ *
+ * @Transactional 을 쓰지 않는다: grant/revoke 는 BillingEffectRunner 의 REQUIRES_NEW 독립 트랜잭션이라 어차피
+ * 테스트 롤백을 탈출해 실제 커밋된다(롤백 격리가 가짜). 대신 [cleanupCommittedRows] 로 각 테스트 후 커밋된 행을
+ * 정리해 다른 테스트의 전역 집계 오염을 막는다.
+ */
 @SpringBootTest
-@Transactional
 class BillingServiceTest
     @Autowired
     constructor(
         val billing: BillingService,
         val licenses: LicenseService,
+        val licenseRepo: LicenseRepository,
+        val billingEvents: BillingEventRepository,
     ) {
+        // grant/revoke 는 BillingEffectRunner 의 REQUIRES_NEW 독립 트랜잭션이라 이 클래스의 @Transactional 롤백을
+        // 탈출해 실제로 커밋된다(프로덕션 의도대로). 공유 H2 에 남으면 다른 테스트의 전역 집계(countByGrant 등)를
+        // 오염시키므로, 각 테스트 후 커밋된 라이선스·이벤트 행을 정리한다.
+        @AfterEach
+        fun cleanupCommittedRows() {
+            billingEvents.deleteAll()
+            licenseRepo.deleteAll()
+        }
         private fun completed(
             eventId: String,
             userId: String,

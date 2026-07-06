@@ -89,6 +89,38 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `document without blank-line breaks is split so all content stays searchable`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 110, channelId = 210, displayName = "긴 문서"))
+            val source =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 110,
+                        sourceType = "text",
+                        title = "긴 가이드",
+                        status = KnowledgeSourceStatus.fromWire("approved"),
+                    ),
+                )
+            // 빈 줄 문단 경계가 전혀 없는 문서 → 이전엔 한 청크로 뭉쳐 미리보기 2000자만 검색 가능했다.
+            val longText = (1..600).joinToString(" ") { "문장$it." }
+            assertTrue(longText.length > 2000)
+
+            val doc =
+                service.parseSourceToDocument(
+                    guildId = 110,
+                    spaceId = space.id,
+                    sourceId = source.id,
+                    documentText = longText,
+                )
+
+            val docChunks = chunks.findByKnowledgeDocumentIdOrderByChunkIndex(doc.id)
+            assertTrue(docChunks.size > 1)
+            assertTrue(docChunks.all { it.contentPreview.length <= 2000 })
+            // 모든 내용이 색인됨: 청크 미리보기 총 길이가 원문 길이(경계 공백 손실만큼 여유)를 덮는다.
+            assertTrue(docChunks.sumOf { it.contentPreview.length } >= longText.length - docChunks.size)
+        }
+
+        @Test
         fun `index jobs can be listed queued and completed through safe facade`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 102, channelId = 202, displayName = "작업 지식"))
             val queued = service.queueRebuildJob(102, space.id, triggeredBy = 7)

@@ -344,6 +344,15 @@ class DiscordBot(
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
 
+    /**
+     * NEXA 자율 전송 실행기 배선용 — 현재 활성 JDA 인스턴스. Discord 가 비활성이거나 아직 기동 전이면 [IllegalStateException].
+     * 자율 전송 config 빈은 이 봇에 의존하므로(빈 초기화 순서상 [start] @PostConstruct 이후 호출), enabled 이면 non-null.
+     */
+    fun requireActiveJda(): JDA =
+        jda ?: throw IllegalStateException(
+            "JDA 미기동 — NEXA 자율 전송을 켜려면 central.discord.enabled=true 와 봇 토큰이 필요합니다.",
+        )
+
     /** 봇이 들어가 있는 길드 id 집합(JDA 미연결/비활성이면 빈 집합). */
     override fun botGuildIds(): Set<Long> = jda?.guilds?.map { it.idLong }?.toSet() ?: emptySet()
 

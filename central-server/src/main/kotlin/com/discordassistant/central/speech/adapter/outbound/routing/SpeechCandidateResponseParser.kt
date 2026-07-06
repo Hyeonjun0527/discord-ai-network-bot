@@ -49,7 +49,7 @@ object SpeechCandidateResponseParser {
             node
                 .get("bubbles")
                 ?.takeIf { it.isArray }
-                ?.mapNotNull { it.takeIf { b -> b.isTextual }?.asText()?.trim() }
+                ?.mapNotNull { it.takeIf { b -> b.isTextual }?.asText()?.let(::normalizeBubble) }
                 ?.filter { it.isNotBlank() }
                 ?: return null
         if (bubbles.isEmpty()) return null // 빈 발화 후보는 채택하지 않는다(무발화는 fallback 이 다룸).
@@ -73,6 +73,17 @@ object SpeechCandidateResponseParser {
             styleTags = styleTags,
             uncertainty = uncertainty,
         )
+    }
+
+    private fun normalizeBubble(text: String): String {
+        val trimmed = text.trim()
+        val stripped =
+            trimmed
+                .trimEnd { it == '.' || it == '。' }
+                .trimEnd()
+        // "..." 같은 순수 말줄임표는 니아 페르소나가 의도한 침묵비트 버블이다(NexaIdentity NIA_CHAT_FEWSHOT 의
+        // `니아: ...`). 끝 마침표만 다듬다 통째로 비워지면 의도된 발화가 사라지므로 원문을 유지한다.
+        return stripped.ifBlank { trimmed }
     }
 
     /** 코드펜스(```json … ```)를 벗기고 첫 `{ … }` object 만 남긴다(CloudLlmResponseParser 와 동일 결). */

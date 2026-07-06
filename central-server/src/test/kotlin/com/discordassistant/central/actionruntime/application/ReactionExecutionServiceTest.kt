@@ -2,6 +2,7 @@ package com.discordassistant.central.actionruntime.application
 
 import com.discordassistant.central.actionruntime.application.execution.ReactionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.ReactionOutcome
+import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
@@ -88,5 +89,25 @@ class ReactionExecutionServiceTest {
         assertThat(outcome).isInstanceOf(ReactionOutcome.Suppressed::class.java)
         assertThat(executor.reactCalls).isZero()
         assertThat(audit.phasesOf(action.identity.value)).containsExactly(ActionAuditPhase.SUPPRESSED_SHADOW)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+    }
+
+    @Test
+    fun `T030 — 예약 시 LIVE 여도 실행 직전 현재 모드가 OFF 면 reaction 을 0회 호출한다`() {
+        val executor = RecordingDiscordExecutor()
+        val scheduler = InMemoryActionScheduler(clock)
+        val audit = InMemoryActionAudit()
+        val action = reactAction()
+        scheduler.put(action)
+        val currentMode = ActionExecutionModePort { _, _ -> ShadowMode.OFF }
+
+        val outcome =
+            ReactionExecutionService(executor, scheduler, audit, clock, currentMode)
+                .react(ShadowMode.LIVE, action, "target-msg", "👍")
+
+        assertThat(outcome).isEqualTo(ReactionOutcome.Suppressed(ShadowMode.OFF))
+        assertThat(executor.reactCalls).isZero()
+        assertThat(audit.findByAction(action.identity.value).single().reason).isEqualTo(ShadowMode.OFF.name)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
     }
 }

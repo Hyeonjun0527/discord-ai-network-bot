@@ -1,6 +1,9 @@
 package com.discordassistant.central.actionruntime.application.recovery
 
+import com.discordassistant.central.actionruntime.application.port.out.ActionAuditPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
+import com.discordassistant.central.actionruntime.domain.model.ActionAuditEvent
+import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
@@ -27,6 +30,7 @@ import java.time.Instant
  */
 class RestartRecoveryService(
     private val scheduler: ActionSchedulerPort,
+    private val audit: ActionAuditPort,
     private val clock: Clock,
 ) {
     /**
@@ -37,6 +41,8 @@ class RestartRecoveryService(
         val now = Instant.now(clock)
         val reclaimed: List<ActionIdentity> = scheduler.reclaimExpiredLeases(now)
         return reclaimed.mapNotNull { identity ->
+            // 회수 시점과 조회 사이에 행이 사라졌으면(보존/정리 잡의 하드 삭제 등) 그 하나만 건너뛴다 — 예외로
+            // recoverOnStartup 전체를 중단시켜 나머지 in-flight 행동을 영구 stranded 로 남기지 않는다.
             val action = scheduler.find(identity) ?: return@mapNotNull null
             classify(action)
         }
@@ -52,11 +58,24 @@ class RestartRecoveryService(
             // 일부 이미 전송됨 — 자동 재전송 금지. 종결해 같은 버블 재전송 차단(T010 핵심).
             ActionStatus.PARTIALLY_SENT -> {
                 scheduler.complete(action.identity)
+                audit.append(
+                    ActionAuditEvent(
+                        actionId = action.identity.value,
+                        decisionId = action.decisionId,
+                        phase = ActionAuditPhase.RECOVERED_NO_RESEND,
+                        reason = REASON_PARTIAL_RECOVERY_NO_RESEND,
+                        occurredAt = Instant.now(clock),
+                    ),
+                )
                 RecoveryAction(action.identity, RecoveryDisposition.COMPLETED_NO_RESEND)
             }
             // SCHEDULED/CONSIDERING/terminal: lease 와 무관(또는 회수 대상 아님) — 정리 불필요.
             else -> RecoveryAction(action.identity, RecoveryDisposition.NO_OP)
         }
+
+    private companion object {
+        const val REASON_PARTIAL_RECOVERY_NO_RESEND = "partial_recovery_no_resend"
+    }
 }
 
 /**

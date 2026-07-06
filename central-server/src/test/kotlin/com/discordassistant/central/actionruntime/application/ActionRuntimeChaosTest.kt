@@ -60,13 +60,14 @@ class ActionRuntimeChaosTest {
         clock.advance(Duration.ofSeconds(10))
 
         // 재시작 복구: REEVALUATING → 재예약(SCHEDULED). 본문 미전송이라 이중 전송 위험 0.
-        val recovery = RestartRecoveryService(scheduler, clock).recoverOnStartup()
+        val recovery = RestartRecoveryService(scheduler, audit, clock).recoverOnStartup()
         assertThat(recovery.single().disposition).isEqualTo(RecoveryDisposition.RESCHEDULED)
 
         // 다시 due 처리 + 실행 — 정확히 1회 전송.
         val reclaimed = scheduler.claimDue(clock.instant(), clock.instant().plus(Duration.ofSeconds(5)), 10).single()
+        scheduler.markTyping(reclaimed.action.identity)
         val execution = ActionExecutionService(executor, scheduler, ControllableReevaluation(), audit, BackpressureGate(), clock)
-        execution.execute(ShadowMode.LIVE, reclaimed.action, BurstPlan.single("plan-a"))
+        execution.execute(ShadowMode.LIVE, reclaimed.action.passReevaluation(), BurstPlan.single("plan-a"))
 
         assertThat(executor.sentBubbleIndexes).containsExactly(0) // 중복 전송 0.
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.COMPLETED) // terminal 도달.
@@ -89,12 +90,13 @@ class ActionRuntimeChaosTest {
         clock.advance(Duration.ofSeconds(10)) // lease 만료.
 
         // 재시작: TYPING(본문 미전송) → 재예약. 이중 전송 위험 0.
-        val recovery = RestartRecoveryService(scheduler, clock).recoverOnStartup()
+        val recovery = RestartRecoveryService(scheduler, audit, clock).recoverOnStartup()
         assertThat(recovery.single().disposition).isEqualTo(RecoveryDisposition.RESCHEDULED)
 
         val reclaimed = scheduler.claimDue(clock.instant(), clock.instant().plus(Duration.ofSeconds(5)), 10).single()
+        scheduler.markTyping(reclaimed.action.identity)
         val execution = ActionExecutionService(executor, scheduler, ControllableReevaluation(), audit, BackpressureGate(), clock)
-        execution.execute(ShadowMode.LIVE, reclaimed.action, BurstPlan.single("plan-a"))
+        execution.execute(ShadowMode.LIVE, reclaimed.action.passReevaluation(), BurstPlan.single("plan-a"))
 
         assertThat(executor.sentBubbleIndexes).containsExactly(0) // 정확히 1회.
         assertThat(scheduler.find(typing.identity)!!.status).isEqualTo(ActionStatus.COMPLETED)
@@ -106,6 +108,7 @@ class ActionRuntimeChaosTest {
         val clock = MutableTestClock(due)
         val scheduler = InMemoryActionScheduler(clock)
         val executor = RecordingDiscordExecutor()
+        val audit = InMemoryActionAudit()
         // 첫 버블을 이미 1회 보낸 뒤 크래시한 상태를 모델링: executor 에 1건 전송 기록을 심고,
         // 행동은 PARTIALLY_SENT in-flight 로 lease 만료.
         executor.sendBubble("chan-1", "a", 0, null) // 크래시 전 보낸 첫 버블(누적 카운트에 1 반영).
@@ -120,12 +123,13 @@ class ActionRuntimeChaosTest {
         clock.advance(Duration.ofSeconds(10)) // lease 만료.
 
         // 재시작 복구: PARTIALLY_SENT → 재전송 없이 종결(COMPLETED_NO_RESEND, T010 핵심).
-        val recovery = RestartRecoveryService(scheduler, clock).recoverOnStartup()
+        val recovery = RestartRecoveryService(scheduler, audit, clock).recoverOnStartup()
         assertThat(recovery.single().disposition).isEqualTo(RecoveryDisposition.COMPLETED_NO_RESEND)
 
         // 핵심: 재시작이 같은(또는 남은) 버블을 다시 보내지 않는다 — 전송 누적은 여전히 1.
         assertThat(executor.sentBubbleIndexes).containsExactly(0) // 중복 전송 0.
         assertThat(scheduler.find(partial.identity)!!.status).isEqualTo(ActionStatus.COMPLETED) // terminal 도달(유실 0).
+        assertThat(audit.phasesOf(partial.identity.value)).containsExactly(ActionAuditPhase.RECOVERED_NO_RESEND)
     }
 
     @Test
@@ -133,11 +137,12 @@ class ActionRuntimeChaosTest {
         val clock = MutableTestClock(due)
         val scheduler = InMemoryActionScheduler(clock)
         val executor = RecordingDiscordExecutor()
+        val audit = InMemoryActionAudit()
         val typing = speak().markScheduled().beginReevaluation().passReevaluation()
         scheduler.put(typing, leaseExpiresAt = due.plus(Duration.ofSeconds(5)))
         clock.advance(Duration.ofSeconds(10))
 
-        val recovery = RestartRecoveryService(scheduler, clock)
+        val recovery = RestartRecoveryService(scheduler, audit, clock)
         recovery.recoverOnStartup()
         // 두 번째 복구 호출은 회수할 만료 lease 가 없어 no-op(재예약 중복 없음).
         val second = recovery.recoverOnStartup()

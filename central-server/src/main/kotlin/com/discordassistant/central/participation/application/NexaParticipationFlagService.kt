@@ -1,5 +1,6 @@
 package com.discordassistant.central.participation.application
 
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
@@ -32,6 +33,7 @@ class NexaParticipationFlagService(
     private val shadowModeStore: ShadowModeStorePort,
     private val flagPort: NexaParticipationFlagPort,
     @Value("\${central.nexa.participation.global-default-lane:OFF}") globalDefaultLaneName: String,
+    private val audit: AuditLog = AuditLog(),
 ) {
     /** 길드 행이 없거나 명시 OFF 일 때 적용할 글로벌 기본 lane. 잘못된 값이면 안전하게 [ParticipationLane.LEGACY](OFF). */
     private val globalDefaultLane: ParticipationLane =
@@ -74,23 +76,83 @@ class NexaParticipationFlagService(
     fun enableChannelLive(
         guildId: Long,
         channelId: Long,
+        actorId: Long? = null,
+        source: String = SOURCE_MANUAL,
     ) {
         val pseudonym = guildPseudonym(guildId)
         flagPort.setChannelExcluded(pseudonym, channelId, false)
         flagPort.setChannelOverride(pseudonym, channelId, ParticipationLane.LIVE)
+        recordChannelAudit(
+            action = "nexa_participation_channel_enabled",
+            guildId = guildId,
+            channelId = channelId,
+            actorId = actorId,
+            source = source,
+            mode = ShadowMode.LIVE.name,
+        )
     }
 
     /** 이 채널에서 NEXA participation 을 명시적으로 끈다. 길드/글로벌 LIVE 보다 kill-switch 가 우선한다. */
     fun disableChannel(
         guildId: Long,
         channelId: Long,
+        actorId: Long? = null,
+        source: String = SOURCE_MANUAL,
     ) {
         val pseudonym = guildPseudonym(guildId)
-        flagPort.setChannelOverride(pseudonym, channelId, null)
+        // 제외(kill-switch)를 먼저 심는다. resolve() 는 제외를 최우선으로 OFF 처리하므로, override 를 먼저 지워
+        // 행이 삭제되는 순간 guild/global LIVE 로 fallback 해 그 채널에서 발화가 새는 창(race)을 없앤다.
         flagPort.setChannelExcluded(pseudonym, channelId, true)
+        flagPort.setChannelOverride(pseudonym, channelId, null)
+        recordChannelAudit(
+            action = "nexa_participation_channel_disabled",
+            guildId = guildId,
+            channelId = channelId,
+            actorId = actorId,
+            source = source,
+            mode = ShadowMode.OFF.name,
+        )
+    }
+
+    /** Discord 채널 삭제/정합성 복구 경로에서 stale participation override·kill-switch 를 제거한다. */
+    fun cleanupChannel(
+        guildId: Long,
+        channelId: Long,
+    ) {
+        flagPort.clearChannel(guildPseudonym(guildId), channelId)
+    }
+
+    /**
+     * 봇이 서버에서 제거될 때 이 길드의 모든 채널 participation override/kill-switch 를 제거한다. 남겨두면 같은
+     * guildId 로 재입장 시(가명 동일) 관리자가 다시 켜지 않았는데도 stale LIVE 채널에서 니아가 발화할 수 있다.
+     */
+    fun cleanupGuild(guildId: Long) {
+        flagPort.clearGuild(guildPseudonym(guildId))
     }
 
     /** raw guildId → 저장 키 가명(MEMORY purpose, 길드 스코프). ShadowMode store 와 같은 가명 공간. */
     private fun guildPseudonym(guildId: Long): String =
         ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = guildId)
+
+    private fun recordChannelAudit(
+        action: String,
+        guildId: Long,
+        channelId: Long,
+        actorId: Long?,
+        source: String,
+        mode: String,
+    ) {
+        audit.record(
+            action = action,
+            actor = actorId?.let { "admin:$it" } ?: "system",
+            target = "guild:$guildId",
+            detail = "channel:$channelId source:${source.ifBlank { SOURCE_MANUAL }} mode:$mode",
+        )
+    }
+
+    companion object {
+        const val SOURCE_MANUAL = "manual"
+        const val SOURCE_NIA_SETUP = "nia_setup"
+        const val SOURCE_GUILD_ADMIN_TOGGLE = "guild_admin_toggle"
+    }
 }

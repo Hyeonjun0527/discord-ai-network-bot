@@ -42,12 +42,16 @@ class GlobalExceptionHandler {
         request: HttpServletRequest,
     ): ResponseEntity<ApiErrorResponse> {
         val requestId = MDC.get(RequestIdFilter.MDC_KEY)
-        if (ex.httpStatus >= 500) {
+        if (ex.httpStatus >= 500 && ex.captureAsServerError) {
             log.error("도메인 예외(5xx) code={} requestId={}: {}", ex.errorCode, requestId, ex.message, ex)
             captureServerException(ex, request, ex.httpStatus, requestId)
-        } else {
-            // 4xx 라도 원인(cause)이 있으면 디버깅을 위해 남긴다 — 숨기지 않는다(예외 원칙 3).
+        } else if (ex.cause != null) {
+            // 4xx 라도 원인(cause)이 있으면 디버깅을 위해 스택까지 남긴다 — 숨기지 않는다(예외 원칙 3).
             log.warn("도메인 예외({}) code={} requestId={}: {}", ex.httpStatus, ex.errorCode, requestId, ex.message, ex)
+        } else {
+            // 서명 위조·미인증 같은 예상된 4xx 는 원인 없는 정상 거부다. 공개 엔드포인트(Paddle webhook 등)에
+            // 스프레이가 오면 매 요청 스택트레이스가 로그를 뒤덮으므로(진짜 에러 매몰) 스택 없이 한 줄만 남긴다.
+            log.warn("도메인 예외({}) code={} requestId={}: {}", ex.httpStatus, ex.errorCode, requestId, ex.message)
         }
         return ResponseEntity.status(ex.httpStatus).body(
             ApiErrorResponse(

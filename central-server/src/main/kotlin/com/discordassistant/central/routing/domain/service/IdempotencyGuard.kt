@@ -32,9 +32,17 @@ class IdempotencyGuard(
         val k = key(guildId, userId, prompt)
         // 만료 정리(가벼운 청소).
         if (seen.size > 10_000) seen.entries.removeIf { now - it.value > windowNanos }
-        val prev = seen[k]
-        if (prev != null && now - prev < windowNanos) return false
-        seen[k] = now
-        return true
+        // 검사·기록을 원자적으로(compute) — 동시 중복 요청이 둘 다 통과하지 않게. 윈도우 내 유효한
+        // 기존 키면 타임스탬프를 그대로 두고(거부), 없거나 만료됐으면 now 로 갱신(허용).
+        var began = false
+        seen.compute(k) { _, prev ->
+            if (prev != null && now - prev < windowNanos) {
+                prev
+            } else {
+                began = true
+                now
+            }
+        }
+        return began
     }
 }

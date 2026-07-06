@@ -32,6 +32,23 @@ class PolicyServiceTest
         }
 
         @Test
+        fun `허용 채널 빈 목록은 타입상 전체 허용으로 표현된다`() {
+            val allChannels = policy.allowedChannelPolicy(101)
+
+            assertTrue(allChannels.isAllChannelsAllowed)
+            assertTrue(allChannels.allows(999))
+            assertEquals(emptyList<Long>(), allChannels.toLegacyAllowedIds())
+
+            policy.replaceAllowedChannels(101, listOf(200, 100, 100), adminId = 1)
+            val explicit = policy.allowedChannelPolicy(101)
+
+            assertFalse(explicit.isAllChannelsAllowed)
+            assertTrue(explicit.allows(100))
+            assertFalse(explicit.allows(999))
+            assertEquals(listOf(100L, 200L), explicit.toLegacyAllowedIds())
+        }
+
+        @Test
         fun `역할별 최대 부담 수준(다중 역할)`() {
             policy.setRolePolicy(100, roleId = 1, ModelBurden.STANDARD, dailyLimit = 30, adminId = 1)
             policy.setRolePolicy(100, roleId = 2, ModelBurden.HEAVY, dailyLimit = 50, adminId = 1)
@@ -39,6 +56,15 @@ class PolicyServiceTest
             assertEquals(ModelBurden.STANDARD, policy.maxAllowedBurden(100, listOf(1)))
             assertEquals(ModelBurden.LIGHT, policy.maxAllowedBurden(100, listOf(99))) // 기본
             assertEquals(50, policy.dailyLimit(100, listOf(1, 2)))
+        }
+
+        @Test
+        fun `RESTRICTED 역할 정책은 일반 max burden 권한 상승에 쓰지 않는다`() {
+            policy.setRolePolicy(102, roleId = 1, ModelBurden.RESTRICTED, dailyLimit = 30, adminId = 1)
+            policy.setRolePolicy(102, roleId = 2, ModelBurden.STANDARD, dailyLimit = 30, adminId = 1)
+
+            assertEquals(ModelBurden.STANDARD, policy.maxAllowedBurden(102, listOf(1, 2)))
+            assertEquals(ModelBurden.LIGHT, policy.maxAllowedBurden(102, listOf(1)))
         }
 
         @Test
@@ -55,6 +81,12 @@ class PolicyServiceTest
             policy.setRolePolicy(701, roleId = 1, ModelBurden.STANDARD, dailyLimit = 30, adminId = 1)
             policy.setRolePolicy(701, roleId = 2, ModelBurden.LIGHT, dailyLimit = 0, adminId = 1)
             assertEquals(0, policy.dailyLimit(701, listOf(1, 2)))
+            val unlimited = policy.dailyLimitPolicy(701, listOf(1, 2))
+            assertTrue(unlimited.isUnlimited)
+            assertEquals("무제한", unlimited.displayText)
+            // 음수 입력은 외부 계약상 저장하지 않고 0=무제한으로 정규화한다.
+            policy.setRolePolicy(702, roleId = 1, ModelBurden.STANDARD, dailyLimit = -1, adminId = 1)
+            assertEquals(0, policy.dailyLimit(702, listOf(1)))
         }
 
         @Test

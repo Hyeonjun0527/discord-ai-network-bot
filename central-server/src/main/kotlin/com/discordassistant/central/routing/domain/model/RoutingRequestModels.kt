@@ -34,6 +34,16 @@ data class AiRequestInput(
     val weighChars: Int? = null,
 )
 
+/** 사용자 표시 문구와 독립적으로 검증·집계할 수 있는 요청 거절 사유 코드. */
+enum class RequestRejectionCode {
+    DUPLICATE_REQUEST,
+    BLOCKED_USER,
+    QUOTA_EXCEEDED,
+    CHANNEL_NOT_ALLOWED,
+    BURDEN_NOT_ALLOWED,
+    POLICY_DENIED,
+}
+
 /** 오케스트레이션 결과. */
 data class OrchestrationResult(
     val state: RequestState,
@@ -43,4 +53,5 @@ data class OrchestrationResult(
     val effectiveBurden: ModelBurden? = null,
     val requestId: String? = null,
     val sources: List<String> = emptyList(),
+    val rejectionCode: RequestRejectionCode? = null,
 )

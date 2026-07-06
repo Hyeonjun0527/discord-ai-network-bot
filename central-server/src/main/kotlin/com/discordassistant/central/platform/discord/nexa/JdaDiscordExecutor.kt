@@ -14,14 +14,19 @@ import net.dv8tion.jda.api.JDA
  * 호출한다 — OBSERVE_ONLY 등 차단 단계에서는 단 한 번도 호출되지 않는다(P09 hard block, 전송 0회).
  *
  * 이 어댑터는 LIVE/CANARY 에서만 빈으로 와이어된다(실제 전송 경로). 테스트는 포트를 mock 으로 대체한다.
+ *
+ * **JDA 지연 해석**: [jdaProvider] 로 JDA 를 **첫 전송 시점에** 얻는다(by lazy). JDA 는 시작 시 비동기로 연결되므로
+ * 빈 생성 시점(context refresh)엔 아직 없을 수 있다 — 그때 해석하면 앱이 시작에 실패한다. 스케줄러 tick 은 JDA 연결
+ * 후에야 실제 전송을 시도하므로, 첫 사용 시 해석하면 안전하다(미연결이면 [DiscordBot.requireActiveJda] 가 명확히 실패,
+ * 스케줄러 runCatching 이 흡수해 다음 tick 에 재시도).
  */
 class JdaDiscordExecutor(
-    jda: JDA,
-    contentResolver: SpeechContentResolver,
+    private val jdaProvider: () -> JDA,
+    private val contentResolver: SpeechContentResolver,
 ) : DiscordExecutorPort {
-    private val typing = DiscordTypingExecutor(jda)
-    private val reaction = DiscordReactionExecutor(jda)
-    private val message = DiscordMessageExecutor(jda, contentResolver)
+    private val typing by lazy { DiscordTypingExecutor(jdaProvider()) }
+    private val reaction by lazy { DiscordReactionExecutor(jdaProvider()) }
+    private val message by lazy { DiscordMessageExecutor(jdaProvider(), contentResolver) }
 
     override fun startTyping(channelId: String): ExecutionResult = typing.start(channelId)
 

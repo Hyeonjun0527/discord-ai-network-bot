@@ -4,15 +4,15 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 733
-- Cross-node import edges: 628
+- Kotlin files scanned: 753
+- Cross-node import edges: 693
 
 ## Nodes
 
 | Node | Kotlin files |
 | --- | ---: |
 | `<root>` | 1 |
-| `actionruntime` | 40 |
+| `actionruntime` | 47 |
 | `ainetwork` | 52 |
 | `channelai` | 21 |
 | `conversation` | 84 |
@@ -22,10 +22,10 @@
 | `guild` | 6 |
 | `knowledge` | 30 |
 | `licensing` | 19 |
-| `multiresponse` | 22 |
+| `multiresponse` | 24 |
 | `onboarding` | 15 |
-| `participation` | 125 |
-| `platform` | 60 |
+| `participation` | 132 |
+| `platform` | 64 |
 | `preset` | 25 |
 | `provider` | 15 |
 | `quota` | 6 |
@@ -40,7 +40,7 @@
 
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
-| `actionruntime` | `participation` | 6 | `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/ParticipationActionRouter.kt` | `com.discordassistant.central.participation.domain.model.action.SocialAction` |
+| `actionruntime` | `participation` | 15 | `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/inbound/scheduler/AutonomousSendScheduler.kt` | `com.discordassistant.central.participation.application.rollout.CanarySignalCollector` |
 | `ainetwork` | `channelai` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity` |
 | `ainetwork` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/adapter/inbound/web/ChannelAiRoutingPolicyController.kt` | `com.discordassistant.central.guild.application.PolicyService` |
 | `ainetwork` | `knowledge` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity` |
@@ -54,7 +54,7 @@
 | `ainetwork` | `shared` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/adapter/outbound/persistence/AiNetworkEntities.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `channelai` | `ainetwork` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
 | `channelai` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
-| `channelai` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity` |
+| `channelai` | `guild` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/AutoRespondChannelRegistry.kt` | `com.discordassistant.central.guild.application.AutoRespondChannelPolicyView` |
 | `channelai` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
 | `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
 | `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
@@ -69,6 +69,7 @@
 | `globalpromptset` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt` | `com.discordassistant.central.shared.NexaIdentity` |
 | `guild` | `channelai` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt` | `com.discordassistant.central.channelai.application.AutoRespondChannelRegistry` |
 | `guild` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/inbound/web/DashboardWriteController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
+| `guild` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt` | `com.discordassistant.central.participation.application.NexaParticipationFlagService` |
 | `guild` | `provider` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt` | `com.discordassistant.central.provider.application.ContributionPolicyService` |
 | `guild` | `quota` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt` | `com.discordassistant.central.quota.application.BlocklistService` |
 | `guild` | `relay` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
@@ -78,6 +79,7 @@
 | `knowledge` | `channelai` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeAuditWriter.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity` |
 | `knowledge` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/outbound/persistence/KnowledgeEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
 | `knowledge` | `shared` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIndexingPlanner.kt` | `com.discordassistant.central.shared.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS` |
+| `licensing` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt` | `com.discordassistant.central.global.error.PreconditionFailedException` |
 | `licensing` | `provider` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt` | `com.discordassistant.central.provider.application.TokenService` |
 | `licensing` | `requestlog` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/outbound/ContributionAdapter.kt` | `com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogRepository` |
 | `multiresponse` | `ainetwork` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/adapter/inbound/web/MultiResponseController.kt` | `com.discordassistant.central.ainetwork.application.DashboardAudience` |
@@ -92,28 +94,31 @@
 | `onboarding` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/ProviderConnectOnboardingService.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `onboarding` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.shared.RequestState` |
+| `participation` | `actionruntime` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/rollout/ActionRuntimePendingCancellationAdapter.kt` | `com.discordassistant.central.actionruntime.application.port.inbound.RevocationScope` |
 | `participation` | `conversation` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/participation/application/SceneParticipationConnector.kt` | `com.discordassistant.central.conversation.domain.event.SceneUpdated` |
-| `participation` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt` | `com.discordassistant.central.global.security.DashboardActor` |
-| `platform` | `actionruntime` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
+| `participation` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/NiaFewShotAdminController.kt` | `com.discordassistant.central.global.security.DashboardActor` |
+| `participation` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/llm/CloudRawParticipationJudge.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
+| `participation` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/llm/CloudRawParticipationJudge.kt` | `com.discordassistant.central.shared.NexaIdentity` |
+| `platform` | `actionruntime` | 23 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
-| `platform` | `conversation` | 52 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
-| `platform` | `global` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
+| `platform` | `conversation` | 53 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
+| `platform` | `global` | 21 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
 | `platform` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
-| `platform` | `guild` | 10 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |
+| `platform` | `guild` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |
 | `platform` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSearchService` |
 | `platform` | `licensing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/InfoCommandHandler.kt` | `com.discordassistant.central.licensing.application.LicenseService` |
 | `platform` | `multiresponse` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.multiresponse.application.MultiResponseService` |
 | `platform` | `onboarding` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.onboarding.application.GuildOnboardingResult` |
-| `platform` | `participation` | 73 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.participation.application.NexaParticipationFlagService` |
+| `platform` | `participation` | 94 | `central-server/src/main/kotlin/com/discordassistant/central/platform/adapter/inbound/web/NexaLiveSpeechController.kt` | `com.discordassistant.central.participation.domain.service.sim.SimActor` |
 | `platform` | `provider` | 13 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.provider.application.ContributionPolicyService` |
 | `platform` | `quota` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.quota.application.RateLimiter` |
 | `platform` | `relay` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `platform` | `requestlog` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/GuildAdminCommandHandler.kt` | `com.discordassistant.central.requestlog.application.UsageService` |
 | `platform` | `routing` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
-| `platform` | `shared` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.shared.ModelBurden` |
+| `platform` | `shared` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `platform` | `socialmemory` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService` |
-| `platform` | `speech` | 23 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt` | `com.discordassistant.central.speech.domain.model.ConversationTurn` |
+| `platform` | `speech` | 36 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaLiveSpeechService.kt` | `com.discordassistant.central.speech.application.NexaSpeechPipelineService` |
 | `preset` | `ainetwork` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogQueryService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
 | `preset` | `channelai` | 14 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity` |
 | `preset` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/preset/adapter/outbound/persistence/PresetEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
@@ -124,7 +129,7 @@
 | `preset` | `shared` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt` | `com.discordassistant.central.shared.ContentSafety` |
 | `provider` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.ainetwork.application.GuildQualityReports` |
 | `provider` | `channelai` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.channelai.application.GuildChannelAiQuery` |
-| `provider` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ContributionPolicyService.kt` | `com.discordassistant.central.global.audit.AuditLog` |
+| `provider` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.global.error.PreconditionFailedException` |
 | `provider` | `globalpromptset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `provider` | `guild` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.guild.application.GuildChannelPolicy` |
 | `provider` | `knowledge` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin` |
@@ -143,12 +148,12 @@
 | `requestlog` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/AnalyticsService.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository` |
 | `requestlog` | `provider` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/UsageService.kt` | `com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity` |
 | `requestlog` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/UsageService.kt` | `com.discordassistant.central.routing.application.port.UsageRecorder` |
-| `requestlog` | `shared` | 6 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/adapter/outbound/persistence/RequestLogEntities.kt` | `com.discordassistant.central.shared.RequestState` |
+| `requestlog` | `shared` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/adapter/outbound/persistence/RequestLogEntities.kt` | `com.discordassistant.central.shared.RequestState` |
 | `routing` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity` |
 | `routing` | `knowledge` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt` | `com.discordassistant.central.knowledge.application.NoWebSearch` |
 | `routing` | `provider` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity` |
 | `routing` | `relay` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
-| `routing` | `shared` | 17 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.shared.ModelBurden` |
+| `routing` | `shared` | 18 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `socialmemory` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/ainetwork/JpaNiaAffinityBridge.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.UserAffinityRepository` |
 | `socialmemory` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/GlobalPromptSetIdentityKernelBridge.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `socialmemory` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/event/SocialStateUpdate.kt` | `com.discordassistant.central.participation.domain.model.state.ChannelScope` |
@@ -156,7 +161,7 @@
 | `socialmemory` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/GlobalPromptSetIdentityKernelBridge.kt` | `com.discordassistant.central.shared.NexaIdentity` |
 | `speech` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineService.kt` | `com.discordassistant.central.global.privacy.ConsentGate` |
 | `speech` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/globalpromptset/SpeechIdentityKernelBridge.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
-| `speech` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
+| `speech` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 | `speech` | `shared` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/globalpromptset/SpeechIdentityKernelBridge.kt` | `com.discordassistant.central.shared.NexaIdentity` |
 
 ## Cycles
@@ -176,7 +181,7 @@ Outgoing:
 | `routing` | `knowledge` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt` | `com.discordassistant.central.knowledge.application.NoWebSearch` |
 | `routing` | `provider` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity` |
 | `routing` | `relay` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
-| `routing` | `shared` | 17 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.shared.ModelBurden` |
+| `routing` | `shared` | 18 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.shared.ModelBurden` |
 
 Incoming:
 
@@ -186,11 +191,12 @@ Incoming:
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `guild` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt` | `com.discordassistant.central.routing.application.port.RoutingPolicy` |
 | `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
+| `participation` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/llm/CloudRawParticipationJudge.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 | `platform` | `routing` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
 | `quota` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt` | `com.discordassistant.central.routing.application.port.BlocklistChecker` |
 | `requestlog` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/UsageService.kt` | `com.discordassistant.central.routing.application.port.UsageRecorder` |
 | `socialmemory` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/appraisal/CloudLlmAppraiserProvider.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
-| `speech` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
+| `speech` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 
 ### `channelai`
 
@@ -200,7 +206,7 @@ Outgoing:
 | --- | --- | ---: | --- | --- |
 | `channelai` | `ainetwork` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
 | `channelai` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
-| `channelai` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity` |
+| `channelai` | `guild` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/AutoRespondChannelRegistry.kt` | `com.discordassistant.central.guild.application.AutoRespondChannelPolicyView` |
 | `channelai` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
 | `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
 | `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
@@ -258,26 +264,26 @@ Outgoing imports from `com.discordassistant.central.platform.discord*`:
 
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
-| `platform` | `actionruntime` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
+| `platform` | `actionruntime` | 23 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
-| `platform` | `conversation` | 52 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
-| `platform` | `global` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
+| `platform` | `conversation` | 53 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
+| `platform` | `global` | 21 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
 | `platform` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
-| `platform` | `guild` | 10 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |
+| `platform` | `guild` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |
 | `platform` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSearchService` |
 | `platform` | `licensing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/InfoCommandHandler.kt` | `com.discordassistant.central.licensing.application.LicenseService` |
 | `platform` | `multiresponse` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.multiresponse.application.MultiResponseService` |
 | `platform` | `onboarding` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.onboarding.application.GuildOnboardingResult` |
-| `platform` | `participation` | 73 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.participation.application.NexaParticipationFlagService` |
+| `platform` | `participation` | 87 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.participation.application.NexaParticipationFlagService` |
 | `platform` | `provider` | 13 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.provider.application.ContributionPolicyService` |
 | `platform` | `quota` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.quota.application.RateLimiter` |
 | `platform` | `relay` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `platform` | `requestlog` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/GuildAdminCommandHandler.kt` | `com.discordassistant.central.requestlog.application.UsageService` |
 | `platform` | `routing` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
-| `platform` | `shared` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.shared.ModelBurden` |
+| `platform` | `shared` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `platform` | `socialmemory` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService` |
-| `platform` | `speech` | 23 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaParticipationEmitBridge.kt` | `com.discordassistant.central.speech.domain.model.ConversationTurn` |
+| `platform` | `speech` | 36 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/NexaLiveSpeechService.kt` | `com.discordassistant.central.speech.application.NexaSpeechPipelineService` |
 
 Incoming imports to `com.discordassistant.central.platform.discord*`:
 

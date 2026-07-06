@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord.command
 
+import com.discordassistant.central.guild.application.DailyLimitPolicy
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.CommandContext
@@ -92,10 +93,20 @@ class GuildAdminCommandHandler(
     ): Reply {
         guards.adminOnly(ctx)?.let { return it }
         if (enabled) {
-            participationFlags.enableChannelLive(ctx.guildId, ctx.channelId)
+            participationFlags.enableChannelLive(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                actorId = ctx.userId,
+                source = NexaParticipationFlagService.SOURCE_GUILD_ADMIN_TOGGLE,
+            )
             return Replies.ok("현재 채널 <#${ctx.channelId}> 에서 니아가 대화 흐름을 보고 사람처럼 끼어듭니다.")
         }
-        participationFlags.disableChannel(ctx.guildId, ctx.channelId)
+        participationFlags.disableChannel(
+            guildId = ctx.guildId,
+            channelId = ctx.channelId,
+            actorId = ctx.userId,
+            source = NexaParticipationFlagService.SOURCE_GUILD_ADMIN_TOGGLE,
+        )
         return Replies.ok("현재 채널 <#${ctx.channelId}> 에서 사람같은 니아 참여를 껐습니다.")
     }
 
@@ -205,7 +216,8 @@ class GuildAdminCommandHandler(
     ): Reply {
         guards.adminOnly(ctx)?.let { return it }
         policy.setRolePolicy(ctx.guildId, roleId, maxBurden, dailyLimit, ctx.userId)
-        return Reply("✅ 역할 <@&$roleId> 정책: 최대 $maxBurden, 하루 $dailyLimit 회")
+        val limit = DailyLimitPolicy.normalize(dailyLimit)
+        return Reply("✅ 역할 <@&$roleId> 정책: 최대 $maxBurden, 하루 ${limit.displayText}")
     }
 
     fun approveProvider(

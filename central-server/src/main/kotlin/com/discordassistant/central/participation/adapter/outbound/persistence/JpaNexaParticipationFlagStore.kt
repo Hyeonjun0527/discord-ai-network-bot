@@ -59,6 +59,19 @@ class JpaNexaParticipationFlagStore(
         upsert(guildPseudonym, channelId) { it.excluded = excluded }
     }
 
+    @Transactional
+    override fun clearChannel(
+        guildPseudonym: String,
+        channelId: Long,
+    ) {
+        flags.findByGuildPseudonymAndChannelId(guildPseudonym, channelId)?.let(flags::delete)
+    }
+
+    @Transactional
+    override fun clearGuild(guildPseudonym: String) {
+        flags.deleteByGuildPseudonym(guildPseudonym)
+    }
+
     /** override·excluded 를 갱신한다. 갱신 후 둘 다 비면(override=null, excluded=false) 행을 제거(노이즈 방지). */
     private fun upsert(
         guildPseudonym: String,
@@ -100,4 +113,6 @@ interface NexaParticipationChannelFlagRepository : JpaRepository<NexaParticipati
     ): NexaParticipationChannelFlagEntity?
 
     fun findByGuildPseudonymAndExcludedTrue(guildPseudonym: String): List<NexaParticipationChannelFlagEntity>
+
+    fun deleteByGuildPseudonym(guildPseudonym: String)
 }

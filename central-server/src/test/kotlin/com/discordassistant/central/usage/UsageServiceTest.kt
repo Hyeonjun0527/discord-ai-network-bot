@@ -5,6 +5,7 @@ import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -32,6 +33,29 @@ class UsageServiceTest
             assertEquals(1, all.size)
             assertEquals(RequestState.COMPLETED, all[0].state)
             assertEquals(7L, all[0].providerId)
+        }
+
+        @Test
+        fun `AiRequest 는 실효 부담을 저장한다`() {
+            val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "x", roleIds = setOf(1))
+            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "burden-1", requiredBurden = ModelBurden.HEAVY)
+            assertEquals("HEAVY", requests.findByRequestId("burden-1")?.requiredBurden)
+        }
+
+        @Test
+        fun `같은 requestId 의 재기록은 ai_request 를 중복 insert 하지 않는다`() {
+            val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "x", roleIds = setOf(1))
+            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "dup-req", requiredBurden = ModelBurden.LIGHT)
+            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "dup-req", requiredBurden = ModelBurden.HEAVY)
+            assertEquals(1, requests.findAll().count { it.requestId == "dup-req" })
+        }
+
+        @Test
+        fun `같은 requestId 의 recordSuccess 재전송은 기여를 중복 적립하지 않는다`() {
+            svc.recordSuccess(guildId = 100, userId = 5, providerId = 10, requestId = "once")
+            svc.recordSuccess(guildId = 100, userId = 5, providerId = 10, requestId = "once")
+            assertEquals(1, svc.providerContributionCount(10))
+            assertEquals(1, svc.userDailyCount(100, 5))
         }
 
         @Test

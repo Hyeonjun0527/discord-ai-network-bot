@@ -85,16 +85,20 @@ class ParticipationActionRouterTest {
             identity: ActionIdentity,
             executeAfter: Instant,
             attempt: Int,
-        ) = Unit
+        ): Boolean = true
 
-        override fun cancel(identity: ActionIdentity) = Unit
+        override fun markTyping(identity: ActionIdentity): Boolean = true
 
-        override fun complete(identity: ActionIdentity) = Unit
+        override fun markPartiallySent(identity: ActionIdentity): Boolean = true
+
+        override fun cancel(identity: ActionIdentity): Boolean = true
+
+        override fun complete(identity: ActionIdentity): Boolean = true
 
         override fun fail(
             identity: ActionIdentity,
             reason: ActionFailureReason,
-        ) = Unit
+        ): Boolean = true
 
         override fun find(identity: ActionIdentity): ScheduledSocialAction? = null
     }

@@ -3,6 +3,7 @@ package com.discordassistant.central.actionruntime.application
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.BackpressureGate
 import com.discordassistant.central.actionruntime.application.execution.ExecutionOutcome
+import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
@@ -33,7 +34,8 @@ class ActionExecutionServiceTest {
         reeval: ControllableReevaluation,
         audit: InMemoryActionAudit,
         backpressure: BackpressureGate = BackpressureGate(),
-    ) = ActionExecutionService(executor, scheduler, reeval, audit, backpressure, clock)
+        modePort: ActionExecutionModePort = ActionExecutionModePort.REQUESTED_MODE,
+    ) = ActionExecutionService(executor, scheduler, reeval, audit, backpressure, clock, modePort)
 
     @Test
     fun `T017 — 모든 버블 전송 후 COMPLETED 이고 message ID 가 audit 에 연결된다`() {
@@ -116,6 +118,7 @@ class ActionExecutionServiceTest {
         assertThat(outcome).isInstanceOf(ExecutionOutcome.Suppressed::class.java)
         assertThat(executor.totalExecutorCalls).isZero() // 전송 0회 — typing 포함 어떤 JDA 호출도 없음.
         assertThat(audit.phasesOf(action.identity.value)).containsExactly(ActionAuditPhase.SUPPRESSED_SHADOW)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
     }
 
     @Test
@@ -128,7 +131,32 @@ class ActionExecutionServiceTest {
             service(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit())
                 .execute(mode, action, BurstPlan.single("plan-a"))
             assertThat(executor.totalExecutorCalls).isZero()
+            assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
         }
+    }
+
+    @Test
+    fun `T030 — 예약 시 LIVE 여도 실행 직전 현재 모드가 SHADOW 면 전송하지 않는다`() {
+        val executor = RecordingDiscordExecutor()
+        val scheduler = InMemoryActionScheduler(clock)
+        val audit = InMemoryActionAudit()
+        val action = typingSpeakAction()
+        scheduler.put(action)
+        val currentMode = ActionExecutionModePort { _, _ -> ShadowMode.SHADOW_PREDICT }
+
+        val outcome =
+            service(
+                executor = executor,
+                scheduler = scheduler,
+                reeval = ControllableReevaluation(),
+                audit = audit,
+                modePort = currentMode,
+            ).execute(ShadowMode.LIVE, action, BurstPlan.single("plan-a"))
+
+        assertThat(outcome).isEqualTo(ExecutionOutcome.Suppressed(ShadowMode.SHADOW_PREDICT))
+        assertThat(executor.totalExecutorCalls).isZero()
+        assertThat(audit.findByAction(action.identity.value).single().reason).isEqualTo(ShadowMode.SHADOW_PREDICT.name)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
     }
 
     @Test

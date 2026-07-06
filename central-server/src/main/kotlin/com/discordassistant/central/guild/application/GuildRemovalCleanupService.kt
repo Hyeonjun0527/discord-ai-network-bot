@@ -3,6 +3,7 @@ package com.discordassistant.central.guild.application
 import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderScheduleService
@@ -22,6 +23,7 @@ class GuildRemovalCleanupService(
     private val channelProfiles: ChannelAiProfileService,
     private val autoRespondChannels: AutoRespondChannelRegistry,
     private val blocklist: BlocklistService,
+    private val participationFlags: NexaParticipationFlagService,
 ) {
     private val log = LoggerFactory.getLogger(GuildRemovalCleanupService::class.java)
 
@@ -34,6 +36,7 @@ class GuildRemovalCleanupService(
         autoRespondChannels.invalidateGuild(guildId) // 자동응답 채널 캐시(Set)도 비워 미세 누수 방지
         blocklist.clearGuild(guildId)
         policy.cleanupGuild(guildId)
+        participationFlags.cleanupGuild(guildId) // stale NEXA LIVE override 잔존→재입장 시 무단 발화 방지
         val result = GuildCleanupResult(guildId, closedSessions, removedProviders.size)
         log.info(
             "길드 제거 정리 완료(guild={}, closedSessions={}, removedProviders={})",

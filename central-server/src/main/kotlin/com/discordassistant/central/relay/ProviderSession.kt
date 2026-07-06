@@ -16,6 +16,9 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
@@ -205,7 +208,7 @@ class ProviderSession(
             return CompletableFuture.failedFuture(AgentBusyException("대기 큐가 가득 찼습니다."))
         }
         val requestId = UUID.randomUUID().toString().replace("-", "")
-        val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
+        val queue = LinkedBlockingQueue<ChunkFrame>(CHUNK_QUEUE_CAPACITY) // 유계 — 폭주 시 handleFrame 이 실패 처리
         lifecycle.registerStream(requestId, queue) // 청크 도착 전에 큐를 먼저 등록(유실 방지)
         inFlight.incrementAndGet()
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
@@ -219,7 +222,9 @@ class ProviderSession(
                 ConnectionClosedException("스트리밍 InferRequest 전송 실패(id=$requestId, model=$model): ${e.message}", e),
             )
         }
-        return CompletableFuture.supplyAsync {
+        // 드레인은 큐 poll 을 최대 타임아웃까지 블로킹한다 — 공용 풀(ForkJoinPool.commonPool) 고갈을
+        // 막기 위해 전용 풀(named daemon)에 올린다.
+        return CompletableFuture.supplyAsync({
             val sb = StringBuilder()
             val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(requestTimeoutSeconds)
             try {
@@ -231,6 +236,14 @@ class ProviderSession(
                         throw RemoteTimeoutException("원격 에이전트 응답 시간 초과(${requestTimeoutSeconds}초)")
                     }
                     val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    when {
+                        chunk === RequestLifecycleManager.POISON_CLOSED ->
+                            throw ConnectionClosedException("연결 종료로 스트림이 중단되었습니다.")
+                        chunk === RequestLifecycleManager.POISON_OVERFLOW -> {
+                            safeSend(CancelFrame(requestId))
+                            throw RemoteInferException("OLLAMA_ERROR", "응답이 너무 빨라 처리 버퍼가 가득 찼습니다")
+                        }
+                    }
                     if (chunk.done) break
                     sb.append(chunk.delta)
                     onChunk(chunk.delta)
@@ -241,7 +254,7 @@ class ProviderSession(
                 lifecycle.removeStream(requestId)
                 cleanup(requestId)
             }
-        }
+        }, drainExecutor)
     }
 
     /**
@@ -259,7 +272,7 @@ class ProviderSession(
             return CompletableFuture.failedFuture(AgentBusyException("대기 큐가 가득 찼습니다."))
         }
         val requestId = UUID.randomUUID().toString().replace("-", "")
-        val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
+        val queue = LinkedBlockingQueue<ChunkFrame>(CHUNK_QUEUE_CAPACITY) // 유계 — 폭주 시 handleFrame 이 실패 처리
         lifecycle.registerStream(requestId, queue)
         inFlight.incrementAndGet()
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
@@ -276,7 +289,8 @@ class ProviderSession(
         // 호출자(취소 버튼 부착·취소 매핑 등록)가 requestId 를 즉시 받도록 동기 콜백.
         runCatching { onStart(requestId) }
         val imageTimeout = maxOf(requestTimeoutSeconds, IMAGE_TIMEOUT_SECONDS)
-        return CompletableFuture.supplyAsync {
+        // 드레인은 큐 poll 을 최대 타임아웃(180s)까지 블로킹한다 — 공용 풀 고갈을 막으려 전용 풀에 올린다.
+        return CompletableFuture.supplyAsync({
             val sb = StringBuilder()
             val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(imageTimeout)
             try {
@@ -287,6 +301,14 @@ class ProviderSession(
                         throw RemoteTimeoutException("이미지 생성 시간 초과(${imageTimeout}초)")
                     }
                     val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    when {
+                        chunk === RequestLifecycleManager.POISON_CLOSED ->
+                            throw ConnectionClosedException("연결 종료로 이미지 생성이 중단되었습니다.")
+                        chunk === RequestLifecycleManager.POISON_OVERFLOW -> {
+                            safeSend(CancelFrame(requestId))
+                            throw RemoteInferException("OLLAMA_ERROR", "이미지 청크가 너무 빨라 처리 버퍼가 가득 찼습니다")
+                        }
+                    }
                     if (cancelledRequests.remove(requestId)) {
                         // 취소 버튼 → cancelImage 가 이미 CancelFrame 송신(ComfyUI /interrupt 유발). 루프 종료.
                         throw RemoteCancelledException("이미지 생성을 취소했어요.")
@@ -307,10 +329,13 @@ class ProviderSession(
                     .getDecoder()
                     .decode(sb.toString())
             } finally {
+                // 취소 매핑은 어느 종료 경로(정상 done·타임아웃·취소·독약)에서도 반드시 제거한다 — 안 그러면
+                // cancelImage 가 add 한 뒤 드레인이 이미 done 으로 빠져나가면 항목이 영구히 누수된다(#leak).
+                cancelledRequests.remove(requestId)
                 lifecycle.removeStream(requestId)
                 cleanup(requestId)
             }
-        }
+        }, drainExecutor)
     }
 
     private fun cleanup(requestId: String) {
@@ -351,7 +376,9 @@ class ProviderSession(
             is InferResult -> lifecycle.complete(frame.requestId, frame)
             is InferError ->
                 lifecycle.failPending(frame.requestId, RemoteInferException(frame.code, frame.message))
-            is ChunkFrame -> lifecycle.offer(frame.requestId, frame)
+            is ChunkFrame ->
+                // 유계 큐가 가득 차면(빠른 생산자 + 정체된 소비자) 요청을 실패시켜 OOM 을 막는다.
+                if (!lifecycle.offer(frame.requestId, frame)) lifecycle.failStreamOverflow(frame.requestId)
             is ProviderHelloFrame -> applyHello(frame)
             is ProviderStatusFrame -> applyStatus(frame)
             is ImageBroadcastFrame -> log.debug("이미지 브로드캐스트 프레임 폐기: provider={} guild={}", providerId, guildId)
@@ -368,6 +395,21 @@ class ProviderSession(
     companion object {
         /** 연속 실패가 이 횟수에 도달하면 자동 비활성화(UNHEALTHY). */
         private const val FAILURE_THRESHOLD = 3
+
+        /** per-request 청크 큐의 유계 용량. 초과 시 요청을 실패 처리(OOM 보호). 소비자가 정상이면 근처도 안 간다. */
+        private const val CHUNK_QUEUE_CAPACITY = 1024
+
+        private val drainThreadSeq = AtomicLong(0)
+
+        /**
+         * 스트리밍/이미지 드레인 전용 실행기. 드레인은 큐 poll 을 최대 타임아웃(이미지 180s)까지 블로킹하므로
+         * ForkJoinPool.commonPool 에 올리면 공용 풀이 고갈된다 — named daemon 캐시드 풀로 격리한다.
+         * 모든 세션이 공유하며(세션은 다수·수명 짧음) 앱 수명 동안 산다(데몬이라 종료를 막지 않음).
+         */
+        private val drainExecutor: ExecutorService =
+            Executors.newCachedThreadPool { r ->
+                Thread(r, "provider-stream-drain-${drainThreadSeq.incrementAndGet()}").apply { isDaemon = true }
+            }
 
         /** 이미지 생성은 느리므로 최소 이 시간까지 기다린다(SD Phase 2). */
         private const val IMAGE_TIMEOUT_SECONDS = 180L

@@ -74,4 +74,7 @@ enum class ActionAuditPhase(
 
     /** shadow 단계라 전송이 hard block 됨(OBSERVE_ONLY 등 — 전송 0회 증거, P09). */
     SUPPRESSED_SHADOW("suppressed_shadow"),
+
+    /** 재시작 복구가 PARTIALLY_SENT action 을 재전송 없이 종결함(T010 — 이중 전송 차단 증거). */
+    RECOVERED_NO_RESEND("recovered_no_resend"),
 }

@@ -24,6 +24,7 @@ import com.discordassistant.central.routing.application.port.RoutingPolicy
 import com.discordassistant.central.routing.application.port.UsageRecorder
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.routing.domain.model.ProviderProfile
+import com.discordassistant.central.routing.domain.model.RequestRejectionCode
 import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
 import com.discordassistant.central.routing.domain.service.ProviderRouter
 import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
@@ -52,6 +53,24 @@ private class EchoConnection(
             } else {
                 session.handleFrame(InferError(frame.requestId, "OLLAMA_ERROR", "boom"))
             }
+        }
+    }
+
+    override fun close(reason: String) {}
+}
+
+private class PolicyChangingConnection(
+    private val beforeResult: () -> Unit,
+) : AgentConnection {
+    lateinit var session: ProviderSession
+    var lastInfer: InferRequest? = null
+    override val remoteId = "policy-changing"
+
+    override fun sendFrame(frame: Frame) {
+        if (frame is InferRequest) {
+            lastInfer = frame
+            beforeResult()
+            session.handleFrame(InferResult(frame.requestId, "답변-${frame.requestId.take(4)}"))
         }
     }
 
@@ -245,7 +264,9 @@ class RequestOrchestratorTest {
                 fakeProfiles,
                 blocking,
             )
-        assertEquals(RequestState.REJECTED, orch.handle(input).state) // input.userId = 5
+        val r = orch.handle(input)
+        assertEquals(RequestState.REJECTED, r.state) // input.userId = 5
+        assertEquals(RequestRejectionCode.BLOCKED_USER, r.rejectionCode)
     }
 
     @Test
@@ -279,7 +300,9 @@ class RequestOrchestratorTest {
                 noBlock,
                 quota,
             )
-        assertEquals(RequestState.REJECTED, orch.handle(input).state)
+        val r = orch.handle(input)
+        assertEquals(RequestState.REJECTED, r.state)
+        assertEquals(RequestRejectionCode.QUOTA_EXCEEDED, r.rejectionCode)
     }
 
     @Test
@@ -316,7 +339,26 @@ class RequestOrchestratorTest {
         fakePolicy.channelAllowed = false
         val r = orchestrator(reg).handle(input)
         assertEquals(RequestState.REJECTED, r.state)
+        assertEquals(RequestRejectionCode.CHANNEL_NOT_ALLOWED, r.rejectionCode)
         fakePolicy.channelAllowed = true
+    }
+
+    @Test
+    fun `채널 정책 변경은 admission 이후 실행 중 요청이 아니라 다음 요청부터 적용된다`() {
+        val reg = newRegistry()
+        fakePolicy.channelAllowed = true
+        val conn = PolicyChangingConnection { fakePolicy.channelAllowed = false }
+        val session = ProviderSession(conn, providerId = 1, guildId = 100)
+        conn.session = session
+        session.capability = session.capability.copy(models = listOf("llama3.1:8b"))
+        reg.register(session)
+
+        val admitted = orchestrator(reg).handle(input.copy(prompt = "admitted"))
+        val next = orchestrator(reg).handle(input.copy(prompt = "next", userId = 6))
+
+        assertEquals(RequestState.COMPLETED, admitted.state, admitted.failReason)
+        assertEquals(RequestState.REJECTED, next.state)
+        assertEquals(RequestRejectionCode.CHANNEL_NOT_ALLOWED, next.rejectionCode)
     }
 
     @Test
@@ -337,6 +379,7 @@ class RequestOrchestratorTest {
         fakeProfiles.supported = setOf(ModelBurden.STANDARD) // LIGHT 미지원
         val r = orchestrator(reg).handle(input)
         assertEquals(RequestState.REJECTED, r.state)
+        assertEquals(RequestRejectionCode.POLICY_DENIED, r.rejectionCode)
         fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
     }
 
@@ -355,10 +398,27 @@ class RequestOrchestratorTest {
 
             assertEquals(RequestState.COMPLETED, normal.state)
             assertEquals(RequestState.REJECTED, deep.state)
+            assertEquals(RequestRejectionCode.POLICY_DENIED, deep.rejectionCode)
             assertEquals(null, deep.providerId)
             assertEquals(null, (lightOnly.connection as EchoConnection).lastInfer)
         } finally {
             fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+        }
+    }
+
+    @Test
+    fun `요청 필요 수준이 권한보다 2단계 높으면 locale 독립 코드로 REJECTED`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        try {
+            fakePolicy.max = ModelBurden.LIGHT
+
+            val r = orchestrator(reg).handle(input.copy(prompt = "x".repeat(2_000), weighChars = 2_000))
+
+            assertEquals(RequestState.REJECTED, r.state)
+            assertEquals(RequestRejectionCode.BURDEN_NOT_ALLOWED, r.rejectionCode)
+        } finally {
+            fakePolicy.max = ModelBurden.HEAVY
         }
     }
 

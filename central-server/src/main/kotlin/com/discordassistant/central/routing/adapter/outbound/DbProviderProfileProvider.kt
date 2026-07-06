@@ -10,6 +10,15 @@ import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 
+/**
+ * provider contribution policy 를 routing [ProviderProfile] 로 변환한다.
+ *
+ * 우선순위: guild channel allow-list 는 [com.discordassistant.central.routing.application.port.RoutingPolicy] 가
+ * request admission 에서 먼저 처리한다. provider contribution policy 는 모델/burden/capability 한도만 소유하고
+ * channel scope 를 소유하지 않는다(V41 이후 allowed_role 제거, allowed_channel 컬럼 없음). 따라서 이 DB 어댑터는
+ * [ProviderProfile.allowedChannelIds]와 [ProviderProfile.allowedRoleIds]를 채우지 않는다. 별도 provider-scoped
+ * channel 제한을 도입하려면 Flyway 스키마와 이 매핑 테스트를 함께 바꿔야 한다.
+ */
 @Service
 class DbProviderProfileProvider(
     private val policies: ProviderContributionPolicyRepository,
@@ -92,7 +101,11 @@ class DbProviderProfileProvider(
 
         val effectiveMaxBurden =
             when {
-                rows.isEmpty() -> DEFAULT_MAX_BURDEN_WITHOUT_POLICY
+                // 정책 행이 없어도 하드웨어 capability 가 선언돼 있으면 그 상한을 존중한다 — LIGHT 박스에 STANDARD 를
+                // 광고해 라우터가 약한 provider 로 과부하 요청을 보내는 비대칭을 없앤다(정책 있을 때만 capping 하던 버그).
+                rows.isEmpty() ->
+                    capabilityMaxBurden?.let { minByRank(DEFAULT_MAX_BURDEN_WITHOUT_POLICY, it) }
+                        ?: DEFAULT_MAX_BURDEN_WITHOUT_POLICY
                 policyMaxBurden == null -> DEFAULT_MAX_BURDEN_WITH_INVALID_POLICY
                 capabilityMaxBurden == null -> policyMaxBurden
                 else -> minByRank(policyMaxBurden, capabilityMaxBurden)

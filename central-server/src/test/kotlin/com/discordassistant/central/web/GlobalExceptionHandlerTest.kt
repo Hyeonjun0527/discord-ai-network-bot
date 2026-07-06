@@ -6,7 +6,9 @@ import com.discordassistant.central.global.error.DomainException
 import com.discordassistant.central.global.error.InvalidStateTransitionException
 import com.discordassistant.central.global.error.NotFoundException
 import com.discordassistant.central.global.error.PreconditionFailedException
+import com.discordassistant.central.global.security.RequestIdFilter
 import org.junit.jupiter.api.Test
+import org.slf4j.MDC
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -139,17 +141,23 @@ class GlobalExceptionHandlerTest {
 
     @Test
     fun `precondition error carries failedCondition details and domain-specific code`() {
-        mvc
-            .perform(get("/test/precondition"))
-            .andExpect(status().isUnprocessableEntity)
-            .andExpect(jsonPath("$.error.code").value("PROFILE_IMAGE_MIME_NOT_ALLOWED"))
-            .andExpect(jsonPath("$.error.failedCondition").value("profile_image_mime_allowed"))
-            .andExpect(jsonPath("$.error.details.actualValue").value("image/heic"))
-            .andExpect(jsonPath("$.error.blockedAction").value("UPDATE_PROFILE_IMAGE"))
-            .andExpect(jsonPath("$.error.actionGuide").exists())
-            // 선행 조건 에러는 상태 전이가 아니다.
-            .andExpect(jsonPath("$.error.currentState").doesNotExist())
-            .andExpect(jsonPath("$.error.requiredState").doesNotExist())
+        MDC.put(RequestIdFilter.MDC_KEY, "metadata-contract-1")
+        try {
+            mvc
+                .perform(get("/test/precondition"))
+                .andExpect(status().isUnprocessableEntity)
+                .andExpect(jsonPath("$.requestId").value("metadata-contract-1"))
+                .andExpect(jsonPath("$.error.code").value("PROFILE_IMAGE_MIME_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.error.failedCondition").value("profile_image_mime_allowed"))
+                .andExpect(jsonPath("$.error.details.actualValue").value("image/heic"))
+                .andExpect(jsonPath("$.error.blockedAction").value("UPDATE_PROFILE_IMAGE"))
+                .andExpect(jsonPath("$.error.actionGuide").exists())
+                // 선행 조건 에러는 상태 전이가 아니다.
+                .andExpect(jsonPath("$.error.currentState").doesNotExist())
+                .andExpect(jsonPath("$.error.requiredState").doesNotExist())
+        } finally {
+            MDC.remove(RequestIdFilter.MDC_KEY)
+        }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.discordassistant.central.speech.routing
 
+import com.discordassistant.central.platform.discord.command.AskCommandHandler
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudLlmUsage
@@ -70,6 +71,11 @@ class RoutingCloudSpeechGenerationAdapterTest {
             prompt: String,
             systemPrompt: String,
         ): String = throw UnsupportedOperationException()
+    }
+
+    @Test
+    fun `speech default model matches ask free cloud fast default`() {
+        assertThat(SpeechModelConfig.DEFAULT_SPEECH_MODEL).isEqualTo(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL)
     }
 
     @Test

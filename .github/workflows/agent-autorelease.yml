@@ -49,7 +49,7 @@ jobs:
           FILEVER=$(sed -nE 's/^version = "(.*)"/\1/p' provider-agent/pyproject.toml | head -1)
           FILEVER=${FILEVER:-0.0.0}
           BASE=$(printf '%s\n%s\n' "$TAGVER" "$FILEVER" | sort -V | tail -1)
-          IFS=. read -r MA MI PA <<< "$BASE"
+          IFS='.' read -r MA MI PA <<< "$BASE"
 
           # bump 종류 결정: 입력값 > 커밋 컨벤션(feat→minor, BREAKING/!→major, 그 외→patch).
           if [ -n "${FORCE_BUMP:-}" ]; then
@@ -61,11 +61,11 @@ jobs:
             # here-string 으로 grep — echo|grep 은 grep -q 가 파이프를 일찍 닫아 echo 가 SIGPIPE,
             # set -o pipefail 과 만나 스텝이 broken pipe 로 죽는다(원인 #1).
             if grep -qiE 'BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:' <<<"$LOG"; then
-              BUMP=major
+              BUMP="major"
             elif grep -qiE '^feat(\([^)]*\))?:' <<<"$LOG"; then
-              BUMP=minor
+              BUMP="minor"
             else
-              BUMP=patch
+              BUMP="patch"
             fi
           fi
           case "$BUMP" in

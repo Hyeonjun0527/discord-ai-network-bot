@@ -1,7 +1,9 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.ProviderPoolReconciliationService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
@@ -13,6 +15,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -44,6 +47,8 @@ class ProviderPoolReconciliationServiceTest
         val policies: ContributionPolicyService,
         val policy: PolicyService,
         val channelProfiles: ChannelAiProfileService,
+        val autoRespondChannels: AutoRespondChannelRegistry,
+        val participationFlags: NexaParticipationFlagService,
     ) {
         @Test
         fun `멤버 이탈은 해당 길드 provider 상태만 정리하고 다른 길드는 유지한다`() {
@@ -71,13 +76,19 @@ class ProviderPoolReconciliationServiceTest
         }
 
         @Test
-        fun `채널 삭제 정리는 허용 채널과 채널 AI 프로필을 제거한다`() {
+        fun `채널 삭제 정리는 허용 채널과 채널 AI 프로필과 participation flag 를 제거한다`() {
             policy.allowChannel(300, 400, adminId = 1)
             channelProfiles.set(300, 400, "니아", avatarUrl = "https://example.com/cat.png")
+            autoRespondChannels.setAutoRespond(300, 400, on = true, actorId = 1)
+            participationFlags.enableChannelLive(300, 400)
+            assertTrue(autoRespondChannels.isAutoRespond(300, 400))
+            assertTrue(participationFlags.isNexaActive(300, 400))
 
             reconciliation.cleanupChannel(300, 400)
 
             assertTrue(policy.allowedChannelIds(300).isEmpty())
             assertNull(channelProfiles.get(300, 400))
+            assertFalse(autoRespondChannels.isAutoRespond(300, 400))
+            assertFalse(participationFlags.isNexaActive(300, 400))
         }
     }

@@ -111,6 +111,7 @@ interface UsageRecorder {
         providerId: Long?,
         failReason: String?,
         requestId: String? = null,
+        requiredBurden: ModelBurden? = null,
     ) {
     }
 

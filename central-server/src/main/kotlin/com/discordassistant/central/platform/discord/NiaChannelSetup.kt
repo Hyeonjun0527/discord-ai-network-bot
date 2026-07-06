@@ -20,6 +20,8 @@ object NiaChannelSetup {
     /** ai채팅 채널에 부여하는 니아 채널 AI 프로필 표시 이름(웹훅 페르소나). */
     const val NIA_PROFILE_NAME = "니아"
 
+    private const val MANAGED_TOPIC_PREFIX = "nia-managed-channel"
+
     /** 권한 검사 결과 — 핸들러가 이 분기로 ephemeral 응답/생성을 결정한다. */
     enum class PermissionDecision {
         /** 클릭/호출자가 길드 관리자가 아님 → 거부. */
@@ -54,19 +56,27 @@ object NiaChannelSetup {
         existingCategoryNames: Collection<String>,
         language: String = I18n.DEFAULT,
     ): Boolean {
-        val target = featureCategoryName(language).trim().lowercase()
-        return existingCategoryNames.any { it.trim().lowercase() == target }
+        val targets = (featureCategoryNameCandidates() + featureCategoryName(language)).map { it.normalizedDiscordName() }.toSet()
+        return existingCategoryNames.any { it.normalizedDiscordName() in targets }
     }
 
     fun featureCategoryName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupCategoryFeature", language)
+
+    fun featureCategoryNameCandidates(): Set<String> = localizedNames(::featureCategoryName)
 
     fun voiceCategoryName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupCategoryVoice", language)
 
     fun chatChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelChat", language)
 
+    fun chatChannelNameCandidates(): Set<String> = localizedNames(::chatChannelName)
+
     fun imageChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelImage", language)
 
+    fun imageChannelNameCandidates(): Set<String> = localizedNames(::imageChannelName)
+
     fun memberChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelMember", language)
+
+    fun memberChannelNameCandidates(): Set<String> = localizedNames(::memberChannelName)
 
     fun voiceChannelName(language: String = I18n.DEFAULT): String = I18n.get("niaSetupChannelVoice", language)
 
@@ -78,4 +88,10 @@ object NiaChannelSetup {
 
     /** 니아수다 고정(pin) 가이드 — 사람처럼 끼어드는 참여 채널 안내. */
     fun memberGuide(language: String = I18n.DEFAULT): String = I18n.get("niaSetupGuideMember", language)
+
+    fun channelMarker(role: String): String = "$MANAGED_TOPIC_PREFIX:$role"
+
+    private fun localizedNames(resolve: (String) -> String): Set<String> = I18n.LOCALES.map(resolve).toSet()
+
+    private fun String.normalizedDiscordName(): String = trim().lowercase()
 }

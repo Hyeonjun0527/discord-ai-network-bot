@@ -10,6 +10,7 @@ import logging
 import signal
 import uuid
 from collections import deque
+from collections.abc import Coroutine
 
 from . import sysinfo
 from .config import AgentConfig
@@ -403,6 +404,8 @@ class ProviderAgent:
         # 진행 중 이미지 생성 요청 id(취소 시 ComfyUI /interrupt 대상 판별).
         self._image_inflight: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        # 추적되는 fire-and-forget 태스크(진행률 청크·/interrupt 등). 참조를 보관해 GC 취소를 막고 예외를 남긴다.
+        self._bg_tasks: set[asyncio.Task[object]] = set()
         self._stop = asyncio.Event()
         # 멀티-서버: 여러 디스코드 길드에 동시 접속. 각 항목 {conn, task, status_task, guild_id, guild_name, token}.
         # 공유 자원(ollama·세마포어·일일한도·모델)은 위에서 인스턴스 단위로 묶여 모든 연결이 함께 쓴다.
@@ -444,7 +447,7 @@ class ProviderAgent:
             # 이미지 생성은 ComfyUI 서버에서 실제로 돌고 있으므로, asyncio task 취소만으론 멈추지 않는다.
             # ComfyUI /interrupt 로 실제 생성을 중단시킨다(취소 버튼 → 즉시 중단).
             if frame.request_id in self._image_inflight and self._sd is not None:
-                asyncio.create_task(self._sd.interrupt())
+                self._spawn_bg(self._sd.interrupt())
             existing = self._tasks.get(frame.request_id)
             if existing is not None:
                 existing.cancel()
@@ -457,6 +460,17 @@ class ProviderAgent:
         self._cancel_order.append(request_id)
         while len(self._cancel_order) > self._cancel_cap:
             self._cancelled.discard(self._cancel_order.popleft())
+
+    def _spawn_bg(self, coro: Coroutine[object, object, object]) -> None:
+        """추적되는 fire-and-forget 태스크로 실행한다: 참조를 보관해 GC 취소를 막고 예외를 남긴다."""
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_done)
+
+    def _bg_done(self, task: asyncio.Task[object]) -> None:
+        self._bg_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.debug("백그라운드 태스크 실패: %s", task.exception())
 
     def _infer_gate(self, guild_id: int | None) -> str | None:
         """추론 전 게이트(프로바이더 주권). 반려 사유 메시지(모두 BUSY)를 돌려주거나, 통과면 None.
@@ -520,6 +534,10 @@ class ProviderAgent:
             except asyncio.CancelledError:
                 logger.info("요청 %s… 취소됨", req.request_id[:8])
                 raise
+            except Exception as exc:  # noqa: BLE001
+                # 예상 못 한 오류라도 수락된 요청은 **항상 종단 프레임 1개**를 낸다(디스코드측 무한 대기 방지, 예외 원칙 4).
+                logger.warning("추론 처리 중 예상치 못한 오류(model=%s, request=%s): %s", model, req.request_id[:8], exc)
+                await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             finally:
                 self._inflight -= 1
 
@@ -605,7 +623,7 @@ class ProviderAgent:
         생성 중 다른 스레드의 접근에 thread-safe 하지 않아, /sdapi/v1/progress 같은 동시 폴링이
         Metal command encoder 경합을 일으켜 드라이버 세그폴트(AGXMetal SIGSEGV)로 SD 프로세스를
         죽인다(실증: 폴링 시 gen#0 즉시 크래시 vs 폴링 제거 시 순차 3/3 생존). 그래서 진행률은
-        SD 를 건드리지 않는 **경과시간 기반 추정**(_emit_estimated_progress)으로만 보낸다.
+        SD 를 능동 폴링하지 않고 ComfyUI /ws 패시브 푸시(on_progress)로만 보낸다.
         SD 가 생성 도중 죽으면 1회 재기동·재시도한다(_generate_image_with_retry).
         """
         b64 = await self._generate_image_with_retry(conn, req)
@@ -679,7 +697,7 @@ class ProviderAgent:
             nonlocal last_pct
             if pct - last_pct >= 5 or pct >= 100:
                 last_pct = pct
-                asyncio.create_task(self._safe_send(conn, ChunkFrame(req.request_id, progress=pct)))
+                self._spawn_bg(self._safe_send(conn, ChunkFrame(req.request_id, progress=pct)))
 
         self._image_inflight.add(req.request_id)
         try:
@@ -750,29 +768,6 @@ class ProviderAgent:
         except Exception as exc:  # noqa: BLE001 - 재기동 실패는 비치명적(원 에러를 사용자에게 전달)
             logger.warning("이미지 백엔드 재기동 실패: %s", exc)
             return False
-
-    async def _emit_estimated_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
-        """생성이 끝날 때까지 **경과시간 기반 추정** 진행률을 progress 청크로 보낸다(SD 미조회).
-
-        SD 를 폴링하면 MPS 크래시가 나므로 절대 호출하지 않는다(_handle_image 주석 참고).
-        점근 곡선 pct=95·t/(t+HALF) 로 0→95% 까지만(완료는 done 청크가 알린다). 하드웨어마다
-        속도가 달라 정확치는 아니지만 '생성이 진행 중'임을 정직하게 보여준다.
-        """
-        loop = asyncio.get_event_loop()
-        start = loop.time()
-        last = -1
-        try:
-            while not gen_task.done():
-                await asyncio.sleep(SD_PROGRESS_POLL_S)
-                if gen_task.done():
-                    break
-                elapsed = loop.time() - start
-                pct = int(95 * elapsed / (elapsed + SD_PROGRESS_HALFLIFE_S))
-                if pct > last and 0 < pct < 100:
-                    last = pct
-                    await self._safe_send(conn, ChunkFrame(request_id, delta="", done=False, progress=pct))
-        except asyncio.CancelledError:
-            return
 
     async def _safe_send(self, conn: AgentConnection, frame: Frame) -> None:
         try:
@@ -1274,15 +1269,18 @@ class ProviderAgent:
             await self._readvertise()
 
     async def _readvertise(self) -> None:
-        """capability 변경(예: SD 준비됨)을 라이브 세션에 반영: 모든 연결을 재접속(새 hello)."""
+        """capability 변경(예: SD 준비됨)을 라이브 세션에 반영: 모든 연결을 재접속(새 hello).
+
+        stop→respawn 은 **원자적**이어야 한다. 중간에 _entries_lock 을 놓으면 _sync_joins_once/add_connection 이
+        끼어들어 같은 길드에 연결을 하나 더 만들고, 이어지는 respawn 이 그 길드 연결을 중복 생성한다.
+        따라서 전체 과정에서 락을 계속 쥔다(_stop_entry·_spawn_entry 는 락을 재획득하지 않음)."""
         async with self._entries_lock:
             entries = list(self._entries)
             self._entries.clear()
-        for e in entries:
-            await self._stop_entry(e)
-        if self._stop.is_set():
-            return
-        async with self._entries_lock:
+            for e in entries:
+                await self._stop_entry(e)
+            if self._stop.is_set():
+                return
             for e in entries:
                 self._spawn_entry(self._make_entry(e["token"], e["guild_id"], e["guild_name"]))
 

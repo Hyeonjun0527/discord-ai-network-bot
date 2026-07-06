@@ -30,7 +30,7 @@ interface ActionSchedulerPort {
     /**
      * [now] 기준 due 인 예약을 최대 [limit] 건 **claim** 한다(lease 를 [leaseExpiresAt] 까지 건다). 동시에 도는 다른
      * worker 는 같은 행을 가져갈 수 없다(SELECT FOR UPDATE SKIP LOCKED — T006/T007). claim 된 행은 REEVALUATING
-     * 으로 전이된 상태로 돌아온다([ClaimedAction] 에 lease 토큰 포함).
+     * 으로 전이된 상태로 돌아온다.
      */
     fun claimDue(
         now: Instant,
@@ -50,27 +50,32 @@ interface ActionSchedulerPort {
         identity: ActionIdentity,
         executeAfter: Instant,
         attempt: Int,
-    )
+    ): Boolean
+
+    /** [identity] 예약을 TYPING 으로 전이한다(재평가 통과 후 실제 실행 직전 상태 저장 — P12/T011). */
+    fun markTyping(identity: ActionIdentity): Boolean
+
+    /** [identity] 예약을 PARTIALLY_SENT 로 전이한다(일부 버블 전송 후 잔여 취소/복구 경계 — T010/T020). */
+    fun markPartiallySent(identity: ActionIdentity): Boolean
 
     /** [identity] 예약을 취소한다(CANCELLED 종결 — T012~T014). 이미 terminal 이면 무시(idempotent). */
-    fun cancel(identity: ActionIdentity)
+    fun cancel(identity: ActionIdentity): Boolean
 
     /** [identity] 예약을 완료 종결한다(COMPLETED). lease 해제. */
-    fun complete(identity: ActionIdentity)
+    fun complete(identity: ActionIdentity): Boolean
 
     /** [identity] 예약을 영구 실패 종결한다(FAILED + [reason] — T009). lease 해제. */
     fun fail(
         identity: ActionIdentity,
         reason: ActionFailureReason,
-    )
+    ): Boolean
 
     /** [identity] 의 현재 예약 상태를 조회한다(없으면 null) — 재평가/취소 유스케이스가 최신 상태를 읽을 때. */
     fun find(identity: ActionIdentity): ScheduledSocialAction?
 }
 
 /**
- * claim 된 예약(application 값 객체). claim 시 잡은 lease 토큰을 함께 싣는다 — 이후 transition(complete/cancel/
- * reschedule)에서 같은 worker 소유임을 보장하는 데 쓸 수 있다.
+ * claim 된 예약(application 값 객체). 실제 worker 소유권 검증은 포트 구현체의 lease owner 저장소가 강제한다.
  */
 data class ClaimedAction(
     /** claim 된 예약(REEVALUATING 상태로 전이됨). */

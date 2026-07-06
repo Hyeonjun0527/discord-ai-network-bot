@@ -20,10 +20,15 @@ class FreeAskRateLimiter(
     /**
      * 이 사용자가 지금 무료질문을 쓸 수 있는지 검사하고 **소비**한다. null=허용, 비-null=거부 사유 문구.
      *
-     * 시간 한도를 먼저 본다 — 흔한 거부 경로(시간당 초과)에서 일일 카운터를 불필요하게 소비하지 않게.
+     * 일일 한도는 먼저 **소비 없이 선검사(peek)** 한다 — 일일 초과가 확정이면 시간당 토큰을 헛되이
+     * 소비하지 않게. 그 다음 시간당을 소비하고, 마지막에 일일을 소비한다. 이렇게 하면 시간당/일일 어느
+     * 쪽이 거부되든 다른 쪽 카운터를 낭비하지 않으면서 두 한도를 모두 강제한다.
      * perHour/perDay 0 이하는 무제한(해당 한도 미적용).
      */
     fun check(userId: Long): String? {
+        if (perDay > 0 && !store.peek("freeask:d:$userId", perDay, 86_400)) {
+            return "무료질문은 하루에 ${perDay}번까지 쓸 수 있어요. 내일 다시 시도하세요."
+        }
         if (perHour > 0 && !store.tryAcquire("freeask:h:$userId", perHour, 3600)) {
             return "무료질문은 1시간에 ${perHour}번까지 쓸 수 있어요. 잠시 후 다시 시도하세요."
         }

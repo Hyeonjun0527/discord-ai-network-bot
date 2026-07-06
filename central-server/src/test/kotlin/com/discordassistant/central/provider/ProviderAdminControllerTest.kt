@@ -8,6 +8,7 @@ import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.guild.application.GuildChannelPolicy
@@ -30,7 +31,6 @@ import com.discordassistant.central.provider.adapter.inbound.web.AdminPresetDele
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminQualityReportsRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminQualityReviewRequest
-import com.discordassistant.central.provider.adapter.inbound.web.NiaPersonaResponse
 import com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins
 import com.discordassistant.central.provider.adapter.inbound.web.ProviderAdminController
 import com.discordassistant.central.provider.application.DurableTokenService
@@ -42,6 +42,7 @@ import com.discordassistant.central.shared.NexaIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -504,35 +505,38 @@ class ProviderAdminControllerTest
             // 토큰 providerId=7 가 admin-user-ids 에 있음 → 전문 반환. isGuildAdmin 과 무관(admin=false 여도 통과).
             val c = setup(admin = false, projectAdminIds = "7")
             val res = c.ctrl.niaPersona(c.dtoken)
-            assertEquals(200, res.statusCode.value())
-            val body = res.body as NiaPersonaResponse
-            assertEquals(NexaIdentity.NIA_DEFAULT_PERSONA, body.persona)
-            assertEquals(NexaIdentity.NIA_FEWSHOT, body.fewshot)
+            assertEquals(NexaIdentity.NIA_DEFAULT_PERSONA, res.persona)
+            assertEquals(NexaIdentity.NIA_FEWSHOT, res.fewshot)
         }
 
         @Test
         fun `길드 관리자라도 프로젝트 관리자가 아니면 니아 페르소나는 403`() {
             // admin=true(길드 관리자)지만 admin-user-ids 비어 있음 → 다른 서버 관리자/프로바이더 차단.
             val c = setup(admin = true, projectAdminIds = "")
-            val res = c.ctrl.niaPersona(c.dtoken)
-            assertEquals(403, res.statusCode.value())
-            @Suppress("UNCHECKED_CAST")
-            val body = res.body as Map<String, String>
-            assertEquals("forbidden", body["error"])
+            val ex = assertThrows(PreconditionFailedException::class.java) { c.ctrl.niaPersona(c.dtoken) }
+            assertNiaPersonaForbidden(ex)
         }
 
         @Test
         fun `다른 프로바이더(허용목록 밖)는 니아 페르소나가 403`() {
             // 허용목록에 다른 id(999)만 있음 → 토큰 주인(7)은 전문 못 봄.
             val c = setup(admin = false, projectAdminIds = "999")
-            val res = c.ctrl.niaPersona(c.dtoken)
-            assertEquals(403, res.statusCode.value())
+            val ex = assertThrows(PreconditionFailedException::class.java) { c.ctrl.niaPersona(c.dtoken) }
+            assertNiaPersonaForbidden(ex)
         }
 
         @Test
         fun `durable 이 아닌 토큰은 니아 페르소나가 403`() {
             val c = setup(admin = true, projectAdminIds = "7")
-            val res = c.ctrl.niaPersona("not-a-durable-token")
-            assertEquals(403, res.statusCode.value())
+            val ex = assertThrows(PreconditionFailedException::class.java) { c.ctrl.niaPersona("not-a-durable-token") }
+            assertNiaPersonaForbidden(ex)
+        }
+
+        private fun assertNiaPersonaForbidden(ex: PreconditionFailedException) {
+            assertEquals(403, ex.httpStatus)
+            assertEquals("FORBIDDEN", ex.errorCode)
+            assertEquals("project_admin_authenticated", ex.failedCondition)
+            assertEquals("READ_NIA_PERSONA", ex.blockedAction)
+            assertTrue(ex.actionGuide!!.contains("프로젝트 관리자 durable 토큰"))
         }
     }

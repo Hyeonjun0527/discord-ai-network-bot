@@ -11,6 +11,7 @@ import com.discordassistant.central.requestlog.adapter.outbound.persistence.Usag
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.routing.application.port.UsageRecorder
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.RequestState
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -39,6 +40,9 @@ class UsageService(
         providerId: Long,
         requestId: String,
     ) {
+        // requestId 멱등: 재전송된 완료 콜백이 usage_log/contribution_log 를 중복 insert 해 기여 건수를
+        // 부풀리지 않도록, 같은 requestId 가 이미 기록됐으면 no-op(호감도 재적립도 건너뜀).
+        if (usage.findByRequestId(requestId) != null) return
         val now = Instant.now()
         usage.save(UsageLogEntity(guildId = guildId, userId = userId, requestId = requestId, createdAt = now))
         contribution.save(ContributionLogEntity(guildId = guildId, providerId = providerId, requestId = requestId, createdAt = now))
@@ -52,7 +56,7 @@ class UsageService(
         state: RequestState,
         providerId: Long?,
         failReason: String?,
-    ) = recordRequest(input, state, providerId, failReason, requestId = null)
+    ) = recordRequest(input, state, providerId, failReason, requestId = null, requiredBurden = null)
 
     @Transactional
     override fun recordRequest(
@@ -61,14 +65,22 @@ class UsageService(
         providerId: Long?,
         failReason: String?,
         requestId: String?,
+        requiredBurden: ModelBurden?,
     ) {
+        // requestId 멱등: 재전송된 원장 기록이 ai_request 를 중복 insert 하지 않도록, 명시된 requestId 가
+        // 이미 있으면 no-op. requestId 미지정(내부 신규 UUID)은 항상 새 행이라 중복 위험 없음.
+        val effectiveRequestId = requestId?.trim()?.ifBlank { null }
+        if (effectiveRequestId != null && requests.findByRequestId(effectiveRequestId) != null) return
         requests.save(
             AiRequestEntity(
-                requestId = requestId?.trim()?.ifBlank { null } ?: UUID.randomUUID().toString().replace("-", ""),
+                requestId = effectiveRequestId ?: UUID.randomUUID().toString().replace("-", ""),
                 guildId = input.guildId,
                 channelId = input.channelId,
                 userId = input.userId,
                 providerId = providerId,
+                // 부하 가중 기여 분석(AnalyticsService.providerComputeScore)이 죽지 않도록 실효 부담을 저장한다.
+                // 미상(거절·dedup 등)이면 기본 LIGHT.
+                requiredBurden = (requiredBurden ?: ModelBurden.LIGHT).name,
                 state = state,
                 failReason = failReason?.take(500),
                 createdAt = Instant.now(),

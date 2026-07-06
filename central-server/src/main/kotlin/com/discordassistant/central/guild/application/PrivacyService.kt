@@ -26,9 +26,11 @@ class PrivacyService(
         guildId: Long,
         mode: PrivacyMode,
     ) {
-        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
-        g.privacyMode = mode.name
-        guilds.save(g)
+        // privacy_mode 컬럼만 targeted UPDATE — 전체 엔티티 저장은 stale 스냅샷으로 동시 쓰인 auto_approve·
+        // 기본값을 되돌리는 lost update 를 낳는다. 행이 없으면(신규 길드) 기본 엔티티로 생성한다(신규 insert 라 lost update 없음).
+        if (guilds.updatePrivacyMode(guildId, mode.name) == 0) {
+            guilds.save(GuildEntity(id = guildId, privacyMode = mode.name))
+        }
     }
 
     /** 요청 처리 결과에 붙일 처리주체 안내 문구. */

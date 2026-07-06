@@ -39,5 +39,18 @@ class DashboardWriteControllerTest
         fun `role-policy 설정 반영`() {
             val r = write.setRolePolicy(902, roleId = 5, level = "standard", dailyLimit = 30, user = null)
             assertEquals("STANDARD", r["level"])
+            assertEquals(30, r["dailyLimit"])
+            assertEquals(false, r["dailyLimitUnlimited"])
+            assertEquals("30 회", r["dailyLimitLabel"])
+        }
+
+        @Test
+        fun `role-policy dailyLimit 0 은 API 에서 무제한으로 명시된다`() {
+            val r = write.setRolePolicy(903, roleId = 5, level = "standard", dailyLimit = 0, user = null)
+
+            assertEquals(0, r["dailyLimit"])
+            assertEquals(true, r["dailyLimitUnlimited"])
+            assertEquals("무제한", r["dailyLimitLabel"])
+            assertEquals(0, policy.dailyLimit(903, listOf(5)))
         }
     }

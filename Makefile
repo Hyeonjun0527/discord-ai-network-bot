@@ -3,7 +3,7 @@ JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/H
 PY := .venv/bin
 CENTRAL := central-server/gradlew -p central-server
 
-.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check desktop-shapes ssot-viewer ssot-viewer-check i18n-gen i18n-check packaging-check
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check desktop-shapes ssot-viewer ssot-viewer-check i18n-gen i18n-check packaging-check security-redaction ci-preflight
 
 help:  ## 사용 가능한 타깃
 	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
@@ -52,8 +52,15 @@ ssot-viewer-check:  ## 생성 HTML이 ai-context JSON과 동기인지 검증
 i18n-gen:  ## 문구 SSOT(i18n/messages.json)에서 모듈별 생성본(봇/웹/앱) 재생성
 	python3 scripts/gen_i18n.py
 
-i18n-check:  ## 문구 생성본이 SSOT 와 동기 + ko/en/ja 완전한지 검증(드리프트 시 실패)
+i18n-check:  ## 문구 생성본 동기 + locale 의존 테스트 assertion 검증
 	python3 scripts/gen_i18n.py --check
+	python3 scripts/check-locale-dependent-tests.py
+
+security-redaction:  ## NEXA 로그 redaction focused 테스트 + 외부 스캐너 게이트
+	./scripts/nexa-verify.sh security-redaction
+
+ci-preflight:  ## PR 푸시 전 대표 로컬 CI 게이트
+	./scripts/nexa-verify.sh ci
 
 e2e:  ## 로컬 E2E 실연동(mock Ollama+서버+에이전트)
 	$(PY)/python scripts/e2e_local.py

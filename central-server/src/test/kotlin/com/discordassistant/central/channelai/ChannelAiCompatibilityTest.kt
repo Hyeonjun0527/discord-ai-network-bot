@@ -101,6 +101,8 @@ class ChannelAiCompatibilityTest {
 
         override fun excludedChannelIds(guildPseudonym: String): Set<Long> = emptySet()
 
+        override fun clearGuild(guildPseudonym: String) = Unit
+
         override fun setChannelOverride(
             guildPseudonym: String,
             channelId: Long,

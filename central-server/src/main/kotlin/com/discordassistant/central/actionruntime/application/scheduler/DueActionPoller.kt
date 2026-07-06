@@ -68,8 +68,10 @@ class DueActionPoller(
                 DueActionOutcome(action, DueActionDisposition.CANCELLED_STALE)
             }
             // 4) 통과 — TYPING 진행만(실제 전송은 T015~T017). 상태만 전이.
-            ReevaluationOutcome.PROCEED ->
+            ReevaluationOutcome.PROCEED -> {
+                scheduler.markTyping(action.identity)
                 DueActionOutcome(action.passReevaluation(), DueActionDisposition.READY_TO_TYPE)
+            }
         }
     }
 

@@ -78,6 +78,7 @@ class RoutingDualVariableManager {
 
         userFairness.values.forEach { it.service *= FAIRNESS_SERVICE_DECAY }
         val user = userFairness.computeIfAbsent(input.userId) { MutableUserFairness() }
+        evictOldestUserFairness(input.userId)
         user.weight = input.userWeight.takeIf { it.isFinite() && it > 0.0 } ?: 1.0
         if (input.countsForGoodput && input.qualityMet) {
             user.service += input.usefulServiceCost.coerceAtLeast(0.0) / SERVICE_COST_SCALE
@@ -107,6 +108,22 @@ class RoutingDualVariableManager {
             }
         }
         return true
+    }
+
+    /**
+     * userFairness 는 사용자별 무제한 누적이라 processedAttemptIds 처럼 상한을 둔다(무한 증가 방지).
+     * 상한 초과 시 가장 오래 전에 처음 본 사용자부터 제거하되, 방금 갱신한 현재 사용자는 보존한다.
+     */
+    private fun evictOldestUserFairness(currentUserId: Long) {
+        if (userFairness.size <= USER_FAIRNESS_LIMIT) return
+        var toRemove = userFairness.size - USER_FAIRNESS_LIMIT
+        val iterator = userFairness.keys.iterator()
+        while (toRemove > 0 && iterator.hasNext()) {
+            if (iterator.next() != currentUserId) {
+                iterator.remove()
+                toRemove -= 1
+            }
+        }
     }
 
     private fun shouldUpdateSlo(input: DualUpdateInput): Boolean =
@@ -213,6 +230,7 @@ class RoutingDualVariableManager {
         private const val SLO_WINDOW_SIZE = 20
         private const val FAILURE_WINDOW_SIZE = 20
         private const val PROCESSED_ATTEMPT_LIMIT = 10_000
+        private const val USER_FAIRNESS_LIMIT = 10_000
 
         private val providerCausedFailures =
             setOf(

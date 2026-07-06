@@ -80,6 +80,9 @@ interface UserUsageSummary {
 }
 
 interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
+    /** requestId 멱등 기록용 — 같은 요청의 완료 콜백이 재전송돼도 usage/contribution 중복 insert 를 막는다. */
+    fun findByRequestId(requestId: String): UsageLogEntity?
+
     fun countByGuildIdAndUserId(
         guildId: Long,
         userId: Long,

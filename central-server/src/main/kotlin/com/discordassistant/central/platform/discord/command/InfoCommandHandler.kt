@@ -80,8 +80,8 @@ class InfoCommandHandler(
 
     fun myUsage(ctx: CommandContext): Reply {
         val used = usage.userDailyCount(ctx.guildId, ctx.userId)
-        val limit = policy.dailyLimit(ctx.guildId, ctx.roleIds)
-        return Reply("오늘 사용량: $used / $limit")
+        val limit = policy.dailyLimitPolicy(ctx.guildId, ctx.roleIds)
+        return Reply("오늘 사용량: $used / ${limit.displayText}")
     }
 
     fun license(ctx: CommandContext): Reply {

@@ -35,7 +35,8 @@ data class CloudTurn(
 
 /**
  * z.ai GLM thinking(추론) 속도 라우팅 파라미터(공식 형식 `{"thinking":{"type":"enabled"|"disabled"}}`).
- * [ENABLED] = 깊은 추론(느림·정확), [DISABLED] = 즉답(빠름). null 이면 thinking 필드를 보내지 않는다(서버 기본).
+ * [ENABLED] = 깊은 추론(느림·정확), [DISABLED] = 즉답(빠름). **null(미지정)이면 [DISABLED] 로 전송**한다 —
+ * z.ai 서버 기본이 "생각 ON"(느림, 실측 7~8초)이라 미전송 시 3초 예산(ADR 0006)을 초과하기 때문(fast-or-fail).
  */
 enum class CloudThinking(
     val wire: String,
@@ -458,8 +459,11 @@ class ZaiCloudLlm(
                 .apply {
                     val arr = putArray("messages")
                     messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
-                    // z.ai GLM thinking 속도 라우팅: {"thinking":{"type":"enabled"|"disabled"}}. null 이면 미전송(서버 기본).
-                    thinking?.let { putObject("thinking").put("type", it.wire) }
+                    // z.ai GLM thinking 속도 라우팅: {"thinking":{"type":"enabled"|"disabled"}}.
+                    // **중요**: z.ai 는 thinking 을 명시하지 않으면 서버 기본이 "생각 ON"(느림 — 실측 7~8초)이라
+                    // 3초 타임아웃(ADR 0006 fast-or-fail)을 항상 초과한다. 그래서 미지정(null)이면 disabled 를
+                    // 명시해 즉답(<2초)을 강제한다. 깊은 추론이 필요한 호출만 ENABLED 를 명시로 넘긴다.
+                    putObject("thinking").put("type", (thinking ?: CloudThinking.DISABLED).wire)
                     if (!toolsJson.isNullOrBlank()) {
                         // tools 는 OpenAI function schema 배열(카탈로그 SSOT 가 만든 JSON). 파싱 실패는 호출자 책임이 아니라
                         // 카탈로그 버그이므로 여기서 던져 빠르게 드러낸다(fail fast). tool_choice=auto 로 호출 여부는 GLM 이 결정.

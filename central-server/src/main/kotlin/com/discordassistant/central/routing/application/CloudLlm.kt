@@ -492,7 +492,10 @@ class ZaiCloudLlm(
                         elapsedMs(startedAt),
                     )
                     if (attempt < requestMaxAttempts) continue
-                    throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, e)
+                    throw CloudLlmException(
+                        "클라우드 AI 시간 초과(${requestTimeout.seconds}초·${requestMaxAttempts}회) — z.ai 응답이 느려요",
+                        e,
+                    )
                 } catch (e: Exception) {
                     // 연결 실패 상세는 로그로만, 사용자에겐 일반화 메시지.
                     log.warn(
@@ -504,7 +507,7 @@ class ZaiCloudLlm(
                         elapsedMs(startedAt),
                         e.javaClass.simpleName,
                     )
-                    throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, e)
+                    throw CloudLlmException("클라우드 AI 연결 실패(${e.javaClass.simpleName})", e)
                 }
             if (resp.statusCode() !in 200..299) {
                 // 업스트림 status·body 는 정보 노출 소지가 있어 로그로만 남긴다(예외 원칙).

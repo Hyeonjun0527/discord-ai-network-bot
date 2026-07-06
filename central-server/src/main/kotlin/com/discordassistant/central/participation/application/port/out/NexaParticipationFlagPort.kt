@@ -37,4 +37,20 @@ interface NexaParticipationFlagPort {
         channelId: Long,
         excluded: Boolean,
     )
+
+    /** 삭제된 채널의 override/kill-switch 행을 제거한다. 행이 없어도 성공해야 하는 정리 명령이다. */
+    fun clearChannel(
+        guildPseudonym: String,
+        channelId: Long,
+    ) {
+        setChannelOverride(guildPseudonym, channelId, null)
+        setChannelExcluded(guildPseudonym, channelId, false)
+    }
+
+    /**
+     * [guildPseudonym] 의 모든 채널 override/kill-switch 행을 제거한다(길드 제거 정리). 이게 없으면 봇이 서버에서
+     * 빠져도 채널 LIVE override 가 남아, 같은 guildId 로 재입장 시(가명이 결정론적으로 동일) 관리자가 다시 켜지
+     * 않았는데도 니아가 발화하는 stale-state/privacy 누수가 생긴다. 행이 없어도 성공해야 한다.
+     */
+    fun clearGuild(guildPseudonym: String)
 }

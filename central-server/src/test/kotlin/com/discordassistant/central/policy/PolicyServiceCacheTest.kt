@@ -4,6 +4,7 @@ import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyRepository
+import com.discordassistant.central.guild.application.AutoRespondChannelPolicyView
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -52,15 +53,20 @@ class PolicyServiceCacheTest
 
         private val clock = MutableClock(1_000_000L)
 
-        private fun newService(ttlMs: Long = 5000): PolicyService =
+        private fun newService(
+            ttlMs: Long = 5000,
+            audit: AuditLog = AuditLog(),
+            autoRespondChannels: AutoRespondChannelPolicyView = AutoRespondChannelPolicyView.NONE,
+        ): PolicyService =
             PolicyService(
                 channels = channels,
                 roles = roles,
                 guilds = guilds,
-                audit = AuditLog(),
+                audit = audit,
                 aiAdminRoles = null,
                 cacheTtlMs = ttlMs,
                 clock = clock,
+                autoRespondChannels = autoRespondChannels,
             )
 
         @Test
@@ -155,6 +161,29 @@ class PolicyServiceCacheTest
             assertEquals(listOf(30L), policy.allowedChannelIds(gid))
             policy.cleanupChannel(gid, 30)
             assertTrue(policy.allowedChannelIds(gid).isEmpty()) // 즉시 반영
+        }
+
+        @Test
+        fun `allow-list 변경이 자동응답 채널을 막으면 cross-policy audit 로 남긴다`() {
+            val audit = AuditLog()
+            val policy =
+                newService(
+                    ttlMs = 60_000,
+                    audit = audit,
+                    autoRespondChannels = AutoRespondChannelPolicyView { setOf(10L, 20L) },
+                )
+            val gid = 7007L
+
+            policy.replaceAllowedChannels(gid, listOf(10), adminId = 1)
+
+            val conflict = audit.all().single { it.action == "llm_allow_list_auto_respond_conflict" }
+            assertEquals("admin:1", conflict.actor)
+            assertEquals("guild:$gid", conflict.target)
+            assertEquals("blockedAutoRespondChannels:20", conflict.detail)
+
+            policy.allowAllChannels(gid, adminId = 1)
+            val conflictCount = audit.all().count { it.action == "llm_allow_list_auto_respond_conflict" }
+            assertEquals(1, conflictCount)
         }
 
         @Test

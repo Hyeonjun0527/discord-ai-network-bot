@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord.nexa
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
+import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
@@ -151,16 +152,20 @@ class NexaSpeechEmitServiceTest {
             identity: ActionIdentity,
             executeAfter: Instant,
             attempt: Int,
-        ) = Unit
+        ): Boolean = true
 
-        override fun cancel(identity: ActionIdentity) = Unit
+        override fun markTyping(identity: ActionIdentity): Boolean = true
 
-        override fun complete(identity: ActionIdentity) = Unit
+        override fun markPartiallySent(identity: ActionIdentity): Boolean = true
+
+        override fun cancel(identity: ActionIdentity): Boolean = true
+
+        override fun complete(identity: ActionIdentity): Boolean = true
 
         override fun fail(
             identity: ActionIdentity,
             reason: ActionFailureReason,
-        ) = Unit
+        ): Boolean = true
 
         override fun find(identity: ActionIdentity): ScheduledSocialAction? = null
     }
@@ -200,6 +205,7 @@ class NexaSpeechEmitServiceTest {
         speechLog: SpeechDecisionLogPort = CapturingSpeechLog(),
         registry: ShadowModelRegistry = approvedRegistry(),
         correlationRecorder: NexaCorrelationRecorderPort = NexaCorrelationRecorderPort.Noop,
+        contentWriter: SpeechContentWriter = SpeechContentWriter { _, _ -> },
     ): NexaSpeechEmitService {
         val consentPolicy = ConsentPolicyPort { _, _, _ -> consent }
         val generationService =
@@ -222,6 +228,7 @@ class NexaSpeechEmitServiceTest {
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = registry,
             correlationRecorder = correlationRecorder,
+            contentWriter = contentWriter,
             speechDecisionLog = speechLog,
         )
     }

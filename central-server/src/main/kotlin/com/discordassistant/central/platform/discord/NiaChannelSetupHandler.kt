@@ -69,6 +69,8 @@ class NiaChannelSetupHandler(
         // 멱등: 이미 "니아 기능 채널" 카테고리가 있으면 새로 만들지 않고 안내만 한다.
         val existingNames = guild.categoryCache.map { it.name }
         if (NiaChannelSetup.alreadySetUp(existingNames, language)) {
+            // 채널 생성/재등록은 REST 왕복(complete)이라 게이트웨이 스레드를 막지 않게 먼저 ack 한 뒤 editOriginal 로 마무리.
+            callback.deferReply(true).queue()
             val featureCategory = guild.categoryCache.firstOrNull { it.name.equals(NiaChannelSetup.featureCategoryName(language), true) }
             val chat = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.chatChannelName(language), true) }
             val image = featureCategory?.textChannels?.firstOrNull { it.name.equals(NiaChannelSetup.imageChannelName(language), true) }
@@ -82,8 +84,8 @@ class NiaChannelSetupHandler(
                 registerLlmAllowList(guild.idLong, listOf(chat.idLong, image.idLong, member.idLong), ctx.userId)
                 participationFlags.enableChannelLive(guild.idLong, member.idLong)
             }
-            callback
-                .reply(
+            callback.hook
+                .editOriginal(
                     I18n.get(
                         "niaSetupAlreadyExists",
                         language,
@@ -91,8 +93,7 @@ class NiaChannelSetupHandler(
                         image.mentionOr(language, "niaSetupChannelImage"),
                         member.mentionOr(language, "niaSetupChannelMember"),
                     ),
-                ).setEphemeral(true)
-                .queue()
+                ).queue({}, {})
             return
         }
 

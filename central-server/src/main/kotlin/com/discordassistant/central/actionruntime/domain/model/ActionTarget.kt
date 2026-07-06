@@ -16,10 +16,16 @@ data class ActionTarget(
     val channelId: String,
     /** 대상 thread/focus 식별자(주제 전환·focus 변경 취소 판단의 키 — T013). */
     val threadId: String,
+    /**
+     * 이 예약 행동의 동의 주체/대상 사용자 가명. null 은 legacy/비사용자 범위 action 이다.
+     * user opt-out/동의 철회는 이 값을 가진 새 예약만 사용자 단위로 즉시 제거한다.
+     */
+    val subjectPseudonym: String? = null,
 ) {
     init {
         require(guildPseudonym.isNotBlank()) { "guildPseudonym 은 비어 있을 수 없다" }
         require(channelId.isNotBlank()) { "channelId 는 비어 있을 수 없다" }
         require(threadId.isNotBlank()) { "threadId 는 비어 있을 수 없다" }
+        require(subjectPseudonym == null || subjectPseudonym.isNotBlank()) { "subjectPseudonym 은 빈 문자열일 수 없다" }
     }
 }

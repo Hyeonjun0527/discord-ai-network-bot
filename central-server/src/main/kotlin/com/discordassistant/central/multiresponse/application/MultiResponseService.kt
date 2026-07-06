@@ -241,19 +241,24 @@ class MultiResponseService(
         val disabledPolicy = disabledPolicy(guildPolicy, channelPolicy)
         val savedPolicy = channelPolicy ?: guildPolicy
         val effectiveMaxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
+        // savedPolicy 가 없으면 효과적 mode/maxCandidates 를 담은 runtime policy 를 **영속화**한다.
+        // (startRunEntity 가 무정책 시 기본 policy 를 저장하는 것과 동일 패턴) 이렇게 해야 run.policyId 가
+        // 실제 행을 가리켜 runDetail/decisionSummary 가 이 run 이 어떻게 구성됐는지 복원할 수 있다.
         val runtimePolicy =
             savedPolicy
-                ?: MultiResponsePolicyEntity(
-                    guildId = guildId,
-                    channelId = channelId,
-                    mode = runtimeObservationMode(responseMode, effectiveMaxCandidates),
-                    maxCandidates = effectiveMaxCandidates,
-                    requireDistinctModels = false,
-                    providerDailyLimit = 0,
-                    timeoutSeconds = 120,
-                    synthesisEnabled = effectiveMaxCandidates > 1 && featureGate.snapshot().multiResponseSynthesis,
-                    createdAt = Instant.now(clock),
-                    updatedAt = Instant.now(clock),
+                ?: policies.save(
+                    MultiResponsePolicyEntity(
+                        guildId = guildId,
+                        channelId = channelId,
+                        mode = runtimeObservationMode(responseMode, effectiveMaxCandidates),
+                        maxCandidates = effectiveMaxCandidates,
+                        requireDistinctModels = false,
+                        providerDailyLimit = 0,
+                        timeoutSeconds = 120,
+                        synthesisEnabled = effectiveMaxCandidates > 1 && featureGate.snapshot().multiResponseSynthesis,
+                        createdAt = Instant.now(clock),
+                        updatedAt = Instant.now(clock),
+                    ),
                 )
         val run =
             runs.save(
@@ -261,7 +266,7 @@ class MultiResponseService(
                     guildId = guildId,
                     channelId = channelId,
                     requestId = sanitizeRequestId(requestId),
-                    policyId = disabledPolicy?.id ?: savedPolicy?.id,
+                    policyId = disabledPolicy?.id ?: runtimePolicy.id,
                     status = MultiResponseRunStatus.PLANNED,
                     startedAt = Instant.now(clock),
                 ),

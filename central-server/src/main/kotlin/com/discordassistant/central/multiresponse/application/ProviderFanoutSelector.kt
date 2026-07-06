@@ -69,7 +69,7 @@ class ProviderFanoutSelector(
         val tags =
             capabilityTags
                 .orEmpty()
-                .split(",")
+                .split(",", " ") // opt-in 판정과 동일한 구분자 — 공백 구분 제외 태그가 새지 않게 한다.
                 .map { it.trim().lowercase() }
                 .filter { it.isNotBlank() }
         return tags.any { it in FANOUT_EXCLUSION_TAGS }

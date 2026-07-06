@@ -1,14 +1,17 @@
 package com.discordassistant.central.licensing.adapter.inbound.web
 
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.licensing.application.BillingService
 import com.discordassistant.central.licensing.application.PaddleSignatureVerifier
-import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
+
+data class PaddleWebhookResponse(
+    val outcome: String,
+)
 
 /**
  * Paddle webhook 수신(ADR 0005, 차수 5). raw body 로 받아 **서명 검증 먼저**(위조 거부) → 멱등 처리.
@@ -24,11 +27,18 @@ class PaddleWebhookController(
     fun paddle(
         @RequestBody rawBody: String,
         @RequestHeader(name = "Paddle-Signature", required = false) signature: String?,
-    ): Map<String, String> {
+    ): PaddleWebhookResponse {
         if (!verifier.verify(rawBody, signature)) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "서명 검증 실패")
+            throw PreconditionFailedException(
+                message = "Paddle webhook 서명 검증에 실패했습니다",
+                failedCondition = "paddle_signature_valid",
+                blockedAction = "PROCESS_PADDLE_WEBHOOK",
+                actionGuide = "Paddle-Signature 헤더와 webhook secret 설정을 확인해 주세요.",
+                httpStatus = 401,
+                errorCode = "UNAUTHORIZED",
+            )
         }
         val outcome = billing.handle(rawBody)
-        return mapOf("outcome" to outcome.name)
+        return PaddleWebhookResponse(outcome.name)
     }
 }

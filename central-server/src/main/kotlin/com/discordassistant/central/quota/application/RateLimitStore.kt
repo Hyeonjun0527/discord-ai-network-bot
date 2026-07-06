@@ -20,6 +20,13 @@ interface RateLimitStore {
         limit: Int,
         windowSeconds: Long,
     ): Boolean
+
+    /** 카운트를 **소비하지 않고** 지금 tryAcquire 가 성공할지만 확인(true=여유 있음). 게이트 선검사용. */
+    fun peek(
+        key: String,
+        limit: Int,
+        windowSeconds: Long,
+    ): Boolean
 }
 
 /** 인메모리 고정 윈도우(단일 인스턴스 기본). */
@@ -28,6 +35,7 @@ class InMemoryRateLimitStore : RateLimitStore {
     private data class Window(
         var count: Int,
         var startNanos: Long,
+        var windowNanos: Long,
     )
 
     private val windows = ConcurrentHashMap<String, Window>()
@@ -40,14 +48,39 @@ class InMemoryRateLimitStore : RateLimitStore {
     ): Boolean {
         val now = System.nanoTime()
         val windowNanos = TimeUnit.SECONDS.toNanos(windowSeconds)
-        val w = windows.getOrPut(key) { Window(0, now) }
-        if (now - w.startNanos >= windowNanos) {
+        pruneExpired(now)
+        val w = windows.getOrPut(key) { Window(0, now, windowNanos) }
+        if (now - w.startNanos >= w.windowNanos) {
             w.count = 0
             w.startNanos = now
+            w.windowNanos = windowNanos
         }
         if (w.count >= limit) return false
         w.count++
         return true
+    }
+
+    @Synchronized
+    override fun peek(
+        key: String,
+        limit: Int,
+        windowSeconds: Long,
+    ): Boolean {
+        val now = System.nanoTime()
+        val w = windows[key] ?: return limit > 0 // 윈도우 없음 = 카운트 0
+        // 만료됐으면 카운트가 리셋될 예정이므로 여유 있음(소비 없이 관찰만).
+        val effectiveCount = if (now - w.startNanos >= w.windowNanos) 0 else w.count
+        return effectiveCount < limit
+    }
+
+    /** 만료된 윈도우를 걷어낸다 — ConcurrentHashMap 이 무한 증가하지 않도록(임계치 초과 시에만, 가벼운 청소). */
+    private fun pruneExpired(now: Long) {
+        if (windows.size <= CLEANUP_THRESHOLD) return
+        windows.entries.removeIf { now - it.value.startNanos >= it.value.windowNanos }
+    }
+
+    private companion object {
+        private const val CLEANUP_THRESHOLD = 10_000
     }
 }
 
@@ -79,6 +112,21 @@ class RedisRateLimitStore(
             // Redis 장애(연결 실패/타임아웃)가 모든 요청을 500 으로 떨구지 않도록 fail-open(허용)한다 —
             // rate limit 은 가용성 우선의 소프트 보호다(구체 예외만 잡고 숨기지 않는다, 예외 원칙 2·3).
             log.warn("Redis rate limit 조회 실패 — fail-open(요청 허용): key={} ({})", key, e.message)
+            true
+        }
+    }
+
+    override fun peek(
+        key: String,
+        limit: Int,
+        windowSeconds: Long,
+    ): Boolean {
+        val redisKey = "rl:$key"
+        return try {
+            val count = redis.opsForValue().get(redisKey)?.toLongOrNull() ?: 0L
+            count < limit
+        } catch (e: DataAccessException) {
+            log.warn("Redis rate limit peek 실패 — fail-open(여유 있음 간주): key={} ({})", key, e.message)
             true
         }
     }

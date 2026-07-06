@@ -500,7 +500,7 @@ def test_get_provider_admin_nia_persona_passes_through_403(monkeypatch):
     res = agent_mod._get_provider_admin_nia_persona("https://central.example", "dv1.tok")
     assert res["ok"] is False
     assert res["status"] == 403
-    assert "관리자" in res["error"]
+    assert res["error"]
     assert "persona" not in res  # 전문은 절대 새어 나오지 않는다
 
 

@@ -131,6 +131,26 @@ central:
     channel-ai-enabled: ${AI_NETWORK_CHANNEL_AI_ENABLED:true}
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
+  nexa:
+    autonomous-send:
+      # 니아 자율 전송(예약된 SPEAK 를 실제 Discord 로 보냄) 실행 파이프라인 활성화 스위치.
+      # 기본 true(켜짐). 파이프라인(poller/executor/스케줄러) 빈이 생성돼 니아가 자율 발화할 수 있다. 단 실제 전송은
+      # 채널별 ShadowMode 가 실행 직전 한 번 더 게이팅한다: OFF/OBSERVE_ONLY/SHADOW_PREDICT=전송 0(기본), CANARY/LIVE
+      # 채널만 실제 전송("니아 채널 자동 만들기"가 LIVE 설정). 즉 전역은 켜져 있어도 관리자가 LIVE 로 명시한 채널만
+      # 발화한다. 비상 정지(kill-switch)는 env NEXA_AUTONOMOUS_SEND_ENABLED=false.
+      enabled: ${NEXA_AUTONOMOUS_SEND_ENABLED:true}
+      # due 예약을 확인하는 poll 주기(ms). 켜졌을 때만 유효.
+      poll-interval-ms: ${NEXA_AUTONOMOUS_SEND_POLL_INTERVAL_MS:2000}
+    canary-halt:
+      # Canary 자동 중단 SAFETY NET. 자율 전송(위 autonomous-send.enabled)이 켜졌을 때만 모니터 빈이 생성돼,
+      # 길드별 최근 1시간 신호가 한도를 넘으면 스스로 SHADOW_PREDICT/OFF 로 강등한다(+pending 취소·운영자 알림).
+      # privacy error·model mismatch 는 1건이라도 즉시 OFF(한도 없음). complaints·modelMismatches 신호는 아직
+      # 공급원 미wiring 으로 항상 0 이다(후속). 아래는 utterances/complaints/staleSends 한도와 평가 주기.
+      max-utterances-per-hour: ${NEXA_CANARY_HALT_MAX_UTTERANCES_PER_HOUR:30}
+      max-complaints: ${NEXA_CANARY_HALT_MAX_COMPLAINTS:3}
+      max-stale-sends: ${NEXA_CANARY_HALT_MAX_STALE_SENDS:5}
+      # 자동 중단 평가 tick 주기(ms).
+      interval-ms: ${NEXA_CANARY_HALT_INTERVAL_MS:60000}
 
 # Bugsink 오류 수집. Bugsink는 Sentry SDK 호환이므로 Sentry Java SDK를 사용한다.
 # DSN 미설정(기본)이면 완전 no-op. BUGSINK_DSN 또는 SENTRY_DSN 주입 시 활성.

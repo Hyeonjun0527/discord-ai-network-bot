@@ -32,12 +32,14 @@ object MemoryDiversityFilter {
             if (selected.size >= topK) break
             val clusterId = clusterIdFor(item, eventToCluster)
             val count = clusterCounts.getOrDefault(clusterId, 0)
+            // 선택 여부와 무관히 이 기억의 원천 이벤트를 이 cluster 로 claim 한다 — 한도로 탈락시킨(skip)
+            // 복제본의 이벤트도 등록해야, 같은 이벤트를 공유하는 뒤 후보가 새 cluster 를 만들어 top-k 를
+            // 점령하는 것을 막는다(T020 회귀 방지).
+            item.fact.source.sourceEventIds
+                .forEach { eventToCluster.putIfAbsent(it, clusterId) }
             if (count >= perCluster) continue // 이 사건 복제본은 이미 한도 — 다른 사건에 자리를 양보(T020).
             selected.add(item)
             clusterCounts[clusterId] = count + 1
-            // 이 기억의 모든 원천 이벤트를 같은 cluster 로 묶는다(이후 같은 사건 복제본 탐지).
-            item.fact.source.sourceEventIds
-                .forEach { eventToCluster.putIfAbsent(it, clusterId) }
         }
         return selected
     }

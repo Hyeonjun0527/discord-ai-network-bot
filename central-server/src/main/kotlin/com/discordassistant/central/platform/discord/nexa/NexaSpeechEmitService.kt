@@ -2,6 +2,7 @@ package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.RouteResult
+import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
@@ -25,6 +26,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechDecisionLo
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome
 import com.discordassistant.central.speech.application.port.out.SpeechTraceContext
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -64,9 +66,14 @@ class NexaSpeechEmitService(
     private val actionRouter: ParticipationActionRouter,
     private val modelRegistry: ShadowModelRegistry,
     private val correlationRecorder: NexaCorrelationRecorderPort,
+    // 확정된 발화 본문을 참조(actionIdentity)로 저장하는 아웃바운드 포트(NEXA-P13-T003). SPEAK 예약 성공 시에만
+    // 저장하며, 저장 실패는 흡수한다(발화 emit 경로를 깨뜨리지 않는다). flag 와 무관하게 항상 배선된다(원문 저장은
+    // 무해하고 전송 단계에서 필요하다) — 실제 전송 활성화는 autonomous-send flag 가 별도로 게이팅한다.
+    private val contentWriter: SpeechContentWriter,
     private val speechDecisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    private val log = LoggerFactory.getLogger(NexaSpeechEmitService::class.java)
     /**
      * 한 participation 평가 결과([request])를 단일 seam 으로 emit 한다. 안전 override → (필요 시)LIVE 모델 검증 →
      * 발화 파이프라인 → 전송 예약 순서를 강제하며, 어느 게이트라도 막으면 발화 없이 안전 종료한다. 무엇이 일어났는지
@@ -145,6 +152,11 @@ class NexaSpeechEmitService(
                 modelVersion = request.provenance.modelVersion,
             ),
         )
+
+        // 5) SPEAK 가 새로 예약됐으면 확정된 후보 본문을 참조(actionIdentity)로 저장한다 — 전송 executor 가 이 참조를
+        //    본문으로 풀어 전송한다(원문 보호 경계 T003). 저장은 emit 성공 여부와 무관하게 방어적으로만 한다: 실패해도
+        //    emit 경로를 깨뜨리지 않는다(runCatching + 로그). 후보 텍스트가 알려진 유일한 지점이 여기(파이프라인 결과)다.
+        persistSpeechContent(request, pipelineResult, routeResult)
         return NexaSpeechEmitResult(
             safeDecision = safe,
             pipelineResult = pipelineResult,
@@ -178,6 +190,25 @@ class NexaSpeechEmitService(
                 createdAt = Instant.now(clock),
             ),
         )
+    }
+
+    /**
+     * SPEAK 가 **새로** 예약된 경우([RouteResult.Scheduled] newlyScheduled=true) 선택된 후보의 버블을 합쳐 본문으로
+     * 저장한다(참조 키 = [ActionIdentity].of(correlationId, sampledActionIndex).value — 예약 행동 identity 와 동일).
+     * 저장 실패는 흡수한다(발화 emit·예약 경로 보호). 이미 예약된 결정 재처리(newlyScheduled=false)나 비 SPEAK 는 건너뛴다.
+     */
+    private fun persistSpeechContent(
+        request: NexaSpeechEmitRequest,
+        pipelineResult: PipelineResult,
+        routeResult: RouteResult,
+    ) {
+        val selected = pipelineResult.selected ?: return
+        if (routeResult !is RouteResult.Scheduled || !routeResult.newlyScheduled) return
+        val body = selected.bubbles.joinToString("\n").takeIf { it.isNotBlank() } ?: return
+        val speechPlanRef =
+            ActionIdentity.of(request.provenance.correlationId, request.sampledActionIndex).value
+        runCatching { contentWriter.store(speechPlanRef, body) }
+            .onFailure { log.warn("발화 본문 저장 실패(ref={}) — 전송 시 미해결로 우아하게 종결됨: {}", speechPlanRef, it.message) }
     }
 }
 

@@ -1,5 +1,7 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
@@ -22,6 +24,7 @@ class AutoRespondChannelRegistryTest
         val registry: AutoRespondChannelRegistry,
         val profiles: ChannelAiProfileService,
         val channelAis: ChannelAiRepository,
+        val behaviorVersions: AiBehaviorVersionRepository,
     ) {
         @Test
         fun `setAutoRespond 는 프로필이 없으면 니아 기본으로 생성하고 자동응답을 켠다`() {
@@ -33,6 +36,25 @@ class AutoRespondChannelRegistryTest
             // 프로필(채널 AI 행)이 니아 기본으로 만들어져 페르소나 응답이 가능하다.
             assertNotNull(profiles.get(100, 200))
             assertTrue(channelAis.findByGuildIdAndChannelId(100, 200)!!.autoRespond)
+        }
+
+        @Test
+        fun `setAutoRespond on 은 기존 프로필의 active behavior 가 없으면 기본 behavior 를 복구한다`() {
+            channelAis.saveAndFlush(
+                ChannelAiEntity(
+                    guildId = 100,
+                    channelId = 204,
+                    displayName = "니아",
+                    source = "nia-auto-repair",
+                ),
+            )
+
+            registry.setAutoRespond(guildId = 100, channelId = 204, on = true, actorId = 5)
+
+            val repaired = channelAis.findByGuildIdAndChannelId(100, 204)!!
+            assertTrue(repaired.autoRespond)
+            assertNotNull(repaired.activeBehaviorVersionId)
+            assertNotNull(behaviorVersions.findByChannelAiIdAndId(repaired.id, repaired.activeBehaviorVersionId!!))
         }
 
         @Test

@@ -450,15 +450,16 @@ async def test_install_info_endpoint(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_install_endpoint_delegates(monkeypatch):
+    expected = {"ok": True, "message": "응용 프로그램에 추가했어요."}
     monkeypatch.setattr(
         "provider_agent.installer.install_app",
-        lambda: {"ok": True, "message": "응용 프로그램에 추가했어요."},
+        lambda: expected,
     )
     client = await _client()
     try:
         assert (await client.post("/api/install")).status == 403  # 키 없음
         d = await (await client.post("/api/install", headers={"X-Session": KEY})).json()
-        assert d["ok"] is True and "추가" in d["message"]
+        assert d == expected
     finally:
         await client.close()
 
@@ -1474,7 +1475,8 @@ async def test_license_requires_session_key_and_durable_token():
         assert (await client.get("/api/license")).status == 403
         d = await (await client.get("/api/license", headers={"X-Session": KEY})).json()
         assert d["ok"] is False
-        assert "연동" in d["error"]
+        assert d["entitlement"] is None
+        assert d["event"] is None
         c = await (await client.post("/api/license/checkout", headers={"X-Session": KEY}, json={})).json()
         assert c["ok"] is False
     finally:

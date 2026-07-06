@@ -7,6 +7,7 @@ import com.discordassistant.central.routing.application.port.BlocklistChecker
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -52,8 +53,14 @@ class BlocklistService(
         userId: Long,
         adminId: Long,
     ) {
+        // 삽입을 멱등하게: 동시 이중 차단이 uk_blocklist(guild_id,user_id) 유니크 제약에 걸려도
+        // 이미 차단된 것이므로 정상 취급한다(find-then-save TOCTOU 제거). 캐시·감사는 그대로 진행.
         if (repo.findByGuildIdAndUserId(guildId, userId) == null) {
-            repo.save(BlocklistEntity(guildId = guildId, userId = userId, blockedBy = adminId, createdAt = Instant.now(clock)))
+            try {
+                repo.save(BlocklistEntity(guildId = guildId, userId = userId, blockedBy = adminId, createdAt = Instant.now(clock)))
+            } catch (e: DataIntegrityViolationException) {
+                log.debug("이미 차단된 사용자(동시 차단) — 멱등 처리: guild={} user={} ({})", guildId, userId, e.message)
+            }
         }
         blocked.computeIfAbsent(guildId) { ConcurrentHashMap.newKeySet() }.add(userId)
         audit.record("user_block", "admin:$adminId", "guild:$guildId", "user:$userId")

@@ -29,7 +29,7 @@ class GlobalPromptSetService(
      */
     @Transactional(readOnly = true)
     fun activePersona(guildId: Long): String =
-        sets.findByGuildIdAndIsDefaultTrue(guildId)?.content?.takeIf { it.isNotBlank() }
+        sets.findFirstByGuildIdAndIsDefaultTrueOrderByIdAsc(guildId)?.content?.takeIf { it.isNotBlank() }
             ?: NexaIdentity.NIA_DEFAULT_PERSONA
 
     /** 목록 — builtin 니아(preview 만) + 사용자 셋(content 전문). 기본 지정된 사용자 셋이 없으면 니아가 기본. */
@@ -100,14 +100,17 @@ class GlobalPromptSetService(
 
     /**
      * 기본 셋 지정. id 가 builtin(니아)이면 모든 사용자 셋의 기본을 해제(→ 니아). 사용자 셋 id 면 그 셋만
-     * 기본으로 두고 나머지를 해제한다. 길드당 기본은 1개 — DB partial 인덱스 대신 이 트랜잭션이 단일성을 보장.
+     * 기본으로 두고 나머지를 해제한다. 길드당 기본은 1개 — DB partial 인덱스 대신, 길드 셋을
+     * PESSIMISTIC_WRITE([GlobalPromptSetRepository.findByGuildIdForUpdate])로 잠가 동시 setDefault 를
+     * 직렬화함으로써 clear-all-then-set 을 원자화한다(is_default=true 가 둘 남는 race → activePersona 가
+     * 매 /ask 에서 IncorrectResultSize 로 터지던 것을 방지). 읽기측은 findFirst 로 결정적 단일 선택(방어 이중화).
      */
     @Transactional
     fun setDefault(
         guildId: Long,
         id: String,
     ) {
-        val rows = sets.findByGuildIdOrderByIdAsc(guildId)
+        val rows = sets.findByGuildIdForUpdate(guildId)
         if (id == BUILTIN_NIA_ID) {
             rows.filter { it.isDefault }.forEach { it.isDefault = false }
             sets.saveAll(rows)

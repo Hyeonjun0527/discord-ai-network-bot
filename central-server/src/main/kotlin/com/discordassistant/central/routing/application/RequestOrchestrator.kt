@@ -20,6 +20,7 @@ import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.routing.domain.model.AttemptFinalState
 import com.discordassistant.central.routing.domain.model.OrchestrationResult
 import com.discordassistant.central.routing.domain.model.ProviderProfile
+import com.discordassistant.central.routing.domain.model.RequestRejectionCode
 import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
 import com.discordassistant.central.routing.domain.model.RoutingCircuitState
 import com.discordassistant.central.routing.domain.model.RoutingDecision
@@ -44,6 +45,7 @@ import com.discordassistant.central.routing.domain.service.RoutingDualVariableMa
 import com.discordassistant.central.routing.domain.service.RoutingReservationManager
 import com.discordassistant.central.routing.domain.service.WeighDecision
 import com.discordassistant.central.routing.domain.service.effectiveConcurrencyLimit
+import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.RequestState
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -80,6 +82,11 @@ class RequestOrchestrator(
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
+    private data class AdmissionDecision(
+        val rejection: OrchestrationResult? = null,
+        val memberMaxBurden: ModelBurden? = null,
+    )
+
     /**
      * @param dedup 멱등성 중복 차단 적용 여부. 기본 true(유저 요청). /질문 의 무료 클라우드 폴백처럼 같은
      *   프롬프트로 **내부 재시도**할 때는 false 로 호출한다 — 첫 시도에서 이미 중복 검사를 통과했으므로
@@ -96,12 +103,16 @@ class RequestOrchestrator(
     ): OrchestrationResult {
         // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243). 내부 폴백 재시도는 제외(dedup=false).
         if (dedup && !idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
-            val dup = OrchestrationResult(RequestState.REJECTED, failReason = "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.")
+            val dup =
+                rejected(
+                    RequestRejectionCode.DUPLICATE_REQUEST,
+                    "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.",
+                )
             recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
             return dup
         }
         val result = route(input, history, thinking)
-        recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId)
+        recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId, result.effectiveBurden)
         return result
     }
 
@@ -180,21 +191,12 @@ class RequestOrchestrator(
     ): OrchestrationResult {
         val routingRequestId = UUID.randomUUID().toString()
         val arrivalAtNanos = System.nanoTime()
-        // 0) 차단 사용자 / 일일 쿼터
-        if (blocklist.isBlocked(input.guildId, input.userId)) {
-            return OrchestrationResult(RequestState.REJECTED, failReason = "차단된 사용자입니다.")
-        }
-        if (quota.exceededQuota(input.guildId, input.userId, input.roleIds)) {
-            return OrchestrationResult(RequestState.REJECTED, failReason = "오늘 사용 한도를 초과했습니다. 내일 다시 시도해 주세요.")
-        }
-        // 1) 정책 확인(채널)
-        if (!policy.isChannelAllowed(input.guildId, input.channelId)) {
-            return OrchestrationResult(RequestState.REJECTED, failReason = "이 채널에서는 LLM 을 사용할 수 없습니다.")
-        }
+        val admission = admitAtRequestStart(input)
+        admission.rejection?.let { return it }
         // 2) 무게 판단 & 필요 수준(권한 상한 반영). 무게 길이는 사용자 실제 입력(weighChars) 우선 —
         //    항상 주입되는 시스템 프롬프트(가드레일·정체성·few-shot)가 부담 수준을 부풀리지 않게 한다.
         val weighChars = input.weighChars ?: input.prompt.length
-        val memberMax = policy.maxAllowedBurden(input.guildId, input.roleIds)
+        val memberMax = requireNotNull(admission.memberMaxBurden) { "admitted request must include max burden snapshot" }
         val weigh =
             weigher.resolve(
                 RequestMeta(
@@ -206,9 +208,9 @@ class RequestOrchestrator(
                 memberMax,
             )
         if (weigh.decision == WeighDecision.REJECT) {
-            return OrchestrationResult(
-                RequestState.REJECTED,
-                failReason = "이 요청은 ${weigh.requiredBurden} 수준이 필요하지만 현재 권한으로는 사용할 수 없습니다.",
+            return rejected(
+                RequestRejectionCode.BURDEN_NOT_ALLOWED,
+                "이 요청은 ${weigh.requiredBurden} 수준이 필요하지만 현재 권한으로는 사용할 수 없습니다.",
             )
         }
         val ctx =
@@ -290,7 +292,7 @@ class RequestOrchestrator(
                 )
                 return when {
                     outcome.signal == FilterSignal.PERMISSION_DENIED ->
-                        OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
+                        rejected(RequestRejectionCode.POLICY_DENIED, "권한 또는 정책상 처리할 수 없습니다.")
                     outcome.dropped.isNotEmpty() && outcome.dropped.values.all { it == "COOLDOWN" } ->
                         OrchestrationResult(RequestState.FAILED, failReason = PROVIDER_PROTECTION_ACTIONABLE_REASON)
                     else -> OrchestrationResult(RequestState.FAILED, failReason = lastReason)
@@ -417,6 +419,37 @@ class RequestOrchestrator(
         }
         return OrchestrationResult(RequestState.FAILED, failReason = noProviderActionableReason(lastReason))
     }
+
+    /**
+     * 요청 admission 정책은 시작 시점에 1회 스냅샷으로 판정한다.
+     *
+     * 채널 allow-list/쿼터/차단 정책이 provider 실행 중 바뀌어도 이미 admission 을 통과해 전송된 요청은 같은
+     * requestId 로 종결한다. 운영자 정책 변경은 새 요청부터 적용된다. 중간 재검사로 완료 직전 답변을 폐기하면
+     * 사용자가 이미 접수된 요청의 결과를 잃고, usage/request log 상태머신도 "전송됨 → 정책거절"로 되돌아가
+     * 최소 놀람과 종단 상태 불변성을 깨기 때문이다.
+     */
+    private fun admitAtRequestStart(input: AiRequestInput): AdmissionDecision {
+        if (blocklist.isBlocked(input.guildId, input.userId)) {
+            return AdmissionDecision(rejected(RequestRejectionCode.BLOCKED_USER, "차단된 사용자입니다."))
+        }
+        if (quota.exceededQuota(input.guildId, input.userId, input.roleIds)) {
+            return AdmissionDecision(rejected(RequestRejectionCode.QUOTA_EXCEEDED, "오늘 사용 한도를 초과했습니다. 내일 다시 시도해 주세요."))
+        }
+        if (!policy.isChannelAllowed(input.guildId, input.channelId)) {
+            return AdmissionDecision(rejected(RequestRejectionCode.CHANNEL_NOT_ALLOWED, "이 채널에서는 LLM 을 사용할 수 없습니다."))
+        }
+        return AdmissionDecision(memberMaxBurden = policy.maxAllowedBurden(input.guildId, input.roleIds))
+    }
+
+    private fun rejected(
+        code: RequestRejectionCode,
+        message: String,
+    ): OrchestrationResult =
+        OrchestrationResult(
+            state = RequestState.REJECTED,
+            failReason = message,
+            rejectionCode = code,
+        )
 
     companion object {
         // 무료질문 클라우드 직결(ADR 0006)의 사용량 기록용 합성 providerId. 실제 풀 프로바이더(Discord

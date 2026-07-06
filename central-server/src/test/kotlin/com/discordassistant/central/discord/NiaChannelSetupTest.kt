@@ -49,6 +49,12 @@ class NiaChannelSetupTest {
     }
 
     @Test
+    fun `기능 카테고리 멱등 판정은 현재 언어가 달라도 지원 locale 이름을 모두 인식한다`() {
+        assertTrue(NiaChannelSetup.alreadySetUp(listOf(NiaChannelSetup.featureCategoryName("en")), "ko"))
+        assertTrue(NiaChannelSetup.alreadySetUp(listOf(NiaChannelSetup.featureCategoryName("ja")), "en"))
+    }
+
+    @Test
     fun `기능 카테고리가 없으면 새로 만든다`() {
         assertFalse(NiaChannelSetup.alreadySetUp(listOf("잡담", "공지", "음성"), "ko"))
         assertFalse(NiaChannelSetup.alreadySetUp(emptyList(), "ko"))

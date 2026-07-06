@@ -4,6 +4,7 @@ import com.discordassistant.central.channelai.application.AutoRespondChannelRegi
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderScheduleService
 import com.discordassistant.central.relay.ConnectionRegistry
@@ -19,6 +20,7 @@ class ProviderPoolReconciliationService(
     private val policy: PolicyService,
     private val channelProfiles: ChannelAiProfileService,
     private val autoRespondChannels: AutoRespondChannelRegistry,
+    private val participationFlags: NexaParticipationFlagService,
     private val guildCleanup: GuildRemovalCleanupService,
 ) {
     private val log = LoggerFactory.getLogger(ProviderPoolReconciliationService::class.java)
@@ -36,7 +38,7 @@ class ProviderPoolReconciliationService(
         return closed || removed
     }
 
-    /** 채널 삭제/정합성 검사에서 해당 채널 정책과 AI 프로필을 정리한다. */
+    /** 채널 삭제/정합성 검사에서 해당 채널의 routing/channelAI/participation 정책을 한 번에 정리한다. */
     fun cleanupChannel(
         guildId: Long,
         channelId: Long,
@@ -44,6 +46,7 @@ class ProviderPoolReconciliationService(
         policy.cleanupChannel(guildId, channelId)
         channelProfiles.clear(guildId, channelId)
         autoRespondChannels.invalidateChannel(guildId, channelId) // 자동응답 캐시 무효화(삭제된 채널 stale 방지)
+        participationFlags.cleanupChannel(guildId, channelId)
         log.info("채널 설정 정리(guild={}, channel={})", guildId, channelId)
     }
 

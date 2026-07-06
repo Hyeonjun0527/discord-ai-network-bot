@@ -52,10 +52,12 @@ class MutableTestClock(
  */
 class InMemoryActionScheduler(
     private val clock: MutableTestClock,
+    private val workerId: String = "test-worker",
 ) : ActionSchedulerPort,
     PendingActionPurgePort {
     private val store = linkedMapOf<String, ScheduledSocialAction>()
     private val leaseExpiry = mutableMapOf<String, Instant>()
+    private val leaseOwner = mutableMapOf<String, String>()
 
     override fun schedule(action: ScheduledSocialAction): Boolean {
         if (store.containsKey(action.identity.value)) return false
@@ -75,50 +77,87 @@ class InMemoryActionScheduler(
                 val reeval = claimed.beginReevaluation()
                 store[reeval.identity.value] = reeval
                 leaseExpiry[reeval.identity.value] = leaseExpiresAt
+                leaseOwner[reeval.identity.value] = workerId
                 ClaimedAction(action = reeval, leaseExpiresAt = leaseExpiresAt)
             }
 
     override fun reclaimExpiredLeases(now: Instant): List<ActionIdentity> =
         leaseExpiry
-            .filterValues { it.isBefore(now) }
+            .filter { (key, expiresAt) -> expiresAt.isBefore(now) && store.getValue(key).status in RECLAIMABLE_IN_FLIGHT_STATUSES }
             .keys
             .toList()
-            .also { keys -> keys.forEach { leaseExpiry.remove(it) } }
-            .map { ActionIdentity.of(store.getValue(it).decisionId, it.substringAfterLast('#').toInt()) }
+            .also { keys ->
+                keys.forEach {
+                    leaseExpiry.remove(it)
+                    leaseOwner.remove(it)
+                }
+            }.map { store.getValue(it).identity }
 
     override fun reschedule(
         identity: ActionIdentity,
         executeAfter: Instant,
         attempt: Int,
-    ) {
-        store[identity.value]?.let {
-            store[identity.value] = it.copy(status = ActionStatus.SCHEDULED, executeAfter = executeAfter, attempt = attempt)
-            leaseExpiry.remove(identity.value)
+    ): Boolean {
+        val action = requireAction(identity)
+        if (action.status.isTerminal) return false // purge 로 이미 종결됐으면 멱등 no-op(복구 루프 stranding 방지).
+        requireLeaseOwner(identity)
+        require(attempt >= action.attempt) { "attempt 는 감소할 수 없다: current=${action.attempt}, next=$attempt" }
+        require(action.status.canTransitionTo(ActionStatus.SCHEDULED)) {
+            "불법 상태 전이: ${action.status} → ${ActionStatus.SCHEDULED} (action=${identity.value})"
         }
+        store[identity.value] = action.copy(status = ActionStatus.SCHEDULED, executeAfter = executeAfter, attempt = attempt)
+        leaseExpiry.remove(identity.value)
+        leaseOwner.remove(identity.value)
+        return true
     }
 
-    override fun cancel(identity: ActionIdentity) {
-        store[identity.value]?.let {
-            if (!it.status.isTerminal) store[identity.value] = it.copy(status = ActionStatus.CANCELLED)
-            leaseExpiry.remove(identity.value)
-        }
+    override fun markTyping(identity: ActionIdentity): Boolean {
+        val action = requireAction(identity)
+        if (action.status.isTerminal) return false // purge race — 종결 상태면 멱등 no-op(poller tick throw 방지).
+        requireLeaseOwner(identity)
+        store[identity.value] = action.passReevaluation()
+        return true
     }
 
-    override fun complete(identity: ActionIdentity) {
-        store[identity.value]?.let {
-            store[identity.value] = it.copy(status = ActionStatus.COMPLETED)
-            leaseExpiry.remove(identity.value)
-        }
+    override fun markPartiallySent(identity: ActionIdentity): Boolean {
+        requireLeaseOwner(identity)
+        val action = requireAction(identity)
+        if (action.status == ActionStatus.PARTIALLY_SENT) return false // 멱등(첫 전송 + 부분취소 경로 중복 호출).
+        store[identity.value] = action.markPartiallySent()
+        return true
+    }
+
+    override fun cancel(identity: ActionIdentity): Boolean {
+        val action = requireAction(identity)
+        if (action.status.isTerminal) return false
+        requireLeaseOwner(identity)
+        store[identity.value] = action.cancel()
+        leaseExpiry.remove(identity.value)
+        leaseOwner.remove(identity.value)
+        return true
+    }
+
+    override fun complete(identity: ActionIdentity): Boolean {
+        val action = requireAction(identity)
+        if (action.status.isTerminal) return false // 동의철회 purge 로 이미 종결됐으면 멱등 no-op(불법 전이 예외 방지).
+        requireLeaseOwner(identity)
+        store[identity.value] = action.complete()
+        leaseExpiry.remove(identity.value)
+        leaseOwner.remove(identity.value)
+        return true
     }
 
     override fun fail(
         identity: ActionIdentity,
         reason: ActionFailureReason,
-    ) {
-        store[identity.value]?.let {
-            store[identity.value] = it.copy(status = ActionStatus.FAILED, failureReason = reason)
-            leaseExpiry.remove(identity.value)
-        }
+    ): Boolean {
+        val action = requireAction(identity)
+        if (action.status.isTerminal) return false
+        requireLeaseOwner(identity)
+        store[identity.value] = action.fail(reason)
+        leaseExpiry.remove(identity.value)
+        leaseOwner.remove(identity.value)
+        return true
     }
 
     override fun find(identity: ActionIdentity): ScheduledSocialAction? = store[identity.value]
@@ -128,6 +167,7 @@ class InMemoryActionScheduler(
             .filter {
                 it.target.guildPseudonym == scope.guildPseudonym &&
                     (scope.channelId == null || it.target.channelId == scope.channelId) &&
+                    (scope.userPseudonym == null || it.target.subjectPseudonym == scope.userPseudonym) &&
                     !it.status.isTerminal
             }.map { it.identity }
 
@@ -141,6 +181,24 @@ class InMemoryActionScheduler(
         leaseExpiresAt: Instant? = null,
     ) {
         store[action.identity.value] = action
-        leaseExpiresAt?.let { leaseExpiry[action.identity.value] = it }
+        leaseExpiresAt?.let {
+            leaseExpiry[action.identity.value] = it
+            leaseOwner[action.identity.value] = workerId
+        }
+    }
+
+    private fun requireAction(identity: ActionIdentity): ScheduledSocialAction =
+        store[identity.value] ?: throw NoSuchElementException("scheduled action not found: ${identity.value}")
+
+    private fun requireLeaseOwner(identity: ActionIdentity) {
+        val owner = leaseOwner[identity.value] ?: return
+        require(owner == workerId) {
+            "scheduled action lease is owned by another worker: action=${identity.value}, owner=$owner, worker=$workerId"
+        }
+    }
+
+    private companion object {
+        val RECLAIMABLE_IN_FLIGHT_STATUSES =
+            setOf(ActionStatus.REEVALUATING, ActionStatus.TYPING, ActionStatus.PARTIALLY_SENT)
     }
 }

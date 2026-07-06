@@ -26,7 +26,7 @@ Discord /ask or message ask
   -> AskCommandHandler.ask
   -> optional local-first attempt
   -> FreeAskRateLimiter.check(userId)
-  -> runOrchestrator(..., model = glm-5.1, dedup = false for fallback)
+  -> runOrchestrator(..., model = central.cloud.free-model, default glm-4.5-air, dedup = false for fallback)
   -> RequestOrchestrator.handle(AiRequestInput)
   -> duplicate guard when enabled
   -> blocklist, quota, channel policy, burden caps
@@ -39,12 +39,14 @@ Discord /ask or message ask
 
 Evidence:
 
-- `/ask` is local-first only when a non-cloud selected model and a local provider are available; otherwise it uses or falls back to free cloud model `glm-5.1` after `FreeAskRateLimiter.check(ctx.userId)` (`central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt:149-175`).
+- `/ask` is local-first only when a non-cloud selected model and a local provider are available; otherwise it uses or falls back to `central.cloud.free-model` (`ZAI_FREE_MODEL`, default `glm-4.5-air`) after `FreeAskRateLimiter.check(ctx.userId)` (`central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt:149-175`).
 - `runOrchestrator` composes the execution prompt, preserves the user prompt length for burden weighing, and passes `AiRequestInput` into `RequestOrchestrator.handle` (`AskCommandHandler.kt:186-227`).
 - `RequestOrchestrator` applies blocklist, user quota, channel policy, request weighing, role burden caps, and web-search augmentation before the cloud branch (`central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:171-229`).
+- Admission policy is a request-start snapshot: blocklist, user quota, channel allow-list, and role burden cap are read before dispatch. If channel policy changes while a provider/cloud call is already running, that in-flight request is allowed to reach a terminal state; the changed policy applies to the next request.
 - The cloud branch is only taken for `glm-*` requests when `cloudLlm.isEnabled()` is true. It calls `cloudLlm.generate`, records success with `CLOUD_PROVIDER_ID`, returns `providerId = null`, and does not call `ProviderSession.sendInfer` (`RequestOrchestrator.kt:230-250`).
+- Guild channel allow-list is the global request-admission gate. Provider contribution policy does not own channel scope after V41; it contributes model/burden/capability limits only. The DB adapter therefore leaves `ProviderProfile.allowedChannelIds` and `allowedRoleIds` unset, while the domain filter still supports those fields for non-DB/future scopes.
 - The sentinel is explicitly `CLOUD_PROVIDER_ID = -1L` so central direct usage is distinguishable from real positive provider IDs (`RequestOrchestrator.kt:411-414`).
-- `ZaiCloudLlm` is enabled by `central.cloud.zai-api-key`, posts OpenAI-compatible chat requests to `{baseUrl}/chat/completions`, uses a bearer token only in central, and defaults the model to `glm-5.1` (`central-server/src/main/kotlin/com/discordassistant/central/routing/application/CloudLlm.kt:200-283`).
+- `ZaiCloudLlm` is enabled by `central.cloud.zai-api-key`, posts OpenAI-compatible chat requests to `{baseUrl}/chat/completions`, uses a bearer token only in central, and has an internal direct-call default of `glm-5.1`; `/ask` still passes the configured free model explicitly (`central-server/src/main/kotlin/com/discordassistant/central/routing/application/CloudLlm.kt:200-283`).
 - The default configuration keeps the central z.ai key empty and documents that an empty key falls back to the existing provider-agent `glm-*` route (`central-server/src/main/resources/application.yml:91-96`).
 
 ## Provider-agent GLM fallback sequence

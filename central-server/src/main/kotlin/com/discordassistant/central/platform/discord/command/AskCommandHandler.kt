@@ -238,7 +238,9 @@ class AskCommandHandler(
                 responseMode,
                 webSearch,
                 routingPolicy.maxCandidates,
-                dedup = false,
+                // 로컬 우선(preferLocal) 폴백 2차 호출만 dedup=false(1차에서 이미 멱등성 통과, 같은 프롬프트 재차단 방지).
+                // 클라우드가 1차/유일 호출이면 dedup 을 켠다(중복 요청 멱등 보호).
+                dedup = !preferLocal,
                 history = history,
                 thinking = thinking,
                 toneDirective = toneDirective,

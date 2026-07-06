@@ -26,12 +26,16 @@ import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.Record
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.StartMultiResponseRunRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.SynthesizeRunRequest
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultRepository
 import com.discordassistant.central.multiresponse.application.MultiResponseDecisionItem
 import com.discordassistant.central.multiresponse.application.MultiResponseOperationsSummary
+import com.discordassistant.central.multiresponse.application.MultiResponseRetentionService
 import com.discordassistant.central.multiresponse.application.MultiResponseService
 import com.discordassistant.central.multiresponse.application.PseudoStreamSnapshot
 import com.discordassistant.central.relay.AgentConnection
@@ -50,6 +54,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -554,6 +559,79 @@ class MultiResponseServiceTest
 
             assertEquals(1, started["candidateCount"])
             assertEquals(listOf(502L), planned.map { it.providerUserId })
+        }
+
+        @Test
+        fun `space-separated fanout exclusion tag is honored like comma-separated`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 156,
+                    providerUserId = 601,
+                    providerState = ProviderAvailability.ONLINE,
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,qwen-coder",
+                    // 공백 구분 태그: 예전엔 exclusion 이 comma 만 나눠 제외 태그가 새어나갔다(fix 검증).
+                    capabilityTags = "multi-response fanout-excluded",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 156,
+                    providerUserId = 602,
+                    providerState = ProviderAvailability.ONLINE,
+                    modelCount = 1,
+                    modelNames = "mistral",
+                    capabilityTags = "multi-response",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
+                ),
+            )
+            controller.savePolicy(
+                156,
+                SaveMultiResponsePolicyRequest(channelId = 256, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+
+            val started = controller.startRun(156, StartMultiResponseRunRequest(channelId = 256, requestId = "fanout-exclusion-space"))
+            val planned = candidates.findByRunId(started["id"] as Long)
+
+            assertEquals(1, started["candidateCount"])
+            assertEquals(listOf(602L), planned.map { it.providerUserId })
+        }
+
+        @Test
+        fun `retention purge deletes runs older than window with candidate and synthesis rows`() {
+            val retention = MultiResponseRetentionService(runs, candidates, syntheses, fixedClock)
+            val now = fixedClock.instant()
+            val old =
+                runs.save(
+                    MultiResponseRunEntity(
+                        guildId = 900,
+                        channelId = 901,
+                        requestId = "old-run",
+                        startedAt = now.minus(Duration.ofDays(40)),
+                    ),
+                )
+            candidates.save(CandidateAnswerEntity(runId = old.id, createdAt = old.startedAt))
+            syntheses.save(SynthesisResultEntity(runId = old.id, createdAt = old.startedAt))
+            val fresh =
+                runs.save(
+                    MultiResponseRunEntity(
+                        guildId = 900,
+                        channelId = 901,
+                        requestId = "fresh-run",
+                        startedAt = now.minus(Duration.ofDays(5)),
+                    ),
+                )
+
+            val purged = retention.purgeExpired(retentionDays = 30, now = now)
+
+            assertEquals(1, purged)
+            assertTrue(runs.findById(old.id).isEmpty)
+            assertTrue(candidates.findByRunId(old.id).isEmpty())
+            assertNull(syntheses.findByRunId(old.id))
+            assertTrue(runs.findById(fresh.id).isPresent)
         }
 
         @Test

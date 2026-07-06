@@ -2,7 +2,9 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.CommandService
+import com.discordassistant.central.platform.discord.command.AskCommandHandler
 import com.discordassistant.central.shared.ModelBurden
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -31,6 +33,14 @@ class CommandServiceCoverageTest
         ) = CommandContext(guildId = guildId, channelId = next(), userId = next(), roleIds = setOf(1L), isAdmin = admin)
 
         // ── 일반 유저 조회 명령 ──────────────────────────────────────────
+        @Test
+        fun `ask free cloud model — env 가 비어 있으면 SSOT 기본값으로 폴백`() {
+            assertEquals(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL, AskCommandHandler.resolveFreeCloudModel(null))
+            assertEquals(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL, AskCommandHandler.resolveFreeCloudModel(""))
+            assertEquals(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL, AskCommandHandler.resolveFreeCloudModel("   "))
+            assertEquals("glm-5.1", AskCommandHandler.resolveFreeCloudModel(" glm-5.1 "))
+        }
+
         @Test
         fun `catalog — 빈 풀 안내`() {
             assertTrue(commands.catalog(user()).content.contains("온라인 프로바이더가 없습니다"))
@@ -112,6 +122,14 @@ class CommandServiceCoverageTest
         fun `setRolePolicy — 관리자는 역할 정책 설정`() {
             val r = commands.setRolePolicy(user(admin = true), roleId = 5L, maxBurden = ModelBurden.STANDARD, dailyLimit = 50)
             assertTrue(r.content.contains("역할"))
+        }
+
+        @Test
+        fun `setRolePolicy — dailyLimit 0 은 하루 0회가 아니라 무제한으로 표시`() {
+            val r = commands.setRolePolicy(user(admin = true), roleId = 5L, maxBurden = ModelBurden.STANDARD, dailyLimit = 0)
+
+            assertTrue(r.content.contains("무제한"))
+            assertFalse(r.content.contains("하루 0 회"))
         }
 
         @Test

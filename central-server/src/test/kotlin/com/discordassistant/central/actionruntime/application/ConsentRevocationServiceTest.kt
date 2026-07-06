@@ -25,13 +25,14 @@ class ConsentRevocationServiceTest {
         index: Int,
         guild: String = "g1",
         channel: String = "c1",
+        user: String? = "u1",
     ) {
         scheduler.schedule(
             ScheduledSocialAction.create(
                 decisionId = "d$index",
                 sampledActionIndex = index,
                 type = ScheduledActionType.SPEAK,
-                target = ActionTarget(guild, channel, "t1"),
+                target = ActionTarget(guild, channel, "t1", subjectPseudonym = user),
                 executeAfter = clock.instant(),
                 contextVersion = 1,
             ),
@@ -62,6 +63,20 @@ class ConsentRevocationServiceTest {
         assertThat(scheduler.find(ActionIdentity.of("d0", 0))!!.status).isEqualTo(ActionStatus.CANCELLED)
         // c2 는 보존.
         assertThat(scheduler.findPendingIn(RevocationScope("g1", channelId = "c2"))).hasSize(1)
+    }
+
+    @Test
+    fun `사용자 범위 철회는 같은 채널에서도 그 사용자 pending 만 취소한다`() {
+        schedule(0, channel = "c1", user = "u1")
+        schedule(1, channel = "c1", user = "u2")
+        schedule(2, channel = "c2", user = "u1")
+
+        val cancelled = service.onConsentRevoked(RevocationScope(guildPseudonym = "g1", channelId = "c1", userPseudonym = "u1"))
+
+        assertThat(cancelled).isEqualTo(1)
+        assertThat(scheduler.find(ActionIdentity.of("d0", 0))!!.status).isEqualTo(ActionStatus.CANCELLED)
+        assertThat(scheduler.find(ActionIdentity.of("d1", 1))!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        assertThat(scheduler.find(ActionIdentity.of("d2", 2))!!.status).isEqualTo(ActionStatus.SCHEDULED)
     }
 
     @Test

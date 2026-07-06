@@ -22,7 +22,8 @@ Do not edit generated files directly.
 | `agent` | 3 | 3 | 3 | 3 | provider-agent Python backend messages. |
 | `desktop` | 572 | 572 | 572 | 572 | desktop prototype/app UI via generated `i18n-agent.js`. |
 
-`make i18n-check` verifies generated-file drift and the `ko/en/ja` completeness rule for all sections above.
+`make i18n-check` verifies generated-file drift, the `ko/en/ja` completeness rule for all sections above, and
+provider-agent tests that assert localized response text as a single-language string.
 
 ## Generated artifacts
 
@@ -52,12 +53,29 @@ i18n/messages.json (desktop section)
 ## Verification commands
 
 - `make i18n-gen` — regenerate bot/web/agent JSON and desktop prototype JS from the SSOT.
-- `make i18n-check` — fail on generated drift or missing `ko/en/ja` values.
+- `make i18n-check` — fail on generated drift, missing `ko/en/ja` values, or locale-dependent provider-agent response
+  assertions.
 - `./scripts/nexa-verify.sh i18n` — NEXA wrapper for `make i18n-check`.
 - `make sync-desktop` — copy desktop prototype assets, including `i18n-agent.js`, into ignored provider-agent webui assets.
 - `make desktop-check` — confirm synced desktop assets have no prototype/mock leakage and still match backend contracts.
 - `./scripts/nexa-verify.sh central` — runs central tests including `I18nMessagesDriftTest`, `I18nFallbackTest`, `MessagesTest`, `WebI18nServingTest`, and `CommandLoc*` coverage/drift tests.
 
 T020 adds `i18n` scope to both `scripts/nexa-verify.sh` and `scripts/nexa-verify.ps1` so the SSOT drift guard is addressable from the same task wrapper as docs/central/protocol. This is a small KISS compatibility addition; it delegates to the existing `make i18n-check` rather than duplicating validation logic.
+
+## Locale-dependent test guard
+
+`scripts/check-locale-dependent-tests.py` scans provider-agent Python tests for `assert` expressions that pin JSON
+response text fields such as `["error"]`, `["message"]`, `["reason"]`, `["detail"]`, or `["failReason"]` to a Korean-only
+substring. This catches the class of failure where CI runs under a different locale and the runtime legitimately returns
+English text, while the test expects Korean text.
+
+The guard is intentionally narrow:
+
+- i18n generator/fallback tests are exempt by filename.
+- Domain objects such as `err.message` and static JSON fixtures are not scanned.
+- Assertions with an explicit same-line fallback, for example Korean `or` English `lower()` checks, are allowed.
+
+Tests should prefer stable booleans, status codes, response shapes, or locale-independent rejection codes. When the text
+itself is the contract, the test must cover every supported locale or include an explicit fallback in the same assertion.
 
 Because T020 depends on T019 and T019 is still dependency-gated `REVIEW`, this task should remain `REVIEW` after automated verification. It can move to `VERIFIED` only after upstream gates are approved or the task graph dependency is revised.

@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ActionRow
+import net.dv8tion.jda.api.interactions.components.buttons.Button
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
@@ -212,8 +213,16 @@ class DiscordAnswerRenderer(
     }
 
     private fun feedbackRows(reply: Reply): List<ActionRow> {
-        reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
-        return emptyList()
+        val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
+        // customId = "ask-feedback:<action>:<requestId>" — DiscordBot.handleAskFeedbackButton 이 FeedbackAction.id
+        // (up/down/report)로 파싱한다. 이 버튼이 없으면 품질 피드백/신고 파이프라인 전체가 Discord 에서 도달 불가.
+        return listOf(
+            ActionRow.of(
+                Button.success("ask-feedback:up:$requestId", "👍"),
+                Button.danger("ask-feedback:down:$requestId", "👎"),
+                Button.secondary("ask-feedback:report:$requestId", "🚩"),
+            ),
+        )
     }
 
     companion object {

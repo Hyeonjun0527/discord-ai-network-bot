@@ -6,11 +6,13 @@ import com.discordassistant.central.actionruntime.adapter.outbound.persistence.S
 import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionRepository
 import com.discordassistant.central.actionruntime.application.port.inbound.RevocationScope
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
+import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
@@ -46,11 +48,12 @@ class JpaScheduledActionStoreTest
             executeAfter: Instant = now,
             guild: String = "g1",
             channel: String = "c1",
+            user: String? = "u1",
         ) = ScheduledSocialAction.create(
             decisionId = decision,
             sampledActionIndex = index,
             type = ScheduledActionType.SPEAK,
-            target = ActionTarget(guild, channel, "t1"),
+            target = ActionTarget(guild, channel, "t1", subjectPseudonym = user),
             executeAfter = executeAfter,
             contextVersion = 7,
         )
@@ -98,10 +101,27 @@ class JpaScheduledActionStoreTest
         }
 
         @Test
+        fun `active lease 를 잡은 worker 만 in-flight action 을 전이할 수 있다`() {
+            val otherWorkerStore = JpaScheduledActionStore(repo, contentRepo, workerId = "w2", clock = clock)
+            store.schedule(action(executeAfter = now.minusSeconds(1)))
+            store.claimDue(now = now, leaseExpiresAt = now.plus(Duration.ofSeconds(30)), limit = 10)
+
+            assertThatThrownBy { otherWorkerStore.markTyping(action().identity) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("owned by another worker")
+
+            assertThat(store.find(action().identity)!!.status).isEqualTo(ActionStatus.REEVALUATING)
+            assertThat(store.markTyping(action().identity)).isTrue()
+            assertThat(store.find(action().identity)!!.status).isEqualTo(ActionStatus.TYPING)
+        }
+
+        @Test
         fun `complete fail cancel 이 상태와 lease 를 갱신한다`() {
-            store.schedule(action(decision = "a"))
-            store.schedule(action(decision = "b"))
+            store.schedule(action(decision = "a", executeAfter = now.minusSeconds(1)))
+            store.schedule(action(decision = "b", executeAfter = now.minusSeconds(1)))
             store.schedule(action(decision = "c"))
+            store.claimDue(now, now.plus(Duration.ofSeconds(30)), 10)
+            store.markTyping(action(decision = "a").identity)
 
             store.complete(action(decision = "a").identity)
             store.fail(action(decision = "b").identity, ActionFailureReason.PERMISSION_DENIED)
@@ -115,6 +135,24 @@ class JpaScheduledActionStoreTest
         }
 
         @Test
+        fun `저장소도 도메인 상태머신을 우회하지 않는다`() {
+            store.schedule(action(decision = "a"))
+
+            assertThatThrownBy { store.complete(action(decision = "a").identity) }
+                .isInstanceOf(IllegalStateException::class.java)
+
+            assertThat(store.find(action(decision = "a").identity)!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        }
+
+        @Test
+        fun `없는 action 전이는 조용히 무시하지 않고 실패한다`() {
+            val missing = ActionIdentity.of("missing", 0)
+
+            assertThatThrownBy { store.cancel(missing) }
+                .isInstanceOf(NoSuchElementException::class.java)
+        }
+
+        @Test
         fun `reschedule 은 SCHEDULED 로 되돌리고 attempt 를 갱신한다(T009)`() {
             store.schedule(action(executeAfter = now.minusSeconds(1)))
             store.claimDue(now, now.plus(Duration.ofSeconds(30)), 10)
@@ -124,6 +162,20 @@ class JpaScheduledActionStoreTest
             val rescheduled = store.find(action().identity)!!
             assertThat(rescheduled.status).isEqualTo(ActionStatus.SCHEDULED)
             assertThat(rescheduled.attempt).isEqualTo(1)
+        }
+
+        @Test
+        fun `만료 lease 회수는 non-terminal in-flight 상태만 대상으로 한다`() {
+            store.schedule(action(decision = "terminal", executeAfter = now.minusSeconds(1)))
+            store.claimDue(now, now.plus(Duration.ofSeconds(1)), 10)
+            store.markTyping(action(decision = "terminal").identity)
+            store.complete(action(decision = "terminal").identity)
+
+            val entity = repo.findByIdentity(action(decision = "terminal").identity.value)!!
+            entity.leaseExpiresAt = now.minusSeconds(1)
+            repo.saveAndFlush(entity)
+
+            assertThat(store.reclaimExpiredLeases(now)).isEmpty()
         }
 
         @Test
@@ -149,5 +201,16 @@ class JpaScheduledActionStoreTest
             assertThat(contentRepo.findByActionIdentity(action(decision = "revoke").identity.value)).isNull()
             // 다른 채널은 보존.
             assertThat(store.find(action(decision = "keep").identity)!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        }
+
+        @Test
+        fun `findPendingIn 은 사용자 범위 철회면 같은 채널의 해당 subject 만 찾는다`() {
+            store.schedule(action(decision = "u1", guild = "g1", channel = "c1", user = "u1"))
+            store.schedule(action(decision = "u2", guild = "g1", channel = "c1", user = "u2"))
+            store.schedule(action(decision = "other-channel", guild = "g1", channel = "c2", user = "u1"))
+
+            val pending = store.findPendingIn(RevocationScope(guildPseudonym = "g1", channelId = "c1", userPseudonym = "u1"))
+
+            assertThat(pending).containsExactly(action(decision = "u1").identity)
         }
     }

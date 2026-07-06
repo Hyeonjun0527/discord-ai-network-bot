@@ -57,4 +57,17 @@ class JpaNexaParticipationFlagStoreTest
             assertThat(store.channelOverride("g-1", 100L)).isEqualTo(ParticipationLane.CANARY)
             assertThat(store.excludedChannelIds("g-1")).containsExactly(100L)
         }
+
+        @Test
+        fun `채널 cleanup 은 override 와 제외 행을 제거하고 다른 채널은 보존한다`() {
+            store.setChannelOverride("g-1", 100L, ParticipationLane.LIVE)
+            store.setChannelExcluded("g-1", 100L, true)
+            store.setChannelOverride("g-1", 200L, ParticipationLane.CANARY)
+
+            store.clearChannel("g-1", 100L)
+
+            assertThat(store.channelOverride("g-1", 100L)).isNull()
+            assertThat(store.excludedChannelIds("g-1")).doesNotContain(100L)
+            assertThat(store.channelOverride("g-1", 200L)).isEqualTo(ParticipationLane.CANARY)
+        }
     }

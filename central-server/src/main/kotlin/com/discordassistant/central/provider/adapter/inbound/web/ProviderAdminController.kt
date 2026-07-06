@@ -3,6 +3,7 @@ package com.discordassistant.central.provider.adapter.inbound.web
 import com.discordassistant.central.ainetwork.application.GuildQualityReports
 import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
 import com.discordassistant.central.guild.application.GuildChannelPolicy
@@ -17,8 +18,6 @@ import com.discordassistant.central.provider.application.ProviderRosterInfo
 import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.shared.NexaIdentity
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Component
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -279,17 +278,22 @@ class ProviderAdminController(
     @GetMapping("/nia-persona")
     fun niaPersona(
         @RequestParam(name = "durableToken", required = false, defaultValue = "") durableToken: String,
-    ): ResponseEntity<*> {
-        if (!durableToken.startsWith("dv1.")) return forbidNiaPersona()
-        val binding = tokens.verify(durableToken) ?: return forbidNiaPersona()
-        if (!projectAdmins.isProjectAdmin(binding.providerId)) return forbidNiaPersona()
-        return ResponseEntity.ok(NiaPersonaResponse(NexaIdentity.NIA_DEFAULT_PERSONA, NexaIdentity.NIA_FEWSHOT))
+    ): NiaPersonaResponse {
+        if (!durableToken.startsWith("dv1.")) throw projectAdminRequired()
+        val binding = tokens.verify(durableToken) ?: throw projectAdminRequired()
+        if (!projectAdmins.isProjectAdmin(binding.providerId)) throw projectAdminRequired()
+        return NiaPersonaResponse(NexaIdentity.NIA_DEFAULT_PERSONA, NexaIdentity.NIA_FEWSHOT)
     }
 
-    private fun forbidNiaPersona(): ResponseEntity<Map<String, String>> =
-        ResponseEntity
-            .status(HttpStatus.FORBIDDEN)
-            .body(mapOf("error" to "forbidden", "message" to "프로젝트 관리자만 볼 수 있어요"))
+    private fun projectAdminRequired(): PreconditionFailedException =
+        PreconditionFailedException(
+            message = "프로젝트 관리자만 볼 수 있어요",
+            failedCondition = "project_admin_authenticated",
+            blockedAction = "READ_NIA_PERSONA",
+            actionGuide = "프로젝트 관리자 durable 토큰으로 다시 요청해 주세요.",
+            httpStatus = 403,
+            errorCode = "FORBIDDEN",
+        )
 
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(

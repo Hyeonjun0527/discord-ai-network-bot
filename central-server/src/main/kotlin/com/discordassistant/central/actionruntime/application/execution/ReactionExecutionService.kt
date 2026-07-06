@@ -1,6 +1,7 @@
 package com.discordassistant.central.actionruntime.application.execution
 
 import com.discordassistant.central.actionruntime.application.port.out.ActionAuditPort
+import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.DiscordExecutorPort
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
@@ -9,6 +10,7 @@ import com.discordassistant.central.actionruntime.domain.OutboundGuard
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditEvent
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
+import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Clock
@@ -31,6 +33,7 @@ class ReactionExecutionService(
     private val scheduler: ActionSchedulerPort,
     private val audit: ActionAuditPort,
     private val clock: Clock,
+    private val modePort: ActionExecutionModePort = ActionExecutionModePort.REQUESTED_MODE,
 ) {
     /**
      * [mode] 에서 [action] 의 [emoji] reaction 을 [targetMessageId] 에 단다. 차단이면 전송 없이 Suppressed,
@@ -42,9 +45,15 @@ class ReactionExecutionService(
         targetMessageId: String,
         emoji: String,
     ): ReactionOutcome {
-        if (OutboundGuard.decide(mode) == OutboundDecision.BLOCK) {
-            record(action, ActionAuditPhase.SUPPRESSED_SHADOW, reason = mode.name)
-            return ReactionOutcome.Suppressed(mode)
+        require(action.status == ActionStatus.TYPING) {
+            "ReactionExecutionService 는 TYPING 상태만 실행할 수 있다: ${action.status} (action=${action.identity.value})"
+        }
+
+        val currentMode = modePort.currentMode(action.target, mode)
+        if (OutboundGuard.decide(currentMode) == OutboundDecision.BLOCK) {
+            record(action, ActionAuditPhase.SUPPRESSED_SHADOW, reason = currentMode.name)
+            scheduler.cancel(action.identity)
+            return ReactionOutcome.Suppressed(currentMode)
         }
 
         return when (val result = executor.react(action.target.channelId, targetMessageId, emoji)) {

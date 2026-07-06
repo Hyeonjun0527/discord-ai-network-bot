@@ -11,6 +11,24 @@ import org.junit.jupiter.api.Test
  */
 class ChannelAttentionGateTest {
     @Test
+    fun `attention timing constants are fixed core port policy`() {
+        assertThat(AttentionGateConstants.ATTENTION_VERSION).isEqualTo("att-1")
+        assertThat(AttentionGateConstants.IDLE_MIN_MS).isEqualTo(2_000)
+        assertThat(AttentionGateConstants.IDLE_MAX_MS).isEqualTo(7_000)
+        assertThat(AttentionGateConstants.PINGPONG_WINDOW_MS).isEqualTo(20_000)
+        assertThat(AttentionGateConstants.MIN_GAP_MS).isEqualTo(1_500)
+        assertThat(AttentionGateConstants.TYPING_GRACE_MS).isEqualTo(4_000)
+        assertThat(AttentionGateConstants.GAP_WINDOW).isEqualTo(8)
+
+        assertThat(AttentionGateConstants.MIN_GAP_MS).isPositive()
+        assertThat(AttentionGateConstants.IDLE_MIN_MS).isGreaterThan(AttentionGateConstants.MIN_GAP_MS)
+        assertThat(AttentionGateConstants.IDLE_MAX_MS).isGreaterThan(AttentionGateConstants.IDLE_MIN_MS)
+        assertThat(AttentionGateConstants.TYPING_GRACE_MS)
+            .isBetween(AttentionGateConstants.IDLE_MIN_MS, AttentionGateConstants.IDLE_MAX_MS)
+        assertThat(AttentionGateConstants.PINGPONG_WINDOW_MS).isGreaterThan(AttentionGateConstants.IDLE_MAX_MS)
+    }
+
+    @Test
     fun `니아 자기 발화는 NO_WAKE 이고 핑퐁 앵커만 갱신한다(C8)`() {
         val state = ChannelAttentionGate.ChannelAttentionState()
         val d = ChannelAttentionGate.decide(tsMs = 1_000, isNia = true, hardPolicy = null, state = state)

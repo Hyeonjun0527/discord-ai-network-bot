@@ -7,6 +7,9 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.Instant
 
 /**
@@ -57,7 +60,19 @@ class AiAdminRoleEntity(
     var createdAt: Instant = Instant.EPOCH,
 )
 
-interface GuildRepository : JpaRepository<GuildEntity, Long>
+interface GuildRepository : JpaRepository<GuildEntity, Long> {
+    /**
+     * privacy_mode 컬럼만 targeted UPDATE 한다(다른 컬럼 미변경). 엔티티를 통째로 load-modify-save 하면
+     * stale 스냅샷이 동시에 쓰인 auto_approve·기본값 등을 되돌리는 lost update 가 발생하므로, 이 좁은 갱신으로
+     * 그 컬럼만 건드린다. 대상 행이 없으면 0 을 반환한다(호출자가 신규 생성).
+     */
+    @Modifying
+    @Query("update GuildEntity g set g.privacyMode = :mode where g.id = :guildId")
+    fun updatePrivacyMode(
+        @Param("guildId") guildId: Long,
+        @Param("mode") mode: String,
+    ): Int
+}
 
 interface AllowedChannelRepository : JpaRepository<AllowedChannelEntity, Long> {
     fun findByGuildId(guildId: Long): List<AllowedChannelEntity>

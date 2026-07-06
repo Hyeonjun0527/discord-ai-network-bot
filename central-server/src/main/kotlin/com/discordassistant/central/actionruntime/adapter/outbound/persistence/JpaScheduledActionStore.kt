@@ -49,7 +49,7 @@ class JpaScheduledActionStore(
     override fun schedule(action: ScheduledSocialAction): Boolean {
         if (repo.findByIdentity(action.identity.value) != null) return false // idempotent — 중복 예약 안 만듦(T004).
         val now = Instant.now(clock)
-        repo.save(action.toEntity(now).also { it.status = ActionStatus.SCHEDULED.name })
+        repo.save(action.markScheduled().toEntity(now))
         return true
     }
 
@@ -62,10 +62,9 @@ class JpaScheduledActionStore(
         // SELECT ... FOR UPDATE SKIP LOCKED — 다른 인스턴스가 잡은 행은 건너뛴다(중복 claim 방지 T006/T007).
         val rows = repo.lockDue(now, limit)
         return rows.map { entity ->
-            entity.status = ActionStatus.REEVALUATING.name
+            entity.applyDomain(entity.toDomain().beginReevaluation(), now)
             entity.leaseOwner = workerId
             entity.leaseExpiresAt = leaseExpiresAt
-            entity.updatedAt = now
             ClaimedAction(action = entity.toDomain(), leaseExpiresAt = leaseExpiresAt)
         }
     }
@@ -86,49 +85,77 @@ class JpaScheduledActionStore(
         identity: ActionIdentity,
         executeAfter: Instant,
         attempt: Int,
-    ) {
-        repo.findByIdentity(identity.value)?.let {
-            it.status = ActionStatus.SCHEDULED.name
-            it.executeAfter = executeAfter
-            it.attempt = attempt
-            it.leaseOwner = null
-            it.leaseExpiresAt = null
-            it.updatedAt = Instant.now(clock)
-        }
+    ): Boolean {
+        val entity = requireEntity(identity)
+        // 재시작 복구/재시도 경로가 부르는데, 그 사이 purge 가 CANCELLED 로 종결했으면 불법 전이 예외로 복구 루프
+        // 전체가 throw + 나머지 in-flight 행이 stranded 된다 — 종결 상태면 멱등 no-op.
+        if (ActionStatus.valueOf(entity.status).isTerminal) return false
+        entity.requireLeaseOwner(identity)
+        val rescheduled = entity.toDomain().retryToSchedule(executeAfter, attempt)
+        entity.applyDomain(rescheduled, Instant.now(clock))
+        entity.leaseOwner = null
+        entity.leaseExpiresAt = null
+        return true
     }
 
     @Transactional
-    override fun cancel(identity: ActionIdentity) {
-        repo.findByIdentity(identity.value)?.let {
-            if (!ActionStatus.valueOf(it.status).isTerminal) it.status = ActionStatus.CANCELLED.name
-            it.leaseOwner = null
-            it.leaseExpiresAt = null
-            it.updatedAt = Instant.now(clock)
-        }
+    override fun markTyping(identity: ActionIdentity): Boolean {
+        val entity = requireEntity(identity)
+        // 동의철회/kill-switch purge 가 별도 트랜잭션에서 CANCELLED 로 종결하고 lease 를 null 로 만든 뒤 poller 가
+        // markTyping 을 부르면 불법 전이 예외로 tick 전체가 throw 된다 — cancel/complete/fail 과 동일한 종결 가드로 멱등 no-op.
+        if (ActionStatus.valueOf(entity.status).isTerminal) return false
+        entity.requireLeaseOwner(identity)
+        entity.applyDomain(entity.toDomain().passReevaluation(), Instant.now(clock))
+        return true
     }
 
     @Transactional
-    override fun complete(identity: ActionIdentity) {
-        repo.findByIdentity(identity.value)?.let {
-            it.status = ActionStatus.COMPLETED.name
-            it.leaseOwner = null
-            it.leaseExpiresAt = null
-            it.updatedAt = Instant.now(clock)
-        }
+    override fun markPartiallySent(identity: ActionIdentity): Boolean {
+        val entity = requireEntity(identity)
+        // 실행 서비스가 첫 버블 전송 시점과 이후 부분취소/실패 경로 양쪽에서 호출할 수 있으므로 멱등이어야 한다 —
+        // 이미 PARTIALLY_SENT 면 불법 자기전이 예외 대신 no-op.
+        if (ActionStatus.valueOf(entity.status) == ActionStatus.PARTIALLY_SENT) return false
+        entity.requireLeaseOwner(identity)
+        entity.applyDomain(entity.toDomain().markPartiallySent(), Instant.now(clock))
+        return true
+    }
+
+    @Transactional
+    override fun cancel(identity: ActionIdentity): Boolean {
+        val entity = requireEntity(identity)
+        if (ActionStatus.valueOf(entity.status).isTerminal) return false
+        entity.requireLeaseOwner(identity)
+        entity.applyDomain(entity.toDomain().cancel(), Instant.now(clock))
+        entity.leaseOwner = null
+        entity.leaseExpiresAt = null
+        return true
+    }
+
+    @Transactional
+    override fun complete(identity: ActionIdentity): Boolean {
+        val entity = requireEntity(identity)
+        // 동의 철회 purge 등으로 이미 종결(CANCELLED/FAILED)됐으면 멱등 no-op — 불법 전이 예외로 실행 tick 을
+        // 크래시시키지 않는다(cancel 과 동일한 종결 가드).
+        if (ActionStatus.valueOf(entity.status).isTerminal) return false
+        entity.requireLeaseOwner(identity)
+        entity.applyDomain(entity.toDomain().complete(), Instant.now(clock))
+        entity.leaseOwner = null
+        entity.leaseExpiresAt = null
+        return true
     }
 
     @Transactional
     override fun fail(
         identity: ActionIdentity,
         reason: ActionFailureReason,
-    ) {
-        repo.findByIdentity(identity.value)?.let {
-            it.status = ActionStatus.FAILED.name
-            it.failureReason = reason.wireName
-            it.leaseOwner = null
-            it.leaseExpiresAt = null
-            it.updatedAt = Instant.now(clock)
-        }
+    ): Boolean {
+        val entity = requireEntity(identity)
+        if (ActionStatus.valueOf(entity.status).isTerminal) return false
+        entity.requireLeaseOwner(identity)
+        entity.applyDomain(entity.toDomain().fail(reason), Instant.now(clock))
+        entity.leaseOwner = null
+        entity.leaseExpiresAt = null
+        return true
     }
 
     @Transactional(readOnly = true)
@@ -142,18 +169,41 @@ class JpaScheduledActionStore(
             .findPendingInScope(
                 guildPseudonym = scope.guildPseudonym,
                 channelId = scope.channelId,
+                userPseudonym = scope.userPseudonym,
             ).map { ActionIdentity.of(it.decisionId, indexFrom(it.identity)) }
 
     @Transactional
     override fun purge(identity: ActionIdentity) {
         repo.findByIdentity(identity.value)?.let {
-            if (!ActionStatus.valueOf(it.status).isTerminal) it.status = ActionStatus.CANCELLED.name
+            if (!ActionStatus.valueOf(it.status).isTerminal) it.applyDomain(it.toDomain().cancel(), Instant.now(clock))
             it.leaseOwner = null
             it.leaseExpiresAt = null
-            it.updatedAt = Instant.now(clock)
         }
         // 생성된 content 도 함께 제거(T014 — pending action + generated content 둘 다 제거).
         content.deleteByActionIdentity(identity.value)
+    }
+
+    private fun requireEntity(identity: ActionIdentity): ScheduledActionEntity =
+        repo.findByIdentity(identity.value)
+            ?: throw NoSuchElementException("scheduled action not found: ${identity.value}")
+
+    private fun ScheduledActionEntity.requireLeaseOwner(identity: ActionIdentity) {
+        val owner = leaseOwner ?: return
+        require(owner == workerId) {
+            "scheduled action lease is owned by another worker: action=${identity.value}, owner=$owner, worker=$workerId"
+        }
+    }
+
+    private fun ScheduledActionEntity.applyDomain(
+        action: ScheduledSocialAction,
+        now: Instant,
+    ) {
+        executeAfter = action.executeAfter
+        status = action.status.name
+        attempt = action.attempt
+        maxAttempts = action.maxAttempts
+        failureReason = action.failureReason?.wireName
+        updatedAt = now
     }
 
     private fun ScheduledSocialAction.toEntity(now: Instant): ScheduledActionEntity =
@@ -164,6 +214,7 @@ class JpaScheduledActionStore(
             guildPseudonym = target.guildPseudonym,
             channelId = target.channelId,
             threadId = target.threadId,
+            subjectPseudonym = target.subjectPseudonym,
             executeAfter = executeAfter,
             contextVersion = contextVersion,
             status = status.name,
@@ -179,7 +230,13 @@ class JpaScheduledActionStore(
             identity = ActionIdentity.of(decisionId, indexFrom(identity)),
             decisionId = decisionId,
             type = typeFromWire(actionType),
-            target = ActionTarget(guildPseudonym = guildPseudonym, channelId = channelId, threadId = threadId),
+            target =
+                ActionTarget(
+                    guildPseudonym = guildPseudonym,
+                    channelId = channelId,
+                    threadId = threadId,
+                    subjectPseudonym = subjectPseudonym,
+                ),
             executeAfter = executeAfter,
             contextVersion = contextVersion,
             status = ActionStatus.valueOf(status),
@@ -195,6 +252,17 @@ class JpaScheduledActionStore(
         fun typeFromWire(wire: String): ScheduledActionType = ScheduledActionType.entries.first { it.wireName == wire }
 
         fun reasonFromWire(wire: String): ActionFailureReason = ActionFailureReason.entries.first { it.wireName == wire }
+
+        fun ScheduledSocialAction.retryToSchedule(
+            executeAfter: Instant,
+            attempt: Int,
+        ): ScheduledSocialAction {
+            require(attempt >= this.attempt) { "attempt 는 감소할 수 없다: current=${this.attempt}, next=$attempt" }
+            require(status.canTransitionTo(ActionStatus.SCHEDULED)) {
+                "불법 상태 전이: $status → ${ActionStatus.SCHEDULED} (action=${identity.value})"
+            }
+            return copy(status = ActionStatus.SCHEDULED, executeAfter = executeAfter, attempt = attempt)
+        }
     }
 }
 
@@ -209,6 +277,7 @@ class ScheduledActionEntity(
     @Column(name = "guild_pseudonym") var guildPseudonym: String = "",
     @Column(name = "channel_id") var channelId: String = "",
     @Column(name = "thread_id") var threadId: String = "",
+    @Column(name = "subject_pseudonym") var subjectPseudonym: String? = null,
     @Column(name = "execute_after") var executeAfter: Instant = Instant.EPOCH,
     @Column(name = "context_version") var contextVersion: Long = 0,
     @Column(name = "status") var status: String = ActionStatus.CONSIDERING.name,
@@ -257,7 +326,9 @@ interface ScheduledActionRepository : JpaRepository<ScheduledActionEntity, Long>
     /** lease 가 만료된(lease_expires_at < now) in-flight(claim 됐던) 행 — 재시작 회수 대상(T007/T010). */
     @Query(
         "SELECT e FROM ScheduledActionEntity e " +
-            "WHERE e.leaseExpiresAt IS NOT NULL AND e.leaseExpiresAt < :now",
+            "WHERE e.leaseExpiresAt IS NOT NULL " +
+            "AND e.leaseExpiresAt < :now " +
+            "AND e.status IN ('REEVALUATING', 'TYPING', 'PARTIALLY_SENT')",
     )
     fun findExpiredInFlight(
         @Param("now") now: Instant,
@@ -265,17 +336,19 @@ interface ScheduledActionRepository : JpaRepository<ScheduledActionEntity, Long>
 
     /**
      * [guildPseudonym] 범위(채널 좁히기 선택)의 **종결되지 않은**(COMPLETED/CANCELLED/FAILED 아님) 예약 — 동의
-     * 철회 즉시 취소 대상(T014). [channelId] 가 null 이면 길드 전체.
+     * 철회 즉시 취소 대상(T014). [channelId] 가 null 이면 길드 전체, [userPseudonym] 이 있으면 그 동의 주체만.
      */
     @Query(
         "SELECT e FROM ScheduledActionEntity e " +
             "WHERE e.guildPseudonym = :guildPseudonym " +
             "AND (:channelId IS NULL OR e.channelId = :channelId) " +
+            "AND (:userPseudonym IS NULL OR e.subjectPseudonym = :userPseudonym) " +
             "AND e.status NOT IN ('COMPLETED', 'CANCELLED', 'FAILED')",
     )
     fun findPendingInScope(
         @Param("guildPseudonym") guildPseudonym: String,
         @Param("channelId") channelId: String?,
+        @Param("userPseudonym") userPseudonym: String?,
     ): List<ScheduledActionEntity>
 }
 

@@ -43,6 +43,8 @@ class ChannelAiProfileService(
     private val behaviorVersions: AiBehaviorVersionRepository,
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
+    // PESSIMISTIC_WRITE 채번 헬퍼(@Transactional 미부여). 파사드 write 의 활성 TX 에 합류해 락·재시도 의미가 보존된다.
+    private val behaviorVersionWriter: BehaviorVersionWriter = BehaviorVersionWriter(channelAis, behaviorVersions),
 ) : GuildChannelAiQuery {
     fun get(
         guildId: Long,
@@ -86,9 +88,10 @@ class ChannelAiProfileService(
         val savedChannel = channelAis.saveAndFlush(channelAi)
 
         val previous = savedChannel.activeBehaviorVersionId?.let { behaviorVersions.findByChannelAiIdAndId(savedChannel.id, it) }
-        val nextVersion = (behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(savedChannel.id)?.version ?: 0) + 1
+        // 채번(MAX(version)+1)은 PESSIMISTIC_WRITE 락 + 유니크 위반 재시도로 직렬화한다(동시 set 이 같은 version
+        // 으로 insert 해 uk_ai_behavior_version 을 깨는 race 방지). BehaviorVersionWriter 로 위임(중복 구현 회피).
         val behavior =
-            behaviorVersions.saveAndFlush(
+            behaviorVersionWriter.saveNextBehaviorVersion(savedChannel.id) { nextVersion ->
                 AiBehaviorVersionEntity(
                     channelAiId = savedChannel.id,
                     version = nextVersion,
@@ -100,8 +103,8 @@ class ChannelAiProfileService(
                     createdBy = actorId,
                     createdAt = now,
                     changeSummary = "channel AI profile updated",
-                ),
-            )
+                )
+            }
         savedChannel.activeBehaviorVersionId = behavior.id
         savedChannel.updatedAt = now
         channelAis.save(savedChannel)

@@ -110,6 +110,11 @@ class NexaParticipationAdminServiceTest {
 
         override fun excludedChannelIds(guildPseudonym: String): Set<Long> = excluded.filterValues { it }.keys
 
+        override fun clearGuild(guildPseudonym: String) {
+            override.clear()
+            excluded.clear()
+        }
+
         override fun setChannelOverride(
             guildPseudonym: String,
             channelId: Long,

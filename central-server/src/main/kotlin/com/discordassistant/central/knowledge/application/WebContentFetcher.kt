@@ -1,6 +1,8 @@
 package com.discordassistant.central.knowledge.application
 
 import org.slf4j.LoggerFactory
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.URI
 import java.net.http.HttpClient
@@ -94,7 +96,7 @@ class WebContentFetcher(
                     .header("User-Agent", "nexa/websearch")
                     .GET()
                     .build()
-            val resp = http.send(req, HttpResponse.BodyHandlers.ofString())
+            val resp = http.send(req, HttpResponse.BodyHandlers.ofInputStream())
             if (resp.statusCode() !in 200..299) return null
             val contentType =
                 resp
@@ -103,12 +105,27 @@ class WebContentFetcher(
                     .orElse("")
                     .lowercase()
             if (!contentType.contains("html") && !contentType.contains("text")) return null
-            val body = resp.body()
-            val capped = if (body.length > maxBytes) body.substring(0, maxBytes) else body
-            HtmlText.extract(capped, maxChars).ifBlank { null }
+            // 스트리밍 상한: 전체 바디를 메모리에 올리지 않고 최대 maxBytes 바이트만 읽어(OOM/무한바디 방지)
+            // UTF-8 로 디코드한다. char 가 아니라 byte 로 상한을 걸어 실제 다운로드 크기를 제한한다.
+            val bytes = resp.body().use { it.readAtMost(maxBytes) }
+            HtmlText.extract(String(bytes, Charsets.UTF_8), maxChars).ifBlank { null }
         } catch (e: Exception) {
             log.debug("본문 fetch 실패 {}: {}", url, e.javaClass.simpleName)
             null
         }
+    }
+
+    /** 스트림에서 최대 [limit] 바이트까지만 읽는다(초과분은 버려 OOM 방지). */
+    private fun InputStream.readAtMost(limit: Int): ByteArray {
+        val out = ByteArrayOutputStream(minOf(limit, 16 * 1024).coerceAtLeast(64))
+        val chunk = ByteArray(8 * 1024)
+        var total = 0
+        while (total < limit) {
+            val read = read(chunk, 0, minOf(chunk.size, limit - total))
+            if (read < 0) break
+            out.write(chunk, 0, read)
+            total += read
+        }
+        return out.toByteArray()
     }
 }

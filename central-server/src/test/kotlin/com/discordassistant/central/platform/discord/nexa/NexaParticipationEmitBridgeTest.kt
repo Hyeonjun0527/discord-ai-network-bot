@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord.nexa
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
+import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
@@ -1522,6 +1523,7 @@ class NexaParticipationEmitBridgeTest {
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
             correlationRecorder = NexaCorrelationRecorderPort.Noop,
+            contentWriter = SpeechContentWriter { _, _ -> },
             speechDecisionLog = CapturingSpeechLog(),
         )
     }
@@ -1554,6 +1556,7 @@ class NexaParticipationEmitBridgeTest {
                 actionRouter = ParticipationActionRouter(scheduler),
                 modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
                 correlationRecorder = NexaCorrelationRecorderPort.Noop,
+                contentWriter = SpeechContentWriter { _, _ -> },
                 speechDecisionLog = CapturingSpeechLog(),
             )
         return CountingEmit(service, generationPort)
@@ -1869,18 +1872,23 @@ class NexaParticipationEmitBridgeTest {
             identity: ActionIdentity,
             executeAfter: Instant,
             attempt: Int,
-        ) = Unit
+        ): Boolean = true
 
-        override fun cancel(identity: ActionIdentity) {
+        override fun markTyping(identity: ActionIdentity): Boolean = true
+
+        override fun markPartiallySent(identity: ActionIdentity): Boolean = true
+
+        override fun cancel(identity: ActionIdentity): Boolean {
             cancelled += identity
+            return true
         }
 
-        override fun complete(identity: ActionIdentity) = Unit
+        override fun complete(identity: ActionIdentity): Boolean = true
 
         override fun fail(
             identity: ActionIdentity,
             reason: ActionFailureReason,
-        ) = Unit
+        ): Boolean = true
 
         override fun find(identity: ActionIdentity): ScheduledSocialAction? = scheduled.firstOrNull { it.identity == identity }
     }
@@ -1928,5 +1936,7 @@ class NexaParticipationEmitBridgeTest {
             channelId: Long,
             excluded: Boolean,
         ) = Unit
+
+        override fun clearGuild(guildPseudonym: String) = Unit
     }
 }

@@ -35,6 +35,14 @@ class SpeechCandidateResponseParserTest {
     }
 
     @Test
+    fun `strips final periods from chat bubbles`() {
+        val body = """{"candidates":[{"bubbles":["응.","그래。","왜 ㅋㅋ"]}]}"""
+        val candidates = SpeechCandidateResponseParser.parse(body, mapper, "c")
+        assertThat(candidates).hasSize(1)
+        assertThat(candidates[0].bubbles).containsExactly("응", "그래", "왜 ㅋㅋ")
+    }
+
+    @Test
     fun `malformed json yields empty list (safe failure)`() {
         assertThat(SpeechCandidateResponseParser.parse("not json at all", mapper, "c")).isEmpty()
         assertThat(SpeechCandidateResponseParser.parse("", mapper, "c")).isEmpty()

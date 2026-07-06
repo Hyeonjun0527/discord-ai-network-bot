@@ -34,6 +34,11 @@ abstract class DomainException(
     val blockedAction: String? = null,
     /** 사용자가 할 수 있는 다음 행동이 명확할 때만. */
     val actionGuide: String? = null,
+    /**
+     * 5xx 일 때 이 예외를 서버 결함으로 취급해 Sentry 로 캡처할지(기본 true). 결제 비활성처럼 운영자가 통제하는
+     * **예상된 운영 상태**를 5xx 로 돌려줄 때 false 로 두면 거짓 알림(alert fatigue)을 막는다(응답 상태·본문은 불변).
+     */
+    val captureAsServerError: Boolean = true,
 ) : RuntimeException(message, cause)
 
 /** 요청 대상 리소스를 찾을 수 없음 → 404. 메시지엔 무엇을(식별자 포함) 못 찾았는지 담는다. */
@@ -102,6 +107,7 @@ class PreconditionFailedException(
     httpStatus: Int = 422,
     errorCode: String = "PRECONDITION_FAILED",
     cause: Throwable? = null,
+    captureAsServerError: Boolean = true,
 ) : DomainException(
         httpStatus = httpStatus,
         errorCode = errorCode,
@@ -111,4 +117,5 @@ class PreconditionFailedException(
         failedCondition = failedCondition,
         blockedAction = blockedAction,
         actionGuide = actionGuide,
+        captureAsServerError = captureAsServerError,
     )

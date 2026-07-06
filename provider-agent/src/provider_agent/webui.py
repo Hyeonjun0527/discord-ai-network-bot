@@ -17,7 +17,7 @@ import logging
 import secrets
 import threading
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from importlib.resources.abc import Traversable
 from typing import TypedDict, cast
 
@@ -82,9 +82,97 @@ def _parse_guild_id(req: web.Request) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
+def _api_error(
+    code: str,
+    message: str,
+    *,
+    status: int = 400,
+    details: Mapping[str, object] | None = None,
+    current_state: str | None = None,
+    required_state: str | None = None,
+    failed_condition: str | None = None,
+    blocked_action: str | None = None,
+    action_guide: Mapping[str, object] | None = None,
+    extra: Mapping[str, object | None] | None = None,
+) -> web.Response:
+    body: dict[str, object | None] = {
+        "ok": False,
+        "status": status,
+        "code": code,
+        "message": message,
+        "error": message,
+        "details": dict(details) if details is not None else None,
+        "currentState": current_state,
+        "requiredState": required_state,
+        "failedCondition": failed_condition,
+        "blockedAction": blocked_action,
+        "actionGuide": dict(action_guide) if action_guide is not None else None,
+    }
+    filtered: dict[str, object | None] = {key: value for key, value in body.items() if value is not None}
+    if extra:
+        # extra 는 호출자가 계약상 반드시 응답에 존재해야 한다고 선언한 필드다
+        # (예: entitlement/event 키). None 이라도 shape 유지를 위해 제거하지 않는다.
+        filtered.update(extra)
+    return web.json_response(filtered, status=status)
+
+
 def _bad_server() -> web.Response:
-    """누락/형식오류 guildId 의 표준 응답(200 + {ok:false}) — 프런트 계약 보존."""
-    return web.json_response({"ok": False, "error": "잘못된 서버"})
+    """누락/형식오류 guildId 의 표준 응답. 기존 error 필드와 새 code/message/status를 함께 보낸다."""
+    return _api_error(
+        "INVALID_GUILD_ID",
+        "잘못된 서버",
+        status=400,
+        details={"field": "guildId"},
+        failed_condition="guild_id_parseable",
+        blocked_action="SERVER_ADMIN_PROXY",
+    )
+
+
+def _agent_not_running(blocked_action: str = "SERVER_ADMIN_PROXY") -> web.Response:
+    return _api_error(
+        "AGENT_NOT_RUNNING",
+        "에이전트가 실행 중이 아니에요",
+        status=409,
+        current_state="stopped",
+        required_state="running",
+        failed_condition="agent_running",
+        blocked_action=blocked_action,
+        action_guide={"action": "START_AGENT", "label": "시작하기"},
+    )
+
+
+def _invalid_item() -> web.Response:
+    return _api_error("INVALID_SERVER_ITEM", "잘못된 항목", status=400, details={"field": "guildIdOrIndex"})
+
+
+def _required_field(code: str, message: str, field: str, *, blocked_action: str) -> web.Response:
+    return _api_error(
+        code,
+        message,
+        status=400,
+        details={"field": field},
+        failed_condition=f"{field}_present",
+        blocked_action=blocked_action,
+    )
+
+
+def _callback_page(code: str, message: str, *, status: int = 200, accent: str = "#e8eaed") -> web.Response:
+    import html
+
+    safe_code = html.escape(code, quote=True)
+    safe_message = html.escape(message, quote=True)
+    return web.Response(
+        status=status,
+        text=(
+            "<!doctype html><meta charset=utf-8>"
+            f"<body data-error-code='{safe_code}' "
+            f"style='font-family:system-ui;background:#0d0f12;color:{accent};text-align:center;padding-top:80px'>"
+            f"<div style='max-width:360px;margin:0 auto;line-height:1.6'>{safe_message}"
+            "<br><b>이 탭을 닫고 앱으로 돌아가세요.</b></div>"
+            "<script>setTimeout(()=>window.close(),2200)</script>"
+        ),
+        content_type="text/html",
+    )
 
 
 # 최근 로그 라인(대시보드 표시용).
@@ -662,10 +750,27 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         from . import comfy_setup
 
         if not comfy_setup.is_installed():
-            return web.json_response({"ok": False, "error": "ComfyUI 가 아직 설치되지 않았어요."})
+            return _api_error(
+                "COMFY_NOT_INSTALLED",
+                "ComfyUI 가 아직 설치되지 않았어요.",
+                status=409,
+                current_state="not_installed",
+                required_state="installed",
+                failed_condition="comfy_installed",
+                blocked_action="COMFY_START",
+                action_guide={"action": "INSTALL_COMFY", "label": "설치하기"},
+            )
         ok = await comfy_setup.start()
         if not ok:
-            return web.json_response({"ok": False})
+            return _api_error(
+                "COMFY_START_FAILED",
+                "ComfyUI 를 시작하지 못했어요.",
+                status=503,
+                current_state="stopped",
+                required_state="running",
+                failed_condition="comfy_start_succeeded",
+                blocked_action="COMFY_START",
+            )
         return web.json_response(await _apply_image_receiving(True))
 
     async def comfy_stop(req: web.Request) -> web.Response:
@@ -707,11 +812,21 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
             data = {}
         url = str((data or {}).get("url") or "").strip()
         if not url:
-            return web.json_response({"ok": False, "error": "모델 URL 을 입력하세요(.safetensors 직접 링크)."})
+            return _required_field(
+                "MODEL_URL_REQUIRED",
+                "모델 URL 을 입력하세요(.safetensors 직접 링크).",
+                "url",
+                blocked_action="COMFY_MODEL_INSTALL",
+            )
         ok = await comfy_setup.download_model(url)
         if not ok:
-            return web.json_response(
-                {"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."}
+            return _api_error(
+                "MODEL_URL_NOT_DOWNLOADABLE",
+                ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요.",
+                status=400,
+                details={"field": "url"},
+                failed_condition="model_url_downloadable",
+                blocked_action="COMFY_MODEL_INSTALL",
             )
         return web.json_response({"ok": True})
 
@@ -726,7 +841,12 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
             data = {}
         name = (data or {}).get("model")
         if not name:
-            return web.json_response({"ok": False, "error": "모델을 지정하세요."})
+            return _required_field(
+                "COMFY_MODEL_REQUIRED",
+                "모델을 지정하세요.",
+                "model",
+                blocked_action="COMFY_MODEL_SELECT",
+            )
         persist_partial({"comfy_model": name})  # 다음 기동에도 유지
         swapped = False
         agent = _running_agent()
@@ -746,11 +866,20 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         from . import comfy_setup
 
         if not await comfy_setup.health():
-            return web.json_response({"ok": False, "error": "ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요."})
+            return _api_error(
+                "COMFY_NOT_RUNNING",
+                "ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요.",
+                status=409,
+                current_state="stopped",
+                required_state="running",
+                failed_condition="comfy_running",
+                blocked_action="COMFY_OPEN",
+                action_guide={"action": "START_COMFY", "label": "시작하기"},
+            )
         try:
             webbrowser.open(comfy_setup.webui_url())
         except Exception:  # noqa: BLE001
-            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+            return _api_error("BROWSER_OPEN_FAILED", "브라우저를 열 수 없습니다.", status=500)
         return web.json_response({"ok": True})
 
     # ComfyUI 라이프사이클(이미지 엔진 — 설치/시작/정지/웹UI/체크포인트. SD.Next 는 제거됨)
@@ -966,7 +1095,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         data = await req.json()
         index = _resolve_index(data if isinstance(data, dict) else {})
         if index is None:
-            return web.json_response({"ok": False, "error": "잘못된 항목"})
+            return _invalid_item()
         agent = _running_agent()
         if agent is not None:
             await agent.remove_connection_at(index)  # type: ignore[attr-defined]
@@ -1073,7 +1202,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
             return _bad_server()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running()
         return web.json_response(await agent.admin_manage(guild_id))  # type: ignore[attr-defined]
 
     async def provider_admin(req: web.Request) -> web.Response:
@@ -1081,7 +1210,14 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         _auth(req)
         action = req.match_info.get("action", "")
         if action not in ("approve", "reject", "remove"):
-            return web.json_response({"ok": False, "error": "알 수 없는 작업"})
+            return _api_error(
+                "UNKNOWN_PROVIDER_ACTION",
+                "알 수 없는 작업",
+                status=400,
+                details={"action": action},
+                failed_condition="provider_action_allowed",
+                blocked_action="PROVIDER_ADMIN_ACTION",
+            )
         guild_id = _parse_guild_id(req)
         if guild_id is None:
             return _bad_server()
@@ -1089,10 +1225,15 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         try:
             target = int(data.get("providerUserId"))
         except (TypeError, ValueError):
-            return web.json_response({"ok": False, "error": "대상 Provider 가 필요해요"})
+            return _required_field(
+                "PROVIDER_USER_ID_REQUIRED",
+                "대상 Provider 가 필요해요",
+                "providerUserId",
+                blocked_action="PROVIDER_ADMIN_ACTION",
+            )
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("PROVIDER_ADMIN_ACTION")
         return web.json_response(await agent.admin_action(action, guild_id, target))  # type: ignore[attr-defined]
 
     async def server_manage_policy(req: web.Request) -> web.Response:
@@ -1105,7 +1246,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         auto = bool(data.get("autoApprove"))
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("SERVER_POLICY_UPDATE")
         return web.json_response(await agent.admin_set_policy(guild_id, auto))  # type: ignore[attr-defined]
 
     async def server_prompt_sets(req: web.Request) -> web.Response:
@@ -1116,7 +1257,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
             return _bad_server()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("PROMPT_SET_LIST")
         return web.json_response(await agent.admin_prompt_sets(guild_id))  # type: ignore[attr-defined]
 
     async def server_prompt_set_add(req: web.Request) -> web.Response:
@@ -1130,7 +1271,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         content = str(data.get("content") or "").strip()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("PROMPT_SET_ADD")
         return web.json_response(await agent.admin_prompt_set_add(guild_id, name, content))  # type: ignore[attr-defined]
 
     async def server_prompt_set_default(req: web.Request) -> web.Response:
@@ -1143,7 +1284,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         set_id = str(data.get("id") or "").strip()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("PROMPT_SET_DEFAULT")
         return web.json_response(await agent.admin_prompt_set_default(guild_id, set_id))  # type: ignore[attr-defined]
 
     async def server_prompt_set_delete(req: web.Request) -> web.Response:
@@ -1156,7 +1297,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         set_id = str(data.get("id") or "").strip()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("PROMPT_SET_DELETE")
         return web.json_response(await agent.admin_prompt_set_delete(guild_id, set_id))  # type: ignore[attr-defined]
 
     async def server_channels(req: web.Request) -> web.Response:
@@ -1167,7 +1308,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
             return _bad_server()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("CHANNEL_LIST")
         return web.json_response(await agent.admin_channels(guild_id))  # type: ignore[attr-defined]
 
     async def server_channel_toggle(req: web.Request) -> web.Response:
@@ -1180,11 +1321,18 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         try:
             channel_id = int(str(data.get("channelId") or "0"))
         except ValueError:
-            return web.json_response({"ok": False, "error": "잘못된 채널"})
+            return _api_error(
+                "INVALID_CHANNEL_ID",
+                "잘못된 채널",
+                status=400,
+                details={"field": "channelId"},
+                failed_condition="channel_id_parseable",
+                blocked_action="CHANNEL_TOGGLE",
+            )
         allow = bool(data.get("allow"))
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("CHANNEL_TOGGLE")
         return web.json_response(await agent.admin_channel_toggle(guild_id, channel_id, allow))  # type: ignore[attr-defined]
 
     async def _server_guild_read(req: web.Request, attr: str) -> web.Response:
@@ -1195,7 +1343,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
             return _bad_server()
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("SERVER_ADMIN_READ")
         return web.json_response(await getattr(agent, attr)(guild_id))
 
     async def server_channel_ai(req: web.Request) -> web.Response:
@@ -1219,10 +1367,10 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         data = await req.json()
         item_id = str(data.get(id_field) or "").strip() if isinstance(data, dict) else ""
         if not item_id:
-            return web.json_response({"ok": False, "error": "대상이 필요해요"})
+            return _required_field("TARGET_REQUIRED", "대상이 필요해요", id_field, blocked_action="SERVER_ADMIN_DELETE")
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("SERVER_ADMIN_DELETE")
         return web.json_response(await getattr(agent, attr)(guild_id, item_id))
 
     async def server_preset_delete(req: web.Request) -> web.Response:
@@ -1248,10 +1396,17 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         decision = str(data.get("decision") or "").strip() if isinstance(data, dict) else ""
         reason = str(data.get("reason") or "").strip() if isinstance(data, dict) else ""
         if not report_id or not decision:
-            return web.json_response({"ok": False, "error": "신고와 처리 방식이 필요해요"})
+            return _api_error(
+                "SAFETY_REVIEW_DECISION_REQUIRED",
+                "신고와 처리 방식이 필요해요",
+                status=400,
+                details={"requiredFields": ["reportId", "decision"]},
+                failed_condition="safety_review_decision_present",
+                blocked_action="SAFETY_REVIEW",
+            )
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("SAFETY_REVIEW")
         return web.json_response(await agent.admin_safety_review(guild_id, report_id, decision, reason))  # type: ignore[attr-defined]
 
     async def server_rename(req: web.Request) -> web.Response:
@@ -1260,7 +1415,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         data = await req.json()
         index = _resolve_index(data if isinstance(data, dict) else {})
         if index is None:
-            return web.json_response({"ok": False, "error": "잘못된 항목"})
+            return _invalid_item()
         name = str(data.get("name") or "").strip()[:60]
         agent = _running_agent()
         if agent is not None:
@@ -1279,7 +1434,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         _auth(req)
         agent = _running_agent()
         if agent is None:
-            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+            return _agent_not_running("NIA_PERSONA_READ")
         return web.json_response(await agent.admin_nia_persona())  # type: ignore[attr-defined]
 
     async def server_add_token(req: web.Request) -> web.Response:
@@ -1289,7 +1444,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         token = str(data.get("token") or "").strip()
         name = str(data.get("name") or "").strip()[:60] or None
         if not token:
-            return web.json_response({"ok": False, "error": "토큰을 입력하세요."})
+            return _required_field("PROVIDER_TOKEN_REQUIRED", "토큰을 입력하세요.", "token", blocked_action="SERVER_ADD_TOKEN")
         agent = _running_agent()
         if agent is not None:
             await agent.add_connection(token, None, name)  # type: ignore[attr-defined]
@@ -1579,13 +1734,27 @@ def build_app(session_key: str) -> web.Application:
         from urllib.parse import quote
 
         if not _connect_enabled():
-            return web.json_response(
-                {"ok": False, "error": "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요."}
+            return _api_error(
+                "OAUTH_NOT_CONFIGURED",
+                "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요.",
+                status=503,
+                current_state="disabled",
+                required_state="configured",
+                failed_condition="discord_oauth_configured",
+                blocked_action="DISCORD_OAUTH_CONNECT",
+                action_guide={"action": "PASTE_PROVIDER_TOKEN", "label": "토큰으로 추가"},
             )
         data = await req.json()
         origin = str(data.get("origin", "")).strip()
         if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d+)?", origin):
-            return web.json_response({"ok": False, "error": "로컬 주소가 아닙니다."})
+            return _api_error(
+                "INVALID_CALLBACK_ORIGIN",
+                "로컬 주소가 아닙니다.",
+                status=400,
+                details={"field": "origin"},
+                failed_condition="callback_origin_localhost",
+                blocked_action="DISCORD_OAUTH_CONNECT",
+            )
         saved = load_config()
         base = _connect_base(saved.get("relay_url") or _default_relay())
         cb = origin + "/connect/callback"
@@ -1593,7 +1762,7 @@ def build_app(session_key: str) -> web.Application:
         try:
             webbrowser.open(url)
         except Exception:  # noqa: BLE001
-            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+            return _api_error("BROWSER_OPEN_FAILED", "브라우저를 열 수 없습니다.", status=500)
         return web.json_response({"ok": True})
 
     async def connect_callback(req: web.Request) -> web.Response:
@@ -1603,24 +1772,19 @@ def build_app(session_key: str) -> web.Application:
         성공하면 토큰을 저장하고 메인 화면으로 되돌린다.
         """
         if req.query.get("state") != session_key:
-            return web.Response(status=403, text="잘못된 요청(state 불일치)")
+            return _callback_page("OAUTH_STATE_MISMATCH", "잘못된 요청(state 불일치)", status=403)
         # 서버가 토큰 대신 error 를 보낼 수 있다(취소·승인대기·인증실패) — 친절히 안내.
         err = (req.query.get("error") or "").strip()
         token = (req.query.get("token") or "").strip()
         if not token:
             messages = {
-                "pending": "🕒 관리자 승인을 기다리는 중입니다. 승인되면 다시 ‘연동하기’를 눌러 주세요.",
-                "cancelled": "취소되었습니다. 다시 시도하려면 앱에서 ‘연동하기’를 눌러 주세요.",
-                "token": "디스코드 인증에 실패했어요. 다시 시도해 주세요.",
-                "identify": "디스코드 사용자 확인에 실패했어요. 다시 시도해 주세요.",
+                "pending": ("OAUTH_APPROVAL_PENDING", "🕒 관리자 승인을 기다리는 중입니다. 승인되면 다시 ‘연동하기’를 눌러 주세요."),
+                "cancelled": ("OAUTH_CANCELLED", "취소되었습니다. 다시 시도하려면 앱에서 ‘연동하기’를 눌러 주세요."),
+                "token": ("OAUTH_TOKEN_EXCHANGE_FAILED", "디스코드 인증에 실패했어요. 다시 시도해 주세요."),
+                "identify": ("OAUTH_IDENTIFY_FAILED", "디스코드 사용자 확인에 실패했어요. 다시 시도해 주세요."),
             }
-            msg = messages.get(err, "토큰을 받지 못했습니다. 다시 시도해 주세요.")
-            return web.Response(
-                text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#e8eaed;text-align:center;padding-top:80px'>"
-                f"<div style='max-width:360px;margin:0 auto;line-height:1.6'>{msg}<br><b>이 탭을 닫고 앱으로 돌아가세요.</b></div>"
-                "<script>setTimeout(()=>window.close(),2200)</script>",
-                content_type="text/html",
-            )
+            code, msg = messages.get(err, ("OAUTH_TOKEN_MISSING", "토큰을 받지 못했습니다. 다시 시도해 주세요."))
+            return _callback_page(code, msg)
         # 멀티-서버: 서버가 함께 보내는 guild(id)·guildName 으로 '내 서버 목록'에 추가(교체 아님).
         gid_raw = (req.query.get("guild") or "").strip()
         guild_id = int(gid_raw) if gid_raw.isdigit() else None
@@ -1673,7 +1837,8 @@ def build_app(session_key: str) -> web.Application:
         try:
             ok = await asyncio.to_thread(stop_service)
         except Exception as exc:  # noqa: BLE001
-            return web.json_response({"ok": False, "error": str(exc)})
+            logger.warning("자동시작 서비스 중지 실패: %s", exc)
+            return _api_error("SERVICE_STOP_FAILED", "자동시작 서비스를 중지하지 못했어요.", status=500)
         return web.json_response({"ok": bool(ok)})
 
     async def logout(req: web.Request) -> web.Response:
@@ -1888,7 +2053,17 @@ def build_app(session_key: str) -> web.Application:
         _auth(req)
         durable = _durable_token()
         if not durable:
-            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요.", "entitlement": None, "event": None})
+            return _api_error(
+                "DISCORD_LINK_REQUIRED",
+                "디스코드 연동이 필요해요.",
+                status=409,
+                current_state="unlinked",
+                required_state="linked",
+                failed_condition="durable_discord_token_present",
+                blocked_action="LICENSE_STATUS",
+                action_guide={"action": "CONNECT_DISCORD", "label": "디스코드 연동"},
+                extra={"entitlement": None, "event": None},
+            )
         from .agent import _get_license_event_status, _post_license_me
 
         base = _license_base()
@@ -1900,14 +2075,31 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": True, "entitlement": entitlement, "event": event})
         except Exception as exc:  # noqa: BLE001 - 중앙 서버/결제 설정 오류를 화면에 노출
             logger.warning("라이선스 조회 실패: %s", exc)
-            return web.json_response({"ok": False, "error": str(exc), "entitlement": None, "event": None})
+            return _api_error(
+                "LICENSE_STATUS_FAILED",
+                "라이선스 상태를 불러오지 못했어요.",
+                status=502,
+                details={"cause": str(exc)},  # 핸들러 계약대로 중앙/결제 설정 오류 원인을 화면에 노출
+                failed_condition="central_license_status_available",
+                blocked_action="LICENSE_STATUS",
+                extra={"entitlement": None, "event": None},
+            )
 
     async def license_checkout(req: web.Request) -> web.Response:
         """앱 내 구매 checkout URL 생성. 실제 결제/권한 확정은 central/Paddle webhook 소유."""
         _auth(req)
         durable = _durable_token()
         if not durable:
-            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요."})
+            return _api_error(
+                "DISCORD_LINK_REQUIRED",
+                "디스코드 연동이 필요해요.",
+                status=409,
+                current_state="unlinked",
+                required_state="linked",
+                failed_condition="durable_discord_token_present",
+                blocked_action="LICENSE_CHECKOUT",
+                action_guide={"action": "CONNECT_DISCORD", "label": "디스코드 연동"},
+            )
         from .agent import _post_license_checkout
 
         try:
@@ -1915,14 +2107,30 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": True, **result})
         except Exception as exc:  # noqa: BLE001
             logger.warning("라이선스 checkout 생성 실패: %s", exc)
-            return web.json_response({"ok": False, "error": str(exc)})
+            return _api_error(
+                "LICENSE_CHECKOUT_FAILED",
+                "결제 페이지를 만들지 못했어요.",
+                status=502,
+                details={"cause": str(exc)},
+                failed_condition="central_license_checkout_available",
+                blocked_action="LICENSE_CHECKOUT",
+            )
 
     async def license_event_claim(req: web.Request) -> web.Response:
         """런칭 이벤트 평생 무료 신청. 자격 미달도 central outcome 으로 그대로 보여준다."""
         _auth(req)
         durable = _durable_token()
         if not durable:
-            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요."})
+            return _api_error(
+                "DISCORD_LINK_REQUIRED",
+                "디스코드 연동이 필요해요.",
+                status=409,
+                current_state="unlinked",
+                required_state="linked",
+                failed_condition="durable_discord_token_present",
+                blocked_action="LICENSE_EVENT_CLAIM",
+                action_guide={"action": "CONNECT_DISCORD", "label": "디스코드 연동"},
+            )
         from .agent import _post_license_event_claim
 
         try:
@@ -1930,7 +2138,14 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": True, **result})
         except Exception as exc:  # noqa: BLE001
             logger.warning("이벤트 무료 신청 실패: %s", exc)
-            return web.json_response({"ok": False, "error": str(exc)})
+            return _api_error(
+                "LICENSE_EVENT_CLAIM_FAILED",
+                "이벤트 신청을 완료하지 못했어요.",
+                status=502,
+                details={"cause": str(exc)},
+                failed_condition="central_license_event_claim_available",
+                blocked_action="LICENSE_EVENT_CLAIM",
+            )
 
     async def open_folder(req: web.Request) -> web.Response:
         """로컬 폴더를 OS 파일 탐색기로 연다(데스크톱 앱 ⋯ '출력/모델 폴더 열기'). 로컬 전용 — 같은 PC.
@@ -1964,7 +2179,8 @@ def build_app(session_key: str) -> web.Application:
             else:
                 subprocess.Popen(["xdg-open", str(target)])
         except OSError as exc:
-            return web.json_response({"ok": False, "error": str(exc)})
+            logger.warning("폴더 열기 실패: %s", exc)
+            return _api_error("OPEN_FOLDER_FAILED", "폴더를 열지 못했어요.", status=500)
         return web.json_response({"ok": True, "path": str(target)})
 
     # 정적 자산 라우트(/, /mascot.png, /app-icon.png, /*.js, /img/*)는 _register_asset_routes 가 등록함.

@@ -5,8 +5,8 @@ package com.discordassistant.central.platform.discord.nexa
  *
  * [CoreInterventionRules] 의 dead-wired 필드(continuation 보조·중복·burst 미완·사적 핑퐁)는 "최근 대화 맥락"이 있어야
  * 발동한다. 능동 JDA 히스토리 조회(`channel.history`)는 메시지마다 비동기·레이트리밋이라 게이트웨이 스레드에서
- * 블로킹하기 부적절하다. 그래서 봇이 **이미 받은** 사람 메시지를 채널별 ring buffer 로 보관하고, 트리거가 올 때 그
- * 버퍼에서 신호를 도출한다(추가 네트워크 0). 버퍼는 채널당 최대 [maxPerChannel] 개만 유지한다.
+ * 블로킹하기 부적절하다. 그래서 봇이 **이미 받은** 사람 메시지를 채널/스레드 경계별 ring buffer 로 보관하고,
+ * 트리거가 올 때 그 버퍼에서 신호를 도출한다(추가 네트워크 0). 버퍼는 경계당 최대 [maxPerChannel] 개만 유지한다.
  *
  * **도출하는 신호(트리거를 push 하기 직전 상태 기준)**:
  *  - `duplicateOfPrevHuman`(A4): 트리거 본문이 직전 사람 메시지 본문과 정확히 같은가.
@@ -25,10 +25,13 @@ package com.discordassistant.central.platform.discord.nexa
  *
  * @property maxPerChannel 채널당 보관할 최근 사람 메시지 수(메모리 상한). 사적 핑퐁/첫 메시지 판정에 충분한 작은 창.
  * @property burstGapMs    같은 화자 연속 메시지를 "이어말(미완성)"로 볼 최대 간격(ms). 이하면 burstIncomplete.
+ * @property maxTrackedContexts 버퍼를 유지할 경계(채널/스레드) 최대 수(맵 상한). 각 deque 만 size-cap 하면 고유 채널/스레드가
+ *   계속 늘 때 맵이 무한 성장하므로, 이 상한을 넘으면 현재 키가 아닌 경계 하나를 축출해 맵 크기를 bound 한다.
  */
 class ParticipationSignalDeriver(
     private val maxPerChannel: Int = 12,
     private val burstGapMs: Long = 7_000,
+    private val maxTrackedContexts: Int = 512,
 ) {
     /** 버퍼에 보관하는 사람 메시지 한 건(가명 라벨·짧은 본문·시각·니아 호명 여부 — 원문 식별자 비저장). */
     data class HumanMessage(
@@ -47,17 +50,32 @@ class ParticipationSignalDeriver(
         val conversationMentionsNia: Boolean,
     )
 
-    private val buffers = java.util.concurrent.ConcurrentHashMap<Long, ArrayDeque<HumanMessage>>()
+    private data class ContextKey(
+        val channelId: Long,
+        val boundaryId: Long,
+    )
+
+    private val buffers = java.util.concurrent.ConcurrentHashMap<ContextKey, ArrayDeque<HumanMessage>>()
 
     /**
-     * [channelId] 버퍼의 **현재 상태**(트리거 push 전)로 신호를 도출한 뒤, 트리거를 버퍼에 추가한다.
+     * [channelId]/[contextBoundaryId] 버퍼의 **현재 상태**(트리거 push 전)로 신호를 도출한 뒤, 트리거를 버퍼에 추가한다.
      * 도출은 push 전 상태 기준이라 트리거 자신이 "직전 사람 메시지"에 포함되지 않는다.
+     *
+     * [contextBoundaryId] 는 thread/forum topic 처럼 같은 부모 채널 안에서도 대화 맥락이 분리되는 경계 id 다. 없으면
+     * [channelId] 를 경계로 써서 기존 채널 단위 동작을 유지한다.
      */
     fun deriveAndRecord(
         channelId: Long,
         trigger: HumanMessage,
+        contextBoundaryId: Long? = null,
     ): DerivedSignals {
-        val deque = buffers.computeIfAbsent(channelId) { ArrayDeque() }
+        val key = ContextKey(channelId = channelId, boundaryId = contextBoundaryId ?: channelId)
+        val deque = buffers.computeIfAbsent(key) { ArrayDeque() }
+        // 경계별 키가 무한정 쌓이면(각 deque 만 size-cap) 맵이 무한 성장한다. 상한을 넘으면 현재 키가 아닌 경계 하나를
+        // best-effort 로 축출해 맵 크기를 bound 한다(DiscordBot 의 recentMessagesByChannel 캐시와 동일한 패턴). 도출 신호 semantics 는 불변.
+        if (buffers.size > maxTrackedContexts) {
+            buffers.keys.firstOrNull { it != key }?.let { buffers.remove(it) }
+        }
         return synchronized(deque) {
             val prior = deque.toList() // push 전 스냅샷.
             val prev = prior.lastOrNull()

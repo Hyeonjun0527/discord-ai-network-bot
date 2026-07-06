@@ -58,6 +58,67 @@ interface GuildChannelPolicy {
     )
 }
 
+/** LLM allow-list 변경 후 자동응답 채널이 라우팅 정책에서 막히는지 감사하기 위한 좁은 읽기 포트. */
+fun interface AutoRespondChannelPolicyView {
+    fun autoRespondChannelIds(guildId: Long): Set<Long>
+
+    companion object {
+        val NONE = AutoRespondChannelPolicyView { emptySet() }
+    }
+}
+
+/**
+ * LLM 채널 허용 정책. 레거시 저장소의 빈 allowed_channel 목록은 "허용 채널 없음"이 아니라 **전체 허용**이다.
+ * 이 타입이 그 의미를 명시해 호출자가 빈 List 를 직접 해석하지 않게 한다.
+ */
+class AllowedChannelPolicy private constructor(
+    private val allowedIds: Set<Long>?,
+) {
+    val isAllChannelsAllowed: Boolean
+        get() = allowedIds == null
+
+    val explicitChannelIds: Set<Long>
+        get() = allowedIds.orEmpty()
+
+    fun allows(channelId: Long): Boolean = allowedIds?.contains(channelId) ?: true
+
+    /** 기존 API/관리 UI 호환용 표현. 빈 목록은 전체 허용을 뜻한다. */
+    fun toLegacyAllowedIds(): List<Long> = explicitChannelIds.sorted()
+
+    companion object {
+        fun fromLegacyAllowedIds(channelIds: Collection<Long>): AllowedChannelPolicy {
+            val distinct = channelIds.toSet()
+            return if (distinct.isEmpty()) {
+                AllowedChannelPolicy(null)
+            } else {
+                AllowedChannelPolicy(distinct)
+            }
+        }
+    }
+}
+
+/**
+ * 유저 일일 사용 한도 정책. 저장값 0 은 "0회 허용"이 아니라 **무제한**이다.
+ * 외부 응답/문구는 [isUnlimited] 와 [displayText] 를 같이 사용해 의미를 잃지 않아야 한다.
+ */
+data class DailyLimitPolicy(
+    val value: Int,
+) {
+    init {
+        require(value >= 0) { "daily limit 은 음수일 수 없다: $value" }
+    }
+
+    val isUnlimited: Boolean
+        get() = value == 0
+
+    val displayText: String
+        get() = if (isUnlimited) "무제한" else "$value 회"
+
+    companion object {
+        fun normalize(raw: Int): DailyLimitPolicy = DailyLimitPolicy(raw.coerceAtLeast(0))
+    }
+}
+
 /**
  * 서버(길드) 정책 (K-차수 7, specs §6/§18). 허용 채널·역할별 허용 모델 수준·승인 방식.
  * 라우팅이 쓰는 부분은 [RoutingPolicy] 로 노출한다.
@@ -76,6 +137,7 @@ class PolicyService(
     private val aiAdminRoles: AiAdminRoleRepository? = null,
     @param:Value("\${central.policy.cache-ttl-ms:5000}") private val cacheTtlMs: Long = 5000,
     private val clock: Clock = Clock.systemUTC(),
+    private val autoRespondChannels: AutoRespondChannelPolicyView = AutoRespondChannelPolicyView.NONE,
 ) : RoutingPolicy,
     AutoApprovePolicy,
     GuildChannelPolicy,
@@ -128,6 +190,16 @@ class PolicyService(
         guildCache.remove(guildId)
     }
 
+    private inline fun <T> writePolicy(
+        guildId: Long,
+        block: () -> T,
+    ): T =
+        try {
+            block()
+        } finally {
+            evict(guildId)
+        }
+
     // 캐시 미스 시에만 DB 조회. 트랜잭션 경계는 호출하는 public read 메서드의 readOnly 트랜잭션이 잡는다.
     private fun loadChannelIds(guildId: Long): List<Long> = channels.findByGuildId(guildId).map { it.channelId }
 
@@ -159,7 +231,8 @@ class PolicyService(
                 ),
             )
 
-    private fun cachedChannelIds(guildId: Long): List<Long> = read(channelCache, guildId, ::loadChannelIds)
+    private fun cachedChannelPolicy(guildId: Long): AllowedChannelPolicy =
+        AllowedChannelPolicy.fromLegacyAllowedIds(read(channelCache, guildId, ::loadChannelIds))
 
     private fun cachedRoles(guildId: Long): List<RoleSnapshot> = read(roleCache, guildId, ::loadRoles)
 
@@ -171,12 +244,12 @@ class PolicyService(
         guildId: Long,
         channelId: Long,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         if (!channels.existsByGuildIdAndChannelId(guildId, channelId)) {
             channels.save(AllowedChannelEntity(guildId = guildId, channelId = channelId))
             audit.record("llm_allow_channel", "admin:$adminId", "guild:$guildId", "channel:$channelId")
         }
-        evict(guildId)
+        auditAutoRespondAllowListConflict(guildId, adminId)
     }
 
     @Transactional
@@ -184,10 +257,10 @@ class PolicyService(
         guildId: Long,
         channelId: Long,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         channels.deleteByGuildIdAndChannelId(guildId, channelId)
         audit.record("llm_deny_channel", "admin:$adminId", "guild:$guildId", "channel:$channelId")
-        evict(guildId)
+        auditAutoRespondAllowListConflict(guildId, adminId)
     }
 
     /** 채널 제한 전체 해제 = 모든 채널에서 사용 허용(허용 목록 비움). */
@@ -195,10 +268,10 @@ class PolicyService(
     override fun allowAllChannels(
         guildId: Long,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         channels.deleteByGuildId(guildId)
         audit.record("llm_allow_all_channels", "admin:$adminId", "guild:$guildId", "all")
-        evict(guildId)
+        auditAutoRespondAllowListConflict(guildId, adminId)
     }
 
     /** 허용 채널 목록을 한 번에 교체한다. 빈 목록은 전체 채널 허용이다. */
@@ -207,28 +280,29 @@ class PolicyService(
         guildId: Long,
         channelIds: Collection<Long>,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         channels.deleteByGuildId(guildId)
         channelIds.distinct().forEach { channelId ->
             channels.save(AllowedChannelEntity(guildId = guildId, channelId = channelId))
         }
         audit.record("llm_replace_allowed_channels", "admin:$adminId", "guild:$guildId", channelIds.joinToString(",").ifBlank { "all" })
-        evict(guildId)
+        auditAutoRespondAllowListConflict(guildId, adminId)
     }
 
     /** 허용 채널 ID 목록(비면 전체 허용). */
     @Transactional(readOnly = true)
-    override fun allowedChannelIds(guildId: Long): List<Long> = cachedChannelIds(guildId)
+    override fun allowedChannelIds(guildId: Long): List<Long> = allowedChannelPolicy(guildId).toLegacyAllowedIds()
+
+    /** 타입화된 허용 채널 정책. 빈 저장 목록의 "전체 허용" 의미는 여기서만 해석한다. */
+    @Transactional(readOnly = true)
+    fun allowedChannelPolicy(guildId: Long): AllowedChannelPolicy = cachedChannelPolicy(guildId)
 
     /** 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true). */
     @Transactional(readOnly = true)
     override fun isChannelAllowed(
         guildId: Long,
         channelId: Long,
-    ): Boolean {
-        val allowed = cachedChannelIds(guildId)
-        return allowed.isEmpty() || allowed.any { it == channelId }
-    }
+    ): Boolean = allowedChannelPolicy(guildId).allows(channelId)
 
     // ── 역할 정책 ───────────────────────────────────────────────────────
     @Transactional
@@ -238,20 +312,24 @@ class PolicyService(
         maxBurden: ModelBurden,
         dailyLimit: Int,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
+        val limit = DailyLimitPolicy.normalize(dailyLimit)
         val existing = roles.findByGuildIdAndRoleId(guildId, roleId)
         if (existing != null) {
             existing.maxBurden = maxBurden.name
-            existing.dailyLimit = dailyLimit
+            existing.dailyLimit = limit.value
             roles.save(existing)
         } else {
-            roles.save(RolePolicyEntity(guildId = guildId, roleId = roleId, maxBurden = maxBurden.name, dailyLimit = dailyLimit))
+            roles.save(RolePolicyEntity(guildId = guildId, roleId = roleId, maxBurden = maxBurden.name, dailyLimit = limit.value))
         }
-        audit.record("llm_role_policy", "admin:$adminId", "guild:$guildId", "role:$roleId $maxBurden/$dailyLimit")
-        evict(guildId)
+        audit.record("llm_role_policy", "admin:$adminId", "guild:$guildId", "role:$roleId $maxBurden/${limit.value}")
     }
 
-    /** 멤버의 역할들로부터 허용되는 최대 모델 부담 수준(다중 역할 합집합 = 가장 높은 등급). */
+    /**
+     * 멤버의 역할들로부터 허용되는 최대 모델 부담 수준(다중 역할 합집합 = 가장 높은 일반 등급).
+     * [ModelBurden.RESTRICTED] 는 역할 정책 선택지에서 제외된 시스템/프로바이더 특수 부담이다. DB에 남아 있어도
+     * 일반 역할 권한 상승에 쓰지 않고 무시한다. 모든 매칭 정책이 RESTRICTED 뿐이면 일반 멤버 기본값 LIGHT 로 둔다.
+     */
     @Transactional(readOnly = true)
     override fun maxAllowedBurden(
         guildId: Long,
@@ -276,12 +354,19 @@ class PolicyService(
         guildId: Long,
         memberRoleIds: Collection<Long>,
         base: Int = 20,
-    ): Int {
+    ): Int = dailyLimitPolicy(guildId, memberRoleIds, base).value
+
+    @Transactional(readOnly = true)
+    fun dailyLimitPolicy(
+        guildId: Long,
+        memberRoleIds: Collection<Long>,
+        base: Int = 20,
+    ): DailyLimitPolicy {
         val policies = cachedRoles(guildId).filter { it.roleId in memberRoleIds }
-        if (policies.any { it.dailyLimit <= 0 }) return 0 // 무제한 역할이 하나라도 있으면 무제한
+        if (policies.any { it.dailyLimit <= 0 }) return DailyLimitPolicy(0) // 무제한 역할이 하나라도 있으면 무제한
         val fromRoles = policies.maxOfOrNull { it.dailyLimit }
-        if (fromRoles != null) return fromRoles
-        return cachedGuildSettings(guildId).defaultDailyLimit ?: base // 길드 기본값(0=무제한) 또는 하드코딩 20
+        if (fromRoles != null) return DailyLimitPolicy.normalize(fromRoles)
+        return DailyLimitPolicy.normalize(cachedGuildSettings(guildId).defaultDailyLimit ?: base) // 길드 기본값(0=무제한) 또는 하드코딩 20
     }
 
     /** 필요한 부담 수준을 이 멤버가 쓸 수 있는가(RESTRICTED 는 별도 정책 — 여기선 false). */
@@ -296,12 +381,11 @@ class PolicyService(
         guildId: Long,
         value: Boolean,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
         g.autoApprove = value
         guilds.save(g)
         audit.record("set_auto_approve", "admin:$adminId", "guild:$guildId", value.toString())
-        evict(guildId)
     }
 
     @Transactional(readOnly = true)
@@ -315,7 +399,7 @@ class PolicyService(
         language: String?,
         adminId: Long,
         defaultDailyLimit: Int? = null,
-    ) {
+    ) = writePolicy(guildId) {
         val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
         defaultModel?.takeIf { it.isNotBlank() }?.let { g.defaultModel = it }
         language?.takeIf { it.isNotBlank() }?.let { g.language = it }
@@ -327,19 +411,17 @@ class PolicyService(
             "guild:$guildId",
             "model=${g.defaultModel},lang=${g.language},dailyLimit=${g.defaultDailyLimit}",
         )
-        evict(guildId)
     }
 
     @Transactional
     fun clearGuildDefaultModel(
         guildId: Long,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
         g.defaultModel = null
         guilds.save(g)
         audit.record("clear_guild_default_model", "admin:$adminId", "guild:$guildId", "model=auto")
-        evict(guildId)
     }
 
     /** 길드 기본 모델(미설정 시 null → 라우터가 풀에서 자동 선택). */
@@ -356,12 +438,11 @@ class PolicyService(
         guildId: Long,
         message: String,
         adminId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
         g.welcomeMessage = message.take(1000)
         guilds.save(g)
         audit.record("set_welcome", "admin:$adminId", "guild:$guildId", "len=${g.welcomeMessage?.length}")
-        evict(guildId)
     }
 
     /** 길드 환영 메시지(미설정 시 null). */
@@ -391,22 +472,49 @@ class PolicyService(
     fun cleanupChannel(
         guildId: Long,
         channelId: Long,
-    ) {
+    ) = writePolicy(guildId) {
         channels.deleteByGuildIdAndChannelId(guildId, channelId)
         audit.record("guild_channel_policy_cleanup", "system", "guild:$guildId", "channel:$channelId")
-        evict(guildId)
     }
 
     /** 봇이 길드에서 제거될 때 서버별 정책/환영 설정을 정리한다. */
     @Transactional
     fun cleanupGuild(guildId: Long) {
-        channels.deleteByGuildId(guildId)
-        roles.deleteByGuildId(guildId)
-        aiAdminRoles?.deleteByGuildId(guildId)
-        if (guilds.existsById(guildId)) {
-            guilds.deleteById(guildId)
+        writePolicy(guildId) {
+            channels.deleteByGuildId(guildId)
+            roles.deleteByGuildId(guildId)
+            aiAdminRoles?.deleteByGuildId(guildId)
+            if (guilds.existsById(guildId)) {
+                guilds.deleteById(guildId)
+            }
+            audit.record("guild_policy_cleanup", "system", "guild:$guildId", "removed")
         }
-        audit.record("guild_policy_cleanup", "system", "guild:$guildId", "removed")
-        evict(guildId)
+    }
+
+    private fun auditAutoRespondAllowListConflict(
+        guildId: Long,
+        adminId: Long,
+    ) {
+        // 이 감사는 writePolicy{} 트랜잭션 안에서 교차-애그리거트 read(channels·channel_ai lazy load)를 한다.
+        // 관측용 best-effort 이므로, 그 read 가 던져도 정상적으로 끝난 정책 write 를 롤백시켜선 안 된다.
+        val blockedAutoRespondChannels =
+            runCatching {
+                val policy = AllowedChannelPolicy.fromLegacyAllowedIds(loadChannelIds(guildId))
+                if (policy.isAllChannelsAllowed) {
+                    emptyList()
+                } else {
+                    autoRespondChannels
+                        .autoRespondChannelIds(guildId)
+                        .filterNot(policy::allows)
+                        .sorted()
+                }
+            }.getOrElse { return }
+        if (blockedAutoRespondChannels.isEmpty()) return
+        audit.record(
+            "llm_allow_list_auto_respond_conflict",
+            "admin:$adminId",
+            "guild:$guildId",
+            "blockedAutoRespondChannels:${blockedAutoRespondChannels.joinToString(",")}",
+        )
     }
 }

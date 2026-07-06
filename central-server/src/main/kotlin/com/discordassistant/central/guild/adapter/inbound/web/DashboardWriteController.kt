@@ -1,6 +1,7 @@
 package com.discordassistant.central.guild.adapter.inbound.web
 
 import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
+import com.discordassistant.central.guild.application.DailyLimitPolicy
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.shared.ModelBurden
 import org.slf4j.LoggerFactory
@@ -35,7 +36,8 @@ class DashboardWriteController(
         @AuthenticationPrincipal user: OAuth2User?,
     ): Map<String, Any> {
         policy.setAutoApprove(guildId, enabled, adminId(user))
-        return mapOf("guildId" to guildId, "autoApprove" to enabled)
+        // snowflake(guildId/roleId)는 2^53 을 넘어 JS number 로 내리면 정밀도가 깨진다 → 문자열로 직렬화(정확한 ID 보존).
+        return mapOf("guildId" to guildId.toString(), "autoApprove" to enabled)
     }
 
     @PostMapping("/{guildId}/welcome")
@@ -45,7 +47,7 @@ class DashboardWriteController(
         @AuthenticationPrincipal user: OAuth2User?,
     ): Map<String, Any> {
         policy.setWelcomeMessage(guildId, message, adminId(user))
-        return mapOf("guildId" to guildId, "ok" to true)
+        return mapOf("guildId" to guildId.toString(), "ok" to true)
     }
 
     @PostMapping("/{guildId}/role-policy")
@@ -61,6 +63,14 @@ class DashboardWriteController(
         if (burden == null) log.warn("잘못된 ModelBurden level='{}' → LIGHT 로 폴백", level)
         val resolved = burden ?: ModelBurden.LIGHT
         policy.setRolePolicy(guildId, roleId, resolved, dailyLimit, adminId(user))
-        return mapOf("guildId" to guildId, "roleId" to roleId, "level" to resolved.name)
+        val limit = DailyLimitPolicy.normalize(dailyLimit)
+        return mapOf(
+            "guildId" to guildId.toString(),
+            "roleId" to roleId.toString(),
+            "level" to resolved.name,
+            "dailyLimit" to limit.value,
+            "dailyLimitUnlimited" to limit.isUnlimited,
+            "dailyLimitLabel" to limit.displayText,
+        )
     }
 }

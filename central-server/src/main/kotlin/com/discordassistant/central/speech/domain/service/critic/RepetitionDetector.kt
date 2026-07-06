@@ -34,7 +34,7 @@ class RepetitionDetector(
         if (recentNexa.isEmpty()) return CriticVerdict.ACCEPTED // 비교할 과거 니아 발화 없음 → 반복 아님.
 
         val candidateGrams = nGrams(candidateText)
-        if (candidateGrams.isEmpty()) return CriticVerdict.ACCEPTED // 너무 짧아 n-gram 없음 → 통과.
+        if (candidateGrams.isEmpty()) return CriticVerdict.ACCEPTED // 정규화 후 공백뿐 → 비교 대상 없음.
 
         val maxSimilarity = recentNexa.maxOf { jaccard(candidateGrams, nGrams(it)) }
         return if (maxSimilarity >= SIMILARITY_THRESHOLD) {
@@ -47,7 +47,10 @@ class RepetitionDetector(
     /** 정규화(공백 압축·소문자) 후 문자 [N] 그램 집합. */
     private fun nGrams(text: String): Set<String> {
         val normalized = text.lowercase().replace(WHITESPACE, " ").trim()
-        if (normalized.length < N) return emptySet()
+        if (normalized.isEmpty()) return emptySet()
+        // [N] 미만 짧은 버블(유행어·리액션 "ㅋㅋ"·"ㅇㅇ"·"...")은 n-gram 이 안 나오지만 그래도 반복이다 —
+        // 전체 정규화 문자열을 단일 토큰으로 비교(정확 반복 검출). 긴 발화는 아래 문자 [N]그램.
+        if (normalized.length < N) return setOf(normalized)
         return (0..normalized.length - N).map { normalized.substring(it, it + N) }.toSet()
     }
 
@@ -65,7 +68,7 @@ class RepetitionDetector(
     companion object {
         const val DEFAULT_NEXA_SPEAKER_LABEL: String = "nia"
 
-        /** 문자 n-gram 크기(짧은 한국어 발화에 적당한 trigram). */
+        /** 문자 n-gram 크기(짧은 한국어 발화에 적당한 trigram). [N] 미만 발화는 전체 문자열 동등성으로 폴백. */
         const val N: Int = 3
 
         /** 이 유사도 이상이면 반복으로 보고 탈락(0.6 = 상당히 겹침). */

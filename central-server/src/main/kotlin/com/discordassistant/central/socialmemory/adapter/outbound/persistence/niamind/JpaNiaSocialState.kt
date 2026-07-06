@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 import java.time.Instant
@@ -80,6 +81,8 @@ class NiaRelationshipStateEntity(
     @Column(name = "trust") var trust: Double = 0.0,
     @Column(name = "comfort") var comfort: Double = 0.0,
     @Column(name = "last_updated_at") var lastUpdatedAt: Instant? = null,
+    // 낙관적 락(V75). 같은 (scope,person) 동시 갱신 시 늦게 커밋하는 쪽이 OptimisticLockException → 상위가 재시도.
+    @Version @Column(name = "version") var version: Long = 0,
 )
 
 @Entity
@@ -90,6 +93,8 @@ class NiaEmotionStateEntity(
     @Column(name = "reaction") var reaction: Double = 0.0,
     @Column(name = "mood") var mood: Double = 0.0,
     @Column(name = "last_updated_at") var lastUpdatedAt: Instant? = null,
+    // 낙관적 락(V75). 같은 scope 감정 행 동시 갱신 시 늦게 커밋하는 쪽이 OptimisticLockException → 상위가 재시도.
+    @Version @Column(name = "version") var version: Long = 0,
 )
 
 interface NiaRelationshipStateRepository : JpaRepository<NiaRelationshipStateEntity, Long> {

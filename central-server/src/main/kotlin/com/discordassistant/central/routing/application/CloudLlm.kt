@@ -185,8 +185,10 @@ object CloudLlmResponseParser {
             }
         val error = root.get("error")
         if (error != null && !error.isNull) {
-            // 업스트림 에러 원문은 노출하지 않고 일반화 메시지만(예외 원칙 — 내부 상세 미노출).
-            throw CloudLlmException(USER_ERROR_MESSAGE)
+            // z.ai 업스트림 에러(모델 없음·인증·잔액 등)의 사유를 운영자가 바로 진단할 수 있게 노출한다
+            // (이 봇은 서버 관리자가 운영하므로 "model not found" 같은 실제 사유가 보여야 한다).
+            val reason = errorReasonOf(error)
+            throw CloudLlmException(if (reason != null) "클라우드 AI 오류: $reason" else USER_ERROR_MESSAGE)
         }
         val message =
             root
@@ -210,7 +212,36 @@ object CloudLlmResponseParser {
         return CloudLlmResult(content.trim(), usage)
     }
 
-    /** 사용자(디스코드)에게 노출되는 일반화 메시지. 업스트림 status·body 등 상세는 로그로만 남긴다. */
+    /** z.ai/OpenAI 호환 `error` 노드에서 code·message 를 한 줄로 요약(운영자 진단용 — 개행 제거·길이 캡). */
+    fun errorReasonOf(errorNode: com.fasterxml.jackson.databind.JsonNode): String? {
+        val code = errorNode.get("code")?.asText()?.takeIf { it.isNotBlank() }
+        val message = errorNode.get("message")?.asText()?.takeIf { it.isNotBlank() }
+        return listOfNotNull(code, message)
+            .joinToString(" ")
+            .replace(Regex("[\\r\\n]+"), " ")
+            .trim()
+            .take(180)
+            .ifBlank { null }
+    }
+
+    /** 응답 body(JSON)에서 업스트림 에러 사유를 뽑는다(파싱 실패면 null). */
+    fun upstreamErrorReason(
+        body: String,
+        mapper: ObjectMapper,
+    ): String? = runCatching { mapper.readTree(body).get("error")?.let(::errorReasonOf) }.getOrNull()
+
+    /** HTTP status → 운영자용 짧은 카테고리. */
+    fun statusCategory(status: Int): String =
+        when (status) {
+            401, 403 -> "인증 오류·키 확인"
+            402 -> "잔액 부족"
+            404 -> "모델 없음·모델명 확인"
+            429 -> "요청 한도 초과"
+            in 500..599 -> "z.ai 서버 오류"
+            else -> "HTTP $status"
+        }
+
+    /** 사용자(디스코드)에게 노출되는 일반화 메시지(원인 추출 실패 시 폴백). */
     const val USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
 
     /**
@@ -486,7 +517,9 @@ class ZaiCloudLlm(
                     elapsedMs(startedAt),
                     resp.body().take(500),
                 )
-                throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE)
+                val reason = CloudLlmResponseParser.upstreamErrorReason(resp.body(), mapper)
+                val category = CloudLlmResponseParser.statusCategory(resp.statusCode())
+                throw CloudLlmException("클라우드 AI 오류($category)" + (reason?.let { ": $it" } ?: ""))
             }
             return resp.body()
         }

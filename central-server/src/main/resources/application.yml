@@ -94,9 +94,9 @@ central:
     zai-api-key: ${ZAI_API_KEY:}
     zai-base-url: ${ZAI_BASE_URL:https://api.z.ai/api/paas/v4}
     timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
-    # 텍스트 LLM 1회 시도는 4초를 넘으면 취소하고 최대 2회 재요청한다(fast-or-fail, ADR 0006). thinking 은 무조건
-    # disabled 라 실측 <2초 — 4초면 즉답을 담고도 여유가 있다. 이미지/RunPod 같은 장기 작업 timeout 과 분리한다.
-    llm-timeout-seconds: ${ZAI_LLM_TIMEOUT_SECONDS:4}
+    # 텍스트 LLM 1회 시도 타임아웃(초). thinking 은 무조건 disabled(로컬 실측 <2.5초). 단 원격 운영 서버→z.ai
+    # 네트워크 지연이 로컬보다 커 3~4초로는 부족 → 20초로 여유를 둔다(느린 연결도 담김). 값을 바꾸려면 ADR 0006 갱신.
+    llm-timeout-seconds: ${ZAI_LLM_TIMEOUT_SECONDS:20}
     llm-max-retries: ${ZAI_LLM_MAX_RETRIES:2}
     # /질문·ai채팅 무료 클라우드 폴백 모델. 기본값은 Air, env 로 즉시 rollback 가능.
     free-model: ${ZAI_FREE_MODEL:glm-4.5-air}

@@ -1273,8 +1273,11 @@ class DiscordBot(
             // participation 이 답변 소유권을 갖고, legacy mention/direct/autorespond 경로는 중복·우회 발화를 만들지 않는다.
             // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
             // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
-            forwardToParticipation(event, mentioned || directlyAddressed)
-            if (participationFlags.allowsRealSend(event.guild.idLong, event.channel.idLong)) return
+            // 참여가 실제로 발화(예약)했으면 participation 이 응답을 소유한다(중복 방지). 발화하지 않았으면 — 특히 직접
+            // 호명/멘션/reply 인데 judge 가 침묵했으면 — SSOT(guild-policy-boundary: MEMBER 모드 직접호명 반드시 응답)에
+            // 따라 아래 legacy 확실한 답변 경로로 폴백한다. 이전엔 LIVE 채널이면 무조건 return 해 judge 침묵 시 무응답이었다.
+            val participationWillSpeak = forwardToParticipation(event, mentioned || directlyAddressed)
+            if (participationWillSpeak) return
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
@@ -1300,8 +1303,8 @@ class DiscordBot(
         private fun forwardToParticipation(
             event: MessageReceivedEvent,
             mentioned: Boolean,
-        ) {
-            try {
+        ): Boolean {
+            return try {
                 val messageId = event.messageIdLong
                 val selfId = event.jda.selfUser.idLong
                 val speakerLabel = "user_${event.author.idLong % 100000}"
@@ -1351,7 +1354,7 @@ class DiscordBot(
                                 ),
                     )
 
-                participationEmitBridge.onMessage(
+                val participationOutcome = participationEmitBridge.onMessage(
                     com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
                         guildId = event.guild.idLong,
                         channelId = event.channel.idLong,
@@ -1380,8 +1383,13 @@ class DiscordBot(
                         seed = messageId,
                     ),
                 )
+                // 참여가 실제 발화(SPEAK 예약)를 소유했는지. true 면 onMessageReceived 가 legacy 경로를 건너뛴다.
+                participationOutcome is
+                    com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.Emitted &&
+                    participationOutcome.result.willSpeak
             } catch (e: Exception) {
                 log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
+                false
             }
         }
 

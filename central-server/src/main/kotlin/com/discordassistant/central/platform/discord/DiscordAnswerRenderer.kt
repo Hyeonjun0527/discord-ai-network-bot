@@ -4,14 +4,12 @@ import com.discordassistant.central.channelai.application.ChannelAiProfileServic
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.interactions.InteractionHook
-import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.buttons.Button
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
 /**
  * AI 답변을 Discord 로 내보내는 렌더링 어댑터(god class 분해 — verbatim 이동).
- * 의사 스트리밍 편집 스케줄·채널 AI 프로필 웹훅·피드백 버튼·일반 봇 메시지 폴백을 담당한다.
+ * 의사 스트리밍 편집 스케줄·채널 AI 프로필 웹훅·일반 봇 메시지 폴백을 담당한다.
  * 본문 로직(JDA 호출 순서·편집 간격·문구)은 DiscordBot.Listener 에서 1바이트 불변으로 이동했다.
  * DiscordBot.Listener 가 동일 인자로 위임 호출한다.
  */
@@ -27,11 +25,7 @@ class DiscordAnswerRenderer(
         reply: Reply,
     ) {
         if (sendAnswerWebhook(channelUnion, ctx, reply)) {
-            editOriginalWithFeedback(
-                hook,
-                "✅ 답변을 채널 AI 프로필로 보냈어요.",
-                reply,
-            )
+            editOriginalText(hook, "✅ 답변을 채널 AI 프로필로 보냈어요.")
             return
         }
         if (sendBotChannelAnswer(channelUnion, reply)) {
@@ -54,7 +48,6 @@ class DiscordAnswerRenderer(
         return runCatching {
             val snapshots = reply.publicPseudoStreamSnapshots()
             val action = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content)
-            feedbackRows(reply).takeIf { it.isNotEmpty() && snapshots == null }?.let { action.setComponents(it) }
             val sent = action.complete()
             if (snapshots != null) scheduleMessageEdits(sent, reply, snapshots, 1)
             true
@@ -85,7 +78,7 @@ class DiscordAnswerRenderer(
         }
         val snapshots = reply.publicPseudoStreamSnapshots()
         if (snapshots == null) {
-            editOriginalWithFeedback(hook, reply.content, reply)
+            editOriginalText(hook, reply.content)
             return
         }
         hook.editOriginal(snapshots.first()).queue(
@@ -105,9 +98,6 @@ class DiscordAnswerRenderer(
     ) {
         if (index >= snapshots.size) return
         val action = hook.editOriginal(snapshots[index])
-        if (index == snapshots.lastIndex) {
-            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-        }
         action.queueAfter(
             reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
             TimeUnit.MILLISECONDS,
@@ -127,9 +117,7 @@ class DiscordAnswerRenderer(
     ) {
         val snapshots = reply.publicPseudoStreamSnapshots()
         if (snapshots == null) {
-            val action = source.reply(reply.content).mentionRepliedUser(false)
-            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-            action.queue({}, {})
+            source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
             return
         }
         val action =
@@ -154,9 +142,6 @@ class DiscordAnswerRenderer(
     ) {
         if (index >= snapshots.size) return
         val action = message.editMessage(snapshots[index])
-        if (index == snapshots.lastIndex) {
-            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-        }
         action.queueAfter(
             reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
             TimeUnit.MILLISECONDS,
@@ -202,27 +187,11 @@ class DiscordAnswerRenderer(
         }.getOrDefault(false)
     }
 
-    private fun editOriginalWithFeedback(
+    private fun editOriginalText(
         hook: InteractionHook,
         content: String,
-        reply: Reply,
     ) {
-        val action = hook.editOriginal(content)
-        feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-        action.queue()
-    }
-
-    private fun feedbackRows(reply: Reply): List<ActionRow> {
-        val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
-        // customId = "ask-feedback:<action>:<requestId>" — DiscordBot.handleAskFeedbackButton 이 FeedbackAction.id
-        // (up/down/report)로 파싱한다. 이 버튼이 없으면 품질 피드백/신고 파이프라인 전체가 Discord 에서 도달 불가.
-        return listOf(
-            ActionRow.of(
-                Button.success("ask-feedback:up:$requestId", "👍"),
-                Button.danger("ask-feedback:down:$requestId", "👎"),
-                Button.secondary("ask-feedback:report:$requestId", "🚩"),
-            ),
-        )
+        hook.editOriginal(content).queue()
     }
 
     companion object {

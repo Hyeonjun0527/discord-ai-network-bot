@@ -906,7 +906,6 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
             private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
-            private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
 
             // AI 관리 비서 확인 게이트 버튼 customId 접두사(뒤에 PendingAdminActionStore 토큰).
@@ -991,10 +990,6 @@ class DiscordBot(
             ) {
                 // /그림 게시 확인 게이트: 본인만 보이는 미리보기에서 채널 게시/버리기/안묻기 선택.
                 handleImaginePostButton(event)
-                return
-            }
-            if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
-                handleAskFeedbackButton(event, ctx)
                 return
             }
             if (event.componentId.startsWith(ADMIN_ACT_RUN_PREFIX) || event.componentId.startsWith(ADMIN_ACT_CANCEL_PREFIX)) {
@@ -1696,32 +1691,6 @@ class DiscordBot(
                 "👍" -> metrics.record("reaction:up")
                 "👎" -> metrics.record("reaction:down")
             }
-        }
-
-        private enum class FeedbackAction(
-            val id: String,
-            val rating: Int,
-            val feedbackType: String,
-        ) {
-            UP("up", 1, "positive"),
-            DOWN("down", -1, "negative"),
-            REPORT("report", -1, "report"),
-        }
-
-        private fun handleAskFeedbackButton(
-            event: ButtonInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            val payload = event.componentId.removePrefix(ASK_FEEDBACK_PREFIX)
-            val actionId = payload.substringBefore(':', missingDelimiterValue = "")
-            val requestId = payload.substringAfter(':', missingDelimiterValue = "").trim()
-            val action = FeedbackAction.entries.firstOrNull { it.id == actionId }
-            if (action == null || requestId.isBlank()) {
-                event.reply("피드백 버튼 정보를 읽지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.").setEphemeral(true).queue()
-                return
-            }
-            val reply = commands.submitAskFeedback(ctx, requestId, action.rating, action.feedbackType)
-            event.reply(reply.content).setEphemeral(true).queue()
         }
 
         private fun mentionPrompt(

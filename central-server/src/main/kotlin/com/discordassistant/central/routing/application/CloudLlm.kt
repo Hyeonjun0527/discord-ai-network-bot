@@ -111,6 +111,18 @@ interface CloudLlm {
     ): CloudLlmResult = generate(prompt, model)
 
     /**
+     * 발화(speech) 생성 전용 — 샘플링 randomness([temperature])를 명시해 **같은 프롬프트라도 매번 다른 문장**이
+     * 나오게 한다(사람은 결코 같은 말을 글자까지 똑같이 반복하지 않는다). 판단(judge)은 일관성을 위해 이 경로를
+     * 쓰지 않고 결정론적으로 둔다. 기본 구현은 [temperature] 를 무시하고 [generate] 로 위임하므로 기존 구현·테스트
+     * 스텁은 무변경 호환된다 — z.ai 구현만 override 해 temperature 를 전송한다.
+     */
+    fun generateSampled(
+        prompt: String,
+        model: String,
+        temperature: Double,
+    ): CloudLlmResult = generate(prompt, model)
+
+    /**
      * OpenAI 호환 tool calling 1회(AI 관리 비서). [systemPrompt]+[userPrompt] 로 대화를 만들고 [toolsJson]
      * (OpenAI function schema 배열의 JSON 문자열)을 `tools`+`tool_choice:"auto"` 로 보낸다. GLM 이 도구를
      * 호출하면 [CloudToolResponse.toolCalls], 아니면 [CloudToolResponse.text] 가 채워진다. 실패 시 [CloudLlmException].
@@ -397,6 +409,12 @@ class ZaiCloudLlm(
         model: String,
     ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model), mapper)
 
+    override fun generateSampled(
+        prompt: String,
+        model: String,
+        temperature: Double,
+    ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model, temperature = temperature), mapper)
+
     override fun generate(
         prompt: String,
         model: String,
@@ -448,6 +466,7 @@ class ZaiCloudLlm(
         model: String,
         thinking: CloudThinking? = null,
         toolsJson: String? = null,
+        temperature: Double? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val startedAt = System.nanoTime()
@@ -463,6 +482,9 @@ class ZaiCloudLlm(
                     // 4초 fast-or-fail 예산을 초과한다(disabled 는 실측 <2초). 즉답 채팅 봇에는 추론 지연이 해가
                     // 되므로 어떤 호출이 ENABLED 를 넘겨도 켜지 않는다([thinking] 파라미터는 무시된다).
                     putObject("thinking").put("type", CloudThinking.DISABLED.wire)
+                    // 발화 생성만 temperature 를 실어 같은 프롬프트라도 매번 다른 문장이 나오게 한다(반복 방지).
+                    // 판단(judge)/tool calling 등은 temperature=null 이라 z.ai 기본(결정론에 가까움)으로 일관 유지.
+                    if (temperature != null) put("temperature", temperature)
                     if (!toolsJson.isNullOrBlank()) {
                         // tools 는 OpenAI function schema 배열(카탈로그 SSOT 가 만든 JSON). 파싱 실패는 호출자 책임이 아니라
                         // 카탈로그 버그이므로 여기서 던져 빠르게 드러낸다(fail fast). tool_choice=auto 로 호출 여부는 GLM 이 결정.

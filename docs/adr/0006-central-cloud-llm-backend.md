@@ -80,6 +80,14 @@ interface CloudLlm {
   application.yml 기본값(20)이 운영에 그대로 적용된다.
 - thinking off·타임아웃 값을 바꾸려면 이 ADR 을 먼저 갱신한다(설정만 몰래 바꾸지 않는다).
 
+### 3-1. 모델 통일 — 모든 GLM 경로는 `glm-4.5-air` (불변)
+
+무료질문·니아 발화 생성(speech)·participation **판단(judge)**·관리 비서 tool calling — 모든 GLM 경로의 기본
+모델은 **`glm-4.5-air`** 로 통일한다. `glm-5.1` 은 즉답(속도 최우선)을 제대로 지원하지 못하고 비용도 높아
+채팅 봇의 실시간 경로에 부적합하다. 특히 participation judge 는 매 메시지마다 도는 hot path 이므로 가장 빠른
+모델이어야 한다. 각 경로는 env 로 개별 override 가능하지만(`ZAI_FREE_MODEL`·`NEXA_SPEECH_MODEL`·
+`NEXA_PARTICIPATION_JUDGE_MODEL` 등) 기본값은 모두 `glm-4.5-air` 이며, 기본 모델을 바꾸려면 이 ADR 을 먼저 갱신한다.
+
 ### 비-목표 (이번 단계 제외)
 
 - 이미지(클라우드 SD / 안전 심사 / 번역) 직결 — 후속 단계 2(`reviewImagePrompt`/`translate`).

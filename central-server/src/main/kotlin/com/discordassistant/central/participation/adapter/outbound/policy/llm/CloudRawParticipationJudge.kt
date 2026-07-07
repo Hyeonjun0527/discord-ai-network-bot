@@ -20,7 +20,8 @@ import org.springframework.stereotype.Component
 @Component
 class CloudRawParticipationJudge(
     private val cloudLlm: CloudLlm,
-    @param:Value("\${central.nexa.participation.judge.model:glm-5.1}") private val model: String,
+    // 모든 GLM 경로(판단·발화·무료질문·관리도구)는 glm-4.5-air 로 통일한다(속도 최우선·비용, ADR 0006).
+    @param:Value("\${central.nexa.participation.judge.model:glm-4.5-air}") private val model: String,
 ) : RawParticipationJudgePort {
     private val log = LoggerFactory.getLogger(CloudRawParticipationJudge::class.java)
     private val mapper = ObjectMapper()

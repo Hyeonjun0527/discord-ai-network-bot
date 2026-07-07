@@ -88,6 +88,14 @@ central:
     # 관리자 Discord user id 허용목록(콤마 구분). OAuth 로그인 사용자는 이 목록에 있을 때만 관리자.
     # 비면 OAuth 만으로는 관리자 작업 불가(admin-token 헤더로만) — fail-closed.
     admin-user-ids: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:}
+  idempotency:
+    # 같은 요청 폭주 방어. 같은 (guild,user,prompt) 는 window-millis 안에서 max-duplicates-per-window 번까지
+    # 허용(반복 채팅은 통과), 그 다음부터 막는다. 예전엔 1번이라도 같으면 무조건 막아 채팅에 "중복 요청" 문구가 샜다.
+    window-millis: ${CENTRAL_IDEMPOTENCY_WINDOW_MILLIS:10000}
+    max-duplicates-per-window: ${CENTRAL_IDEMPOTENCY_MAX_DUPLICATES:5}
+    # 채널당 하루 AI 사용 상한(비용·남용 방어). channel-window-millis 안에서 이 횟수를 넘으면 막는다.
+    channel-daily-limit: ${CENTRAL_IDEMPOTENCY_CHANNEL_DAILY_LIMIT:50}
+    channel-window-millis: ${CENTRAL_IDEMPOTENCY_CHANNEL_WINDOW_MILLIS:86400000}
   cloud:
     # 무료질문(glm-*)을 중앙 서버가 관리자 키 1개로 직접 처리하는 클라우드 백엔드(ADR 0006).
     # 비우면 비활성 — /질문 은 기존대로 에이전트(provider-agent) 경유 glm-* 폴백으로 동작한다(하위호환).

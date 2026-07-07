@@ -31,6 +31,7 @@ import com.discordassistant.central.routing.domain.model.defaultDeadlineMillis
 import com.discordassistant.central.routing.domain.model.estimatedMaxOutputTokens
 import com.discordassistant.central.routing.domain.service.Candidate
 import com.discordassistant.central.routing.domain.service.FilterSignal
+import com.discordassistant.central.routing.domain.service.IdempotencyDecision
 import com.discordassistant.central.routing.domain.service.IdempotencyGuard
 import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
 import com.discordassistant.central.routing.domain.service.ProviderRouter
@@ -101,15 +102,28 @@ class RequestOrchestrator(
         history: List<CloudTurn> = emptyList(),
         thinking: CloudThinking? = null,
     ): OrchestrationResult {
-        // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243). 내부 폴백 재시도는 제외(dedup=false).
-        if (dedup && !idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
-            val dup =
-                rejected(
-                    RequestRejectionCode.DUPLICATE_REQUEST,
-                    "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.",
-                )
-            recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
-            return dup
+        // 멱등/한도: 같은 요청은 짧은 윈도우 안에서 최대 5번까지 허용(반복 채팅은 통과), 그 다음부터 막는다.
+        // 또한 채널당 하루 상한(기본 50)을 넘으면 막는다. 내부 폴백 재시도는 제외(dedup=false). (#243, 개선)
+        if (dedup) {
+            val decision = idempotency.begin(input.guildId, input.channelId, input.userId, input.prompt)
+            if (decision != IdempotencyDecision.ALLOW) {
+                val rej =
+                    when (decision) {
+                        IdempotencyDecision.DUPLICATE ->
+                            rejected(
+                                RequestRejectionCode.DUPLICATE_REQUEST,
+                                "같은 말을 너무 빠르게 반복했어요. 잠깐 뒤에 다시 해주세요.",
+                            )
+                        IdempotencyDecision.CHANNEL_DAILY_LIMIT ->
+                            rejected(
+                                RequestRejectionCode.QUOTA_EXCEEDED,
+                                "이 채널은 오늘 AI 사용 한도에 도달했어요. 내일 다시 이용해 주세요.",
+                            )
+                        IdempotencyDecision.ALLOW -> error("unreachable")
+                    }
+                recorder.recordRequest(input, rej.state, rej.providerId, rej.failReason, rej.requestId)
+                return rej
+            }
         }
         val result = route(input, history, thinking)
         recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId, result.effectiveBurden)

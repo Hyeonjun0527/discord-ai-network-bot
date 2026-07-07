@@ -111,8 +111,8 @@ class AdminAssistantService(
     }
 
     companion object {
-        /** 관리 비서 tool calling 모델(무료 클라우드 기본 GLM). */
-        const val ADMIN_TOOL_MODEL = "glm-5.1"
+        /** 관리 비서 tool calling 모델. 모든 GLM 경로는 glm-4.5-air 로 통일한다(속도·비용, ADR 0006). */
+        const val ADMIN_TOOL_MODEL = "glm-4.5-air"
     }
 }
 

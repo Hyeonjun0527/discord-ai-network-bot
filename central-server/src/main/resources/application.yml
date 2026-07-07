@@ -152,6 +152,11 @@ central:
       max-stale-sends: ${NEXA_CANARY_HALT_MAX_STALE_SENDS:5}
       # 자동 중단 평가 tick 주기(ms).
       interval-ms: ${NEXA_CANARY_HALT_INTERVAL_MS:60000}
+    participation:
+      judge:
+        # 니아 participation 판단(SPEAK/WAIT/REACT/IGNORE) LLM 모델. 모든 GLM 경로(판단·발화·무료질문·관리도구)는
+        # glm-4.5-air 로 통일한다 — 속도 최우선(glm-5.1 은 즉답 지원 부족·비용 높음), env 로 즉시 rollback 가능(ADR 0006).
+        model: ${NEXA_PARTICIPATION_JUDGE_MODEL:glm-4.5-air}
 
 # Bugsink 오류 수집. Bugsink는 Sentry SDK 호환이므로 Sentry Java SDK를 사용한다.
 # DSN 미설정(기본)이면 완전 no-op. BUGSINK_DSN 또는 SENTRY_DSN 주입 시 활성.

@@ -101,6 +101,12 @@ class CandidateGenerationService(
             appendLine(socialActCompiler.compile(packet.socialAct))
             appendLine(burstCompiler.compile(packet.burstShape))
             appendLine("최근 원문 장면 전체를 보고 실제 문구만 만든다. 니아의 직전 말을 되묻는 장면이면 같은 말을 반복하지 말고 뜻을 설명하거나 짧게 수습한다.")
+            appendLine(
+                "반복 회피: 장면에 이미 있는 니아(너 자신)의 지난 발화를 그대로 되풀이하지 않는다. 같은 사람이 짧은 호명" +
+                    "(\"니아야\", \"nia야\" 등)이나 같은 말을 반복하면, 매번 똑같이 답하지 말고 사람처럼 반응을 바꾼다 — " +
+                    "가볍게 되묻거나(무슨 일), 자꾸 부르는 걸 짚거나(왜 자꾸 불러 ㅋㅋ), 살짝 장난치거나 시큰둥하게. " +
+                    "직전에 네가 한 말과 다른 말을 고른다.",
+            )
             appendLine("각 bubble 은 Discord 채팅 한마디처럼 쓰고, ASCII 마침표(.)로 끝내지 않는다.")
             appendLine()
             appendLine(OUTPUT_FORMAT_INSTRUCTION)

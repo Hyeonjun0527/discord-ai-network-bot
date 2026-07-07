@@ -108,7 +108,7 @@ class RoutingCloudSpeechGenerationAdapter(
         timeout: Duration,
     ): CloudLlmResult {
         val future: Future<CloudLlmResult> =
-            CALL_EXECUTOR.submit(Callable { cloudLlm.generate(prompt, modelConfig.model) })
+            CALL_EXECUTOR.submit(Callable { cloudLlm.generateSampled(prompt, modelConfig.model, modelConfig.temperature) })
         return try {
             future.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {

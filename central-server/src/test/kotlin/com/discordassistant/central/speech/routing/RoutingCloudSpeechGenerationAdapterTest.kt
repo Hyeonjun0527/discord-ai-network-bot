@@ -24,7 +24,7 @@ import java.time.ZoneOffset
  * fail-safe, stale 폐기, 사용량 기록.
  */
 class RoutingCloudSpeechGenerationAdapterTest {
-    private val config = SpeechModelConfig(model = "glm-5.1", timeoutSeconds = 8, maxRetries = 1)
+    private val config = SpeechModelConfig(model = "glm-5.1", timeoutSeconds = 8, maxRetries = 1, temperature = 0.9)
 
     private fun request(count: Int = 1) =
         SpeechGenerationRequest(

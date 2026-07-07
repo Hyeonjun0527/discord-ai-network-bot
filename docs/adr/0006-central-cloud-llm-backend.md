@@ -88,6 +88,15 @@ interface CloudLlm {
 모델이어야 한다. 각 경로는 env 로 개별 override 가능하지만(`ZAI_FREE_MODEL`·`NEXA_SPEECH_MODEL`·
 `NEXA_PARTICIPATION_JUDGE_MODEL` 등) 기본값은 모두 `glm-4.5-air` 이며, 기본 모델을 바꾸려면 이 ADR 을 먼저 갱신한다.
 
+### 3-2. 발화는 temperature 로 매번 다르게, 판단은 결정론 (불변)
+
+발화(speech) 생성은 `central.speech.temperature`(기본 0.9)를 z.ai 에 전송해 **같은 프롬프트라도 매번 다른 문장**이
+나오게 한다 — 사람은 같은 호명("nia야")에 글자까지 똑같이 답하지 않는다. temperature=0(결정론)이면 반복 호명에
+동일 문장을 되풀이하는 회귀가 생긴다. 반면 **판단(participation judge)·tool calling·무료질문**은 temperature 를
+전송하지 않아(z.ai 기본, 결정론에 가까움) 일관된 결정을 유지한다. `CloudLlm.generateSampled(...)` 만 temperature 를
+싣고, 나머지 경로(`generate`)는 싣지 않는다. 변주는 few-shot 목록을 도는 게 아니라 페르소나 분포에서 샘플링하는
+것이므로, 반복 방지는 하드코딩 예시가 아니라 (a) temperature + (b) "지난 발화를 되풀이 말라"는 지시로 달성한다.
+
 ### 비-목표 (이번 단계 제외)
 
 - 이미지(클라우드 SD / 안전 심사 / 번역) 직결 — 후속 단계 2(`reviewImagePrompt`/`translate`).

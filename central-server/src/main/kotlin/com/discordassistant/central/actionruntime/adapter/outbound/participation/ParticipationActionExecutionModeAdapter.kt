@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component
 /**
  * actionruntime 전송 경계가 실행 직전 현재 NEXA rollout 모드를 다시 읽게 하는 어댑터.
  *
- * 예약된 action 이 LIVE 에서 만들어졌더라도 due 전 운영자가 SHADOW/OFF 로 내리면 현재 모드가 우선한다.
+ * 예약 당시 [ShadowMode]는 실행 권한의 상한이고, due 전 현재 모드는 그 권한을 더 좁힐 수만 있다. 따라서 SHADOW에서
+ * 예약된 action은 이후 채널이 LIVE로 승격돼도 실제 전송될 수 없다.
  * channelId 를 숫자로 해석할 수 없으면 운영 Discord 채널로 확정할 수 없으므로 fail-closed 로 OFF 를 반환한다.
  */
 @Component
@@ -28,16 +29,18 @@ class ParticipationActionExecutionModeAdapter(
 
     override fun currentMode(
         target: ActionTarget,
-        requestedMode: ShadowMode,
+        originRolloutMode: ShadowMode,
     ): ShadowMode {
         val channelId = target.channelId.toLongOrNull() ?: return ShadowMode.OFF
         val storedMode = shadowModeStore.currentMode(target.guildPseudonym)
         val guildLane = if (storedMode == ShadowMode.OFF) globalDefaultLane else ParticipationLane.fromShadowMode(storedMode)
-        return NexaParticipationGate.resolve(
-            channelId = channelId,
-            guildLane = guildLane,
-            channelOverride = flagPort.channelOverride(target.guildPseudonym, channelId),
-            excludedChannelIds = flagPort.excludedChannelIds(target.guildPseudonym),
-        )
+        val currentMode =
+            NexaParticipationGate.resolve(
+                channelId = channelId,
+                guildLane = guildLane,
+                channelOverride = flagPort.channelOverride(target.guildPseudonym, channelId),
+                excludedChannelIds = flagPort.excludedChannelIds(target.guildPseudonym),
+            )
+        return originRolloutMode.restrictiveIntersection(currentMode)
     }
 }

@@ -15,8 +15,15 @@ class NiaParticipationJudge(
         if (first is NiaJudgeOutputParseResult.Accepted) {
             return SingleJudgeDecisionGuard.apply(request, first.parsed.decision).finalDecision
         }
+        val firstRejected = first as NiaJudgeOutputParseResult.Rejected
 
-        val repairPrompt = firstPrompt.repairPrompt(first as NiaJudgeOutputParseResult.Rejected)
+        // A repair prompt can only correct malformed model output. Retrying a timeout/provider failure doubles the
+        // bounded call budget while offering no new output to repair, so degrade fail-closed immediately instead.
+        if (firstRejected.code == JUDGE_LLM_ERROR_CODE) {
+            return degradedDecision(request, firstRejected)
+        }
+
+        val repairPrompt = firstPrompt.repairPrompt(firstRejected)
         val repaired = attempt(repairPrompt)
         if (repaired is NiaJudgeOutputParseResult.Accepted) {
             return SingleJudgeDecisionGuard.apply(request, repaired.parsed.decision).finalDecision
@@ -31,7 +38,7 @@ class NiaParticipationJudge(
                 onSuccess = { response -> outputParser.parse(response) },
                 onFailure = { error ->
                     NiaJudgeOutputParseResult.Rejected(
-                        code = "judge_llm_error",
+                        code = JUDGE_LLM_ERROR_CODE,
                         message = error.message ?: error::class.simpleName.orEmpty(),
                     )
                 },
@@ -86,5 +93,6 @@ class NiaParticipationJudge(
 
     companion object {
         const val DEFAULT_REPAIR_DELAY_MILLIS: Long = 1_000
+        private const val JUDGE_LLM_ERROR_CODE: String = "judge_llm_error"
     }
 }

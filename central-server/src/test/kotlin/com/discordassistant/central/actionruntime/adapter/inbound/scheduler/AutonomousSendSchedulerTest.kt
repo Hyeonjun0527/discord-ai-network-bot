@@ -41,7 +41,7 @@ class AutonomousSendSchedulerTest {
     private val burstAdapter = MultiResponseBurstAdapter()
     private val canarySignals = CanarySignalCollector(clock)
 
-    private fun scheduleDueSpeak(): ScheduledSocialAction {
+    private fun scheduleDueSpeak(originRolloutMode: ShadowMode = ShadowMode.LIVE): ScheduledSocialAction {
         val action =
             ScheduledSocialAction.create(
                 decisionId = "dec-1",
@@ -50,6 +50,7 @@ class AutonomousSendSchedulerTest {
                 target = ActionTarget(guildPseudonym = "g1", channelId = "123", threadId = "t1"),
                 executeAfter = clock.instant().minusSeconds(1), // due
                 contextVersion = 1,
+                originRolloutMode = originRolloutMode,
             )
         scheduler.schedule(action)
         return action
@@ -83,7 +84,7 @@ class AutonomousSendSchedulerTest {
     fun `LIVE 게이팅이면 단일 버블로 전송하고 COMPLETED 로 종결한다`() {
         val action = scheduleDueSpeak()
         val executor = RecordingDiscordExecutor()
-        // modePort 통과(요청 모드 그대로) — tick 이 LIVE 를 넘긴다.
+        // modePort 통과(예약 당시 LIVE 권한 그대로).
         val service = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
         val orchestrator =
             AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
@@ -102,7 +103,7 @@ class AutonomousSendSchedulerTest {
     fun `shadow 게이팅이면 modePort 가 막아 전송이 0 이다(P09 hard block)`() {
         val action = scheduleDueSpeak()
         val executor = RecordingDiscordExecutor()
-        // 채널 현재 모드가 SHADOW_PREDICT — tick 이 LIVE 를 넘겨도 실행 직전 재확인이 우선한다.
+        // 채널 현재 모드가 SHADOW_PREDICT — 예약 당시 LIVE라도 실행 직전 재확인이 더 좁힌다.
         val service = executionService(executor) { _, _ -> ShadowMode.SHADOW_PREDICT }
         val orchestrator =
             AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
@@ -110,6 +111,21 @@ class AutonomousSendSchedulerTest {
         orchestrator.tick()
 
         // typing 포함 어떤 executor 호출도 없음(전송 0).
+        assertThat(executor.totalExecutorCalls).isEqualTo(0)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+    }
+
+    @Test
+    fun `shadow에서 예약된 action은 이후 LIVE 승격만으로 전송되지 않는다`() {
+        val action = scheduleDueSpeak(originRolloutMode = ShadowMode.SHADOW_PREDICT)
+        val executor = RecordingDiscordExecutor()
+        // 현재 채널은 LIVE로 승격됐지만, scheduler가 immutable shadow origin을 executor 경계에 전달해야 한다.
+        val service = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
+        val orchestrator =
+            AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
+
+        orchestrator.tick()
+
         assertThat(executor.totalExecutorCalls).isEqualTo(0)
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
     }

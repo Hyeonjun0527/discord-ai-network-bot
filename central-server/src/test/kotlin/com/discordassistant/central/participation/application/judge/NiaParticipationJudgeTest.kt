@@ -60,7 +60,19 @@ class NiaParticipationJudgeTest {
         assertThat(llm.requests).hasSize(2)
     }
 
-    private fun judge(llm: FakeJudgeLlm): NiaParticipationJudge =
+    @Test
+    fun `judge does not retry a provider failure as if it were malformed output`() {
+        val llm = ThrowingJudgeLlm()
+        val judge = judge(llm)
+
+        val decision = judge.decide(sampleRequest())
+
+        assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+        assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
+        assertThat(llm.calls).isEqualTo(1)
+    }
+
+    private fun judge(llm: NiaJudgeLlmPort): NiaParticipationJudge =
         NiaParticipationJudge(
             promptAssembler = NiaJudgePromptAssembler(),
             llmPort = llm,
@@ -144,6 +156,15 @@ class NiaParticipationJudgeTest {
         override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
             requests += request
             return responses[cursor++]
+        }
+    }
+
+    private class ThrowingJudgeLlm : NiaJudgeLlmPort {
+        var calls: Int = 0
+
+        override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
+            calls++
+            throw IllegalStateException("provider unavailable")
         }
     }
 }

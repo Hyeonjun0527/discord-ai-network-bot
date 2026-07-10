@@ -6,6 +6,7 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAc
 import com.discordassistant.central.actionruntime.domain.service.CancellationPolicy
 import com.discordassistant.central.actionruntime.domain.service.CancellationVerdict
 import com.discordassistant.central.actionruntime.domain.service.SceneEvidence
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -26,6 +27,7 @@ class CancellationPolicyTest {
             target = target,
             executeAfter = Instant.EPOCH,
             contextVersion = 1,
+            originRolloutMode = ShadowMode.LIVE,
         )
 
     private fun evidence(
@@ -81,6 +83,7 @@ class CancellationPolicyTest {
                 target = target,
                 executeAfter = Instant.EPOCH,
                 contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
             )
         assertThat(policy.decide(react, evidence(replies = 9, focus = "t2", expired = true)))
             .isEqualTo(CancellationVerdict.KEEP)

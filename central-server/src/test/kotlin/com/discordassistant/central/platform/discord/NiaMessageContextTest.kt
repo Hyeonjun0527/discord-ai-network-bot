@@ -1,9 +1,27 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
+import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class NiaMessageContextTest {
+    @Test
+    fun `bridge의 단일 rollout snapshot이 legacy 응답 소유권을 전달한다`() {
+        fun owns(
+            outcome: ParticipationEmitOutcome,
+            ownsTurn: Boolean,
+        ): Boolean = ParticipationTurnOutcome(outcome, ownsTurn).ownsTurn
+
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE), ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.WAIT), ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.Failed, ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.Inactive, ownsTurn = false)).isFalse()
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE), ownsTurn = false)).isFalse()
+        assertThat(owns(ParticipationEmitOutcome.Failed, ownsTurn = false)).isFalse()
+    }
+
     @Test
     fun `니아야 이름 호명은 직접 질문 프롬프트로 잡는다`() {
         assertThat(niaDirectAddressPrompt("니아야")).isEqualTo("니아야")
@@ -57,23 +75,44 @@ class NiaMessageContextTest {
     }
 
     @Test
-    fun `니아 답변 직후 발화는 의미 판단용 후속 후보로 감싼다`() {
+    fun `니아 답변에 명시적으로 reply한 발화만 후속 후보로 감싼다`() {
         val prompt =
             buildNiaContinuationPromptFromRecentMessages(
                 messages =
                     listOf(
                         msg(id = 1, authorId = 10, authorLabel = "HJ", content = "너머함"),
                         msg(id = 2, authorId = 99, authorLabel = "니아", bot = true, content = "어휘력 없음"),
-                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "??? 어휘력 없음이 뭔말이야"),
+                        msg(
+                            id = 3,
+                            authorId = 10,
+                            authorLabel = "HJ",
+                            content = "??? 어휘력 없음이 뭔말이야",
+                            replyToMessageId = 2,
+                        ),
                     ),
                 currentMessageId = 3,
                 botUserId = 99,
-                nowEpochMillis = 3,
             )
 
         assertThat(prompt).isNotNull
         assertThat(prompt!!).contains("[현재 트리거 원문]\n??? 어휘력 없음이 뭔말이야")
         assertThat(prompt).contains("표현 의도를 설명")
+    }
+
+    @Test
+    fun `니아 답변 뒤에 이어진 타인 대화는 후속 응답으로 강제하지 않는다`() {
+        val prompt =
+            buildNiaContinuationPromptFromRecentMessages(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 99, authorLabel = "니아", bot = true, content = "무슨 일인데"),
+                        msg(id = 2, authorId = 10, authorLabel = "HJ", content = "지은아 잠깐 얘기할 게 있어"),
+                    ),
+                currentMessageId = 2,
+                botUserId = 99,
+            )
+
+        assertThat(prompt).isNull()
     }
 
     @Test
@@ -165,6 +204,7 @@ class NiaMessageContextTest {
         authorLabel: String,
         content: String,
         bot: Boolean = false,
+        replyToMessageId: Long? = null,
     ) = DiscordRecentPromptMessage(
         id = id,
         authorId = authorId,
@@ -172,5 +212,6 @@ class NiaMessageContextTest {
         bot = bot,
         content = content,
         createdAtEpochMillis = id,
+        replyToMessageId = replyToMessageId,
     )
 }

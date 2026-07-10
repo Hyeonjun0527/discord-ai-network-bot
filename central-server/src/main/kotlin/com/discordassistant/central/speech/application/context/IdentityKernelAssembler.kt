@@ -9,7 +9,7 @@ import com.discordassistant.central.speech.domain.model.IdentityKernelSection
  *
  * globalpromptset 의 승인된 성격·금지사항·관심사를 짧은 immutable [IdentityKernelSection] 으로 만든다. 정체성
  * 본문은 [NexaIdentity] SSOT 를 **재사용**하고 복제하지 않는다(ADR 0010 읽기 브리지) — 이 클래스는 SSOT 문자열을
- * 다시 정의하지 않고 [NexaIdentity.NIA_DEFAULT_PERSONA] 를 그대로 읽어 발췌만 한다.
+ * 다시 정의하지 않고 speech 전용 [NexaIdentity.NIA_SPEECH_PERSONA] 를 그대로 읽어 발췌만 한다.
  *
  * **acceptance(T006) — 서버별 정체성과 런타임 사용자 기억이 섞여 저장되지 않는다**: 결과 section 은 persona/금지/
  * 관심사만 담고(사용자 기억 필드 없음) immutable 이다. 기억은 MemoryContextSelector(T008)가 별도 운반한다 —
@@ -35,11 +35,11 @@ class IdentityKernelAssembler(
 
     /**
      * persona 본문을 NexaIdentity SSOT 에서 조립한다(복제 금지 — 상수 재정의 없이 SSOT 를 읽는다). 기본 니아면
-     * SSOT persona 전문을, 길드가 다른 이름을 지정했으면 이름만 치환한 짧은 정체성 헤더를 쓴다.
+     * speech 전용 SSOT persona 전문을, 길드가 다른 이름을 지정했으면 이름만 치환한 짧은 정체성 헤더를 쓴다.
      */
     private fun personaBlockFor(personaName: String): String =
         if (personaName == NexaIdentity.NIA_NAME) {
-            NexaIdentity.NIA_DEFAULT_PERSONA
+            NexaIdentity.NIA_SPEECH_PERSONA
         } else {
             // 길드 지정 정체성: SSOT 전문을 강제하지 않고 이름·상징 문장만 짧게 둔다(니아 전문 복제 금지).
             "당신은 「$personaName」 입니다. 이 정체성으로, 1인칭으로, 처음부터 끝까지 일관되게 말하세요."

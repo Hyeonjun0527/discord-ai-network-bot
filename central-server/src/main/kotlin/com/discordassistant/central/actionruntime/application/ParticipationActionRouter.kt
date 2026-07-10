@@ -6,6 +6,7 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledActionTy
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Instant
 
 /**
@@ -32,7 +33,8 @@ class ParticipationActionRouter(
 ) {
     /**
      * [decisionId] 가 낸 [action] 을 [target] 으로 [executeAfter] 에 예약한다(또는 무시/취소). [contextVersion] 은
-     * 예약 당시 장면 버전(stale 재평가 키). 결과로 무엇을 했는지 돌려준다(테스트·감사).
+     * 예약 당시 장면 버전(stale 재평가 키), [originRolloutMode]는 이 행동이 얻은 최대 전송 권한이다. 결과로 무엇을
+     * 했는지 돌려준다(테스트·감사).
      */
     fun route(
         decisionId: String,
@@ -41,14 +43,31 @@ class ParticipationActionRouter(
         target: ActionTarget,
         executeAfter: Instant,
         contextVersion: Long,
+        originRolloutMode: ShadowMode,
     ): RouteResult =
         when (action.kind) {
             SocialActionKind.IGNORE, SocialActionKind.WAIT ->
                 RouteResult.Ignored(action.kind) // 예약 없음 — 전송도 quota 소모도 없음
             SocialActionKind.REACT ->
-                schedule(decisionId, sampledActionIndex, ScheduledActionType.REACT, target, executeAfter, contextVersion)
+                schedule(
+                    decisionId,
+                    sampledActionIndex,
+                    ScheduledActionType.REACT,
+                    target,
+                    executeAfter,
+                    contextVersion,
+                    originRolloutMode,
+                )
             SocialActionKind.SPEAK ->
-                schedule(decisionId, sampledActionIndex, ScheduledActionType.SPEAK, target, executeAfter, contextVersion)
+                schedule(
+                    decisionId,
+                    sampledActionIndex,
+                    ScheduledActionType.SPEAK,
+                    target,
+                    executeAfter,
+                    contextVersion,
+                    originRolloutMode,
+                )
             SocialActionKind.CANCEL_PENDING -> {
                 // 취소: 같은 decision 의 sampled index 예약을 취소(idempotent — 이미 terminal 이면 무시).
                 scheduler.find(actionIdentityOf(decisionId, sampledActionIndex))?.let { scheduler.cancel(it.identity) }
@@ -63,6 +82,7 @@ class ParticipationActionRouter(
         target: ActionTarget,
         executeAfter: Instant,
         contextVersion: Long,
+        originRolloutMode: ShadowMode,
     ): RouteResult {
         val action =
             ScheduledSocialAction
@@ -73,6 +93,7 @@ class ParticipationActionRouter(
                     target = target,
                     executeAfter = executeAfter,
                     contextVersion = contextVersion,
+                    originRolloutMode = originRolloutMode,
                 ).markScheduled()
         val scheduled = scheduler.schedule(action)
         return RouteResult.Scheduled(type = type, newlyScheduled = scheduled)

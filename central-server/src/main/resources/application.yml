@@ -144,6 +144,11 @@ central:
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
   nexa:
+    judge:
+      # real-send(CANARY/LIVE) 채널의 참여 여부는 raw scene + few-shot single judge가 최종 판단한다.
+      # shadow는 CENTRAL_NEXA_JUDGE_MODE=shadow 로 명시한 SHADOW_PREDICT 관찰용이다. CANARY/LIVE에서 shadow/off는
+      # legacy로 우회하지 않고 fail-closed하므로, real-send 롤아웃은 항상 final로 유지한다.
+      mode: ${CENTRAL_NEXA_JUDGE_MODE:final}
     autonomous-send:
       # 니아 자율 전송(예약된 SPEAK 를 실제 Discord 로 보냄) 실행 파이프라인 활성화 스위치.
       # 기본 true(켜짐). 파이프라인(poller/executor/스케줄러) 빈이 생성돼 니아가 자율 발화할 수 있다. 단 실제 전송은

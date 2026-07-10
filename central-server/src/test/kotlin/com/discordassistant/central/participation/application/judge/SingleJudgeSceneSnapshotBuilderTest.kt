@@ -60,15 +60,6 @@ class SingleJudgeSceneSnapshotBuilderTest {
 
     @Test
     fun `원문 압력 신호는 direct address 판단을 대체하지 않고 별도 signal 로 남긴다`() {
-        val addressedByContext =
-            SingleJudgeSceneSnapshotBuilder.build(
-                observation(
-                    triggerText = "야 이럴땐 위로하라고 ㅠㅠ",
-                    directAddressed = false,
-                    conversationMentionsNia = true,
-                    silenceMillis = 8_000,
-                ),
-            )
         val pressureOnly =
             SingleJudgeSceneSnapshotBuilder.build(
                 observation(
@@ -79,18 +70,49 @@ class SingleJudgeSceneSnapshotBuilderTest {
                 ),
             )
 
-        assertThat(addressedByContext.sceneSnapshot.directAddressed).isTrue()
-        assertThat(addressedByContext.sceneSnapshot.textSignals.isQuestion).isFalse()
-        assertThat(addressedByContext.sceneSnapshot.textSignals.callPressure).isGreaterThanOrEqualTo(0.8)
-        assertThat(addressedByContext.sceneSnapshot.textSignals.emotionalIntensity).isGreaterThan(0.0)
-        assertThat(addressedByContext.sceneSnapshot.conversationState.idleGapLikely).isTrue()
-        val addressedFeatures = addressedByContext.featureVector.features
-        assertThat(addressedFeatures.getValue(FeatureCatalog.BURST_HAS_MENTION).value).isEqualTo(1.0)
-
         assertThat(pressureOnly.sceneSnapshot.directAddressed).isFalse()
         assertThat(pressureOnly.sceneSnapshot.textSignals.callPressure).isGreaterThan(0.0)
         val pressureOnlyFeatures = pressureOnly.featureVector.features
         assertThat(pressureOnlyFeatures.getValue(FeatureCatalog.BURST_HAS_MENTION).value).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `과거 니아 언급은 context 로 남지만 현재 직접 호명과 call pressure 가 되지 않는다`() {
+        val result =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "서연아 나 고민이 있어",
+                    conversationMentionsNia = true,
+                ),
+            )
+        val features = result.featureVector.features
+
+        assertThat(result.sceneSnapshot.conversationMentionsNia).isTrue()
+        assertThat(result.sceneSnapshot.directAddressed).isFalse()
+        assertThat(result.sceneSnapshot.textSignals.callPressure).isEqualTo(0.0)
+        assertThat(result.sceneSnapshot.conversationState.niaAddressedOrIdleOpportunity).isFalse()
+        assertThat(features.getValue(FeatureCatalog.BURST_HAS_MENTION).value).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `과거 니아 언급은 현재 사람 간 reply 를 직접 호명으로 뒤집지 않는다`() {
+        val result =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "서연아 내 고민 좀 들어줘",
+                    replyToHuman = true,
+                    conversationMentionsNia = true,
+                ),
+            )
+        val features = result.featureVector.features
+
+        assertThat(result.sceneSnapshot.conversationMentionsNia).isTrue()
+        assertThat(result.sceneSnapshot.directAddressed).isFalse()
+        assertThat(result.sceneSnapshot.textSignals.replyTargetKind).isEqualTo("human")
+        assertThat(result.sceneSnapshot.textSignals.callPressure).isEqualTo(0.0)
+        assertThat(result.sceneSnapshot.conversationState.humansTalkingToEachOtherLikely).isTrue()
+        assertThat(result.sceneSnapshot.conversationState.niaAddressedOrIdleOpportunity).isFalse()
+        assertThat(features.getValue(FeatureCatalog.BURST_HAS_MENTION).value).isEqualTo(0.0)
     }
 
     @Test

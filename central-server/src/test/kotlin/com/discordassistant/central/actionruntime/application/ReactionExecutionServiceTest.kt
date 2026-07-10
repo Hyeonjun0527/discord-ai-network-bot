@@ -34,6 +34,7 @@ class ReactionExecutionServiceTest {
                 target = ActionTarget("guild-1", "chan-1", "thread-1"),
                 executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
                 contextVersion = 1L,
+                originRolloutMode = ShadowMode.LIVE,
             ).markScheduled()
             .beginReevaluation()
             .passReevaluation()

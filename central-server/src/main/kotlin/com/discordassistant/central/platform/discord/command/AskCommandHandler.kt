@@ -470,7 +470,8 @@ class AskCommandHandler(
         usedCloud: Boolean,
     ): Reply {
         // 클라우드 폴백 답변엔 "모델 대체" 문구를 더하지 않는다.
-        val body = if (usedCloud) answer else answer.withModelFallbackNotice(modelChoice)
+        val fallbackNotice = if (usedCloud) null else modelChoice.modelFallbackNotice()
+        val body = fallbackNotice?.let { answer + it } ?: answer
         val fullContent = body
         val plan =
             runCatching {
@@ -487,8 +488,10 @@ class AskCommandHandler(
                 .getOrNull()
         val rawSnapshots = plan?.snapshots?.map { it.content }.orEmpty()
         val finalContent =
-            rawSnapshots.lastOrNull()?.withDiscordLengthNotice(plan?.warning)
-                ?: fullContent.toDiscordSafeContent()
+            (
+                rawSnapshots.lastOrNull()?.withDiscordLengthNotice(plan?.warning)
+                    ?: fullContent.toDiscordSafeContent()
+            ).withRequiredSuffix(fallbackNotice)
         val stream =
             rawSnapshots
                 .takeIf { it.size > 1 }
@@ -558,10 +561,21 @@ class AskCommandHandler(
             .toInt()
 
     private fun String.withModelFallbackNotice(modelChoice: ModelChoiceDecision): String {
-        if (modelChoice.fallbackReason == null) return this
-        if (modelChoice.requestedModel == null && modelChoice.preferredModel == null) return this
-        val selected = modelChoice.selectedModel ?: "자동 선택"
-        return "$this\n\n↪️ 모델 대체: ${modelChoice.explanation} `사용 모델: $selected`"
+        val notice = modelChoice.modelFallbackNotice() ?: return this
+        return this + notice
+    }
+
+    private fun ModelChoiceDecision.modelFallbackNotice(): String? {
+        if (fallbackReason == null) return null
+        if (requestedModel == null && preferredModel == null) return null
+        val selected = selectedModel ?: "자동 선택"
+        return "\n\n↪️ 모델 대체: $explanation `사용 모델: $selected`"
+    }
+
+    private fun String.withRequiredSuffix(suffix: String?): String {
+        if (suffix == null || endsWith(suffix)) return this
+        val baseLimit = (DISCORD_REPLY_SAFE_LIMIT - suffix.length).coerceAtLeast(0)
+        return take(baseLimit).trimEnd() + suffix
     }
 
     private fun String.toDiscordSafeContent(): String =

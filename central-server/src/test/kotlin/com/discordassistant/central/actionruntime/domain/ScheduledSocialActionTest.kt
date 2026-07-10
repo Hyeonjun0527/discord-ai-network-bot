@@ -7,6 +7,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.IllegalActionTransition
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -26,6 +27,7 @@ class ScheduledSocialActionTest {
             target = target,
             executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
             contextVersion = 5,
+            originRolloutMode = ShadowMode.LIVE,
             maxAttempts = maxAttempts,
         )
 
@@ -35,6 +37,7 @@ class ScheduledSocialActionTest {
     fun `초기 상태는 CONSIDERING 이고 happy path 전이가 새 인스턴스를 만든다`() {
         val a = newAction()
         assertThat(a.status).isEqualTo(ActionStatus.CONSIDERING)
+        assertThat(a.originRolloutMode).isEqualTo(ShadowMode.LIVE)
 
         val scheduled = a.markScheduled()
         assertThat(scheduled.status).isEqualTo(ActionStatus.SCHEDULED)

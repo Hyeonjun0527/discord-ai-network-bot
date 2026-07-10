@@ -9,6 +9,7 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
+import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
@@ -74,7 +75,8 @@ private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 120
 private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
 private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 80
 private const val RECENT_CHANNEL_CONTEXT_MAX_RAW_CHARS = 12_000
-private const val NIA_CONTINUATION_TTL_MS = 90_000L
+private const val DISCORD_SHUTDOWN_GRACE_MILLIS = 2_000L
+private const val DISCORD_FORCED_SHUTDOWN_GRACE_MILLIS = 2_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
 private val NIA_DIRECT_ADDRESS_SUFFIX = Regex("""(?:^|\s)니아(?:야|아)?[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
@@ -184,20 +186,14 @@ internal fun buildNiaContinuationPromptFromRecentMessages(
     messages: List<DiscordRecentPromptMessage>,
     currentMessageId: Long,
     botUserId: Long,
-    nowEpochMillis: Long,
 ): String? {
-    val ordered = messages.sortedBy { it.createdAtEpochMillis }
-    val current = ordered.firstOrNull { it.id == currentMessageId } ?: return null
+    val current = messages.firstOrNull { it.id == currentMessageId } ?: return null
     val content = current.content
     val trimmed = content.trim()
     if (trimmed.isBlank() || trimmed.startsWith(".")) return null
-    val previous =
-        ordered
-            .asReversed()
-            .firstOrNull { it.id != currentMessageId && it.content.isNotBlank() }
-            ?: return null
-    if (!previous.bot || previous.authorId != botUserId) return null
-    if (nowEpochMillis - previous.createdAtEpochMillis !in 0..NIA_CONTINUATION_TTL_MS) return null
+    val repliedMessageId = current.replyToMessageId ?: return null
+    val repliedMessage = messages.firstOrNull { it.id == repliedMessageId } ?: return null
+    if (!repliedMessage.bot || repliedMessage.authorId != botUserId) return null
     return buildNiaContinuationPrompt(content)
 }
 
@@ -349,7 +345,14 @@ class DiscordBot(
         Boolean,
 ) : BotGuildLister {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
+    private val lifecycleLock = Any()
+    private val stopping = AtomicBoolean(false)
+
+    @Volatile
     private var jda: JDA? = null
+
+    @Volatile
+    private var restartThread: Thread? = null
 
     /**
      * NEXA 자율 전송 실행기 배선용 — 현재 활성 JDA 인스턴스. Discord 가 비활성이거나 아직 기동 전이면 [IllegalStateException].
@@ -420,9 +423,11 @@ class DiscordBot(
     // deferReply 로 ack 한 뒤 실제 처리는 이 전용 풀에서(나머지 빠른 명령은 리스너 스레드 그대로).
     private val commandExecutor: ScheduledExecutorService =
         Executors.newScheduledThreadPool(8) { r -> Thread(r, "discord-cmd").apply { isDaemon = true } }
+    private val channelEventDispatcher = DiscordChannelEventDispatcher()
 
     @PostConstruct
     fun start() {
+        if (stopping.get()) return
         if (!enabled || token.isBlank()) {
             log.info("Discord 비활성(enabled={}, token={}) — JDA 미기동", enabled, token.isNotBlank())
             return
@@ -431,6 +436,7 @@ class DiscordBot(
     }
 
     private fun launchJda(messageContentIntent: Boolean) {
+        if (stopping.get()) return
         gatewayStatus.markStarting(messageContentIntent)
         val intents = GatewayIntentPolicy.intents(messageContentIntent)
         val builder = JDABuilder.createLight(token, intents)
@@ -458,9 +464,29 @@ class DiscordBot(
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
                 slowCommandExecutor = commandExecutor,
+                channelEventDispatcher = channelEventDispatcher,
             )
         val instance = builder.addEventListeners(listener).build()
-        jda = instance
+        val accepted =
+            synchronized(lifecycleLock) {
+                if (stopping.get()) {
+                    false
+                } else {
+                    jda = instance
+                    true
+                }
+            }
+        if (!accepted) {
+            instance.shutdownNow()
+            // `shutdownNow` is asynchronous. The stop path joins a 4014 restart before it closes the serialized
+            // raw-context dispatcher, so this unregistered instance must also reach SHUTDOWN before this thread ends.
+            if (awaitJdaShutdown(instance)) Thread.currentThread().interrupt()
+            return
+        }
+        if (stopping.get()) {
+            instance.shutdownNow()
+            return
+        }
         registerCommands(instance.updateCommands())
         if (guildId.isNotBlank()) {
             instance.awaitReady()
@@ -479,22 +505,90 @@ class DiscordBot(
                 "central.discord.message-content-intent-enabled=false 로 슬래시 명령만 안전 부팅하세요."
         log.error(guide)
         gatewayStatus.markShutdown(4014, guide)
-        if (!messageContentIntent || !fallbackWithoutMessageContentOn4014 || !fallbackAttempted.compareAndSet(false, true)) return
+        if (
+            stopping.get() ||
+            !messageContentIntent ||
+            !fallbackWithoutMessageContentOn4014 ||
+            !fallbackAttempted.compareAndSet(false, true)
+        ) {
+            return
+        }
         gatewayStatus.markSafeFallback("Message Content Intent 거부로 @멘션 질문을 끄고 슬래시 명령만 재기동합니다.")
-        Thread({
-            runCatching { jda?.shutdownNow() }
-            runCatching { launchJda(messageContentIntent = false) }
-                .onFailure { e ->
-                    log.error("Message Content Intent 없는 안전 재기동 실패: {}", e.message, e)
-                    gatewayStatus.markShutdown(4014, "Message Content Intent 없는 안전 재기동 실패: ${e.message}")
-                }
-        }, "discord-safe-intent-restart").start()
+        val restart =
+            Thread(
+                {
+                    try {
+                        runCatching { jda?.shutdownNow() }
+                        if (!stopping.get()) {
+                            runCatching { launchJda(messageContentIntent = false) }
+                                .onFailure { e ->
+                                    log.error("Message Content Intent 없는 안전 재기동 실패: {}", e.message, e)
+                                    gatewayStatus.markShutdown(4014, "Message Content Intent 없는 안전 재기동 실패: ${e.message}")
+                                }
+                        }
+                    } finally {
+                        synchronized(lifecycleLock) {
+                            if (restartThread === Thread.currentThread()) restartThread = null
+                        }
+                    }
+                },
+                "discord-safe-intent-restart",
+            )
+        synchronized(lifecycleLock) {
+            if (stopping.get()) return
+            restartThread = restart
+        }
+        restart.start()
     }
 
     @PreDestroy
     fun stop() {
-        jda?.shutdown()
+        if (!stopping.compareAndSet(false, true)) return
+        val restart = synchronized(lifecycleLock) { restartThread }
+        val instance = synchronized(lifecycleLock) { jda }
+        instance?.shutdown()
+        var interrupted = instance?.let(::awaitJdaShutdown) ?: false
+        val restartInterrupted = awaitRestartCompletion(restart)
+        interrupted = interrupted || restartInterrupted
+        channelEventDispatcher.close()
         commandExecutor.shutdown()
+        if (interrupted) Thread.currentThread().interrupt()
+    }
+
+    /** A 4014 fallback may be building JDA while shutdown begins; wait until it cannot install a new listener. */
+    private fun awaitRestartCompletion(restart: Thread?): Boolean {
+        if (restart == null) return false
+        var interrupted = false
+        while (restart.isAlive) {
+            try {
+                restart.join(DISCORD_FORCED_SHUTDOWN_GRACE_MILLIS)
+                if (restart.isAlive) log.error("Discord safe-intent restart is still stopping; waiting before closing message dispatcher")
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        return interrupted
+    }
+
+    /** Do not close the serialized raw-context mutator while JDA can still deliver delete/edit callbacks. */
+    private fun awaitJdaShutdown(instance: JDA): Boolean {
+        var interrupted = false
+        try {
+            if (instance.awaitShutdown(DISCORD_SHUTDOWN_GRACE_MILLIS, TimeUnit.MILLISECONDS)) return false
+        } catch (_: InterruptedException) {
+            interrupted = true
+        }
+
+        log.warn("Discord JDA graceful shutdown timed out or was interrupted; forcing gateway shutdown before closing message dispatcher")
+        instance.shutdownNow()
+        while (true) {
+            try {
+                if (instance.awaitShutdown(DISCORD_FORCED_SHUTDOWN_GRACE_MILLIS, TimeUnit.MILLISECONDS)) return interrupted
+                log.error("Discord JDA is still stopping; waiting before closing the raw-context dispatcher")
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
     }
 
     private fun registerCommands(action: net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction) {
@@ -510,7 +604,7 @@ class DiscordBot(
     }
 
     /** JDA 이벤트 → CommandContext → CommandService → 응답. */
-    class Listener(
+    internal class Listener(
         private val commands: CommandService,
         private val metrics: CommandMetrics,
         private val channelProfiles: ChannelAiProfileService,
@@ -533,6 +627,7 @@ class DiscordBot(
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
         private val slowCommandExecutor: ScheduledExecutorService,
+        private val channelEventDispatcher: DiscordChannelEventDispatcher,
     ) : ListenerAdapter() {
         // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션·설정 마법사를 협력자로 위임한다.
         // 동일 의존성 인스턴스를 그대로 넘겨 동작을 구조적으로 보존한다(로직 불변).
@@ -1157,13 +1252,18 @@ class DiscordBot(
         /** 메시지 삭제 이벤트는 raw context 에서 해당 원문을 즉시 제거한다. */
         override fun onMessageDelete(event: MessageDeleteEvent) {
             if (!event.isFromGuild) return
-            participationEmitBridge.onMessageDeleted(
-                com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
-                    guildId = event.guild.idLong,
-                    channelId = event.channel.idLong,
-                    messageId = event.messageIdLong,
-                ),
-            )
+            val guildId = event.guild.idLong
+            val channelId = event.channel.idLong
+            val messageId = event.messageIdLong
+            submitRawContextMutation(eventType = "delete", channelId = channelId) {
+                participationEmitBridge.onMessageDeleted(
+                    com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
+                        guildId = guildId,
+                        channelId = channelId,
+                        messageId = messageId,
+                    ),
+                )
+            }
         }
 
         /** 메시지 수정 이벤트는 raw context 의 원문만 갱신하고, participation judge/emit 은 다시 실행하지 않는다. */
@@ -1172,7 +1272,7 @@ class DiscordBot(
             val occurredAt =
                 (event.message.timeEdited ?: event.message.timeCreated)
                     .toInstant()
-            participationEmitBridge.onMessageEdited(
+            val signal =
                 com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
                     guildId = event.guild.idLong,
                     channelId = event.channel.idLong,
@@ -1183,8 +1283,66 @@ class DiscordBot(
                     sourceType = participationSourceTypeOf(event),
                     rawText = event.message.contentRaw.trim(),
                     occurredAt = occurredAt,
-                ),
-            )
+                )
+            submitRawContextMutation(eventType = "edit", channelId = signal.channelId) {
+                participationEmitBridge.onMessageEdited(signal)
+            }
+        }
+
+        /**
+         * Redaction/edit events must not disappear just because the bounded receive dispatcher is closing. Saturation
+         * normally enters its ordered mutation overflow; rejection can only happen after shutdown, when this direct
+         * fallback is safer than retaining raw context.
+         */
+        private fun submitRawContextMutation(
+            eventType: String,
+            channelId: Long,
+            mutation: () -> Unit,
+        ) {
+            val task = { runChannelEvent(eventType, channelId, mutation) }
+            val admission = channelEventDispatcher.submitMutation(channelId, task)
+            logMutationAdmission(eventType, channelId, admission)
+            if (admission == DiscordChannelEventAdmission.REJECTED) {
+                log.error("Discord message {} dispatcher rejected mutation; applying privacy fallback(channel={})", eventType, channelId)
+                task()
+            }
+        }
+
+        private fun logMutationAdmission(
+            eventType: String,
+            channelId: Long,
+            admission: DiscordChannelEventAdmission,
+        ) {
+            when (admission) {
+                DiscordChannelEventAdmission.ACCEPTED -> Unit
+                DiscordChannelEventAdmission.ACCEPTED_AFTER_EVICTION ->
+                    log.warn(
+                        "Discord message {} admission evicted one queued ordinary event(channel={})",
+                        eventType,
+                        channelId,
+                    )
+                DiscordChannelEventAdmission.ACCEPTED_TO_MUTATION_OVERFLOW ->
+                    log.warn(
+                        "Discord message {} admission entered ordered mutation overflow(channel={})",
+                        eventType,
+                        channelId,
+                    )
+                DiscordChannelEventAdmission.REJECTED ->
+                    log.error("Discord message {} admission rejected(channel={})", eventType, channelId)
+            }
+        }
+
+        private fun runChannelEvent(
+            eventType: String,
+            channelId: Long,
+            task: () -> Unit,
+        ) {
+            try {
+                task()
+            } catch (e: Exception) {
+                if (e is InterruptedException) Thread.currentThread().interrupt()
+                log.warn("Discord message {} processing failed(channel={})", eventType, channelId, e)
+            }
         }
 
         /** 긴 질문 모달 제출(#189). */
@@ -1263,6 +1421,17 @@ class DiscordBot(
          */
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild) return
+            val channelId = event.channel.idLong
+            val admission =
+                channelEventDispatcher.submit(channelId) {
+                    runChannelEvent("receive", channelId) { processMessageReceived(event) }
+                }
+            if (!admission.accepted) {
+                log.warn("Discord message admission rejected — fail closed(channel={})", channelId)
+            }
+        }
+
+        private fun processMessageReceived(event: MessageReceivedEvent) {
             rememberRecentMessage(event)
             if (event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
@@ -1271,15 +1440,13 @@ class DiscordBot(
                     .any { it.idLong == selfId }
             val directNamePrompt = niaDirectAddressPrompt(event.message.contentRaw)
             val directlyAddressed = directNamePrompt != null
-            // NEXA participation 자발 발화(단계 1): flag 활성 채널에서 평가·emit한다. 실제 전송 모드(CANARY/LIVE)는
-            // participation 이 답변 소유권을 갖고, legacy mention/direct/autorespond 경로는 중복·우회 발화를 만들지 않는다.
-            // 브리지가 flag(기본 OFF) 가드·예외 흡수를 모두 책임지므로(graceful), 모든 비-봇 길드 메시지에 무조건 위임해도
-            // OFF 채널은 즉시 no-op 이라 기존 동작에 영향 0. SHADOW_PREDICT 면 평가·기록만, 실제 전송은 전송 경계가 차단.
-            // 참여가 실제로 발화(예약)했으면 participation 이 응답을 소유한다(중복 방지). 발화하지 않았으면 — 특히 직접
-            // 호명/멘션/reply 인데 judge 가 침묵했으면 — SSOT(guild-policy-boundary: MEMBER 모드 직접호명 반드시 응답)에
-            // 따라 아래 legacy 확실한 답변 경로로 폴백한다. 이전엔 LIVE 채널이면 무조건 return 해 judge 침묵 시 무응답이었다.
-            val participationWillSpeak = forwardToParticipation(event, mentioned || directlyAddressed)
-            if (participationWillSpeak) return
+            // The bridge captures rollout mode once with its social decision. Shadow preserves legacy behavior;
+            // CANARY/LIVE owns the turn only through FINAL, and a non-final misconfiguration fails closed rather than
+            // allowing an unjudged legacy response.
+            val participationTurn = forwardToParticipation(event, mentioned || directlyAddressed)
+            if (participationTurn.ownsTurn) return
+
+            // OFF/SHADOW 및 final judge가 아직 real-send가 아닌 채널은 기존 명시 호출/자동응답 계약을 유지한다.
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
@@ -1300,13 +1467,13 @@ class DiscordBot(
         /**
          * NEXA participation 발화 브리지에 메시지 신호를 위임한다(단계 1 wiring). 가명화는 브리지가 하므로 raw 식별자와
          * 가명 라벨 turn 만 만들어 넘긴다(원문 user id 미저장). 멱등·seed 는 채널·메시지 id 로 결정론 도출한다.
-         * 호출 자체도 graceful — 브리지가 흡수하지만 신호 구성 실패까지 사용자 응답을 막지 않도록 한 번 더 흡수한다.
+         * 호출 자체도 fail-closed다. 신호 구성 또는 judge가 실패해도 활성 participation 채널에서 legacy 응답으로 우회하지 않는다.
          */
         private fun forwardToParticipation(
             event: MessageReceivedEvent,
             mentioned: Boolean,
-        ): Boolean {
-            return try {
+        ): ParticipationTurnOutcome =
+            try {
                 val messageId = event.messageIdLong
                 val selfId = event.jda.selfUser.idLong
                 val speakerLabel = "user_${event.author.idLong % 100000}"
@@ -1323,6 +1490,7 @@ class DiscordBot(
                 // niaReply = 트리거가 reply 한 대상이 니아 메시지일 때만 그 메시지(아니면 null).
                 val niaReply = event.message.referencedMessage?.takeIf { it.author.idLong == selfId }
                 val replyToNia = niaReply != null
+                val replyToHuman = event.message.referencedMessage?.let { !it.author.isBot && it.author.idLong != selfId } ?: false
 
                 // continuation(A7): 트리거가 니아 발화에 대한 reply 면, 그 referencedMessage(니아 발화) 토큰을 continuation
                 // 후보로 쓴다. 니아 메시지는 봇 author 라 이 핸들러로 직접 오지 않으므로(early-return), reply 의
@@ -1356,44 +1524,42 @@ class DiscordBot(
                                 ),
                     )
 
-                val participationOutcome = participationEmitBridge.onMessage(
-                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
-                        guildId = event.guild.idLong,
-                        channelId = event.channel.idLong,
-                        messageId = messageId,
-                        userId = event.author.idLong,
-                        threadId = event.message.startedThread?.idLong,
-                        replyToMessageId = event.message.referencedMessage?.idLong,
-                        sourceType = participationSourceTypeOf(event),
-                        mentioned = mentioned,
-                        recentTurns = recentTurns,
-                        recentRawMessages = recentRawMessages,
-                        triggerText = contentRaw.take(500),
-                        rawText = contentRaw,
-                        speakerLabel = speakerLabel,
-                        replyToNia = replyToNia,
-                        niaRecentTokens = niaRecentTokens,
-                        withinContinuationTtl = withinContinuationTtl,
-                        duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
-                        burstIncomplete = derived.burstIncomplete,
-                        priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
-                        firstMessageText = derived.firstMessageText,
-                        conversationMentionsNia = derived.conversationMentionsNia,
-                        tsMs = tsMs,
-                        sceneSeq = messageId,
-                        contextVersion = messageId,
-                        seed = messageId,
-                    ),
-                )
-                // 참여가 실제 발화(SPEAK 예약)를 소유했는지. true 면 onMessageReceived 가 legacy 경로를 건너뛴다.
-                participationOutcome is
-                    com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.Emitted &&
-                    participationOutcome.result.willSpeak
+                val participationTurn =
+                    participationEmitBridge.onMessageTurn(
+                        com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
+                            guildId = event.guild.idLong,
+                            channelId = event.channel.idLong,
+                            messageId = messageId,
+                            userId = event.author.idLong,
+                            threadId = event.message.startedThread?.idLong,
+                            replyToMessageId = event.message.referencedMessage?.idLong,
+                            sourceType = participationSourceTypeOf(event),
+                            mentioned = mentioned,
+                            recentTurns = recentTurns,
+                            recentRawMessages = recentRawMessages,
+                            triggerText = contentRaw.take(500),
+                            rawText = contentRaw,
+                            speakerLabel = speakerLabel,
+                            replyToNia = replyToNia,
+                            replyToHuman = replyToHuman,
+                            niaRecentTokens = niaRecentTokens,
+                            withinContinuationTtl = withinContinuationTtl,
+                            duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
+                            burstIncomplete = derived.burstIncomplete,
+                            priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
+                            firstMessageText = derived.firstMessageText,
+                            conversationMentionsNia = derived.conversationMentionsNia,
+                            tsMs = tsMs,
+                            sceneSeq = messageId,
+                            contextVersion = messageId,
+                            seed = messageId,
+                        ),
+                    )
+                participationTurn
             } catch (e: Exception) {
-                log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
-                false
+                log.debug("NEXA participation 신호 구성 실패(channel={}) — fail-closed 여부를 브리지 모드로 결정: {}", event.channel.idLong, e.message)
+                participationEmitBridge.failedMessageTurn(guildId = event.guild.idLong, channelId = event.channel.idLong)
             }
-        }
 
         private fun participationSourceTypeOf(
             event: MessageReceivedEvent,
@@ -1679,15 +1845,10 @@ class DiscordBot(
 
         private fun niaContinuationPrompt(event: MessageReceivedEvent): String? {
             val selfId = event.jda.selfUser.idLong
-            val nowEpochMillis =
-                event.message.timeCreated
-                    .toInstant()
-                    .toEpochMilli()
             return buildNiaContinuationPromptFromRecentMessages(
                 messages = recentMessagesSnapshot(event.channel.idLong),
                 currentMessageId = event.messageIdLong,
                 botUserId = selfId,
-                nowEpochMillis = nowEpochMillis,
             )
         }
 

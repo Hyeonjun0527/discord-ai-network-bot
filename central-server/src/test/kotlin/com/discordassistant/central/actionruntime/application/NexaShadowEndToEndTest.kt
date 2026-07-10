@@ -72,6 +72,7 @@ class NexaShadowEndToEndTest {
                     target = ActionTarget(fixture.guildPseudonym, fixture.channelId.toString(), "thread-1"),
                     executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
                     contextVersion = 1L,
+                    originRolloutMode = ShadowMode.SHADOW_PREDICT,
                 ).markScheduled()
                 .beginReevaluation()
                 .passReevaluation()

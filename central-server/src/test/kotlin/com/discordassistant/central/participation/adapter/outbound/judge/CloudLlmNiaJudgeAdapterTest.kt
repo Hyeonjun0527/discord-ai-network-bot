@@ -1,0 +1,127 @@
+package com.discordassistant.central.participation.adapter.outbound.judge
+
+import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
+import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmResult
+import com.discordassistant.central.routing.application.CloudLlmUsage
+import com.discordassistant.central.routing.application.CloudThinking
+import com.discordassistant.central.routing.application.CloudToolResponse
+import com.discordassistant.central.routing.application.CloudTurn
+import com.discordassistant.central.routing.application.ImageReview
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
+
+class CloudLlmNiaJudgeAdapterTest {
+    @Test
+    fun `deterministic cloud completion maps provider-neutral judge response`() {
+        val cloudLlm = RecordingCloudLlm()
+        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "glm-4.5-air")
+        val request = request()
+
+        val response = adapter.complete(request)
+
+        assertThat(cloudLlm.prompt).isEqualTo(request.prompt)
+        assertThat(cloudLlm.model).isEqualTo("glm-4.5-air")
+        assertThat(cloudLlm.history).isEmpty()
+        assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.DISABLED)
+        assertThat(response.content).isEqualTo(JUDGE_JSON)
+        assertThat(response.modelVersion).isEqualTo("glm-4.5-air")
+        assertThat(response.finishReason).isEqualTo(CloudLlmNiaJudgeAdapter.FINISH_REASON_COMPLETED)
+        assertThat(response.promptTokens).isEqualTo(17)
+        assertThat(response.completionTokens).isEqualTo(9)
+        assertThat(response.latencyMillis).isNotNull().isGreaterThanOrEqualTo(0)
+    }
+
+    @Test
+    fun `disabled cloud fails before invoking provider`() {
+        val cloudLlm = RecordingCloudLlm(enabled = false)
+
+        assertThatThrownBy { CloudLlmNiaJudgeAdapter(cloudLlm).complete(request()) }
+            .isInstanceOf(CloudLlmException::class.java)
+            .hasMessageContaining("비활성")
+        assertThat(cloudLlm.calls).isZero()
+    }
+
+    @Test
+    fun `request timeout cancels slow cloud call`() {
+        val cloudLlm =
+            RecordingCloudLlm {
+                Thread.sleep(5_000)
+                RESULT
+            }
+
+        assertThatThrownBy {
+            CloudLlmNiaJudgeAdapter(cloudLlm).complete(request(timeoutMillis = 50))
+        }.isInstanceOf(CloudLlmException::class.java)
+            .hasMessageContaining("시간이 초과")
+    }
+
+    private fun request(timeoutMillis: Long = 1_000): NiaJudgeLlmRequest =
+        NiaJudgeLlmRequest(
+            prompt = "judge this scene",
+            promptVersion = "nia-judge-prompt-v1",
+            seed = 42L,
+            timeoutMillis = timeoutMillis,
+        )
+
+    private class RecordingCloudLlm(
+        private val enabled: Boolean = true,
+        private val completion: () -> CloudLlmResult = { RESULT },
+    ) : CloudLlm {
+        var calls: Int = 0
+        var prompt: String? = null
+        var model: String? = null
+        var history: List<CloudTurn>? = null
+        var thinking: CloudThinking? = null
+
+        override fun isEnabled(): Boolean = enabled
+
+        override fun generate(
+            prompt: String,
+            model: String,
+        ): CloudLlmResult = error("멀티턴 판단 경로만 사용해야 합니다.")
+
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+        ): CloudLlmResult {
+            calls++
+            this.prompt = prompt
+            this.model = model
+            this.history = history
+            this.thinking = thinking
+            return completion()
+        }
+
+        override fun generateWithTools(
+            systemPrompt: String,
+            userPrompt: String,
+            toolsJson: String,
+            model: String,
+        ): CloudToolResponse = error("사용하지 않는 경로입니다.")
+
+        override fun reviewImagePrompt(
+            prompt: String,
+            systemPrompt: String,
+        ): ImageReview = error("사용하지 않는 경로입니다.")
+
+        override fun translateImagePrompt(
+            prompt: String,
+            systemPrompt: String,
+        ): String = error("사용하지 않는 경로입니다.")
+    }
+
+    companion object {
+        private const val JUDGE_JSON =
+            "{\"schema\":\"nia.participation-judge-output.v1\",\"action\":\"IGNORE\"}"
+        private val RESULT =
+            CloudLlmResult(
+                text = JUDGE_JSON,
+                usage = CloudLlmUsage(promptTokens = 17, completionTokens = 9),
+            )
+    }
+}

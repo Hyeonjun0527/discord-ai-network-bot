@@ -10,6 +10,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Instant
 
 // NEXA-P13-T015~T024 — 실행/감사 테스트 공유 fake.
@@ -123,6 +124,7 @@ fun typingSpeakAction(
             target = ActionTarget(guildPseudonym = "guild-1", channelId = channelId, threadId = threadId),
             executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
             contextVersion = contextVersion,
+            originRolloutMode = ShadowMode.LIVE,
         ).markScheduled()
         .beginReevaluation()
         .passReevaluation()

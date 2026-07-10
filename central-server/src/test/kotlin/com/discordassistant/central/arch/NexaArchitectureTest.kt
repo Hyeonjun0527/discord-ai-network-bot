@@ -226,7 +226,7 @@ class NexaArchitectureTest {
         assertThat(participationForward).isLessThan(autoRespond)
 
         val forwardToParticipation = source.substringBetween("private fun forwardToParticipation", "private fun participationSourceTypeOf")
-        val bridgeCall = forwardToParticipation.indexOf("participationEmitBridge.onMessage(")
+        val bridgeCall = forwardToParticipation.indexOf("participationEmitBridge.onMessageTurn(")
         assertThat(forwardToParticipation.indexOf("ParticipationMessageSignal(")).isGreaterThan(bridgeCall)
         assertThat(forwardToParticipation).contains(
             "triggerText = contentRaw.take(500)",

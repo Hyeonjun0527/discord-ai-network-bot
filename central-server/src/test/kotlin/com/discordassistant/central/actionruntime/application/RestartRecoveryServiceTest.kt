@@ -10,6 +10,7 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAc
 import com.discordassistant.central.actionruntime.support.InMemoryActionAudit
 import com.discordassistant.central.actionruntime.support.InMemoryActionScheduler
 import com.discordassistant.central.actionruntime.support.MutableTestClock
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -36,6 +37,7 @@ class RestartRecoveryServiceTest {
         target = ActionTarget("g1", "c1", "t1"),
         executeAfter = clock.instant(),
         contextVersion = 1,
+        originRolloutMode = ShadowMode.LIVE,
         status = status,
     )
 

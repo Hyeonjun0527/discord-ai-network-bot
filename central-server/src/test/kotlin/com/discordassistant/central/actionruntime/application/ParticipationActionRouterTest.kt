@@ -11,6 +11,7 @@ import com.discordassistant.central.participation.domain.model.action.ReactionCo
 import com.discordassistant.central.participation.domain.model.action.SocialAction
 import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
 import com.discordassistant.central.participation.domain.model.decision.ActionDelay
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -27,14 +28,32 @@ class ParticipationActionRouterTest {
 
     @Test
     fun `acceptance — IGNORE 는 예약하지 않는다`() {
-        val result = router.route("d-1", 0, SocialAction.Ignore, target, Instant.now(), contextVersion = 1)
+        val result =
+            router.route(
+                decisionId = "d-1",
+                sampledActionIndex = 0,
+                action = SocialAction.Ignore,
+                target = target,
+                executeAfter = Instant.now(),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
+            )
         assertThat(result).isInstanceOf(RouteResult.Ignored::class.java)
         assertThat(scheduler.scheduled).isEmpty()
     }
 
     @Test
     fun `acceptance — WAIT 도 예약하지 않는다`() {
-        val result = router.route("d-1", 0, SocialAction.Wait(ActionDelay.IMMEDIATE), target, Instant.now(), 1)
+        val result =
+            router.route(
+                decisionId = "d-1",
+                sampledActionIndex = 0,
+                action = SocialAction.Wait(ActionDelay.IMMEDIATE),
+                target = target,
+                executeAfter = Instant.now(),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
+            )
         assertThat(result).isInstanceOf(RouteResult.Ignored::class.java)
         assertThat(scheduler.scheduled).isEmpty()
     }
@@ -42,16 +61,35 @@ class ParticipationActionRouterTest {
     @Test
     fun `acceptance — REACT 는 REACT 예약`() {
         val react = SocialAction.React(reactionCodes = listOf(ReactionCode("thumbs_up")))
-        val result = router.route("d-1", 0, react, target, Instant.now(), 1)
+        val result =
+            router.route(
+                decisionId = "d-1",
+                sampledActionIndex = 0,
+                action = react,
+                target = target,
+                executeAfter = Instant.now(),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.CANARY,
+            )
         assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.REACT, newlyScheduled = true))
         assertThat(scheduler.scheduled).hasSize(1)
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.REACT)
+        assertThat(scheduler.scheduled.first().originRolloutMode).isEqualTo(ShadowMode.CANARY)
     }
 
     @Test
     fun `acceptance — SPEAK 는 SPEAK 예약`() {
         val speak = SocialAction.Speak(speechRequest = SpeechRequestRef(correlationId = "d-1"))
-        val result = router.route("d-1", 0, speak, target, Instant.now(), 1)
+        val result =
+            router.route(
+                decisionId = "d-1",
+                sampledActionIndex = 0,
+                action = speak,
+                target = target,
+                executeAfter = Instant.now(),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
+            )
         assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.SPEAK, newlyScheduled = true))
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
     }
@@ -60,7 +98,16 @@ class ParticipationActionRouterTest {
     fun `멱등 — 같은 결정 재예약은 newlyScheduled=false`() {
         scheduler.rejectDuplicate = true
         val speak = SocialAction.Speak(speechRequest = SpeechRequestRef(correlationId = "d-1"))
-        val result = router.route("d-1", 0, speak, target, Instant.now(), 1)
+        val result =
+            router.route(
+                decisionId = "d-1",
+                sampledActionIndex = 0,
+                action = speak,
+                target = target,
+                executeAfter = Instant.now(),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
+            )
         assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.SPEAK, newlyScheduled = false))
     }
 

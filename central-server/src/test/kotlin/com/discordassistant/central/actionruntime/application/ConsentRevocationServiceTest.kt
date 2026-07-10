@@ -9,6 +9,7 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledActionTy
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.actionruntime.support.InMemoryActionScheduler
 import com.discordassistant.central.actionruntime.support.MutableTestClock
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -35,6 +36,7 @@ class ConsentRevocationServiceTest {
                 target = ActionTarget(guild, channel, "t1", subjectPseudonym = user),
                 executeAfter = clock.instant(),
                 contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
             ),
         )
     }

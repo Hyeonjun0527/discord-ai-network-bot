@@ -50,7 +50,8 @@ class ActionExecutionService(
     private val retryDecider: ActionRetryDecider = ActionRetryDecider(clock),
 ) {
     /**
-     * [mode] 에서 [action] 의 [plan] 을 실행한다. shadow 차단이면 전송 없이 [ExecutionOutcome.Suppressed]. 그 외에는
+     * [mode] 요청과 [action]이 예약될 때의 rollout 권한 중 더 좁은 모드에서 [plan]을 실행한다. shadow 차단이면 전송 없이
+     * [ExecutionOutcome.Suppressed]. 그 외에는
      * typing 시작 후 버블을 순차 전송하며 위 안전 규칙을 적용한 결과를 돌려준다(상태·audit 는 부수효과로 기록).
      */
     fun execute(
@@ -62,7 +63,8 @@ class ActionExecutionService(
             "ActionExecutionService 는 TYPING 상태만 실행할 수 있다: ${action.status} (action=${action.identity.value})"
         }
 
-        val currentMode = modePort.currentMode(action.target, mode)
+        val requestedMode = action.originRolloutMode.restrictiveIntersection(mode)
+        val currentMode = modePort.currentMode(action.target, requestedMode)
         // P09 hard block — 실행 직전 현재 모드가 차단 단계면 executor 를 한 번도 호출하지 않는다(전송 0회).
         if (OutboundGuard.decide(currentMode) == OutboundDecision.BLOCK) {
             record(action, ActionAuditPhase.SUPPRESSED_SHADOW, reason = currentMode.name)

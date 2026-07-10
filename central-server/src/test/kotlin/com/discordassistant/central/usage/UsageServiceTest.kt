@@ -38,15 +38,36 @@ class UsageServiceTest
         @Test
         fun `AiRequest 는 실효 부담을 저장한다`() {
             val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "x", roleIds = setOf(1))
-            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "burden-1", requiredBurden = ModelBurden.HEAVY)
+            svc.recordRequest(
+                input,
+                RequestState.COMPLETED,
+                providerId = 7,
+                failReason = null,
+                requestId = "burden-1",
+                requiredBurden = ModelBurden.HEAVY,
+            )
             assertEquals("HEAVY", requests.findByRequestId("burden-1")?.requiredBurden)
         }
 
         @Test
         fun `같은 requestId 의 재기록은 ai_request 를 중복 insert 하지 않는다`() {
             val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "x", roleIds = setOf(1))
-            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "dup-req", requiredBurden = ModelBurden.LIGHT)
-            svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null, requestId = "dup-req", requiredBurden = ModelBurden.HEAVY)
+            svc.recordRequest(
+                input,
+                RequestState.COMPLETED,
+                providerId = 7,
+                failReason = null,
+                requestId = "dup-req",
+                requiredBurden = ModelBurden.LIGHT,
+            )
+            svc.recordRequest(
+                input,
+                RequestState.COMPLETED,
+                providerId = 7,
+                failReason = null,
+                requestId = "dup-req",
+                requiredBurden = ModelBurden.HEAVY,
+            )
             assertEquals(1, requests.findAll().count { it.requestId == "dup-req" })
         }
 

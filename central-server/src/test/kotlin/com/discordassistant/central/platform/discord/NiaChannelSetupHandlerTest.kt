@@ -176,6 +176,11 @@ class NiaChannelSetupHandlerTest {
         verify(autoRespond).setAutoRespond(eq(guildId), eq(chatId), eq(true), eq(actorId))
         verifyNoMoreInteractions(autoRespond)
         verify(participationFlags).enableChannelLive(eq(guildId), eq(memberId), isNull(), eqK(NexaParticipationFlagService.SOURCE_MANUAL))
-        verify(participationFlags, never()).enableChannelLive(eq(guildId), eq(chatId), isNull(), eqK(NexaParticipationFlagService.SOURCE_MANUAL))
+        verify(participationFlags, never()).enableChannelLive(
+            eq(guildId),
+            eq(chatId),
+            isNull(),
+            eqK(NexaParticipationFlagService.SOURCE_MANUAL),
+        )
     }
 }

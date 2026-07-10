@@ -36,6 +36,7 @@ class BillingServiceTest
             billingEvents.deleteAll()
             licenseRepo.deleteAll()
         }
+
         private fun completed(
             eventId: String,
             userId: String,

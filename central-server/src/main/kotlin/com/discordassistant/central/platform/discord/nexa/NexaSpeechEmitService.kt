@@ -74,6 +74,7 @@ class NexaSpeechEmitService(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(NexaSpeechEmitService::class.java)
+
     /**
      * 한 participation 평가 결과([request])를 단일 seam 으로 emit 한다. 안전 override → (필요 시)LIVE 모델 검증 →
      * 발화 파이프라인 → 전송 예약 순서를 강제하며, 어느 게이트라도 막으면 발화 없이 안전 종료한다. 무엇이 일어났는지

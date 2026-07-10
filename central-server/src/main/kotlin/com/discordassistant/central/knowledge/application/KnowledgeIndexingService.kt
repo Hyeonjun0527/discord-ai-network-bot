@@ -412,7 +412,11 @@ class KnowledgeIndexingService(
                 } else {
                     window.length
                 }
-            chunk.substring(start, start + splitLen).trim().takeIf { it.isNotBlank() }?.let { parts += it }
+            chunk
+                .substring(start, start + splitLen)
+                .trim()
+                .takeIf { it.isNotBlank() }
+                ?.let { parts += it }
             start += splitLen
         }
         return parts.ifEmpty { listOf(chunk.take(CHUNK_MAX_CHARS)) }

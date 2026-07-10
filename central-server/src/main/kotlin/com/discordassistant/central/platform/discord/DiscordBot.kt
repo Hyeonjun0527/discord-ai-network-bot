@@ -9,6 +9,7 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
+import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
@@ -74,7 +75,6 @@ private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 120
 private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
 private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 80
 private const val RECENT_CHANNEL_CONTEXT_MAX_RAW_CHARS = 12_000
-private const val NIA_CONTINUATION_TTL_MS = 90_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
 private val NIA_DIRECT_ADDRESS_SUFFIX = Regex("""(?:^|\s)니아(?:야|아)?[\s.!?~,，。！？]*$""")
 private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$""")
@@ -184,20 +184,14 @@ internal fun buildNiaContinuationPromptFromRecentMessages(
     messages: List<DiscordRecentPromptMessage>,
     currentMessageId: Long,
     botUserId: Long,
-    nowEpochMillis: Long,
 ): String? {
-    val ordered = messages.sortedBy { it.createdAtEpochMillis }
-    val current = ordered.firstOrNull { it.id == currentMessageId } ?: return null
+    val current = messages.firstOrNull { it.id == currentMessageId } ?: return null
     val content = current.content
     val trimmed = content.trim()
     if (trimmed.isBlank() || trimmed.startsWith(".")) return null
-    val previous =
-        ordered
-            .asReversed()
-            .firstOrNull { it.id != currentMessageId && it.content.isNotBlank() }
-            ?: return null
-    if (!previous.bot || previous.authorId != botUserId) return null
-    if (nowEpochMillis - previous.createdAtEpochMillis !in 0..NIA_CONTINUATION_TTL_MS) return null
+    val repliedMessageId = current.replyToMessageId ?: return null
+    val repliedMessage = messages.firstOrNull { it.id == repliedMessageId } ?: return null
+    if (!repliedMessage.bot || repliedMessage.authorId != botUserId) return null
     return buildNiaContinuationPrompt(content)
 }
 
@@ -210,6 +204,9 @@ internal data class DiscordRecentPromptMessage(
     val createdAtEpochMillis: Long,
     val replyToMessageId: Long? = null,
 )
+
+internal fun ParticipationEmitOutcome.ownsOrdinaryParticipationTurn(): Boolean =
+    this !== ParticipationEmitOutcome.Inactive && this !== ParticipationEmitOutcome.Failed
 
 internal fun buildDiscordRecentContextTurns(
     messages: List<DiscordRecentPromptMessage>,
@@ -1278,8 +1275,8 @@ class DiscordBot(
             // 참여가 실제로 발화(예약)했으면 participation 이 응답을 소유한다(중복 방지). 발화하지 않았으면 — 특히 직접
             // 호명/멘션/reply 인데 judge 가 침묵했으면 — SSOT(guild-policy-boundary: MEMBER 모드 직접호명 반드시 응답)에
             // 따라 아래 legacy 확실한 답변 경로로 폴백한다. 이전엔 LIVE 채널이면 무조건 return 해 judge 침묵 시 무응답이었다.
-            val participationWillSpeak = forwardToParticipation(event, mentioned || directlyAddressed)
-            if (participationWillSpeak) return
+            val participationOutcome = forwardToParticipation(event, mentioned || directlyAddressed)
+            if (participationOutcome is ParticipationEmitOutcome.Emitted && participationOutcome.result.willSpeak) return
             if (mentioned) {
                 handleMentionAsk(event, selfId)
                 return
@@ -1294,6 +1291,7 @@ class DiscordBot(
                 respondInChannel(event, continuationPrompt, fastResponse = false)
                 return
             }
+            if (participationOutcome.ownsOrdinaryParticipationTurn()) return
             handleAutoRespond(event)
         }
 
@@ -1305,8 +1303,8 @@ class DiscordBot(
         private fun forwardToParticipation(
             event: MessageReceivedEvent,
             mentioned: Boolean,
-        ): Boolean {
-            return try {
+        ): ParticipationEmitOutcome =
+            try {
                 val messageId = event.messageIdLong
                 val selfId = event.jda.selfUser.idLong
                 val speakerLabel = "user_${event.author.idLong % 100000}"
@@ -1323,6 +1321,7 @@ class DiscordBot(
                 // niaReply = 트리거가 reply 한 대상이 니아 메시지일 때만 그 메시지(아니면 null).
                 val niaReply = event.message.referencedMessage?.takeIf { it.author.idLong == selfId }
                 val replyToNia = niaReply != null
+                val replyToHuman = event.message.referencedMessage?.let { !it.author.isBot && it.author.idLong != selfId } ?: false
 
                 // continuation(A7): 트리거가 니아 발화에 대한 reply 면, 그 referencedMessage(니아 발화) 토큰을 continuation
                 // 후보로 쓴다. 니아 메시지는 봇 author 라 이 핸들러로 직접 오지 않으므로(early-return), reply 의
@@ -1356,44 +1355,42 @@ class DiscordBot(
                                 ),
                     )
 
-                val participationOutcome = participationEmitBridge.onMessage(
-                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
-                        guildId = event.guild.idLong,
-                        channelId = event.channel.idLong,
-                        messageId = messageId,
-                        userId = event.author.idLong,
-                        threadId = event.message.startedThread?.idLong,
-                        replyToMessageId = event.message.referencedMessage?.idLong,
-                        sourceType = participationSourceTypeOf(event),
-                        mentioned = mentioned,
-                        recentTurns = recentTurns,
-                        recentRawMessages = recentRawMessages,
-                        triggerText = contentRaw.take(500),
-                        rawText = contentRaw,
-                        speakerLabel = speakerLabel,
-                        replyToNia = replyToNia,
-                        niaRecentTokens = niaRecentTokens,
-                        withinContinuationTtl = withinContinuationTtl,
-                        duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
-                        burstIncomplete = derived.burstIncomplete,
-                        priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
-                        firstMessageText = derived.firstMessageText,
-                        conversationMentionsNia = derived.conversationMentionsNia,
-                        tsMs = tsMs,
-                        sceneSeq = messageId,
-                        contextVersion = messageId,
-                        seed = messageId,
-                    ),
-                )
-                // 참여가 실제 발화(SPEAK 예약)를 소유했는지. true 면 onMessageReceived 가 legacy 경로를 건너뛴다.
-                participationOutcome is
-                    com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.Emitted &&
-                    participationOutcome.result.willSpeak
+                val participationOutcome =
+                    participationEmitBridge.onMessage(
+                        com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
+                            guildId = event.guild.idLong,
+                            channelId = event.channel.idLong,
+                            messageId = messageId,
+                            userId = event.author.idLong,
+                            threadId = event.message.startedThread?.idLong,
+                            replyToMessageId = event.message.referencedMessage?.idLong,
+                            sourceType = participationSourceTypeOf(event),
+                            mentioned = mentioned,
+                            recentTurns = recentTurns,
+                            recentRawMessages = recentRawMessages,
+                            triggerText = contentRaw.take(500),
+                            rawText = contentRaw,
+                            speakerLabel = speakerLabel,
+                            replyToNia = replyToNia,
+                            replyToHuman = replyToHuman,
+                            niaRecentTokens = niaRecentTokens,
+                            withinContinuationTtl = withinContinuationTtl,
+                            duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
+                            burstIncomplete = derived.burstIncomplete,
+                            priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
+                            firstMessageText = derived.firstMessageText,
+                            conversationMentionsNia = derived.conversationMentionsNia,
+                            tsMs = tsMs,
+                            sceneSeq = messageId,
+                            contextVersion = messageId,
+                            seed = messageId,
+                        ),
+                    )
+                participationOutcome
             } catch (e: Exception) {
                 log.debug("NEXA participation 신호 구성 실패(channel={}) — 무시: {}", event.channel.idLong, e.message)
-                false
+                ParticipationEmitOutcome.Failed
             }
-        }
 
         private fun participationSourceTypeOf(
             event: MessageReceivedEvent,
@@ -1679,15 +1676,10 @@ class DiscordBot(
 
         private fun niaContinuationPrompt(event: MessageReceivedEvent): String? {
             val selfId = event.jda.selfUser.idLong
-            val nowEpochMillis =
-                event.message.timeCreated
-                    .toInstant()
-                    .toEpochMilli()
             return buildNiaContinuationPromptFromRecentMessages(
                 messages = recentMessagesSnapshot(event.channel.idLong),
                 currentMessageId = event.messageIdLong,
                 botUserId = selfId,
-                nowEpochMillis = nowEpochMillis,
             )
         }
 

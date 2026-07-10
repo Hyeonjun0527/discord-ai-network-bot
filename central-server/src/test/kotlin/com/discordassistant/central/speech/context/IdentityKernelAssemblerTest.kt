@@ -17,11 +17,12 @@ class IdentityKernelAssemblerTest {
         )
 
     @Test
-    fun `default nia persona reuses NexaIdentity SSOT verbatim (no duplication)`() {
+    fun `default nia speech persona reuses NexaIdentity SSOT verbatim (no duplication)`() {
         val section =
             assembler(IdentityKernelMeta.of("니아", emptySet(), administratorApproved = false)).assemble(1L)
         // SSOT 본문을 그대로 읽어 넣는다 — assembler 가 다시 정의하지 않는다.
-        assertThat(section.personaBlock).isEqualTo(NexaIdentity.NIA_DEFAULT_PERSONA)
+        assertThat(section.personaBlock).isEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
+        assertThat(section.personaBlock).contains("왜 자꾸 불러 ㅋㅋ")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
     }
 
@@ -46,7 +47,7 @@ class IdentityKernelAssemblerTest {
             assembler(IdentityKernelMeta.of("아리", setOf("음악"), administratorApproved = true)).assemble(7L)
         assertThat(section.personaName).isEqualTo("아리")
         assertThat(section.personaBlock).contains("아리")
-        assertThat(section.personaBlock).isNotEqualTo(NexaIdentity.NIA_DEFAULT_PERSONA)
+        assertThat(section.personaBlock).isNotEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
         assertThat(section.interests).containsExactly("음악")
     }
 

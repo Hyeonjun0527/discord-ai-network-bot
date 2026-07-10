@@ -14,8 +14,8 @@ object SingleJudgeSceneSnapshotBuilder {
     private const val IDLE_GAP_THRESHOLD_MILLIS: Long = 5_000
 
     fun build(observation: SingleJudgeSceneObservation): SingleJudgeSceneBuildResult {
-        val textSignals = observation.toTextSignals()
         val directAddressed = observation.derivedDirectAddressed()
+        val textSignals = observation.toTextSignals(directAddressed)
         val agentState =
             JudgeAgentSceneState(
                 recentSpeechCount = observation.recentAgentBurstCount,
@@ -68,7 +68,7 @@ object SingleJudgeSceneSnapshotBuilder {
         )
     }
 
-    private fun SingleJudgeSceneObservation.toTextSignals(): JudgeSceneTextSignals {
+    private fun SingleJudgeSceneObservation.toTextSignals(currentMessageDirectAddressed: Boolean): JudgeSceneTextSignals {
         val text = triggerText.orEmpty()
         val contentAvailable = triggerText != null
         return JudgeSceneTextSignals(
@@ -78,7 +78,7 @@ object SingleJudgeSceneSnapshotBuilder {
             emotionalIntensity = if (contentAvailable) emotionalIntensityOf(text) else 0.0,
             callPressure =
                 if (contentAvailable) {
-                    callPressureOf(text, directAddressed || replyToNia || conversationMentionsNia)
+                    callPressureOf(text, currentMessageDirectAddressed)
                 } else {
                     0.0
                 },
@@ -158,8 +158,7 @@ object SingleJudgeSceneSnapshotBuilder {
 
     private fun lastSpokeFeature(value: Double?): FeatureValue = value?.let { FeatureValue.present(it) } ?: FeatureValue.MISSING
 
-    private fun SingleJudgeSceneObservation.derivedDirectAddressed(): Boolean =
-        directAddressed || replyToNia || conversationMentionsNia || nicknameCall
+    private fun SingleJudgeSceneObservation.derivedDirectAddressed(): Boolean = directAddressed || replyToNia || nicknameCall
 
     private fun SingleJudgeSceneObservation.replyTargetKind(): String =
         when {

@@ -84,7 +84,7 @@ import java.time.Instant
  *
  * "AI 채팅 채널"(NEXA participation flag 가 활성인 (guild, channel))에서 받은 메시지에 대해, 니아가 **스스로**
  * 발화/리액션/침묵을 판단하고 SPEAK 면 단일 보안 seam [NexaSpeechEmitService.emit] 를 호출한다. 기존 채널 무조건
- * 답변(autoRespond)과 **완전히 별개의 추가 경로**다 — autoRespond 는 한 줄도 건드리지 않는다(회귀 0).
+ * 답변(autoRespond)과 별개의 participation 경로다. participation flag가 비활성일 때만 legacy autoRespond가 응답을 소유한다.
  *
  * **안전(단계 1 핵심)**:
  *  1. **flag 가드(기본 OFF)**: [NexaParticipationFlagService.isNexaActive] 가 true 일 때만 평가/emit 한다. 기본값은
@@ -100,8 +100,8 @@ import java.time.Instant
  *  4. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
  *     경로가 ConsentGate(2단계 동의)·SpeechCritic·AiIdentityDisclosureCritic·LIVE 모델 검증을 **강제**한다. 이
  *     브리지는 emit 를 호출만 하며 **우회 경로를 만들지 않는다**.
- *  5. **graceful**: 평가/emit 실패는 흡수하고 로그만 남긴다(관찰 best-effort) — 기존 메시지 처리(autoRespond 등)에
- *     영향 0.
+ *  5. **fail-closed**: FINAL judge가 실제 전송을 소유한 채널의 평가/emit 실패는 흡수하고 로그를 남기며 legacy 응답으로
+ *     우회하지 않는다. shadow 채널은 관찰만 하고 기존 응답 계약을 보존한다.
  *
  * 순수성 경계: platform 어댑터 — participation/speech/actionruntime 의 공개 application 클래스·도메인 값 객체만
  * 조립한다(여러 도메인 application 을 묶는 것은 adapter 의 허용 책임). JDA 전송은 참조하지 않는다.
@@ -119,7 +119,7 @@ class NexaParticipationEmitBridge(
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
     @param:Value("\${central.nexa.participation.speech.raw-context.max-chars:12000}")
     private val speechRawContextMaxChars: Int = 12_000,
-    @param:Value("\${central.nexa.judge.mode:final}") private val judgeModeName: String = NexaJudgeMode.DEFAULT.wireName,
+    @param:Value("\${central.nexa.judge.mode:final}") private val judgeModeName: String = NexaJudgeMode.FINAL.wireName,
     private val rawContextStore: RawContextStorePort? = null,
     private val decisionLog: ParticipationDecisionLogPort? = null,
     private val traceStore: ParticipationGateTraceStore = ParticipationGateTraceStore(),
@@ -150,45 +150,100 @@ class NexaParticipationEmitBridge(
 
     /**
      * [signal] (raw Discord 메시지 신호)에 대해 NEXA participation 평가를 돌리고, 정책이 낸 분포가 SPEAK 로 접히면
-     * [NexaSpeechEmitService.emit] 를 호출한다. flag OFF 면 no-op, 실패는 흡수한다(기존 동작 보존). 무엇이 일어났는지
-     * ([ParticipationEmitOutcome])를 돌려준다(테스트·관찰용).
+     * [NexaSpeechEmitService.emit] 를 호출한다. flag OFF 면 no-op이고, 활성 participation 채널의 실패는 흡수하되
+     * 비발화로 fail-closed한다. 무엇이 일어났는지([ParticipationEmitOutcome])를 돌려준다(테스트·관찰용).
      */
-    fun onMessage(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
+    fun onMessage(signal: ParticipationMessageSignal): ParticipationEmitOutcome = onMessageTurn(signal).outcome
+
+    /**
+     * Captures the effective rollout mode exactly once and returns both the decision and ownership derived from that
+     * same snapshot. The Discord adapter must use this result rather than re-reading mutable rollout state.
+     */
+    fun onMessageTurn(signal: ParticipationMessageSignal): ParticipationTurnOutcome {
         val mode = flags.effectiveMode(guildId = signal.guildId, channelId = signal.channelId)
         if (!mode.evaluatesPolicy) {
-            return recordTrace(
-                signal = signal,
-                mode = mode,
-                outcome = ParticipationEmitOutcome.Inactive,
+            return turnOutcome(
+                mode,
+                recordTrace(
+                    signal = signal,
+                    mode = mode,
+                    outcome = ParticipationEmitOutcome.Inactive,
+                ),
             )
         }
         if (signal.sourceType != ParticipationMessageSourceType.HUMAN) {
-            return recordTrace(
-                signal = signal,
-                mode = mode,
-                outcome = ParticipationEmitOutcome.RuleSilent("RULE_NON_HUMAN_SOURCE"),
+            return turnOutcome(
+                mode,
+                recordTrace(
+                    signal = signal,
+                    mode = mode,
+                    outcome = ParticipationEmitOutcome.RuleSilent("RULE_NON_HUMAN_SOURCE"),
+                ),
             )
         }
         if (signal.isParticipationCommandLike()) {
-            return recordTrace(
-                signal = signal,
-                mode = mode,
-                outcome = ParticipationEmitOutcome.RuleSilent("RULE_COMMAND_LIKE"),
+            return turnOutcome(
+                mode,
+                recordTrace(
+                    signal = signal,
+                    mode = mode,
+                    outcome = ParticipationEmitOutcome.RuleSilent("RULE_COMMAND_LIKE"),
+                ),
             )
         }
         if (!captureRawContext(signal)) {
-            return recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed)
+            return turnOutcome(
+                mode,
+                recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed),
+            )
+        }
+        if (mode.allowsRealSend && judgeMode != NexaJudgeMode.FINAL) {
+            // Rollout guard, not social-policy logic: a non-final judge mode may collect comparison data in shadow,
+            // but it must never use core/baseline or legacy behavior to emit in CANARY/LIVE.
+            log.error(
+                "NEXA participation real-send lane requires final judge mode(channel={}, mode={}); fail-closing this turn",
+                signal.channelId,
+                judgeMode.wireName,
+            )
+            return turnOutcome(
+                mode,
+                recordTrace(
+                    signal = signal,
+                    mode = mode,
+                    outcome = ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE),
+                ),
+            )
         }
         val outcome =
             try {
-                evaluateAndEmit(signal)
+                evaluateAndEmit(signal, originRolloutMode = mode)
             } catch (e: Exception) {
-                // 관찰 실패는 사용자 응답(autoRespond 등)을 막지 않는다 — 흡수 후 로그만(관찰 best-effort).
-                log.warn("NEXA participation 발화 평가 실패(channel={}) — 자발 발화만 건너뜀: {}", signal.channelId, e.message)
+                // 활성 participation 채널은 judge/안전 경계를 우회하지 않는다. 실패는 로그 후 비발화로 fail-closed한다.
+                log.warn("NEXA participation 발화 평가 실패(channel={}) — 이번 턴 fail-closed: {}", signal.channelId, e.message)
                 ParticipationEmitOutcome.Failed
             }
-        return recordTrace(signal = signal, mode = mode, outcome = outcome)
+        return turnOutcome(mode, recordTrace(signal = signal, mode = mode, outcome = outcome))
     }
+
+    /** Construct an outcome for a failure before a [ParticipationMessageSignal] could be built. */
+    fun failedMessageTurn(
+        guildId: Long,
+        channelId: Long,
+    ): ParticipationTurnOutcome {
+        val mode = flags.effectiveMode(guildId = guildId, channelId = channelId)
+        return turnOutcome(mode, ParticipationEmitOutcome.Failed)
+    }
+
+    private fun turnOutcome(
+        mode: ShadowMode,
+        outcome: ParticipationEmitOutcome,
+    ): ParticipationTurnOutcome =
+        ParticipationTurnOutcome(
+            outcome = outcome,
+            // A real-send lane is configured to use FINAL. If that invariant is broken, the mode guard above returns
+            // a silent failure and still owns the turn, so an unjudged legacy path cannot bypass it.
+            ownsTurn = mode.allowsRealSend && outcome !== ParticipationEmitOutcome.Inactive,
+        )
 
     private fun captureRawContext(signal: ParticipationMessageSignal): Boolean {
         val store = rawContextStore ?: return true
@@ -341,7 +396,10 @@ class NexaParticipationEmitBridge(
 
     private fun ParticipationRawContextEditSignal.isCommandLike(): Boolean = rawText.trimStart().startsWith(".")
 
-    private fun evaluateAndEmit(signal: ParticipationMessageSignal): ParticipationEmitOutcome {
+    private fun evaluateAndEmit(
+        signal: ParticipationMessageSignal,
+        originRolloutMode: ShadowMode,
+    ): ParticipationEmitOutcome {
         val guildPseudonym = guildPseudonym(signal.guildId)
         val userPseudonym = userPseudonym(signal.guildId, signal.userId)
         val channelKey = signal.channelId.toString()
@@ -372,6 +430,7 @@ class NexaParticipationEmitBridge(
                 userPseudonym = userPseudonym,
                 channelKey = channelKey,
                 sceneBuild = sceneBuild,
+                originRolloutMode = originRolloutMode,
             )
         }
 
@@ -420,7 +479,14 @@ class NexaParticipationEmitBridge(
             }
             is CoreInterventionRules.Verdict.Speak -> {
                 // 규칙이 명백한 SPEAK 라 정책 분포를 묻지 않는다 — 결정론 ALWAYS_SPEAK 분포로 emit 한다.
-                return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, ruleForcedSpeakResponse())
+                return emitSpeak(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    userPseudonym = userPseudonym,
+                    channelKey = channelKey,
+                    response = ruleForcedSpeakResponse(),
+                    originRolloutMode = originRolloutMode,
+                )
             }
             CoreInterventionRules.Verdict.Candidate -> Unit // 모호 → 아래 정책 분포로 위임.
         }
@@ -441,7 +507,15 @@ class NexaParticipationEmitBridge(
             )
             return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
         }
-        return emitSpeak(signal, guildPseudonym, userPseudonym, channelKey, response, sceneBuild.featureVector)
+        return emitSpeak(
+            signal = signal,
+            guildPseudonym = guildPseudonym,
+            userPseudonym = userPseudonym,
+            channelKey = channelKey,
+            response = response,
+            featureVector = sceneBuild.featureVector,
+            originRolloutMode = originRolloutMode,
+        )
     }
 
     private fun buildPolicyScene(
@@ -505,6 +579,7 @@ class NexaParticipationEmitBridge(
         userPseudonym: String,
         channelKey: String,
         sceneBuild: SingleJudgeSceneBuildResult,
+        originRolloutMode: ShadowMode,
     ): ParticipationEmitOutcome {
         val judge = singleJudge
         val request = singleJudgeRequest(signal, guildPseudonym, channelKey, sceneBuild)
@@ -555,6 +630,7 @@ class NexaParticipationEmitBridge(
                         request = request,
                         shadowBaselineAction = null,
                     ),
+                originRolloutMode = originRolloutMode,
             )
         }
 
@@ -569,7 +645,7 @@ class NexaParticipationEmitBridge(
             featureVector = sceneBuild.featureVector,
             shadowBaselineAction = null,
         )
-        routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision)
+        routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision, originRolloutMode)
         return ParticipationEmitOutcome.NotSpeaking(decision.action)
     }
 
@@ -746,6 +822,7 @@ class NexaParticipationEmitBridge(
         response: PolicyDecisionResponse,
         featureVector: FeatureVectorView? = null,
         attribution: DecisionAttribution = response.defaultAttribution(),
+        originRolloutMode: ShadowMode,
     ): ParticipationEmitOutcome {
         logPolicyDecision(
             signal = signal,
@@ -823,6 +900,7 @@ class NexaParticipationEmitBridge(
                     sampledActionIndex = 0,
                     seed = signal.seed,
                     executeAfter = Instant.now(),
+                    originRolloutMode = originRolloutMode,
                 )
             }
         val result = emit.emit(emitRequest)
@@ -1059,6 +1137,7 @@ class NexaParticipationEmitBridge(
         guildPseudonym: String,
         channelKey: String,
         decision: SingleJudgeDecision,
+        originRolloutMode: ShadowMode,
     ) {
         val socialAction = decision.toSocialAction(signal)
         if (socialAction.kind != SocialActionKind.REACT && socialAction.kind != SocialActionKind.CANCEL_PENDING) return
@@ -1075,6 +1154,7 @@ class NexaParticipationEmitBridge(
                 target = actionTarget(guildPseudonym, channelKey),
                 executeAfter = Instant.now().plusMillis(decision.delay.millis),
                 contextVersion = signal.contextVersion,
+                originRolloutMode = originRolloutMode,
             )
         }.onFailure { error ->
             log.warn("NEXA final judge {} 라우팅 실패(sceneSeq={}) — {}", socialAction.kind, signal.sceneSeq, error::class.simpleName)
@@ -1319,7 +1399,7 @@ class NexaParticipationEmitBridge(
         private const val DEFAULT_REACTION_CODE: String = "ack"
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
-        private const val DEFAULT_FEW_SHOT_VERSION: Int = 3
+        private const val DEFAULT_FEW_SHOT_VERSION: Int = 5
         private val ROMANIZED_NIA_NAME_SIGNAL: Regex =
             Regex("""(?i)(^|[^a-z0-9_])n\s*i\s*a(?:\s*y\s*a|ya|야|씨)?(?=$|[^a-z0-9_])""")
 
@@ -1403,6 +1483,105 @@ class NexaParticipationEmitBridge(
                                             "message directed to someone else.",
                                 ),
                             tags = setOf("handoff", "human-to-human", "whole-scene"),
+                            priority = 95,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_retracted_direct_address",
+                            title = "newer addressee correction supersedes an earlier nia call",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "니아야 나 고민 있어"),
+                                    JudgeFewShotRawMessagePayload("m2", "member", 1_000, "아니 니아 말고 서연이한테 한 말이야"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "서연아 자니"),
+                                ),
+                            expectedAction = NiaFewShotAction.IGNORE,
+                            reason =
+                                "The newer correction supersedes the earlier direct address, and Nia has not spoken " +
+                                    "yet. Speaking would interrupt a conversation the members redirected to Seoyeon.",
+                            evidenceRefs = setOf("m1", "m2", "m3"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.SPEAK,
+                                    whyBad =
+                                        "Answering from the stale Nia call would ignore the latest addressee correction " +
+                                            "and intrude on the human-to-human handoff.",
+                                ),
+                            tags = setOf("addressee-correction", "human-to-human", "whole-scene"),
+                            priority = 100,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_mistaken_interruption_yield",
+                            title = "nia realizes a concern was addressed to another member",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "서연아 나 고민이 있어"),
+                                    JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "어떤 고민이야"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "너 말고 서연이한테 한 말임"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason =
+                                "Nia misread who owned the turn. One brief acknowledgement of the mistake and yielding " +
+                                    "is natural; she must not ask another question or take over the concern.",
+                            evidenceRefs = setOf("m1", "m2", "m3"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.WAIT,
+                                    whyBad =
+                                        "Waiting leaves Nia's interruption unacknowledged when a short repair would " +
+                                            "let the people continue naturally.",
+                                ),
+                            tags = setOf("misread-addressee", "self-repair", "yield"),
+                            priority = 100,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_humans_continue_after_yield",
+                            title = "nia stays out after acknowledging an interruption",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "너 말고 서연이한테 한 말임"),
+                                    JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "아 내가 잘못 끼어들었네 미안"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "야 너 대답하지 마"),
+                                    JudgeFewShotRawMessagePayload("m4", "member", 3_000, "서연아 내 고민 좀 들어줘"),
+                                ),
+                            expectedAction = NiaFewShotAction.IGNORE,
+                            reason =
+                                "Nia has already repaired the interruption, the member has made the boundary clearer, " +
+                                    "and the conversation is continuing with Seoyeon. Silence is the helpful action.",
+                            evidenceRefs = setOf("m2", "m3", "m4"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.SPEAK,
+                                    whyBad =
+                                        "Another reply would ignore the boundary, repeat the interruption, and make Nia " +
+                                            "the center of a conversation between other members.",
+                                ),
+                            tags = setOf("human-to-human", "withdrawal", "whole-scene"),
+                            priority = 100,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_readdress_after_yield",
+                            title = "member explicitly invites nia back after yielding",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "너 말고 서연이한테 한 말임"),
+                                    JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "아 내가 잘못 끼어들었네 미안"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "니아야 너는 어떻게 생각해?"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason =
+                                "The earlier boundary does not permanently exclude Nia. This turn genuinely asks Nia for " +
+                                    "an opinion, so participating again is natural.",
+                            evidenceRefs = setOf("m1", "m2", "m3"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.IGNORE,
+                                    whyBad = "Ignoring an explicit renewed invitation would miss the current speaker's intent.",
+                                ),
+                            tags = setOf("direct-address", "reengagement", "whole-scene"),
                             priority = 95,
                             privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
                         ),
@@ -1652,6 +1831,18 @@ private fun ParticipationMessageSourceType.toRawContextSourceType(): RawContextS
 
 private fun ParticipationMessageSignal.isParticipationCommandLike(): Boolean = rawText.trimStart().startsWith(".")
 
+/** A participation decision and the routing ownership derived from the same effective rollout snapshot. */
+data class ParticipationTurnOutcome(
+    val outcome: ParticipationEmitOutcome,
+    val ownsTurn: Boolean,
+) {
+    init {
+        require(!ownsTurn || outcome !== ParticipationEmitOutcome.Inactive) {
+            "inactive participation cannot own a Discord message turn"
+        }
+    }
+}
+
 /** [NexaParticipationEmitBridge.onMessage] 결과 — flag OFF/비SPEAK/emit/실패를 명시 구분(관찰·테스트). */
 sealed interface ParticipationEmitOutcome {
     /** flag OFF(legacy) 또는 비활성 — 자발 발화 경로 미진입(기존 동작 보존). */
@@ -1698,7 +1889,7 @@ sealed interface ParticipationEmitOutcome {
         val result: NexaSpeechEmitResult,
     ) : ParticipationEmitOutcome
 
-    /** 평가/emit 중 예외 흡수 — 사용자 응답에는 영향 없음. */
+    /** 평가/emit 중 예외 흡수 — 활성 participation 턴은 legacy 응답으로 우회하지 않는다. */
     data object Failed : ParticipationEmitOutcome
 }
 

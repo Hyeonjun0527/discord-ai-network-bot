@@ -32,6 +32,7 @@ import com.discordassistant.central.participation.domain.model.decision.DelayDis
 import com.discordassistant.central.participation.domain.model.decision.TargetCandidate
 import com.discordassistant.central.participation.domain.model.decision.TargetKind
 import com.discordassistant.central.participation.domain.model.decision.TargetRef
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.requestlog.application.NexaCorrelation
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
@@ -283,6 +284,7 @@ class NexaSpeechEmitServiceTest {
             sampledActionIndex = 0,
             seed = 7L,
             executeAfter = Instant.parse("2026-06-22T00:00:01Z"),
+            originRolloutMode = ShadowMode.LIVE,
             liveModel = liveModel,
         )
 

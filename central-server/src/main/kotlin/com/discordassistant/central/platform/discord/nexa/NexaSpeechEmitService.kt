@@ -14,6 +14,7 @@ import com.discordassistant.central.participation.domain.model.action.SocialActi
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
 import com.discordassistant.central.participation.domain.model.decision.ActionDistribution
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.requestlog.application.NexaCorrelation
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
@@ -139,6 +140,7 @@ class NexaSpeechEmitService(
                 target = request.actionTarget,
                 executeAfter = request.executeAfter,
                 contextVersion = request.provenance.contextVersion,
+                originRolloutMode = request.originRolloutMode,
             )
         correlationRecorder.record(
             NexaCorrelation(
@@ -239,6 +241,8 @@ data class NexaSpeechEmitRequest(
     val seed: Long,
     /** 예약 실행 시점(actionruntime executor 가 이후 실제 전송). */
     val executeAfter: Instant,
+    /** 이 요청을 만든 participation 판단의 rollout 모드 — 이후 채널 승격이 전송 권한을 넓히지 못하게 한다. */
+    val originRolloutMode: ShadowMode,
     /** 장면 stale 여부(늦은 발화 금지 — 파이프라인이 비호출로 하강). */
     val stale: Boolean = false,
     /** 생성 예산(후보 수·token cap). */

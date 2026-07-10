@@ -10,6 +10,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -217,6 +218,7 @@ class JpaScheduledActionStore(
             subjectPseudonym = target.subjectPseudonym,
             executeAfter = executeAfter,
             contextVersion = contextVersion,
+            originRolloutMode = originRolloutMode.name,
             status = status.name,
             attempt = attempt,
             maxAttempts = maxAttempts,
@@ -239,6 +241,7 @@ class JpaScheduledActionStore(
                 ),
             executeAfter = executeAfter,
             contextVersion = contextVersion,
+            originRolloutMode = originRolloutModeFromWire(originRolloutMode),
             status = ActionStatus.valueOf(status),
             attempt = attempt,
             failureReason = failureReason?.let { reasonFromWire(it) },
@@ -252,6 +255,9 @@ class JpaScheduledActionStore(
         fun typeFromWire(wire: String): ScheduledActionType = ScheduledActionType.entries.first { it.wireName == wire }
 
         fun reasonFromWire(wire: String): ActionFailureReason = ActionFailureReason.entries.first { it.wireName == wire }
+
+        /** Unknown persisted modes fail closed rather than accidentally granting an old action real-send authority. */
+        fun originRolloutModeFromWire(wire: String): ShadowMode = runCatching { ShadowMode.valueOf(wire) }.getOrDefault(ShadowMode.OFF)
 
         fun ScheduledSocialAction.retryToSchedule(
             executeAfter: Instant,
@@ -280,6 +286,7 @@ class ScheduledActionEntity(
     @Column(name = "subject_pseudonym") var subjectPseudonym: String? = null,
     @Column(name = "execute_after") var executeAfter: Instant = Instant.EPOCH,
     @Column(name = "context_version") var contextVersion: Long = 0,
+    @Column(name = "origin_rollout_mode") var originRolloutMode: String = ShadowMode.OFF.name,
     @Column(name = "status") var status: String = ActionStatus.CONSIDERING.name,
     @Column(name = "attempt") var attempt: Int = 0,
     @Column(name = "max_attempts") var maxAttempts: Int = ScheduledSocialAction.DEFAULT_MAX_ATTEMPTS,

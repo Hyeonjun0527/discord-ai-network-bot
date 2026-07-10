@@ -53,6 +53,7 @@ class ActionRuntimeIntegrationTest {
         target = ActionTarget("guild-1", channel, thread),
         executeAfter = due,
         contextVersion = contextVersion,
+        originRolloutMode = ShadowMode.LIVE,
     )
 
     /** 한 시나리오 실행 컨텍스트(예약→poll→execute 를 한 흐름으로). */

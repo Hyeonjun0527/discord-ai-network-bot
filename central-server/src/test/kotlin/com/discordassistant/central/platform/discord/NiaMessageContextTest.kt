@@ -2,16 +2,24 @@ package com.discordassistant.central.platform.discord
 
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
+import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class NiaMessageContextTest {
     @Test
-    fun `활성 participation의 비발화 판단은 일반 메시지의 최종 결과다`() {
-        assertThat(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE).ownsOrdinaryParticipationTurn()).isTrue()
-        assertThat(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.WAIT).ownsOrdinaryParticipationTurn()).isTrue()
-        assertThat(ParticipationEmitOutcome.Inactive.ownsOrdinaryParticipationTurn()).isFalse()
-        assertThat(ParticipationEmitOutcome.Failed.ownsOrdinaryParticipationTurn()).isFalse()
+    fun `bridge의 단일 rollout snapshot이 legacy 응답 소유권을 전달한다`() {
+        fun owns(
+            outcome: ParticipationEmitOutcome,
+            ownsTurn: Boolean,
+        ): Boolean = ParticipationTurnOutcome(outcome, ownsTurn).ownsTurn
+
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE), ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.WAIT), ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.Failed, ownsTurn = true)).isTrue()
+        assertThat(owns(ParticipationEmitOutcome.Inactive, ownsTurn = false)).isFalse()
+        assertThat(owns(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE), ownsTurn = false)).isFalse()
+        assertThat(owns(ParticipationEmitOutcome.Failed, ownsTurn = false)).isFalse()
     }
 
     @Test

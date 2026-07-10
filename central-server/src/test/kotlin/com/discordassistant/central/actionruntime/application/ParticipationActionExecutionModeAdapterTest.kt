@@ -41,6 +41,34 @@ class ParticipationActionExecutionModeAdapterTest {
         assertThat(mode).isEqualTo(ShadowMode.OFF)
     }
 
+    @Test
+    fun `shadow origin은 채널이 LIVE로 승격돼도 전송 권한을 얻지 않는다`() {
+        val adapter =
+            ParticipationActionExecutionModeAdapter(
+                shadowModeStore = FakeModeStore(ShadowMode.LIVE),
+                flagPort = FakeFlagPort(),
+                globalDefaultLaneName = "LIVE",
+            )
+
+        val mode = adapter.currentMode(ActionTarget("g1", "100", "t1"), ShadowMode.SHADOW_PREDICT)
+
+        assertThat(mode).isEqualTo(ShadowMode.SHADOW_PREDICT)
+    }
+
+    @Test
+    fun `CANARY origin과 LIVE current의 교집합은 CANARY를 유지한다`() {
+        val adapter =
+            ParticipationActionExecutionModeAdapter(
+                shadowModeStore = FakeModeStore(ShadowMode.LIVE),
+                flagPort = FakeFlagPort(),
+                globalDefaultLaneName = "LIVE",
+            )
+
+        val mode = adapter.currentMode(ActionTarget("g1", "100", "t1"), ShadowMode.CANARY)
+
+        assertThat(mode).isEqualTo(ShadowMode.CANARY)
+    }
+
     private class FakeModeStore(
         private val mode: ShadowMode,
     ) : ShadowModeStorePort {

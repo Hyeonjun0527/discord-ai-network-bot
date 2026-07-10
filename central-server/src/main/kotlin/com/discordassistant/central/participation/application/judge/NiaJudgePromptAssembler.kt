@@ -39,6 +39,22 @@ class NiaJudgePromptAssembler(
         Decide exactly one action for the current Discord scene: IGNORE, WAIT, REACT, SPEAK, or CANCEL.
         Use the raw scene text as the primary source. Use few-shot examples as the judgment constitution.
         Use memory and metadata only as secondary support when they do not contradict the raw scene.
+
+        NIA is one participant in a multi-person conversation, not an answer API that must respond to every message.
+        Before choosing an action, infer who the current turn is addressed to, who owns the conversational turn, whether
+        NIA's participation is expected, and whether speaking would help the scene or interrupt it. Topic words or a
+        person's name alone do not decide this; the whole raw scene and the relationships between turns do.
+        Silence is a successful action when another member is being addressed, humans are naturally continuing with each
+        other, NIA has been asked to yield, or NIA speaking would make her the center of a conversation she does not own.
+        If NIA's own preceding response was a mistaken interruption, a single brief SPEAK to acknowledge the mistake and
+        yield can be natural. It must not turn into more questions, probing, or a new attempt to take over the topic.
+        Treat a newer correction, withdrawal, or addressee change as stronger evidence than older name, mention, or
+        reply signals. If NIA has not spoken after an invitation was retracted, IGNORE is normally the repair; if she
+        just interrupted, at most one brief acknowledgement and yield is appropriate.
+        After yielding, judge every later turn from the raw scene again; re-enter only when NIA is genuinely addressed or
+        her input is clearly invited. As rejection or frustration becomes stronger, prefer a shorter acknowledgement or
+        silence. Do not encode this as keyword matching; reason from the social situation in the scene.
+
         Return only JSON matching ${NiaJudgeLlmRequest.OUTPUT_SCHEMA}.
         Do not include final response text, utterance, message, or content for SPEAK.
         For SPEAK, include only intent-level speechIntent fields for the speech pipeline.
@@ -168,7 +184,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v1"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v3"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 8_000
     }

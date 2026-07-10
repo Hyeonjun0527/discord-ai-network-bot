@@ -7,6 +7,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.actionruntime.support.MutableTestClock
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -30,6 +31,7 @@ class ActionRetryDeciderTest {
             target = ActionTarget("g1", "c1", "t1"),
             executeAfter = clock.instant(),
             contextVersion = 1,
+            originRolloutMode = ShadowMode.LIVE,
             maxAttempts = maxAttempts,
         ).copy(attempt = attempt)
 

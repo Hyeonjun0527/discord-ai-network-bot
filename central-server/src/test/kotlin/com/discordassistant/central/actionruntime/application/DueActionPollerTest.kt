@@ -15,6 +15,7 @@ import com.discordassistant.central.actionruntime.domain.service.CancellationVer
 import com.discordassistant.central.actionruntime.domain.service.SceneEvidence
 import com.discordassistant.central.actionruntime.support.InMemoryActionScheduler
 import com.discordassistant.central.actionruntime.support.MutableTestClock
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -65,6 +66,7 @@ class DueActionPollerTest {
                 target = ActionTarget("g1", "c1", "t1"),
                 executeAfter = executeAfter,
                 contextVersion = contextVersion,
+                originRolloutMode = ShadowMode.LIVE,
             ),
         )
     }

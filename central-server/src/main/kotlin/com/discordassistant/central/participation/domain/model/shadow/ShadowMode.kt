@@ -44,6 +44,19 @@ enum class ShadowMode {
         get() = this == CANARY || this == LIVE
 
     /**
+     * Two rollout constraints can only reduce authority. This intentionally does not use enum ordinal: OFF,
+     * OBSERVE_ONLY, and SHADOW_PREDICT all deny real sends but preserve their distinct operational meaning.
+     */
+    fun restrictiveIntersection(other: ShadowMode): ShadowMode =
+        when {
+            this == OFF || other == OFF -> OFF
+            this == OBSERVE_ONLY || other == OBSERVE_ONLY -> OBSERVE_ONLY
+            this == SHADOW_PREDICT || other == SHADOW_PREDICT -> SHADOW_PREDICT
+            this == CANARY || other == CANARY -> CANARY
+            else -> LIVE
+        }
+
+    /**
      * 이 단계에서 정책 평가/예측을 **수행하는가**. [SHADOW_PREDICT] 부터 true — [OFF]/[OBSERVE_ONLY] 는 평가 안 함.
      */
     val evaluatesPolicy: Boolean

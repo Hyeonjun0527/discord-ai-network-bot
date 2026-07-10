@@ -6,6 +6,7 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledActionTy
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.actionruntime.support.InMemoryActionScheduler
 import com.discordassistant.central.actionruntime.support.MutableTestClock
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -31,6 +32,7 @@ class ActionRuntimePendingCancellationAdapterTest {
                 target = ActionTarget(guildPseudonym = guild, channelId = "c1", threadId = "t1"),
                 executeAfter = clock.instant().plusSeconds(60),
                 contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
             )
         store.schedule(action)
         return action

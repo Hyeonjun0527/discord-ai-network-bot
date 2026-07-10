@@ -42,6 +42,7 @@ class ActionRuntimeChaosTest {
             target = ActionTarget("guild-1", "chan-1", "thread-1"),
             executeAfter = due,
             contextVersion = contextVersion,
+            originRolloutMode = ShadowMode.LIVE,
         )
 
     @Test

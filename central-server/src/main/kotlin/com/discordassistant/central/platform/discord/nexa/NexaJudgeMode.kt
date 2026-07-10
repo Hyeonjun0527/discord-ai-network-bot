@@ -11,7 +11,7 @@ enum class NexaJudgeMode(
     ;
 
     companion object {
-        val DEFAULT: NexaJudgeMode = OFF
+        val DEFAULT: NexaJudgeMode = FINAL
         const val PROPERTY_NAME: String = "central.nexa.judge.mode"
 
         fun parse(raw: String?): NexaJudgeMode {

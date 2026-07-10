@@ -8,7 +8,6 @@ import com.discordassistant.central.actionruntime.application.scheduler.DueActio
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.participation.application.rollout.CanarySignalCollector
 import com.discordassistant.central.participation.application.shadow.ShadowStatusService
-import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -23,9 +22,9 @@ import org.springframework.stereotype.Component
  * 자체가 돌지 않는다(니아 자율 발화 없음).
  *
  * **안전 불변식**:
- *  - **shadow hard block**: [ActionExecutionService.execute] 는 실행 직전 [com.discordassistant.central.actionruntime
- *    .application.port.out.ActionExecutionModePort] 로 현재 모드를 다시 읽는다. 여기서 [ShadowMode.LIVE] 를 넘기는 것은
- *    "요청 상한" 일 뿐이며, 채널이 OFF/OBSERVE_ONLY/SHADOW_PREDICT 면 executor 를 한 번도 호출하지 않는다(전송 0).
+ *  - **origin + current hard block**: [ActionExecutionService.execute] 는 예약 당시 rollout mode를 전송 상한으로 넘기고,
+ *    [com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort] 가 실행 직전 현재 모드와 교집합을
+ *    낸다. SHADOW 예약이 채널 승격만으로 실제 전송 권한을 얻을 수 없다.
  *  - **단일 버블**: 아직 멀티 버블 burst 는 만들지 않는다 — [MultiResponseBurstAdapter.fromPseudoStream] 으로 버블 1개
  *    ([com.discordassistant.central.actionruntime.domain.model.BurstPlan.single]) 계획만 세운다.
  *  - **SPEAK 만**: content 가 있는 것은 SPEAK 뿐이다. REACT 는 아직 미지원이라 로그만 남기고 건너뛴다(별도 실행 경로 필요).
@@ -67,9 +66,9 @@ class AutonomousSendScheduler(
                 continue
             }
             runCatching {
-                // 단일 버블 계획(참조=예약 identity — content 저장 키와 동일). execute 의 modePort 가 실제 전송을 게이팅한다.
+                // 단일 버블 계획(참조=예약 identity — content 저장 키와 동일). 예약 당시 mode와 현재 mode가 함께 전송을 게이팅한다.
                 val plan = burstAdapter.fromPseudoStream(action.identity.value)
-                actionExecutionService.execute(ShadowMode.LIVE, action, plan)
+                actionExecutionService.execute(action.originRolloutMode, action, plan)
             }.onSuccess { outcome ->
                 // 실행 결과를 canary 신호로 집계한다(자동 중단 SAFETY NET 의 입력). 완료=발화, 동의 철회 mid-burst=
                 // privacy error, backpressure staleness=stale send. 그 외(Suppressed/Retry/Failed 등)는 무집계.

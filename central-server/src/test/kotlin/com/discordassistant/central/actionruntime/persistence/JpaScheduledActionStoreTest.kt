@@ -11,6 +11,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -56,6 +57,7 @@ class JpaScheduledActionStoreTest
             target = ActionTarget(guild, channel, "t1", subjectPseudonym = user),
             executeAfter = executeAfter,
             contextVersion = 7,
+            originRolloutMode = ShadowMode.CANARY,
         )
 
         @Test
@@ -64,6 +66,7 @@ class JpaScheduledActionStoreTest
             val persisted = store.find(action().identity)!!
             assertThat(persisted.status).isEqualTo(ActionStatus.SCHEDULED)
             assertThat(persisted.contextVersion).isEqualTo(7)
+            assertThat(persisted.originRolloutMode).isEqualTo(ShadowMode.CANARY)
         }
 
         @Test

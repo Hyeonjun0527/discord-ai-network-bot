@@ -1,5 +1,6 @@
 package com.discordassistant.central.actionruntime.domain.model
 
+import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Instant
 
 /**
@@ -38,6 +39,8 @@ data class ScheduledSocialAction(
     val executeAfter: Instant,
     /** 예약 당시 장면 contextVersion — due 시점 현재 버전과 비교해 stale 여부 판정(T011). */
     val contextVersion: Long,
+    /** 이 예약을 만든 참여 판단의 rollout 모드 — 실행 시점에 승격으로 send 권한이 넓어지지 않게 하는 immutable ceiling. */
+    val originRolloutMode: ShadowMode,
     /** 현재 상태(초기 CONSIDERING). 도메인 메서드로만 바뀐다. */
     val status: ActionStatus = ActionStatus.CONSIDERING,
     /** 실행 시도 횟수(transient 재시도마다 증가 — bounded, T009). */
@@ -125,6 +128,7 @@ data class ScheduledSocialAction(
             target: ActionTarget,
             executeAfter: Instant,
             contextVersion: Long,
+            originRolloutMode: ShadowMode,
             maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
         ): ScheduledSocialAction =
             ScheduledSocialAction(
@@ -134,6 +138,7 @@ data class ScheduledSocialAction(
                 target = target,
                 executeAfter = executeAfter,
                 contextVersion = contextVersion,
+                originRolloutMode = originRolloutMode,
                 maxAttempts = maxAttempts,
             )
     }

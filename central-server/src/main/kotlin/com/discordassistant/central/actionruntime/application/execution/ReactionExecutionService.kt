@@ -49,7 +49,8 @@ class ReactionExecutionService(
             "ReactionExecutionService 는 TYPING 상태만 실행할 수 있다: ${action.status} (action=${action.identity.value})"
         }
 
-        val currentMode = modePort.currentMode(action.target, mode)
+        val requestedMode = action.originRolloutMode.restrictiveIntersection(mode)
+        val currentMode = modePort.currentMode(action.target, requestedMode)
         if (OutboundGuard.decide(currentMode) == OutboundDecision.BLOCK) {
             record(action, ActionAuditPhase.SUPPRESSED_SHADOW, reason = currentMode.name)
             scheduler.cancel(action.identity)

@@ -7,16 +7,19 @@ import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudThinking
+import jakarta.annotation.PreDestroy
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 
 @Component
 class CloudLlmNiaJudgeAdapter(
@@ -24,6 +27,8 @@ class CloudLlmNiaJudgeAdapter(
     @param:Value("\${central.nexa.participation.judge.model:glm-4.5-air}")
     private val model: String = DEFAULT_MODEL,
 ) : NiaJudgeLlmPort {
+    private val callExecutor = newCallExecutor()
+
     override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
         if (!cloudLlm.isEnabled()) {
             throw CloudLlmException("니아 판단용 클라우드 LLM이 비활성 상태입니다.")
@@ -47,16 +52,20 @@ class CloudLlmNiaJudgeAdapter(
 
     private fun completeWithin(request: NiaJudgeLlmRequest): CloudLlmResult {
         val future: Future<CloudLlmResult> =
-            CALL_EXECUTOR.submit(
-                Callable {
-                    cloudLlm.generate(
-                        prompt = request.prompt,
-                        model = model,
-                        history = emptyList(),
-                        thinking = CloudThinking.DISABLED,
-                    )
-                },
-            )
+            try {
+                callExecutor.submit(
+                    Callable {
+                        cloudLlm.generate(
+                            prompt = request.prompt,
+                            model = model,
+                            history = emptyList(),
+                            thinking = CloudThinking.DISABLED,
+                        )
+                    },
+                )
+            } catch (e: RejectedExecutionException) {
+                throw CloudLlmException("니아 판단용 클라우드 LLM 호출 풀이 포화 상태입니다.", e)
+            }
         return try {
             future.get(request.timeoutMillis, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
@@ -73,16 +82,29 @@ class CloudLlmNiaJudgeAdapter(
         }
     }
 
+    @PreDestroy
+    fun close() {
+        callExecutor.shutdownNow()
+    }
+
     companion object {
         const val DEFAULT_MODEL: String = "glm-4.5-air"
         const val FINISH_REASON_COMPLETED: String = "completed"
         private const val CALL_THREADS: Int = 8
-        private val CALL_EXECUTOR: ExecutorService =
-            Executors.newFixedThreadPool(
+        private const val CALL_QUEUE_CAPACITY: Int = 16
+        private val THREAD_SEQUENCE = AtomicInteger()
+
+        private fun newCallExecutor(): ThreadPoolExecutor =
+            ThreadPoolExecutor(
                 CALL_THREADS,
+                CALL_THREADS,
+                0L,
+                TimeUnit.MILLISECONDS,
+                ArrayBlockingQueue(CALL_QUEUE_CAPACITY),
                 ThreadFactory { runnable ->
-                    Thread(runnable, "nia-judge-cloud-call").also { it.isDaemon = true }
+                    Thread(runnable, "nia-judge-cloud-call-${THREAD_SEQUENCE.incrementAndGet()}").also { it.isDaemon = true }
                 },
+                ThreadPoolExecutor.AbortPolicy(),
             )
     }
 }

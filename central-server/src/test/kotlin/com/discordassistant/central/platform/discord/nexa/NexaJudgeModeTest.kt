@@ -13,9 +13,9 @@ class NexaJudgeModeTest {
     }
 
     @Test
-    fun `blank judge mode defaults to off`() {
-        assertThat(NexaJudgeMode.parse(null)).isEqualTo(NexaJudgeMode.OFF)
-        assertThat(NexaJudgeMode.parse("  ")).isEqualTo(NexaJudgeMode.OFF)
+    fun `blank judge mode defaults to final`() {
+        assertThat(NexaJudgeMode.parse(null)).isEqualTo(NexaJudgeMode.FINAL)
+        assertThat(NexaJudgeMode.parse("  ")).isEqualTo(NexaJudgeMode.FINAL)
     }
 
     @Test

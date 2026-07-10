@@ -121,6 +121,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = true))
@@ -145,6 +146,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = true))
@@ -154,6 +156,49 @@ class NexaParticipationEmitBridgeTest {
         // emit seam 이 SPEAK 를 예약했다(실제 전송 차단은 ShadowMode 전송 경계가 별도 책임).
         assertThat(emitted.result.willSpeak).isTrue()
         assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+        assertThat(scheduler.scheduled.single().originRolloutMode).isEqualTo(ShadowMode.SHADOW_PREDICT)
+    }
+
+    @Test
+    fun `single rollout snapshot makes real-send participation own the turn`() {
+        fun bridge(
+            mode: ShadowMode,
+            judgeModeName: String,
+        ) = NexaParticipationEmitBridge(
+            flags = flagService(mode),
+            policy = FixedPolicy(ignoreResponse()),
+            emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = FakeScheduler()),
+            rateLimitStore = InMemoryRateLimitStore(),
+            perChannelPerMin = 6,
+            globalPerMin = 30,
+            judgeModeName = judgeModeName,
+        )
+
+        assertThat(bridge(ShadowMode.LIVE, "final").onMessageTurn(signal(mentioned = false)).ownsTurn).isTrue()
+        assertThat(bridge(ShadowMode.SHADOW_PREDICT, "final").onMessageTurn(signal(mentioned = false)).ownsTurn).isFalse()
+        assertThat(bridge(ShadowMode.LIVE, "shadow").onMessageTurn(signal(mentioned = false)).ownsTurn).isTrue()
+        assertThat(bridge(ShadowMode.LIVE, "final").failedMessageTurn(guildId = 1L, channelId = 3L).ownsTurn).isTrue()
+        assertThat(bridge(ShadowMode.SHADOW_PREDICT, "final").failedMessageTurn(guildId = 1L, channelId = 3L).ownsTurn).isFalse()
+    }
+
+    @Test
+    fun `non-final judge mode never emits from a real-send lane`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "shadow",
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = "니아야 답해줘"))
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE))
+        assertThat(scheduler.scheduled).isEmpty()
     }
 
     @Test
@@ -169,6 +214,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "off",
                 decisionLog = decisionLog,
             )
 
@@ -193,12 +239,13 @@ class NexaParticipationEmitBridgeTest {
         val decisionLog = CapturingParticipationLog()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "off",
                 decisionLog = decisionLog,
             )
 
@@ -218,7 +265,7 @@ class NexaParticipationEmitBridgeTest {
         val judge = CapturingJudge(speakDecision())
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = FixedPolicy(ignoreResponse()),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
@@ -270,6 +317,7 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+        assertThat(scheduler.scheduled.single().originRolloutMode).isEqualTo(ShadowMode.LIVE)
         assertThat(baseline.lastRequest).isNull()
         assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decisionLog.records.single().shadowBaselineAction).isNull()
@@ -298,12 +346,16 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val examples = judge.lastRequest!!.fewShotSet.examples
-        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(3)
+        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(5)
         assertThat(examples.map { it.exampleId })
             .contains(
                 "default_direct_reply_request",
                 "default_repeated_empty_name_call",
                 "default_handoff_to_another_member",
+                "default_retracted_direct_address",
+                "default_mistaken_interruption_yield",
+                "default_humans_continue_after_yield",
+                "default_readdress_after_yield",
                 "default_self_repair_question",
             )
         val directRequestExample = examples.single { it.exampleId == "default_direct_reply_request" }
@@ -315,6 +367,22 @@ class NexaParticipationEmitBridgeTest {
         assertThat(handoffExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
         assertThat(handoffExample.badAlternative.action).isEqualTo(NiaFewShotAction.SPEAK)
         assertThat(handoffExample.rawMessages.map { it.text }).contains("서연아 나 고민이 있어", "서연아 자니")
+        val retractedAddressExample = examples.single { it.exampleId == "default_retracted_direct_address" }
+        assertThat(retractedAddressExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
+        assertThat(retractedAddressExample.badAlternative.action).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(retractedAddressExample.reason).contains("newer correction supersedes")
+        assertThat(retractedAddressExample.rawMessages.map { it.text })
+            .contains("니아야 나 고민 있어", "아니 니아 말고 서연이한테 한 말이야", "서연아 자니")
+        val interruptionExample = examples.single { it.exampleId == "default_mistaken_interruption_yield" }
+        assertThat(interruptionExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(interruptionExample.reason).contains("must not ask another question")
+        assertThat(interruptionExample.rawMessages.map { it.text }).contains("너 말고 서연이한테 한 말임")
+        val withdrawalExample = examples.single { it.exampleId == "default_humans_continue_after_yield" }
+        assertThat(withdrawalExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
+        assertThat(withdrawalExample.badAlternative.action).isEqualTo(NiaFewShotAction.SPEAK)
+        val readdressExample = examples.single { it.exampleId == "default_readdress_after_yield" }
+        assertThat(readdressExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(readdressExample.badAlternative.action).isEqualTo(NiaFewShotAction.IGNORE)
     }
 
     @Test
@@ -469,6 +537,7 @@ class NexaParticipationEmitBridgeTest {
                     target = ActionTarget(guildPseudonym = "g", channelId = "3", threadId = "t"),
                     executeAfter = Instant.parse("2026-06-30T00:00:00Z"),
                     contextVersion = 1,
+                    originRolloutMode = ShadowMode.LIVE,
                 ).markScheduled()
         scheduler.scheduled += pending
         val bridge =
@@ -533,6 +602,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 rawContextStore = rawStore,
             )
 
@@ -572,13 +642,14 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 // 멘션 없이도 cooldown 미만이라 정책 단독이면 SPEAK 일 텐데, 규칙이 먼저 SILENT 로 막아야 한다.
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "준호야 너 표 있어?", speakerLabel = "user_2"))
@@ -593,12 +664,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "아니 그러니까", speakerLabel = "user_2"))
@@ -613,13 +685,14 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 // 정책은 cooldown 충족(최근 발화 5)으로 단독이면 IGNORE 인데, 규칙 호명이 먼저 SPEAK 로 즉결해야 한다.
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -637,13 +710,14 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 // 모호한 일상 잡담 → 규칙 Candidate → 정책(cooldown 충족)이 IGNORE 로 접는다.
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -661,12 +735,13 @@ class NexaParticipationEmitBridgeTest {
         val policy = CapturingPolicy(ignoreResponse())
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = policy,
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -738,12 +813,13 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = true))
@@ -759,13 +835,14 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 // 채널 한도 1 — 두 번째 SPEAK 는 채널 게이트에 막힌다.
                 perChannelPerMin = 1,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val first = bridge.onMessage(signal(mentioned = true))
@@ -782,13 +859,14 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 // 채널 한도는 넉넉, 전역 한도 1 — 다른 채널의 두 번째 SPEAK 는 전역 게이트에 막힌다.
                 perChannelPerMin = 10,
                 globalPerMin = 1,
+                judgeModeName = "shadow",
             )
 
         val first = bridge.onMessage(signal(mentioned = true, channelId = 100L))
@@ -807,12 +885,13 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -835,12 +914,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "ㅋㅋㅋ", duplicateOfPrevHuman = true))
@@ -855,12 +935,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "그래서 말인데", burstIncomplete = true))
@@ -875,12 +956,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야", burstIncomplete = true))
@@ -894,12 +976,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야", duplicateOfPrevHuman = true))
@@ -913,12 +996,13 @@ class NexaParticipationEmitBridgeTest {
         val scheduler = FakeScheduler()
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -946,12 +1030,13 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         // 첫 Candidate 메시지(tsMs 관측). recentAgentBurstCount=5 라 정책이 IGNORE → 발화 안 함(니아 앵커 미설정).
@@ -971,12 +1056,13 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         // 멘션으로 한 번 발화 → 니아 발화 앵커(last_nia_ts=10_000) 설정.
@@ -998,12 +1084,13 @@ class NexaParticipationEmitBridgeTest {
         val emit = countingEmitSeam(scheduler)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emit.service,
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
             )
 
         val outcome =
@@ -1027,6 +1114,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 traceStore = traces,
             )
 
@@ -1047,12 +1135,13 @@ class NexaParticipationEmitBridgeTest {
         val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 traceStore = traces,
             )
 
@@ -1071,12 +1160,13 @@ class NexaParticipationEmitBridgeTest {
         val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
         val bridge =
             NexaParticipationEmitBridge(
-                flags = flagService(ShadowMode.LIVE),
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_ONLY, scheduler = scheduler),
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 traceStore = traces,
             )
 
@@ -1106,6 +1196,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 rawContextStore = rawStore,
             )
 
@@ -1129,6 +1220,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 rawContextStore = rawStore,
             )
 
@@ -1158,6 +1250,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 rawContextStore = rawStore,
             )
 
@@ -1179,6 +1272,7 @@ class NexaParticipationEmitBridgeTest {
                 rateLimitStore = InMemoryRateLimitStore(),
                 perChannelPerMin = 6,
                 globalPerMin = 30,
+                judgeModeName = "shadow",
                 rawContextStore = ThrowingRawContextStore,
             )
 
@@ -1308,6 +1402,7 @@ class NexaParticipationEmitBridgeTest {
             rateLimitStore = InMemoryRateLimitStore(),
             perChannelPerMin = 6,
             globalPerMin = 30,
+            judgeModeName = "shadow",
             rawContextStore = rawStore,
         )
 

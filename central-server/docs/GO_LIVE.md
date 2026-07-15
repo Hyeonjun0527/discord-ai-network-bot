@@ -23,7 +23,7 @@
 ## 2. central-server 기동 (봇 ON)
 `central-server/` 에서:
 ```bash
-# 운영 권장: docker compose (Postgres+서버)
+# 로컬/수동 검증: docker compose (Postgres+서버)
 DISCORD_ENABLED=true \
 DISCORD_BOT_TOKEN='붙여넣기' \
 CENTRAL_DEV_ENABLED=false \
@@ -77,6 +77,8 @@ nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
   `MESSAGE_CONTENT` 인텐트를 활성화한다. 운영 Discord 애플리케이션에서도 **Message Content Intent** 를 켜야 한다.
   자세한 권한/Intent/장애 UX 기준은 [봇 권한 명세](../../docs/BOT_PERMISSIONS.md)를 따른다.
 - 나머지 인터랙션(슬래시/버튼/모달/컨텍스트 메뉴/DM)은 추가 설정 없이 동작.
-- **운영 보안**: `CENTRAL_DEV_ENABLED=false`(/dev/* 차단), 토큰은 env 로만 주입.
+- **운영 보안**: `CENTRAL_DEV_ENABLED=false`(/dev/* 차단). 원격 운영은 GitHub `production`
+  Environment → Docker secret file → Spring configtree 경로만 사용하며 host `.env`를 두지 않는다.
+  위 셸 환경변수 예시는 로컬/수동 검증 전용이다.
 - **관리자 인증 대시보드**(선택): `CENTRAL_OAUTH_ENABLED=true` + Discord OAuth2(OPERATIONS.md).
 - **로그**: `docker compose logs -f central-server`.

@@ -19,7 +19,7 @@ jobs:
     runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
-      - name: 운영 health/policy 감사
+      - name: 운영 runtime-secret/health/policy 감사
         run: |
           set -euo pipefail
           DEPLOY_DIR="$HOME/deploy/central-server"
@@ -28,6 +28,8 @@ jobs:
             exit 1
           fi
           cd "$DEPLOY_DIR"
+          echo "▶ 운영 런타임 시크릿 감사(.env 없음, secret file 사용, 평문 env 없음)"
+          bash "$GITHUB_WORKSPACE/central-server/scripts/ops_runtime_secret_audit.sh"
           echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
           EXTERNAL_BASE_URL=https://discord-ai.yeon.world bash "$GITHUB_WORKSPACE/central-server/scripts/ops_healthcheck.sh"
           echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"

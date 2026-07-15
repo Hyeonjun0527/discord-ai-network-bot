@@ -12,29 +12,30 @@ push(central-server/**) ─▶ build (self-hosted: yeon-arm)
                               └─ docker build → GHCR push (:latest, :sha)
                            ─▶ deploy (self-hosted: yeon-arm, 원격 서버에서 실행)
                               ├─ docker login ghcr (GITHUB_TOKEN)
-                              ├─ compose.remote.yml → ~/deploy/central-server/compose.yml
-                              ├─ .env 렌더(CENTRAL_IMAGE/DB_PASSWORD/DISCORD_*)
-                              └─ docker compose pull + up -d + 헬스(/actuator/health==UP)
+                              ├─ production Environment Secret → Docker secret file
+                              ├─ compose.remote.yml 렌더(평문 시크릿·host .env 없음)
+                              └─ compose pull/up + runtime-secret/health/policy 감사
 ```
 - Compose 프로젝트명 `central-server` 로 격리 → 같은 호스트의 다른 서비스와 컨테이너/네트워크 이름 충돌을 피한다.
-- 포트 `127.0.0.1:8085`. 토큰 없으면 Discord 만 비활성, 서버는 기동.
+- 포트 `127.0.0.1:8085`. 운영은 필수 시크릿이 하나라도 비면 배포 전에 실패한다.
 
-## GitHub Secrets
+## GitHub `production` Environment Secrets
 | 시크릿 | 상태 | 설명 |
 |---|---|---|
-| `CENTRAL_DB_PASSWORD` | ✅ 설정됨 | 원격 실행 중 Postgres 와 일치 |
-| `DISCORD_BOT_TOKEN` | ⛔ **사용자 추가 필요** | 봇 토큰(이게 있어야 봇이 라이브) |
-| `DISCORD_GUILD_ID` | ⬜ 선택 | 즉시 명령 등록용 서버 ID(없으면 글로벌 ~1h) |
+| `CENTRAL_DB_PASSWORD` | 필수 | Postgres 비밀번호 |
+| `DISCORD_BOT_TOKEN` | 필수 | 봇 토큰 |
+| `CENTRAL_DURABLE_SECRET` | 필수 | durable 토큰 HMAC 키 |
+| `NEXA_FIELD_ENC_KEY` | 필수 | NEXA raw context 필드 암호화 키 |
+| `ZAI_API_KEY` | 필수 | z.ai 키 |
+| `CONNECT_DISCORD_CLIENT_SECRET` | 필수 | Discord OAuth client secret |
+| `DISCORD_ENABLED`, `RELAY_PUBLIC_URL` | 필수 | 봇·relay 운영 설정 |
+| `CONNECT_DISCORD_CLIENT_ID` | 필수 | Discord OAuth client ID |
+| `CENTRAL_OAUTH_ENABLED`, `CENTRAL_DASHBOARD_ADMIN_USER_IDS` | 필수 | 관리자 로그인 설정 |
 
 > SSH 키·GHCR PAT·Cloudflare 토큰 **불필요** — self-hosted 러너가 서버에서 직접 돌며 GHCR 는
 > 러너의 `GITHUB_TOKEN` 으로 pull 한다.
-
-### 봇 라이브 전환
-```bash
-gh secret set DISCORD_BOT_TOKEN              # 프롬프트에 봇 토큰(화면 미표시)
-gh secret set DISCORD_GUILD_ID -b "서버ID"   # (선택) 즉시 명령
-```
-→ 다음 push 또는 워크플로 수동 실행 시 봇이 Discord 에 연결되고 `/menu` 가 뜬다.
+> 저장소 단위 `ENV_FILE`이나 운영 호스트 `.env`는 사용하지 않는다. central-server는 Spring configtree,
+> Postgres는 `POSTGRES_PASSWORD_FILE`로 `/run/secrets`의 파일만 읽는다.
 
 ## 배포 트리거
 - `main` 의 `central-server/**` push → 자동 빌드+배포.
@@ -57,6 +58,7 @@ Cloudflare Tunnel 로 노출하므로, 터널 ingress 에 호스트네임 → `h
 ```bash
 ssh ssh.yeon.world 'cd ~/deploy/central-server && docker compose logs -f central-server'
 ssh ssh.yeon.world 'cd ~/deploy/central-server && docker compose ps'
+ssh ssh.yeon.world 'cd ~/deploy/central-server && ./ops_runtime_secret_audit.sh'
 ssh ssh.yeon.world 'cd ~/deploy/central-server && ./ops_healthcheck.sh'
 ssh ssh.yeon.world 'cd ~/deploy/central-server && DISCORD_GUILD_ID=all ./ops_policy_audit.sh'
 ```

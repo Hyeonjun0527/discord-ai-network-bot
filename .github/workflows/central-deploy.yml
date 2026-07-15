@@ -3,9 +3,8 @@
 # build(self-hosted yeon-arm): bootJar → arm64 이미지 GHCR push(네이티브).  deploy(self-hosted yeon-arm): pull → compose up → 헬스.
 # 정책: GitHub-hosted runner 미사용 — 모든 job 은 self-hosted ARM64 러너에서만 돈다.
 #
-# 필요한 GitHub Secrets:
-#   ENV_FILE — 운영 .env 전체(CENTRAL_DB_PASSWORD, DISCORD_BOT_TOKEN, DISCORD_GUILD_ID,
-#              RELAY_PUBLIC_URL 등 앱 런타임 환경변수). 앱 시크릿은 이 하나로만 관리한다.
+# 운영 값의 SSOT는 GitHub production Environment다. 민감 값은 Compose secrets로만 컨테이너에 전달하며,
+# self-hosted runner의 배포 디렉터리에 .env를 만들지 않는다.
 # GHCR pull 은 self-hosted 러너의 GITHUB_TOKEN 으로 처리(추가 PAT 불필요).
 name: central-server CI/CD (원격 배포)
 
@@ -103,54 +102,96 @@ jobs:
     needs: [fresh-main, build]
     if: needs.fresh-main.outputs.should-deploy == 'true'
     runs-on: [self-hosted, yeon-arm]
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - name: GHCR 로그인(원격)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: 배포(compose pull + up + 헬스)
         env:
-          IMAGE: ${{ env.IMAGE }}
-          GIT_SHA: ${{ github.sha }}
-          ENV_FILE: ${{ secrets.ENV_FILE }}
+          CENTRAL_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
           APP_PORT: ${{ env.APP_PORT }}
           SERVER_PORT: "8085"
+          COMPOSE_DISABLE_ENV_FILE: "1"
+          CENTRAL_DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ENABLED: ${{ secrets.DISCORD_ENABLED }}
+          RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+          CENTRAL_DURABLE_SECRET: ${{ secrets.CENTRAL_DURABLE_SECRET }}
+          NEXA_FIELD_ENC_KEY: ${{ secrets.NEXA_FIELD_ENC_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          CONNECT_DISCORD_CLIENT_ID: ${{ secrets.CONNECT_DISCORD_CLIENT_ID }}
+          CONNECT_DISCORD_CLIENT_SECRET: ${{ secrets.CONNECT_DISCORD_CLIENT_SECRET }}
+          CENTRAL_OAUTH_ENABLED: ${{ secrets.CENTRAL_OAUTH_ENABLED }}
+          CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${{ secrets.CENTRAL_DASHBOARD_ADMIN_USER_IDS }}
         run: |
-          set -e
+          set -euo pipefail
           DEST="$HOME/deploy/central-server"
           mkdir -p "$DEST"
-          cp central-server/deploy/compose.remote.yml "$DEST/compose.yml"
+          candidate_compose="$DEST/.compose.candidate-${GITHUB_RUN_ID}"
+          rendered_compose="$DEST/.compose.rendered-${GITHUB_RUN_ID}"
+          previous_compose="$DEST/.compose.previous-${GITHUB_RUN_ID}"
+          legacy_env="$DEST/.env.legacy-${GITHUB_RUN_ID}"
+          legacy_durable="$DEST/.durable-secret.legacy-${GITHUB_RUN_ID}"
+          install -m 640 central-server/deploy/compose.remote.yml "$candidate_compose"
           cp central-server/scripts/ops_healthcheck.sh "$DEST/ops_healthcheck.sh"
           cp central-server/scripts/ops_policy_audit.sh "$DEST/ops_policy_audit.sh"
-          chmod 755 "$DEST/ops_healthcheck.sh" "$DEST/ops_policy_audit.sh"
+          cp central-server/scripts/ops_runtime_secret_audit.sh "$DEST/ops_runtime_secret_audit.sh"
+          chmod 755 "$DEST/ops_healthcheck.sh" "$DEST/ops_policy_audit.sh" "$DEST/ops_runtime_secret_audit.sh"
           cd "$DEST"
           umask 077
-          if [ -z "${ENV_FILE:-}" ]; then
-            echo "❌ ENV_FILE GitHub secret 이 비어 있습니다."
-            exit 1
-          fi
-          printf '%s\n' "$ENV_FILE" > .env
-          tr -d '\r' < .env > .env.tmp && mv .env.tmp .env
-          awk '!/^(CENTRAL_IMAGE|SERVER_PORT|APP_PORT|CENTRAL_DURABLE_SECRET)=/' .env > .env.tmp
-          mv .env.tmp .env
-          # durable 프로바이더 토큰 서명 시크릿 — 최초 1회 생성 후 유지(배포마다 바뀌면 토큰 전부 무효화).
-          if [ ! -f .durable-secret ]; then
-            (openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')) > .durable-secret
-          fi
-          chmod 600 .durable-secret
-          echo "CENTRAL_DURABLE_SECRET=$(cat .durable-secret)" >> .env
-          {
-            echo "CENTRAL_IMAGE=${IMAGE}:${GIT_SHA}"
-            echo "SERVER_PORT=${SERVER_PORT}"
-            echo "APP_PORT=${APP_PORT}"
-          } >> .env
-          env_value() {
-            key="$1"
-            awk -F= -v k="$key" '$1 == k { value = substr($0, length(k) + 2) } END { print value }' .env
+
+          rollback() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ -f "$previous_compose" ]; then
+              echo "::warning::새 secret-file 배포 실패 — 이전 compose와 host secret 파일로 롤백합니다."
+              [ ! -f "$legacy_env" ] || mv -f "$legacy_env" .env
+              [ ! -f "$legacy_durable" ] || mv -f "$legacy_durable" .durable-secret
+              cp -f "$previous_compose" compose.yml
+              if [ -f .env ]; then
+                rollback_compose=(docker compose --env-file .env -f compose.yml)
+              else
+                rollback_compose=(docker compose --env-file /dev/null -f compose.yml)
+              fi
+              "${rollback_compose[@]}" up -d || \
+                echo "::error::자동 롤백 기동 실패 — 운영 호스트를 즉시 확인하세요."
+            fi
+            rm -f "$candidate_compose" "$rendered_compose" "$previous_compose"
+            exit "$status"
           }
-          FREE_MODEL="$(env_value ZAI_FREE_MODEL)"
-          FAST_MODEL="$(env_value ZAI_FAST_MODEL)"
-          SPEECH_MODEL="$(env_value NEXA_SPEECH_MODEL)"
-          echo "▶ 운영 GLM 모델 free=${FREE_MODEL:-glm-4.5-air} fast=${FAST_MODEL:-glm-4.5-air} speech=${SPEECH_MODEL:-glm-4.5-air}"
+          trap rollback EXIT
+
+          required_production_values=(
+            CENTRAL_DB_PASSWORD DISCORD_BOT_TOKEN CENTRAL_DURABLE_SECRET
+            NEXA_FIELD_ENC_KEY ZAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
+            DISCORD_ENABLED RELAY_PUBLIC_URL CONNECT_DISCORD_CLIENT_ID
+            CENTRAL_OAUTH_ENABLED CENTRAL_DASHBOARD_ADMIN_USER_IDS
+          )
+          for key in "${required_production_values[@]}"; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::필수 production Environment Secret이 비어 있습니다: ${key}"
+              exit 1
+            fi
+          done
+
+          compose=(docker compose --env-file /dev/null -f "$candidate_compose")
+          "${compose[@]}" config --quiet
+          "${compose[@]}" config > "$rendered_compose"
+          rendered_content="$(cat "$rendered_compose")"
+          for key in "${required_production_values[@]}"; do
+            if [[ "$rendered_content" == *"${!key}"* ]]; then
+              echo "::error::렌더링된 Compose에 ${key} 값이 포함되었습니다."
+              exit 1
+            fi
+          done
+          unset rendered_content
+          [ ! -f compose.yml ] || cp -p compose.yml "$previous_compose"
+          install -m 640 "$rendered_compose" compose.yml.next
+          mv -f compose.yml.next compose.yml
+          rm -f "$candidate_compose" "$rendered_compose"
+          compose=(docker compose --env-file /dev/null -f compose.yml)
+
+          echo "▶ 운영 GLM 모델 free=glm-4.5-air fast=glm-4.5-air speech=glm-4.5-air"
           # 웹검색(SearXNG) 설정 — JSON 포맷 활성 + 안정적 시크릿(최초 1회만 생성, 이후 유지).
           # 컨테이너(다른 uid)가 읽어야 하므로 settings 파일은 읽기 가능 권한으로 둔다.
           mkdir -p searxng
@@ -178,21 +219,31 @@ jobs:
               delay=$((delay * 2))
             done
           }
-          retry "GHCR 이미지 다운로드" docker compose --env-file .env -f compose.yml pull
-          retry "컨테이너 기동" docker compose --env-file .env -f compose.yml up -d
+          retry "GHCR 이미지 다운로드" "${compose[@]}" pull
+          retry "컨테이너 기동" "${compose[@]}" up -d --force-recreate
           ok=0
           for i in $(seq 1 40); do
             if curl -sf "http://localhost:${APP_PORT}/actuator/health" | grep -q '"status":"UP"'; then ok=1; break; fi
             sleep 3
           done
           if [ "$ok" != "1" ]; then
-            echo "❌ 헬스 실패 — 로그:"; docker compose -f compose.yml logs --tail=80 central-server; exit 1
+            echo "❌ 헬스 실패 — 로그:"; "${compose[@]}" logs --tail=80 central-server; exit 1
           fi
-          echo "✅ 배포 완료 + 헬스 UP (image ${IMAGE}:${GIT_SHA})"
+          echo "✅ 배포 완료 + 헬스 UP (image ${CENTRAL_IMAGE})"
+
+          # 새 secret-file 런타임이 정상 기동한 뒤에만 legacy host secret 파일을 제거한다.
+          [ ! -f .env ] || mv -f .env "$legacy_env"
+          [ ! -f .durable-secret ] || mv -f .durable-secret "$legacy_durable"
+          rm -f .env.tmp
+          echo "▶ 운영 런타임 시크릿 감사(.env 없음, secret file 사용, 평문 env 없음)"
+          ./ops_runtime_secret_audit.sh
+
           echo "▶ 운영 헬스 감사(health/pool/dev-mode)"
           EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh
           echo "▶ 운영 정책 감사(auto-respond/니아 자동 채널 vs LLM allow-list)"
-          if docker compose -f compose.yml exec -T central-server sh -c 'test -n "${DISCORD_BOT_TOKEN:-}"'; then
+          # 단일 인용문은 central-server 컨테이너 안에서 확장해야 한다.
+          # shellcheck disable=SC2016
+          if "${compose[@]}" exec -T central-server sh -c 'test -s "${DISCORD_BOT_TOKEN_FILE:-/run/secrets/central.discord.bot-token}"'; then
             DISCORD_GUILD_ID=all ./ops_policy_audit.sh
           else
             ./ops_policy_audit.sh
@@ -202,3 +253,5 @@ jobs:
             echo "::warning::Docker 이미지 자동 정리에 실패했습니다. 배포는 완료됐지만 서버 디스크 상태를 확인하세요."
           fi
           docker system df || true
+          rm -f "$legacy_env" "$legacy_durable" "$previous_compose"
+          trap - EXIT

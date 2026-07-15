@@ -1,6 +1,6 @@
-# 원격(linuxssh.dailyting.cloud) 배포용 compose. GHCR 이미지를 pull 해서 실행한다(빌드는 CI 에서).
-# CI 가 같은 디렉터리에 ENV_FILE 기반 .env 를 렌더링(CENTRAL_IMAGE/CENTRAL_DB_PASSWORD/DISCORD_* )한 뒤
-#   docker compose --env-file .env -f compose.yml up -d 로 띄운다.
+# 원격(ssh.yeon.world) 배포용 compose. GHCR 이미지를 pull 해서 실행한다(빌드는 CI 에서).
+# 운영 값은 GitHub production Environment에서만 주입한다. 민감 값은 Docker Compose secret으로 전달하고,
+# Spring Boot는 configtree:/run/secrets/ 에서 읽는다. 운영 호스트의 .env는 사용하지 않는다.
 # 프로젝트명 central-server 로 격리 — 같은 호스트의 dailyting 서비스들과 충돌하지 않는다.
 name: central-server
 
@@ -11,7 +11,9 @@ services:
     environment:
       POSTGRES_DB: central
       POSTGRES_USER: central
-      POSTGRES_PASSWORD: ${CENTRAL_DB_PASSWORD:?CENTRAL_DB_PASSWORD 필요}
+      POSTGRES_PASSWORD_FILE: /run/secrets/DB_PASSWORD
+    secrets:
+      - DB_PASSWORD
     volumes:
       - central-db:/var/lib/postgresql/data
     healthcheck:
@@ -28,49 +30,69 @@ services:
       db:
         condition: service_healthy
     environment:
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
       DB_URL: jdbc:postgresql://db:5432/central
       DB_USER: central
-      DB_PASSWORD: ${CENTRAL_DB_PASSWORD:?}
-      # 토큰 없으면 Discord 만 비활성(서버는 기동) — 인프라 검증/단계적 활성에 유리.
-      DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DB_PASSWORD_FILE: /run/secrets/spring.datasource.password
+      DISCORD_ENABLED_FILE: /run/secrets/central.discord.enabled
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/central.discord.bot-token
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
-      RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:-wss://discord-ai.yeon.world/agent}
+      RELAY_PUBLIC_URL_FILE: /run/secrets/central.relay.public-url
       SERVER_PORT: ${SERVER_PORT:-8085}
       CENTRAL_DEV_ENABLED: "false"
-      # durable 프로바이더 토큰 서명 시크릿(설정 시 재연결·재시작 재사용 토큰 활성). 배포 스크립트가 고정 생성.
-      CENTRAL_DURABLE_SECRET: ${CENTRAL_DURABLE_SECRET:-}
+      CENTRAL_DURABLE_SECRET_FILE: /run/secrets/central.durable.secret
+      NEXA_FIELD_ENC_KEY_FILE: /run/secrets/nexa.field-enc-key
       # 웹검색 백엔드(SearXNG, 같은 네트워크). 죽어도 web 검색은 graceful 폴백 → 봇 영향 없음.
       CENTRAL_SEARCH_URL: ${CENTRAL_SEARCH_URL:-http://searxng:8080}
       CENTRAL_SEARCH_MAX_RESULTS: ${CENTRAL_SEARCH_MAX_RESULTS:-5}
       CENTRAL_SEARCH_FETCH_CONTENT: ${CENTRAL_SEARCH_FETCH_CONTENT:-true}
-      # z.ai(GLM) 클라우드 키 — /무료질문·NEXA speech 발화 생성(ADR 0006, cloud.zai-api-key SSOT).
-      # 비면 fail-closed: GLM 직접 생성 비활성(봇 기동엔 무관). 값은 ENV_FILE(.env) 의 ZAI_API_KEY 로 주입.
-      ZAI_API_KEY: ${ZAI_API_KEY:-}
-      # 빠른 채팅/무료질문/니아 speech 기본 모델. ENV_FILE 이 오버라이드하지 않으면 운영도 Air 로 고정한다.
+      # z.ai(GLM) 클라우드 키 — GitHub Environment Secret → Docker secret → Spring configtree.
+      ZAI_API_KEY_FILE: /run/secrets/central.cloud.zai-api-key
+      # 빠른 채팅/무료질문/니아 speech 기본 모델.
       ZAI_FREE_MODEL: ${ZAI_FREE_MODEL:-glm-4.5-air}
       ZAI_FAST_MODEL: ${ZAI_FAST_MODEL:-glm-4.5-air}
       NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-glm-4.5-air}
-      # 클라우드 이미지 생성(/그림) — Stability AI. 키 비면 비활성(provider-agent ComfyUI 폴백).
-      # 모델은 코드 enum(StabilityModel) SSOT — 주입 키 없음.
-      # 안전심사는 ZAI(GLM) 활성 전제(AskCommandHandler.imagine fail-closed). 값은 ENV_FILE(.env) 주입.
-      STABILITY_API_KEY: ${STABILITY_API_KEY:-}
-      # 웹 ‘토큰 받기’ Discord OAuth(설정 시 활성, 비면 503 안내 → 복붙 폴백). 시크릿은 ENV_FILE 주입.
-      CONNECT_DISCORD_CLIENT_ID: ${CONNECT_DISCORD_CLIENT_ID:-}
-      CONNECT_DISCORD_CLIENT_SECRET: ${CONNECT_DISCORD_CLIENT_SECRET:-}
+      # 클라우드 이미지 생성(/그림)은 현재 운영 secret-file 계약에 Stability 키가 없어 비활성이다.
+      # 필요하면 평문 env를 복구하지 말고 production Environment + configtree target을 함께 추가한다.
+      # 안전심사는 ZAI(GLM) 활성 전제(AskCommandHandler.imagine fail-closed).
+      # 웹 ‘토큰 받기’ Discord OAuth. client-id는 설정값, client-secret은 Docker secret으로 주입한다.
+      CONNECT_DISCORD_CLIENT_ID_FILE: /run/secrets/central.connect.discord-client-id
+      CONNECT_DISCORD_CLIENT_SECRET_FILE: /run/secrets/central.connect.discord-client-secret
       CONNECT_PUBLIC_BASE_URL: ${CONNECT_PUBLIC_BASE_URL:-https://discord-ai.yeon.world}
       # 대시보드 관리자 Discord 로그인(B안). true + 허용목록 설정 시 /dashboard/ 가 로그인·관리자 제한.
       # 위 CONNECT_DISCORD_CLIENT_ID/SECRET(같은 OAuth 앱) 재사용 — 앱에 redirect URI
       # <공개주소>/login/oauth2/code/discord 추가 등록 필요. user-id 는 콤마 구분.
-      CENTRAL_OAUTH_ENABLED: ${CENTRAL_OAUTH_ENABLED:-false}
-      CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:-}
-      CENTRAL_DASHBOARD_ADMIN_TOKEN: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:-}
+      CENTRAL_OAUTH_ENABLED_FILE: /run/secrets/central.oauth.enabled
+      CENTRAL_DASHBOARD_ADMIN_USER_IDS_FILE: /run/secrets/central.dashboard.admin-user-ids
       # NEXA participation 글로벌 기본 lane. LIVE = 모든(+미래) 길드가 길드별 설정 없이도 자발발화를 **실제 Discord
       # 로 전송**(allowsRealSend=true). 과발화·토큰 폭주는 NexaParticipationEmitBridge 의 rate limit 안전망(채널별
       # central.nexa.participation.rate-limit.per-channel-per-min 기본 6 + 전역 global-per-min 기본 30, 분당)이
       # emit(GLM 발화) 호출 직전 이중 게이트로 막는다(한도 초과 시 토큰 0). 길드가 명시적으로 다른 lane 을 가지면 그게
       # 우선. 코드 기본값(@Value)은 OFF 라 테스트/로컬은 회귀 0 — 실서버만 이 줄로 LIVE 활성.
       CENTRAL_NEXA_PARTICIPATION_GLOBAL_DEFAULT_LANE: LIVE
+    secrets:
+      - source: DB_PASSWORD
+        target: spring.datasource.password
+      - source: DISCORD_ENABLED
+        target: central.discord.enabled
+      - source: DISCORD_BOT_TOKEN
+        target: central.discord.bot-token
+      - source: RELAY_PUBLIC_URL
+        target: central.relay.public-url
+      - source: CENTRAL_DURABLE_SECRET
+        target: central.durable.secret
+      - source: NEXA_FIELD_ENC_KEY
+        target: nexa.field-enc-key
+      - source: ZAI_API_KEY
+        target: central.cloud.zai-api-key
+      - source: CONNECT_DISCORD_CLIENT_ID
+        target: central.connect.discord-client-id
+      - source: CONNECT_DISCORD_CLIENT_SECRET
+        target: central.connect.discord-client-secret
+      - source: CENTRAL_OAUTH_ENABLED
+        target: central.oauth.enabled
+      - source: CENTRAL_DASHBOARD_ADMIN_USER_IDS
+        target: central.dashboard.admin-user-ids
     networks:
       default: {}
       yeon-edge:
@@ -98,6 +120,30 @@ networks:
   # yeon 스택의 외부 네트워크(yeon-cloudflared-1 과 공유). 컨테이너명/alias 로 터널 라우팅.
   yeon-edge:
     external: true
+
+secrets:
+  DB_PASSWORD:
+    environment: CENTRAL_DB_PASSWORD
+  DISCORD_ENABLED:
+    environment: DISCORD_ENABLED
+  DISCORD_BOT_TOKEN:
+    environment: DISCORD_BOT_TOKEN
+  RELAY_PUBLIC_URL:
+    environment: RELAY_PUBLIC_URL
+  CENTRAL_DURABLE_SECRET:
+    environment: CENTRAL_DURABLE_SECRET
+  NEXA_FIELD_ENC_KEY:
+    environment: NEXA_FIELD_ENC_KEY
+  ZAI_API_KEY:
+    environment: ZAI_API_KEY
+  CONNECT_DISCORD_CLIENT_ID:
+    environment: CONNECT_DISCORD_CLIENT_ID
+  CONNECT_DISCORD_CLIENT_SECRET:
+    environment: CONNECT_DISCORD_CLIENT_SECRET
+  CENTRAL_OAUTH_ENABLED:
+    environment: CENTRAL_OAUTH_ENABLED
+  CENTRAL_DASHBOARD_ADMIN_USER_IDS:
+    environment: CENTRAL_DASHBOARD_ADMIN_USER_IDS
 
 volumes:
   central-db:

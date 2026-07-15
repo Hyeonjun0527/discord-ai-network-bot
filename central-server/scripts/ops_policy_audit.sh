@@ -128,7 +128,12 @@ need_command python3
 
 discord_token="${DISCORD_BOT_TOKEN:-}"
 if [ -z "$discord_token" ]; then
-  discord_token="$(docker compose -f "$COMPOSE_FILE" exec -T "$APP_SERVICE" printenv DISCORD_BOT_TOKEN 2>/dev/null | tr -d '\r\n' || true)"
+  discord_token="$(
+    docker compose -f "$COMPOSE_FILE" exec -T "$APP_SERVICE" sh -c '
+      token_file="${DISCORD_BOT_TOKEN_FILE:-/run/secrets/central.discord.bot-token}"
+      [ -r "$token_file" ] && cat "$token_file"
+    ' 2>/dev/null | tr -d '\r\n' || true
+  )"
 fi
 if [ -z "$discord_token" ]; then
   fail "DISCORD_GUILD_ID가 설정됐지만 DISCORD_BOT_TOKEN을 찾을 수 없습니다"

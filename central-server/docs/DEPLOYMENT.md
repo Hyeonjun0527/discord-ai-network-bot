@@ -1,7 +1,7 @@
 # Deployment Wizard — discord-assistant 운영 종합 가이드
 
-central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(데스크톱 앱) 릴리스, `ENV_FILE`
-키 레퍼런스를 한곳에 정리한다. 인프라/러너 세부는 [`DEPLOY_REMOTE.md`](./DEPLOY_REMOTE.md) 참조.
+central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(데스크톱 앱) 릴리스,
+운영 시크릿 키 레퍼런스를 한곳에 정리한다. 인프라/러너 세부는 [`DEPLOY_REMOTE.md`](./DEPLOY_REMOTE.md) 참조.
 
 공개 주소: **`https://discord-ai.yeon.world`** (Cloudflare Tunnel → 원격 우분투 `localhost:8085`).
 
@@ -22,35 +22,43 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
   - deploy(self-hosted `yeon-arm`, `ssh.yeon.world`): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
 - 참고: `central-server-deploy.yml`은 **deprecated**(소스 빌드, `docker-compose.yml`). 실제 운영은 위 `central-deploy.yml`.
 
-### ENV_FILE (GitHub repo secret) = 컨테이너 `.env` 전체
-배포가 `secrets.ENV_FILE`을 그대로 `.env`로 렌더한다. **시크릿을 통째로 덮어써도 안전** — 단, 아래 구분을 지킬 것.
+### GitHub `production` Environment가 운영 값의 SSOT
 
-**🔧 배포가 자동 주입 (ENV_FILE에 넣지 말 것 — 넣어도 `awk`로 떼어내고 덮어씀):**
-`CENTRAL_IMAGE`(이미지:sha) · `CENTRAL_DURABLE_SECRET`(러너에 `.durable-secret`로 1회 생성·유지) · `SERVER_PORT` · `APP_PORT` · SearXNG `settings.yml`.
-> 근거: `central-deploy.yml`의 `awk '!/^(CENTRAL_IMAGE|SERVER_PORT|APP_PORT|CENTRAL_DURABLE_SECRET)=/'` + 이후 자동 append.
+운영 값은 **Settings → Environments → `production` → Environment secrets**에서 키별로 관리한다.
+배포 잡은 민감 값을 Docker Compose secret으로 전달하고, central-server는
+`configtree:/run/secrets/`, Postgres는 `POSTGRES_PASSWORD_FILE`로 읽는다. 운영 호스트와 배포
+디렉터리에 `.env` 또는 `.durable-secret`을 만들지 않으며, 렌더링된 `compose.yml`과 컨테이너
+환경변수에도 평문 시크릿을 넣지 않는다.
 
-**👤 사용자가 ENV_FILE에 넣는 키:**
+**Docker secret file로 전달하는 필수 시크릿:**
 
 | 키 | 필수 | 설명 |
 |---|---|---|
 | `DISCORD_BOT_TOKEN` | 봇 라이브에 필수 | 디스코드 봇 토큰 |
-| `DISCORD_ENABLED` | | `true`면 봇 연결 |
-| `DISCORD_GUILD_ID` | 선택 | 즉시 슬래시명령 등록용 서버 ID(없으면 글로벌 ~1h) |
 | `CENTRAL_DB_PASSWORD` | 필수 | Postgres 비밀번호(컨테이너와 일치) |
-| `RELAY_PUBLIC_URL` | | `wss://discord-ai.yeon.world/agent` |
-| `CONNECT_DISCORD_CLIENT_ID` / `CONNECT_DISCORD_CLIENT_SECRET` | OAuth용 | **디스코드 OAuth 앱**(에이전트 '디스코드 로그인 추가' + 대시보드 어드민 로그인이 **공용**으로 사용) |
-| `CONNECT_PUBLIC_BASE_URL` | | `https://discord-ai.yeon.world` (compose 기본값 있음) |
-| `CENTRAL_OAUTH_ENABLED` | 대시보드 어드민 로그인용 | **`true`면** 대시보드가 디스코드 로그인 게이트로 전환(기본 false) |
-| `CENTRAL_DASHBOARD_ADMIN_USER_IDS` | 어드민 지정 | 콤마구분 **디스코드 userId** 허용목록 |
-| `CENTRAL_DASHBOARD_ADMIN_TOKEN` | (A안 대안) | `X-Dashboard-Admin-Token` 헤더 토큰 |
-| `CENTRAL_SEARCH_*` | 선택 | 웹검색(SearXNG) 설정 |
+| `CENTRAL_DURABLE_SECRET` | 필수 | durable 프로바이더 토큰 HMAC 키. 기존 토큰 유지를 위해 값을 회전하지 않는다. |
+| `NEXA_FIELD_ENC_KEY` | 필수 | NEXA raw context 필드 암호화 키 |
+| `ZAI_API_KEY` | 필수 | z.ai 무료질문·NEXA speech 키 |
+| `CONNECT_DISCORD_CLIENT_SECRET` | OAuth용 | 디스코드 OAuth 앱 client secret |
 
-> `CENTRAL_OAUTH_ENABLED`/`CENTRAL_DASHBOARD_ADMIN_USER_IDS`/`CENTRAL_DASHBOARD_ADMIN_TOKEN`은
-> `compose.remote.yml`이 패스스루한다.
+**현재 같은 Environment에 개별 Secret으로 보관하고 secret file로 전달하는 운영 설정:**
+
+| 키 | 설명 |
+|---|---|
+| `DISCORD_ENABLED` | `true`면 봇 연결 |
+| `RELAY_PUBLIC_URL` | `wss://discord-ai.yeon.world/agent` |
+| `CONNECT_DISCORD_CLIENT_ID` | provider-connect와 대시보드가 공용으로 쓰는 Discord OAuth 앱 ID |
+| `CENTRAL_OAUTH_ENABLED` | `true`면 대시보드 Discord 로그인 게이트 활성화 |
+| `CENTRAL_DASHBOARD_ADMIN_USER_IDS` | 콤마 구분 Discord userId 관리자 허용목록 |
+
+`CENTRAL_IMAGE`, `SERVER_PORT`, `APP_PORT`는 워크플로가 배포마다 주입한다. 운영 설정을 추가할 때는
+한 파일에 뭉친 시크릿을 다시 만들지 말고, 필요한 키를 `production` Environment에 개별 등록한다.
 
 ### 재배포 절차
-1. **Settings → Secrets and variables → Actions → `ENV_FILE`** 시크릿을 수정(완전한 `.env` 통째 붙여넣기).
+1. **Settings → Environments → `production`**에서 변경할 개별 Environment Secret만 수정한다.
 2. **Actions → "central-server CI/CD (원격 배포)" → Run workflow** (또는 `central-server/**` push).
+3. 배포 잡의 runtime-secret 감사에서 `active_env=absent`, `runtime secret files present`,
+   `inline secret env absent`를 확인한다.
 
 ---
 
@@ -62,7 +70,7 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
     - **OAuth 켜지면 `/admin/dashboard/`는 인증 필요** → 미로그인 접속 시 **디스코드 로그인으로 자동 리디렉트**(SecurityConfig가 `/admin/dashboard/**`를 authenticated로 두고, 단일 OAuth 클라이언트라 `/oauth2/authorization/discord`로 직행). 로그인 후 허용목록 계정만 어드민.
     - 페이지 헤더에 로그인 상태/**로그아웃** 버튼(`/api/me`로 상태 조회, `/logout` POST). 수동 시작 URL: `https://discord-ai.yeon.world/oauth2/authorization/discord`.
     - 코드: `SecurityConfig`가 `central.oauth.enabled=true`일 때만 Discord OAuth2 `ClientRegistration`을 **코드로** 생성(빈 client-id로 application.yml에 두면 부팅이 깨짐). `CONNECT_DISCORD_*` 앱 재사용.
-  - **A안 — 관리자 토큰**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부). OAuth OFF 환경에서 페이지는 공개(읽기), 어드민 작업만 토큰 보호.
+  - **A안 — 관리자 토큰(로컬/스테이징 전용)**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부). 현재 운영 Compose에는 평문 env 방지를 위해 이 선택 키를 연결하지 않는다.
     - 정책 쓰기(`/api/dashboard/{id}/welcome`·`auto-approve`·`role-policy`)도 **OAuth 없이 토큰만으로 동작**한다(`DashboardWriteController`는 항상 등록, 인증은 `AiNetworkApiSecurityFilter`가 토큰/OAuth 허용목록으로 강제 — 둘 다 없으면 403). 로컬(`localhost:8080`)에서도 `CENTRAL_DASHBOARD_ADMIN_TOKEN`만 주면 전 기능 테스트 가능.
 - **디스코드 userId 얻기**: 디스코드 설정 → 고급 → **개발자 모드 ON** → 내 프로필 우클릭 → **"사용자 ID 복사"**(18~19자리 숫자).
 - 로컬: `http://localhost:8080/admin/dashboard/`.
@@ -113,11 +121,13 @@ curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/dashboa
 ssh ssh.yeon.world
 cd ~/deploy/central-server
 DISCORD_GUILD_ID=all ./ops_policy_audit.sh
+./ops_runtime_secret_audit.sh
 ```
 
 `DISCORD_GUILD_ID=all`은 봇이 들어간 모든 서버의 Discord 채널 목록을 조회해 ko/en/ja 니아 기능 카테고리 아래
 `ai채팅`/`ai그림` 계열 채널이 LLM allow-list에 들어 있는지 대조한다. 특정 서버만 보려면
 `DISCORD_GUILD_ID=<guild_id>`를 준다. 토큰 값은 출력하지 않는다.
+`ops_runtime_secret_audit.sh`는 운영 `.env` 부재, secret file 존재, 평문 시크릿 환경변수 부재를 검사한다.
 
 ---
 

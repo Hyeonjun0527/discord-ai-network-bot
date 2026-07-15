@@ -5,9 +5,10 @@
 - 메트릭: `GET /actuator/prometheus` → Prometheus 수집 → Grafana(`docs/grafana-dashboard.json` import).
 - 로그: `docker compose logs -f central-server`.
 - 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
-- 빠른 점검: 배포 위치에서 `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
-  두 스크립트는 `central-deploy.yml`이 배포 디렉터리로 복사한다. 파일이 없다면 아직 최신 배포가 돌지 않은 상태다.
-- 주기 점검: GitHub Actions `central ops audit`가 6시간마다 같은 health/policy 감사를 읽기 전용으로 실행한다.
+- 빠른 점검: 배포 위치에서 `./ops_runtime_secret_audit.sh`(host `.env`/secret file/평문 env),
+  `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
+  세 스크립트는 `central-deploy.yml`이 배포 디렉터리로 복사한다. 파일이 없다면 아직 최신 배포가 돌지 않은 상태다.
+- 주기 점검: GitHub Actions `central ops audit`가 6시간마다 같은 runtime-secret/health/policy 감사를 읽기 전용으로 실행한다.
 
 ## 장애 대응
 ### 1) 서버 다운 / health DOWN
@@ -76,11 +77,15 @@
 
 ## 보안 점검
 - `CENTRAL_DEV_ENABLED` 운영 false 확인(/dev/* 차단).
-- 토큰/DB 비밀이 로그·이미지에 없는지 확인.
+- `./ops_runtime_secret_audit.sh`가 `active_env=absent`, `runtime secret files present`,
+  `inline secret env absent`를 출력하는지 확인.
+- 토큰/DB 비밀이 로그·이미지·렌더링된 compose에 없는지 확인.
 
 ## 운영 스크립트 수정 검증
 - `central-server/scripts/ops_*.sh`를 수정하면 병합 전에 다음을 실행한다.
   ```bash
-  shellcheck central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh
-  bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh
+  shellcheck central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
+    central-server/scripts/ops_runtime_secret_audit.sh
+  bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
+    central-server/scripts/ops_runtime_secret_audit.sh
   ```

@@ -9,6 +9,7 @@
 # 운영 호스트에서:
 cd ~/deploy/central-server
 docker compose ps
+./ops_runtime_secret_audit.sh
 EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh
 DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 ```
@@ -41,14 +42,14 @@ DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 - 풀 요약: `GET /api/metrics/pool` (`activeProviders`, `inFlightTotal`, `guildPoolSizes`).
 - Prometheus: `GET /actuator/prometheus`.
 - 로그: `docker compose logs -f central-server`.
-- 운영 정기 감사: GitHub Actions `central ops audit`가 6시간마다 health/policy를 읽기 전용으로 확인한다.
+- 운영 정기 감사: GitHub Actions `central ops audit`가 6시간마다 runtime-secret/health/policy를 읽기 전용으로 확인한다.
 
 ## 보안 점검(기본)
 - 토큰: 일회용·해시 저장·TTL. WS: outbound only, 프레임 화이트리스트·크기 상한.
 - `CENTRAL_DEV_ENABLED` 는 운영에서 **반드시 false**(/dev/* 엔드포인트 차단). 자세히는 `SECURITY.md`.
 
 ## 대시보드 관리자 인증 — Discord OAuth2 (차수 14 #196/#197)
-기본은 공개 읽기 경로를 보존하지만, `audience=admin` 조회와 AI Network 쓰기/민감 읽기 API 는 **관리자 접근**이 필요하다. OAuth 전환 전에는 `CENTRAL_DASHBOARD_ADMIN_TOKEN` 을 운영 `ENV_FILE` 에 넣고 요청에 `X-Dashboard-Admin-Token` 헤더를 붙인다. 운영에서 정식 관리자 인증을 켜려면:
+기본은 공개 읽기 경로를 보존하지만, `audience=admin` 조회와 AI Network 쓰기/민감 읽기 API 는 **관리자 접근**이 필요하다. 현재 운영은 평문 env 슬롯을 두지 않고 Discord OAuth만 사용한다. `CENTRAL_DASHBOARD_ADMIN_TOKEN` 방식은 로컬/스테이징 전용이다. 운영에서 정식 관리자 인증을 켜려면:
 
 1. Discord 개발자 포털에서 OAuth2 앱 생성 → Redirect URI `https://<호스트>/login/oauth2/code/discord`.
 2. 환경변수 주입:

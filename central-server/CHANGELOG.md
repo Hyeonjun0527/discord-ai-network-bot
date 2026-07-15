@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Security
+- central-server 운영 시크릿을 host `.env`/평문 컨테이너 환경변수에서 GitHub `production` Environment와
+  Docker secret files(Spring configtree/Postgres `_FILE`)로 이전하고, 배포·정기 감사에서 드리프트를 차단한다.
+
 ### Changed (구조 리팩터 — 동작·계약 보존, 사용자 노출 변화 없음)
 - **도메인-우선 헥사고날 재편**: 기술레이어 패키지(persistence/network/dashboard/discord/web/health/
   policy/usage/alert/domain)를 11개 비즈니스 도메인(provider·routing·quota·requestlog·guild·channelai·

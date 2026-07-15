@@ -27,7 +27,7 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 운영 값은 **Settings → Environments → `production` → Environment secrets**에서 키별로 관리한다.
 배포 잡은 민감 값을 Docker Compose secret으로 전달하고, central-server는
 `configtree:/run/secrets/`, Postgres는 `POSTGRES_PASSWORD_FILE`로 읽는다. 운영 호스트와 배포
-디렉터리에 `.env` 또는 `.durable-secret`을 만들지 않으며, 렌더링된 `compose.yml`과 컨테이너
+디렉터리에 `.env*` 또는 `.durable-secret*`을 남기지 않으며, 렌더링된 `compose.yml`과 컨테이너
 환경변수에도 평문 시크릿을 넣지 않는다.
 
 **Docker secret file로 전달하는 필수 시크릿:**
@@ -127,7 +127,7 @@ DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 `DISCORD_GUILD_ID=all`은 봇이 들어간 모든 서버의 Discord 채널 목록을 조회해 ko/en/ja 니아 기능 카테고리 아래
 `ai채팅`/`ai그림` 계열 채널이 LLM allow-list에 들어 있는지 대조한다. 특정 서버만 보려면
 `DISCORD_GUILD_ID=<guild_id>`를 준다. 토큰 값은 출력하지 않는다.
-`ops_runtime_secret_audit.sh`는 운영 `.env` 부재, secret file 존재, 평문 시크릿 환경변수 부재를 검사한다.
+`ops_runtime_secret_audit.sh`는 운영 배포 트리의 `.env*` 부재, secret file 존재, 평문 시크릿 환경변수 부재를 검사한다.
 
 ---
 

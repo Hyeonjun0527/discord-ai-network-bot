@@ -132,8 +132,8 @@ jobs:
           rendered_compose="$DEST/.compose.rendered-${GITHUB_RUN_ID}"
           rendered_json="$DEST/.compose.rendered-${GITHUB_RUN_ID}.json"
           previous_compose="$DEST/.compose.previous-${GITHUB_RUN_ID}"
-          legacy_env="$DEST/.env.legacy-${GITHUB_RUN_ID}"
-          legacy_durable="$DEST/.durable-secret.legacy-${GITHUB_RUN_ID}"
+          legacy_env="$DEST/.rollback-env-${GITHUB_RUN_ID}"
+          legacy_durable="$DEST/.rollback-durable-secret-${GITHUB_RUN_ID}"
           install -m 640 central-server/deploy/compose.remote.yml "$candidate_compose"
           cp central-server/scripts/ops_healthcheck.sh "$DEST/ops_healthcheck.sh"
           cp central-server/scripts/ops_policy_audit.sh "$DEST/ops_policy_audit.sh"
@@ -287,7 +287,8 @@ jobs:
           # 새 secret-file 런타임이 정상 기동한 뒤에만 legacy host secret 파일을 제거한다.
           [ ! -f .env ] || mv -f .env "$legacy_env"
           [ ! -f .durable-secret ] || mv -f .durable-secret "$legacy_durable"
-          rm -f .env.tmp
+          find . -type f -name '.env*' -delete
+          find . -type f -name '.durable-secret*' -delete
           echo "▶ 운영 런타임 시크릿 감사(.env 없음, secret file 사용, 평문 env 없음)"
           ./ops_runtime_secret_audit.sh
 

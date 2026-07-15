@@ -130,6 +130,7 @@ jobs:
           mkdir -p "$DEST"
           candidate_compose="$DEST/.compose.candidate-${GITHUB_RUN_ID}"
           rendered_compose="$DEST/.compose.rendered-${GITHUB_RUN_ID}"
+          rendered_json="$DEST/.compose.rendered-${GITHUB_RUN_ID}.json"
           previous_compose="$DEST/.compose.previous-${GITHUB_RUN_ID}"
           legacy_env="$DEST/.env.legacy-${GITHUB_RUN_ID}"
           legacy_durable="$DEST/.durable-secret.legacy-${GITHUB_RUN_ID}"
@@ -156,7 +157,7 @@ jobs:
               "${rollback_compose[@]}" up -d || \
                 echo "::error::자동 롤백 기동 실패 — 운영 호스트를 즉시 확인하세요."
             fi
-            rm -f "$candidate_compose" "$rendered_compose" "$previous_compose"
+            rm -f "$candidate_compose" "$rendered_compose" "$rendered_json" "$previous_compose"
             exit "$status"
           }
           trap rollback EXIT
@@ -177,8 +178,60 @@ jobs:
           compose=(docker compose --env-file /dev/null -f "$candidate_compose")
           "${compose[@]}" config --quiet
           "${compose[@]}" config > "$rendered_compose"
+          "${compose[@]}" config --format json > "$rendered_json"
+
+          python3 - "$rendered_json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as rendered_file:
+              rendered = json.load(rendered_file)
+
+          expected_targets = {
+              "DB_PASSWORD": "spring.datasource.password",
+              "DISCORD_ENABLED": "central.discord.enabled",
+              "DISCORD_BOT_TOKEN": "central.discord.bot-token",
+              "RELAY_PUBLIC_URL": "central.relay.public-url",
+              "CENTRAL_DURABLE_SECRET": "central.durable.secret",
+              "NEXA_FIELD_ENC_KEY": "nexa.field-enc-key",
+              "ZAI_API_KEY": "central.cloud.zai-api-key",
+              "CONNECT_DISCORD_CLIENT_ID": "central.connect.discord-client-id",
+              "CONNECT_DISCORD_CLIENT_SECRET": "central.connect.discord-client-secret",
+              "CENTRAL_OAUTH_ENABLED": "central.oauth.enabled",
+              "CENTRAL_DASHBOARD_ADMIN_USER_IDS": "central.dashboard.admin-user-ids",
+          }
+          expected_sources = {name: name for name in expected_targets}
+          expected_sources["DB_PASSWORD"] = "CENTRAL_DB_PASSWORD"
+
+          app = rendered["services"]["central-server"]
+          app_targets = {item["source"]: item["target"] for item in app.get("secrets", [])}
+          if app_targets != expected_targets:
+              raise SystemExit("central-server secret source/target contract mismatch")
+
+          secret_sources = {
+              name: rendered["secrets"].get(name, {}).get("environment")
+              for name in expected_sources
+          }
+          if secret_sources != expected_sources:
+              raise SystemExit("Compose secret environment source contract mismatch")
+
+          raw_app_keys = set(app.get("environment", {})).intersection(expected_targets)
+          if raw_app_keys:
+              raise SystemExit("raw production values remain in central-server environment")
+
+          db = rendered["services"]["db"]
+          if "POSTGRES_PASSWORD" in db.get("environment", {}):
+              raise SystemExit("raw Postgres password remains in db environment")
+          if db.get("secrets") != [{"source": "DB_PASSWORD", "target": "/run/secrets/DB_PASSWORD"}]:
+              raise SystemExit("Postgres secret-file contract mismatch")
+          PY
+
+          high_entropy_secrets=(
+            CENTRAL_DB_PASSWORD DISCORD_BOT_TOKEN CENTRAL_DURABLE_SECRET
+            NEXA_FIELD_ENC_KEY ZAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
+          )
           rendered_content="$(cat "$rendered_compose")"
-          for key in "${required_production_values[@]}"; do
+          for key in "${high_entropy_secrets[@]}"; do
             if [[ "$rendered_content" == *"${!key}"* ]]; then
               echo "::error::렌더링된 Compose에 ${key} 값이 포함되었습니다."
               exit 1
@@ -188,7 +241,7 @@ jobs:
           [ ! -f compose.yml ] || cp -p compose.yml "$previous_compose"
           install -m 640 "$rendered_compose" compose.yml.next
           mv -f compose.yml.next compose.yml
-          rm -f "$candidate_compose" "$rendered_compose"
+          rm -f "$candidate_compose" "$rendered_compose" "$rendered_json"
           compose=(docker compose --env-file /dev/null -f compose.yml)
 
           echo "▶ 운영 GLM 모델 free=glm-4.5-air fast=glm-4.5-air speech=glm-4.5-air"

@@ -30,8 +30,12 @@ check_raw_secret_absent() {
 }
 
 [ -f "$COMPOSE_FILE" ] || fail "compose 파일이 없습니다: $COMPOSE_FILE"
-[ ! -e .env ] || fail "활성 host .env가 남아 있습니다"
-[ ! -e .durable-secret ] || fail "legacy .durable-secret가 남아 있습니다"
+if find . -type f -name '.env*' -print -quit | grep -q .; then
+  fail "host .env 계열 파일이 남아 있습니다"
+fi
+if find . -type f -name '.durable-secret*' -print -quit | grep -q .; then
+  fail "legacy .durable-secret 계열 파일이 남아 있습니다"
+fi
 echo "✅ active_env=absent"
 
 app_secret_files=(

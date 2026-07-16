@@ -52,7 +52,7 @@ class NiaParticipationJudgeTest {
         val llm = FakeJudgeLlm(response("{bad-json"), response("{still-bad"))
         val judge = judge(llm)
 
-        val decision = judge.decide(sampleRequest())
+        val decision = judge.decide(sampleRequest(directAddressed = false))
 
         assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
@@ -61,11 +61,24 @@ class NiaParticipationJudgeTest {
     }
 
     @Test
-    fun `judge does not retry a provider failure as if it were malformed output`() {
+    fun `judge falls back to bounded SPEAK for a direct address after provider failure`() {
         val llm = ThrowingJudgeLlm()
         val judge = judge(llm)
 
         val decision = judge.decide(sampleRequest())
+
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(decision.speechIntent!!.sceneDirection).contains("if asked to stop or yield")
+        assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.direct_address.judge_llm_error")
+        assertThat(llm.calls).isEqualTo(1)
+    }
+
+    @Test
+    fun `judge keeps fail-closed behavior for ambient chat after provider failure`() {
+        val llm = ThrowingJudgeLlm()
+        val judge = judge(llm)
+
+        val decision = judge.decide(sampleRequest(directAddressed = false))
 
         assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
@@ -104,7 +117,7 @@ class NiaParticipationJudgeTest {
     private fun response(content: String): NiaJudgeLlmResponse =
         NiaJudgeLlmResponse(content = content, modelVersion = "local-judge-v1", finishReason = "stop")
 
-    private fun sampleRequest(): SingleJudgeDecisionRequest =
+    private fun sampleRequest(directAddressed: Boolean = true): SingleJudgeDecisionRequest =
         SingleJudgeDecisionRequest(
             rawContextWindow =
                 JudgeContextWindowBuilder(maxRawChars = 1_000)
@@ -128,7 +141,7 @@ class NiaParticipationJudgeTest {
             sceneSnapshot =
                 SingleJudgeSceneSnapshot(
                     ref = SceneSnapshotRef("guild_a", "channel_a", sceneSeq = 7L, contextVersion = 3L),
-                    directAddressed = true,
+                    directAddressed = directAddressed,
                     replyToNia = false,
                     conversationMentionsNia = true,
                     recentAgentBurstCount = 0,

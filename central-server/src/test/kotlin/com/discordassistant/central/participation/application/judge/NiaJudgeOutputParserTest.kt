@@ -63,6 +63,21 @@ class NiaJudgeOutputParserTest {
         assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
     }
 
+    @Test
+    fun `parser accepts fenced provider json and normalizes uppercase reason code`() {
+        val fenced =
+            """
+            ```json
+            ${output("SPEAK", extra = mapOf("reasonCode" to "DIRECT_CALL_ACK"))}
+            ```
+            """.trimIndent()
+
+        val parsed = parser.parse(fenced).accepted()
+
+        assertThat(parsed.decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(parsed.decision.reasonCode.code).isEqualTo("direct_call_ack")
+    }
+
     private fun output(
         action: String,
         evidenceRefs: List<String> = if (action == "IGNORE") emptyList() else listOf("msg_1"),

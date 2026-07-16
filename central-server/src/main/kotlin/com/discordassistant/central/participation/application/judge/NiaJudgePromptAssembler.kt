@@ -190,7 +190,7 @@ class NiaJudgePromptAssembler(
     companion object {
         const val PROMPT_VERSION: String = "nia-judge-prompt-v4"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
-        const val DEFAULT_TIMEOUT_MILLIS: Long = 8_000
+        const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }
 }
 

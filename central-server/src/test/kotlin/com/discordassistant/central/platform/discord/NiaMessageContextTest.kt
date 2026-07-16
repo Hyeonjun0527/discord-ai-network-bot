@@ -116,6 +116,119 @@ class NiaMessageContextTest {
     }
 
     @Test
+    fun `같은 멤버가 니아 직후 질문하면 명시적 reply 없이도 대화 차례가 이어진다`() {
+        val continuation =
+            deriveNiaTurnContinuation(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야 안녕", createdAtEpochMillis = 0),
+                        msg(
+                            id = 2,
+                            authorId = 99,
+                            authorLabel = "니아",
+                            bot = true,
+                            content = "어 안녕",
+                            replyToMessageId = 1,
+                            createdAtEpochMillis = 1_000,
+                        ),
+                        msg(id = 3, authorId = 10, authorLabel = "HJ", content = "머하노", createdAtEpochMillis = 194_000),
+                    ),
+                currentMessageId = 3,
+                botUserId = 99,
+                currentRepliesToHuman = false,
+            )
+
+        assertThat(continuation.likely).isTrue()
+        assertThat(continuation.lastNiaSpokeAgeSeconds).isEqualTo(193.0)
+    }
+
+    @Test
+    fun `응답 생성 중 다른 멤버가 끼어들어도 니아의 원래 reply 대상이 차례를 이어받는다`() {
+        val continuation =
+            deriveNiaTurnContinuation(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야 안녕", createdAtEpochMillis = 0),
+                        msg(id = 2, authorId = 11, authorLabel = "서연", content = "잠깐", createdAtEpochMillis = 500),
+                        msg(
+                            id = 3,
+                            authorId = 99,
+                            authorLabel = "니아",
+                            bot = true,
+                            content = "어 안녕",
+                            replyToMessageId = 1,
+                            createdAtEpochMillis = 1_000,
+                        ),
+                        msg(id = 4, authorId = 10, authorLabel = "HJ", content = "머하노", createdAtEpochMillis = 2_000),
+                    ),
+                currentMessageId = 4,
+                botUserId = 99,
+                currentRepliesToHuman = false,
+            )
+
+        assertThat(continuation.likely).isTrue()
+    }
+
+    @Test
+    fun `내용 없는 첨부 메시지도 끼어든 대화 차례로 보존한다`() {
+        val continuation =
+            deriveNiaTurnContinuation(
+                messages =
+                    listOf(
+                        msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야 안녕", createdAtEpochMillis = 0),
+                        msg(
+                            id = 2,
+                            authorId = 99,
+                            authorLabel = "니아",
+                            bot = true,
+                            content = "어 안녕",
+                            replyToMessageId = 1,
+                            createdAtEpochMillis = 1_000,
+                        ),
+                        msg(id = 3, authorId = 11, authorLabel = "서연", content = "", createdAtEpochMillis = 2_000),
+                        msg(id = 4, authorId = 10, authorLabel = "HJ", content = "머하노", createdAtEpochMillis = 3_000),
+                    ),
+                currentMessageId = 4,
+                botUserId = 99,
+                currentRepliesToHuman = false,
+            )
+
+        assertThat(continuation.likely).isFalse()
+    }
+
+    @Test
+    fun `니아 다음 메시지라도 다른 멤버거나 사람에게 답한 말이면 차례를 이어받지 않는다`() {
+        val messages =
+            listOf(
+                msg(id = 1, authorId = 10, authorLabel = "HJ", content = "니아야 안녕", createdAtEpochMillis = 0),
+                msg(
+                    id = 2,
+                    authorId = 99,
+                    authorLabel = "니아",
+                    bot = true,
+                    content = "어 안녕",
+                    replyToMessageId = 1,
+                    createdAtEpochMillis = 1_000,
+                ),
+                msg(id = 3, authorId = 11, authorLabel = "서연", content = "HJ야 뭐해", createdAtEpochMillis = 2_000),
+            )
+
+        val differentMember = deriveNiaTurnContinuation(messages, 3, 99, currentRepliesToHuman = false)
+        val replyToHuman = deriveNiaTurnContinuation(messages.dropLast(1) + messages.last().copy(authorId = 10), 3, 99, true)
+        val staleSameMember =
+            deriveNiaTurnContinuation(
+                messages.dropLast(1) + messages.last().copy(authorId = 10, createdAtEpochMillis = 700_000),
+                3,
+                99,
+                currentRepliesToHuman = false,
+            )
+
+        assertThat(differentMember.likely).isFalse()
+        assertThat(replyToHuman.likely).isFalse()
+        assertThat(staleSameMember.likely).isFalse()
+    }
+
+    @Test
     fun `직접 호명 프롬프트는 현재 원문과 호명 제거 내용을 함께 전달한다`() {
         val prompt = buildNiaAddressedPrompt("무슨소란   니아야\n진짜?", "무슨소란   \n진짜?")
 
@@ -205,13 +318,14 @@ class NiaMessageContextTest {
         content: String,
         bot: Boolean = false,
         replyToMessageId: Long? = null,
+        createdAtEpochMillis: Long = id,
     ) = DiscordRecentPromptMessage(
         id = id,
         authorId = authorId,
         authorLabel = authorLabel,
         bot = bot,
         content = content,
-        createdAtEpochMillis = id,
+        createdAtEpochMillis = createdAtEpochMillis,
         replyToMessageId = replyToMessageId,
     )
 }

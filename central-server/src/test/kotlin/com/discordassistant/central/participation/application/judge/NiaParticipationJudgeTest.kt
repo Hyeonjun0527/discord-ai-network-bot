@@ -85,6 +85,107 @@ class NiaParticipationJudgeTest {
         assertThat(llm.calls).isEqualTo(1)
     }
 
+    @Test
+    fun `invalid judge output still answers a same-member question that continues nia's turn`() {
+        val llm = FakeJudgeLlm(response("{bad-json"), response("{still-bad"))
+        val judge = judge(llm)
+
+        val decision =
+            judge.decide(
+                sampleRequest(
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    question = true,
+                ),
+            )
+
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.contextual_follow_up.invalid_judge_output")
+        assertThat(decision.speechIntent!!.intentSummary).contains("conversational follow-up")
+    }
+
+    @Test
+    fun `contextual fallback does not mechanically answer a non-question or human handoff`() {
+        val nonQuestionJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val humanHandoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val namedHandoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+
+        val nonQuestion =
+            nonQuestionJudge.decide(
+                sampleRequest(
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    question = false,
+                ),
+            )
+        val humanHandoff =
+            humanHandoffJudge.decide(
+                sampleRequest(
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    question = true,
+                    humansTalkingToEachOtherLikely = true,
+                ),
+            )
+        val namedHandoff =
+            namedHandoffJudge.decide(
+                sampleRequest(
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    question = true,
+                    otherAddresseeLikely = true,
+                ),
+            )
+
+        assertThat(nonQuestion.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+        assertThat(humanHandoff.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+        assertThat(namedHandoff.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+    }
+
+    @Test
+    fun `contextual fallback stays silent for an explicit stop request`() {
+        val judge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+
+        val decision =
+            judge.decide(
+                sampleRequest(
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    question = true,
+                    stopRequested = true,
+                ),
+            )
+
+        assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+        assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
+    }
+
+    @Test
+    fun `direct-address fallback also stays silent for a stop request or human handoff`() {
+        val stopJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val handoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+
+        val stop =
+            stopJudge.decide(
+                sampleRequest(
+                    directAddressed = true,
+                    question = false,
+                    stopRequested = true,
+                ),
+            )
+        val handoff =
+            handoffJudge.decide(
+                sampleRequest(
+                    directAddressed = true,
+                    question = true,
+                    otherAddresseeLikely = true,
+                ),
+            )
+
+        assertThat(stop.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+        assertThat(handoff.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
+    }
+
     private fun judge(llm: NiaJudgeLlmPort): NiaParticipationJudge =
         NiaParticipationJudge(
             promptAssembler = NiaJudgePromptAssembler(),
@@ -117,7 +218,14 @@ class NiaParticipationJudgeTest {
     private fun response(content: String): NiaJudgeLlmResponse =
         NiaJudgeLlmResponse(content = content, modelVersion = "local-judge-v1", finishReason = "stop")
 
-    private fun sampleRequest(directAddressed: Boolean = true): SingleJudgeDecisionRequest =
+    private fun sampleRequest(
+        directAddressed: Boolean = true,
+        niaTurnContinuationLikely: Boolean = false,
+        question: Boolean = false,
+        humansTalkingToEachOtherLikely: Boolean = false,
+        stopRequested: Boolean = false,
+        otherAddresseeLikely: Boolean = false,
+    ): SingleJudgeDecisionRequest =
         SingleJudgeDecisionRequest(
             rawContextWindow =
                 JudgeContextWindowBuilder(maxRawChars = 1_000)
@@ -146,6 +254,25 @@ class NiaParticipationJudgeTest {
                     conversationMentionsNia = true,
                     recentAgentBurstCount = 0,
                     silenceMillis = 8_000,
+                    textSignals =
+                        JudgeSceneTextSignals(
+                            contentAvailable = true,
+                            isQuestion = question,
+                            replyTargetKind = "none",
+                            emotionalIntensity = 0.0,
+                            callPressure = 0.0,
+                            stopRequested = stopRequested,
+                            otherAddresseeLikely = otherAddresseeLikely,
+                        ),
+                    conversationState =
+                        JudgeConversationSceneState(
+                            humanLikelyAnswering = false,
+                            idleGapLikely = false,
+                            resolvedLikely = false,
+                            humansTalkingToEachOtherLikely = humansTalkingToEachOtherLikely,
+                            niaAddressedOrIdleOpportunity = false,
+                            niaTurnContinuationLikely = niaTurnContinuationLikely,
+                        ),
                 ),
             featureVector = FeatureVectorView.empty(version = FeatureCatalog.VERSION),
             memoryRefs = emptyList(),

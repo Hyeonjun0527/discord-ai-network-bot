@@ -552,6 +552,7 @@ class NexaParticipationEmitBridge(
             pendingActionIds = signal.pendingActionIds,
             humanLikelyAnswering = signal.humanLikelyAnswering,
             resolvedLikely = signal.resolvedLikely,
+            niaTurnContinuationLikely = signal.niaTurnContinuationLikely,
             directAddressPressure = signal.directAddressPressure,
             replyChainDepth = signal.replyChainDepth,
             nicknameCall = signal.nicknameCall || containsNiaNameSignal(signal.triggerText),
@@ -559,6 +560,13 @@ class NexaParticipationEmitBridge(
             humansTalkingToEachOtherLikely = signal.humansTalkingToEachOtherLikely,
             rateLimitPressure = signal.rateLimitPressure,
             antiSpamPressure = signal.antiSpamPressure,
+            knownHumanDisplayNames =
+                signal.recentRawMessages
+                    .asSequence()
+                    .filterNot { it.bot }
+                    .map { it.authorLabel }
+                    .filter { it.isNotBlank() }
+                    .toSet(),
             relationshipObservation = signal.relationshipObservation,
             memoryObservation = signal.memoryObservation,
         )
@@ -1420,7 +1428,7 @@ class NexaParticipationEmitBridge(
         private const val DEFAULT_REACTION_CODE: String = "ack"
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
-        private const val DEFAULT_FEW_SHOT_VERSION: Int = 5
+        private const val DEFAULT_FEW_SHOT_VERSION: Int = 6
         private val ROMANIZED_NIA_NAME_SIGNAL: Regex =
             Regex("""(?i)(^|[^a-z0-9_])n\s*i\s*a(?:\s*y\s*a|ya|야|씨)?(?=$|[^a-z0-9_])""")
 
@@ -1479,6 +1487,29 @@ class NexaParticipationEmitBridge(
                                 ),
                             tags = setOf("direct-address", "repeated-call", "whole-scene"),
                             priority = 95,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_same_member_follow_up_after_nia",
+                            title = "same member continues the turn after nia replies",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member_a", 0, "니아야 안녕"),
+                                    JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "어 안녕"),
+                                    JudgeFewShotRawMessagePayload("m3", "member_a", 194_000, "머하노"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason =
+                                "The same member asks a natural follow-up immediately after Nia in turn order. " +
+                                    "The lack of a mention does not hand the conversation away from Nia.",
+                            evidenceRefs = setOf("m1", "m2", "m3"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.WAIT,
+                                    whyBad = "Waiting would ignore the active two-party turn that Nia already joined.",
+                                ),
+                            tags = setOf("contextual-follow-up", "turn-ownership", "whole-scene"),
+                            priority = 100,
                             privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
                         ),
                         JudgeFewShotExamplePayload(
@@ -1733,6 +1764,8 @@ data class ParticipationMessageSignal(
     val silenceMillis: Long? = null,
     /** 마지막 니아 발화 경과(초). 미관측이면 null 로 남긴다. */
     val lastNiaSpokeAgeSeconds: Double? = null,
+    /** 같은 사람이 니아의 직전 응답에 이어 말하고 있어 현재 turn이 니아와 계속될 가능성. */
+    val niaTurnContinuationLikely: Boolean = false,
     /** 실행 전 최신 장면 재평가가 필요한 pending action id 목록. */
     val pendingActionIds: List<String> = emptyList(),
     /** 사람이 답하려는 흐름으로 보이는가. enum 대신 scene evidence 로만 전달한다. */

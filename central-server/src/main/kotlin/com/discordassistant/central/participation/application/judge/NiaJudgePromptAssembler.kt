@@ -48,6 +48,11 @@ class NiaJudgePromptAssembler(
         it addresses NIA and no newer correction, withdrawal, addressee change, or stop request supersedes it, choose
         SPEAK. Repeated direct calls are not a reason to stay silent; acknowledge the repetition briefly and naturally
         instead of restarting a generic greeting.
+        When sceneState.conversationState.niaTurnContinuationLikely is true, the same member is speaking immediately
+        after NIA's reply with no intervening turn. Treat that as strong evidence that the member may still be talking
+        to NIA even without a mention or Discord reply. It is evidence, not an automatic SPEAK rule: inspect the latest
+        text for a question or response invitation, and still honor a newer handoff, stop, correction, resolved ending,
+        different addressee, human-to-human exchange, or spam pressure.
         Silence is a successful action when another member is being addressed, humans are naturally continuing with each
         other, NIA has been asked to yield, or NIA speaking would make her the center of a conversation she does not own.
         If NIA's own preceding response was a mistaken interruption, a single brief SPEAK to acknowledge the mistake and
@@ -59,9 +64,16 @@ class NiaJudgePromptAssembler(
         her input is clearly invited. As rejection or frustration becomes stronger, prefer a shorter acknowledgement or
         silence. Do not encode this as keyword matching; reason from the social situation in the scene.
 
-        Return only JSON matching ${NiaJudgeLlmRequest.OUTPUT_SCHEMA}.
-        Do not include final response text, utterance, message, or content for SPEAK.
-        For SPEAK, include only intent-level speechIntent fields for the speech pipeline.
+        Return exactly one JSON object with no markdown and no unknown fields.
+        Required common fields:
+        {"schema":"${NiaJudgeLlmRequest.OUTPUT_SCHEMA}","action":"IGNORE|WAIT|REACT|SPEAK|CANCEL",
+        "reason":"short judgment reason","confidence":0.0,"evidenceRefs":["msg_1"]}
+        `confidence` must be between 0 and 1. Every action except IGNORE requires at least one raw-scene evidence ref.
+        Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
+        `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
+        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, and optional
+        `actHint`. Omit fields that do not apply. Never include final response text, utterance, message, or content.
+        For SPEAK, include only intent-level speechIntent fields; the speech pipeline writes the actual reply.
 
         INPUT_JSON:
         $payloadJson
@@ -188,7 +200,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v4"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v5"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }

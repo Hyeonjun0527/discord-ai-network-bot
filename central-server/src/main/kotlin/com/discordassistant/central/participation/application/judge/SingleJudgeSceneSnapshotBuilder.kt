@@ -9,6 +9,7 @@ import com.discordassistant.central.participation.application.port.out.FeatureId
 import com.discordassistant.central.participation.application.port.out.FeatureValue
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import java.util.Locale
 
 object SingleJudgeSceneSnapshotBuilder {
     private const val IDLE_GAP_THRESHOLD_MILLIS: Long = 5_000
@@ -30,6 +31,7 @@ object SingleJudgeSceneSnapshotBuilder {
                     observation.humansTalkingToEachOtherLikely || (observation.replyToHuman && !directAddressed),
                 niaAddressedOrIdleOpportunity =
                     directAddressed || (observation.silenceMillis?.let { it >= IDLE_GAP_THRESHOLD_MILLIS } ?: false),
+                niaTurnContinuationLikely = observation.niaTurnContinuationLikely,
             )
         val turnTakingState =
             JudgeTurnTakingSceneState(
@@ -82,6 +84,9 @@ object SingleJudgeSceneSnapshotBuilder {
                 } else {
                     0.0
                 },
+            stopRequested = contentAvailable && looksLikeStopRequest(text),
+            otherAddresseeLikely =
+                contentAvailable && looksLikeKnownHumanAddress(text, knownHumanDisplayNames),
         )
     }
 
@@ -172,6 +177,7 @@ object SingleJudgeSceneSnapshotBuilder {
         return trimmed.endsWith("?") ||
             trimmed.endsWith("？") ||
             QUESTION_CONTAINS_MARKERS.any { marker -> marker in trimmed } ||
+            COLLOQUIAL_QUESTION_PATTERNS.any { pattern -> pattern.containsMatchIn(trimmed) } ||
             QUESTION_ENDING_MARKERS.any { marker -> trimmed.endsWith(marker) }
     }
 
@@ -179,6 +185,32 @@ object SingleJudgeSceneSnapshotBuilder {
         val trimmed = text.trim()
         return RESOLVED_MARKERS.any { marker -> trimmed.endsWith(marker) }
     }
+
+    private fun looksLikeStopRequest(text: String): Boolean = STOP_REQUEST_PATTERNS.any { pattern -> pattern.containsMatchIn(text.trim()) }
+
+    private fun looksLikeKnownHumanAddress(
+        text: String,
+        knownHumanDisplayNames: Set<String>,
+    ): Boolean {
+        val knownNames =
+            knownHumanDisplayNames
+                .asSequence()
+                .flatMap { displayName -> HUMAN_NAME_TOKEN_PATTERN.findAll(displayName).map { it.value.normalizedNameToken() } }
+                .filter { it != "니아" }
+                .toSet()
+        if (knownNames.isEmpty()) return false
+
+        val vocativeTargets =
+            HUMAN_VOCATIVE_PATTERN
+                .findAll(text.trim())
+                .map { match -> match.groupValues[1].normalizedNameToken() }
+        if (vocativeTargets.any { target -> target in knownNames }) return true
+
+        val redirectsAwayFromNia = REDIRECT_AWAY_FROM_NIA_PATTERN.containsMatchIn(text)
+        return redirectsAwayFromNia && knownNames.any { knownName -> knownName in text.normalizedNameToken() }
+    }
+
+    private fun String.normalizedNameToken(): String = lowercase(Locale.ROOT)
 
     private fun emotionalIntensityOf(text: String): Double {
         var score = 0.0
@@ -202,9 +234,25 @@ object SingleJudgeSceneSnapshotBuilder {
     }
 
     private val QUESTION_CONTAINS_MARKERS = listOf("뭐", "왜", "어떻게", "언제", "어디")
+    private val COLLOQUIAL_QUESTION_PATTERNS = listOf(Regex("""(^|\s)머\s*(해|하|함)"""))
     private val QUESTION_ENDING_MARKERS = listOf("할까", "하냐", "나요", "니")
     private val RESOLVED_MARKERS = listOf("고마워", "감사", "됐어", "해결", "잘자", "수고")
     private val CALL_PRESSURE_MARKERS = listOf("답장", "대답", "위로", "반응", "말해", "무시")
+    private val HUMAN_VOCATIVE_PATTERN =
+        Regex("""(?:^|[\s,])([0-9A-Za-z가-힣_]{1,32})[야아](?=$|[\s,.!?~])""")
+    private val HUMAN_NAME_TOKEN_PATTERN = Regex("""[0-9A-Za-z가-힣_]+""")
+    private val STOP_REQUEST_PATTERNS =
+        listOf(
+            Regex("""(답|대답|답장|답변|말|반응|참견)\s*하지\s*(마|말아|말라고|말랬|말고|않았으면|않아도)"""),
+            Regex("""끼어들\s*지\s*(마|말아|말라고|말랬|말고|않았으면)"""),
+            Regex("""(대답|답장|답변|말|반응)\s*안\s*해도\s*(돼|괜찮아|된다|됨)(?=$|[\s,.!?~])"""),
+            Regex("""(?:^|\s)(?:그만(?:\s*(?:해|해라|해줘|하자|하라고))?|닥쳐)(?=$|[\s,.!?~])"""),
+            Regex("""(?:^|\s)조용히\s*(해|있어|해줘|있어줘)(?=$|[,.!?~])"""),
+            Regex("""(?i)\b(don't|do not)\s+(reply|respond|talk|speak)\b"""),
+            Regex("""(?i)\bstop\s+(replying|responding|talking|speaking)\b"""),
+        )
+    private val REDIRECT_AWAY_FROM_NIA_PATTERN =
+        Regex("""(?:니아|너)(?:가|는)?\s*(?:말고|아니(?:고|라|야|라고))""")
 }
 
 data class SingleJudgeSceneObservation(
@@ -220,6 +268,7 @@ data class SingleJudgeSceneObservation(
     val pendingActionIds: List<String> = emptyList(),
     val humanLikelyAnswering: Boolean = false,
     val resolvedLikely: Boolean = false,
+    val niaTurnContinuationLikely: Boolean = false,
     val directAddressPressure: Double = 0.0,
     val replyChainDepth: Int = 0,
     val nicknameCall: Boolean = false,
@@ -227,6 +276,7 @@ data class SingleJudgeSceneObservation(
     val humansTalkingToEachOtherLikely: Boolean = false,
     val rateLimitPressure: Double = 0.0,
     val antiSpamPressure: Double = 0.0,
+    val knownHumanDisplayNames: Set<String> = emptySet(),
     val relationshipObservation: RelationshipObservation? = null,
     val memoryObservation: MemoryObservation? = null,
 ) {
@@ -244,6 +294,7 @@ data class SingleJudgeSceneObservation(
         }
         require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
         require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
+        knownHumanDisplayNames.forEach { require(it.isNotBlank()) { "knownHumanDisplayName 은 비어 있을 수 없다" } }
     }
 }
 

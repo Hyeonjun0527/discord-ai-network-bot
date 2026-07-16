@@ -352,11 +352,12 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val examples = judge.lastRequest!!.fewShotSet.examples
-        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(5)
+        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(6)
         assertThat(examples.map { it.exampleId })
             .contains(
                 "default_direct_reply_request",
                 "default_repeated_empty_name_call",
+                "default_same_member_follow_up_after_nia",
                 "default_handoff_to_another_member",
                 "default_retracted_direct_address",
                 "default_mistaken_interruption_yield",
@@ -369,6 +370,9 @@ class NexaParticipationEmitBridgeTest {
         val repeatedCallExample = examples.single { it.exampleId == "default_repeated_empty_name_call" }
         assertThat(repeatedCallExample.reason).contains("generic greeting")
         assertThat(repeatedCallExample.rawMessages.map { it.text }).contains("왜 자꾸 불러 ㅋㅋ", "nia ya")
+        val contextualFollowUp = examples.single { it.exampleId == "default_same_member_follow_up_after_nia" }
+        assertThat(contextualFollowUp.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(contextualFollowUp.rawMessages.map { it.text }).containsExactly("니아야 안녕", "어 안녕", "머하노")
         val handoffExample = examples.single { it.exampleId == "default_handoff_to_another_member" }
         assertThat(handoffExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
         assertThat(handoffExample.badAlternative.action).isEqualTo(NiaFewShotAction.SPEAK)
@@ -454,6 +458,36 @@ class NexaParticipationEmitBridgeTest {
         assertThat(request.sceneSnapshot.directAddressed).isTrue()
         val hasMention = request.featureVector.features.getValue(FeatureCatalog.BURST_HAS_MENTION)
         assertThat(hasMention.value).isEqualTo(1.0)
+    }
+
+    @Test
+    fun `judge final mode receives contextual continuation without turning it into direct address`() {
+        val judge = CapturingJudge(ignoreDecision())
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = FakeScheduler()),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+            )
+
+        bridge.onMessage(
+            signal(
+                mentioned = false,
+                triggerText = "머하노",
+                lastNiaSpokeAgeSeconds = 193.0,
+                niaTurnContinuationLikely = true,
+            ),
+        )
+
+        val scene = judge.lastRequest!!.sceneSnapshot
+        assertThat(scene.directAddressed).isFalse()
+        assertThat(scene.conversationState.niaTurnContinuationLikely).isTrue()
+        assertThat(scene.agentState.lastSpokeAgeSeconds).isEqualTo(193.0)
     }
 
     @Test
@@ -1435,6 +1469,7 @@ class NexaParticipationEmitBridgeTest {
         replyToHuman: Boolean = false,
         silenceMillis: Long? = null,
         lastNiaSpokeAgeSeconds: Double? = null,
+        niaTurnContinuationLikely: Boolean = false,
         pendingActionIds: List<String> = emptyList(),
         humanLikelyAnswering: Boolean = false,
         resolvedLikely: Boolean = false,
@@ -1473,6 +1508,7 @@ class NexaParticipationEmitBridgeTest {
             conversationMentionsNia = conversationMentionsNia,
             silenceMillis = silenceMillis,
             lastNiaSpokeAgeSeconds = lastNiaSpokeAgeSeconds,
+            niaTurnContinuationLikely = niaTurnContinuationLikely,
             pendingActionIds = pendingActionIds,
             humanLikelyAnswering = humanLikelyAnswering,
             resolvedLikely = resolvedLikely,

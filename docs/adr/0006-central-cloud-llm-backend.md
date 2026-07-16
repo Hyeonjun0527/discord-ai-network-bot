@@ -90,12 +90,13 @@ interface CloudLlm {
 
 ### 3-2. 발화는 temperature 로 매번 다르게, 판단은 결정론 (불변)
 
-발화(speech) 생성은 `central.speech.temperature`(기본 0.9)를 z.ai 에 전송해 **같은 프롬프트라도 매번 다른 문장**이
-나오게 한다 — 사람은 같은 호명("nia야")에 글자까지 똑같이 답하지 않는다. temperature=0(결정론)이면 반복 호명에
-동일 문장을 되풀이하는 회귀가 생긴다. 반면 **판단(participation judge)·tool calling·무료질문**은 temperature 를
-전송하지 않아(z.ai 기본, 결정론에 가까움) 일관된 결정을 유지한다. `CloudLlm.generateSampled(...)` 만 temperature 를
-싣고, 나머지 경로(`generate`)는 싣지 않는다. 변주는 few-shot 목록을 도는 게 아니라 페르소나 분포에서 샘플링하는
-것이므로, 반복 방지는 하드코딩 예시가 아니라 (a) temperature + (b) "지난 발화를 되풀이 말라"는 지시로 달성한다.
+발화(speech) 생성은 `central.speech.temperature`(기본 0.5)를 z.ai 에 전송하고, **한 번의 모델 호출에서 서로 다른
+후보 2개**를 받은 뒤 전송 전 critic 을 통과한 후보만 고른다. 사람처럼 표현은 달라지되, 높은 온도로 페르소나를
+벗어나거나 사용자를 밀어내는 문장이 나오는 확률은 낮춘다. temperature=0(결정론)이면 반복 호명에 동일 문장을
+되풀이하는 회귀가 생긴다. 반면 **판단(participation judge)·tool calling·무료질문**은 temperature 를 전송하지
+않아(z.ai 기본, 결정론에 가까움) 일관된 결정을 유지한다. `CloudLlm.generateSampled(...)` 만 temperature 를 싣고,
+나머지 경로(`generate`)는 싣지 않는다. 반복 방지는 (a) 보수적 temperature, (b) 지난 발화 반복 금지 지시,
+(c) 후보 2개 중 critic 선택을 함께 사용한다. 후보 수가 늘어도 외부 LLM 호출 횟수는 한 번이다.
 
 ### 비-목표 (이번 단계 제외)
 

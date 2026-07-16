@@ -10,8 +10,8 @@ class GenerationBudgetTest {
     @Test
     fun `clampCandidateCount never exceeds budget or contract ceiling`() {
         val budget = GenerationBudget(maxCandidates = 4, maxOutputTokens = 256, maxContextTokens = 512)
-        assertThat(budget.clampCandidateCount(10)).isEqualTo(1) // 운영 계약 cap
-        assertThat(budget.clampCandidateCount(3)).isEqualTo(1)
+        assertThat(budget.clampCandidateCount(10)).isEqualTo(2) // 운영 계약 cap
+        assertThat(budget.clampCandidateCount(3)).isEqualTo(2)
         // 계약 상한(MAX_CANDIDATES)을 못 넘는다.
         val wide = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256, maxContextTokens = 512)
         assertThat(wide.clampCandidateCount(99)).isEqualTo(SpeechGenerationRequest.MAX_CANDIDATES)

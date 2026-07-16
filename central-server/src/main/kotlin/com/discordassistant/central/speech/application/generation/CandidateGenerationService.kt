@@ -13,7 +13,7 @@ import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 /**
  * 발화 후보 생성 유스케이스(NEXA-P14-T011, application).
  *
- * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 현재 운영 계약은 후보 1개 고정이다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
+ * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 현재 운영 계약은 한 번의 모델 호출에서 후보 2개까지 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
  * 프롬프트로 조립하고([assembleRequest]) [SpeechGenerationPort] 로 생성한다. budget(T015)이 후보 수·token 상한을,
  * ReasoningModeSelector(T013)가 추론 모드를 정한다.
  *
@@ -56,13 +56,14 @@ class CandidateGenerationService(
         packet: SpeechScenePacket,
         budget: GenerationBudget,
     ): SpeechGenerationRequest {
-        val systemPrompt = assembleSystemPrompt(packet)
+        val candidateCount = budget.clampCandidateCount(budget.maxCandidates)
+        val systemPrompt = assembleSystemPrompt(packet, candidateCount)
         val userPrompt = assembleUserPayload(packet)
         return SpeechGenerationRequest(
             systemPrompt = systemPrompt,
             userPrompt = userPrompt,
             socialAct = packet.socialAct,
-            candidateCount = budget.clampCandidateCount(budget.maxCandidates),
+            candidateCount = candidateCount,
             reasoningMode = reasoningModeSelector.select(packet),
             maxOutputTokens = budget.clampOutputTokens(budget.maxOutputTokens),
         )
@@ -88,7 +89,10 @@ class CandidateGenerationService(
         }.trim()
 
     /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
-    private fun assembleSystemPrompt(packet: SpeechScenePacket): String =
+    private fun assembleSystemPrompt(
+        packet: SpeechScenePacket,
+        candidateCount: Int,
+    ): String =
         buildString {
             appendLine(renderIdentity(packet.identity))
             appendLine()
@@ -104,12 +108,16 @@ class CandidateGenerationService(
             appendLine(
                 "반복 회피: 장면에 이미 있는 니아(너 자신)의 지난 발화를 그대로 되풀이하지 않는다. 같은 사람이 짧은 호명" +
                     "(\"니아야\", \"nia야\" 등)이나 같은 말을 반복하면, 매번 똑같이 답하지 말고 사람처럼 반응을 바꾼다 — " +
-                    "가볍게 되묻거나(무슨 일), 자꾸 부르는 걸 짚거나(왜 자꾸 불러 ㅋㅋ), 살짝 장난치거나 시큰둥하게. " +
+                    "가볍게 되묻거나(무슨 일), 듣고 있다고 알려주거나, 짧게 장난친다. 사용자를 귀찮아하거나 밀어내지 않는다. " +
                     "직전에 네가 한 말과 다른 말을 고른다.",
+            )
+            appendLine(
+                "기능 경계: 니아수다에서 알고리즘·코딩·지식 설명 같은 기능성 요청을 받으면 직접 설명하지 말고, " +
+                    "친구처럼 장난스럽게 반응한 뒤 반드시 '니아 기능채널 ai채팅'으로 안내한다.",
             )
             appendLine("각 bubble 은 Discord 채팅 한마디처럼 쓰고, ASCII 마침표(.)로 끝내지 않는다.")
             appendLine()
-            appendLine(OUTPUT_FORMAT_INSTRUCTION)
+            appendLine(outputFormatInstruction(candidateCount))
         }.trim()
 
     /** 정체성 section 을 프롬프트 블록으로 렌더한다(SSOT 본문 + 금지사항). */
@@ -128,8 +136,9 @@ class CandidateGenerationService(
 
     companion object {
         /** GLM 이 후보 버블 배열·style tag·uncertainty 를 JSON 으로 돌려주게 하는 출력 지시(T012 파서와 짝). */
-        const val OUTPUT_FORMAT_INSTRUCTION =
-            "출력은 JSON 하나로만: {\"candidates\":[{\"bubbles\":[\"...\"],\"style_tags\":[\"...\"]," +
-                "\"uncertainty\":0.0}]}. 설명·코드펜스 없이 JSON 객체만."
+        fun outputFormatInstruction(candidateCount: Int): String =
+            "서로 다른 표현의 후보를 정확히 ${candidateCount}개 만든다. 출력은 JSON 하나로만: " +
+                "{\"candidates\":[{\"bubbles\":[\"...\"],\"style_tags\":[\"...\"],\"uncertainty\":0.0}]}. " +
+                "설명·코드펜스 없이 JSON 객체만."
     }
 }

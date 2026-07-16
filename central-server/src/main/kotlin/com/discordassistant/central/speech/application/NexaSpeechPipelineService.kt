@@ -341,6 +341,10 @@ class NexaSpeechPipelineService(
                             com.discordassistant.central.speech.domain.service.critic
                                 .ConversationalBoundaryCritic(),
                         )
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .HumanlikeConversationCritic(),
+                        )
                         addAll(extraCritics)
                     },
             )

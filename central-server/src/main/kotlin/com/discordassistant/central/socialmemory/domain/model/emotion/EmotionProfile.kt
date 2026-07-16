@@ -5,7 +5,7 @@ import java.time.Duration
 /**
  * 한 감정 상태(reaction/mood)의 *독립된* 보정 프로필 — core `nia_engine/emotion.py`(D1, 게이트 G4) 이식.
  *
- * 축마다 기준점 μ([mu], "평소의 까칠·장난·솔직 니아" — 무색 중립 아님)·시정수 H([halfLife], 반감기)·
+ * 축마다 기준점 μ([mu], "평소의 친근·장난·솔직 니아" — 무색 중립 아님)·시정수 H([halfLife], 반감기)·
  * 전체 범위 [[xMin], [xMax]]·한 사건 최대 변화 δ([deltaMax], I4 단일 사건 상한)·부정 비대칭([negativityBias],
  * SSOT §12.3)을 따로 갖는다. 이 독립성이 reaction/mood 의 *다른 시정수*를 만든다(감정은 관계보다 빠르다).
  *

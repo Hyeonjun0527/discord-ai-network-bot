@@ -17,7 +17,7 @@ enum class ToneValence {
     /** mood > 0 — 아주 조금 들뜸/좋음. */
     WARM,
 
-    /** mood < 0 — 아주 조금 시큰둥/처짐. */
+    /** mood < 0 — 아주 조금 차분하고 말수가 적어짐. */
     COOL,
 
     /** mood == 0. */

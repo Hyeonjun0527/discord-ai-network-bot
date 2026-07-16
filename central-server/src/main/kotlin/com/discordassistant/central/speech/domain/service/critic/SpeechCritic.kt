@@ -99,4 +99,13 @@ enum class CriticReason {
 
     /** 장문 위로·설명식 답변·과한 친밀감·감정 단정처럼 사람 채팅 경계를 벗어난 후보. */
     CONVERSATIONAL_BOUNDARY,
+
+    /** 사용자를 귀찮아하거나 밀어내는 공격적·퉁명스러운 말투. */
+    DISMISSIVE_TONE,
+
+    /** 사용자가 니아의 직전 발화를 되물었는데 설명·인정·수습 없이 다시 엇나간 후보. */
+    REPAIR_MISSED,
+
+    /** 니아수다의 기능성 요청을 전용 ai채팅 채널로 안내하지 않은 후보. */
+    FEATURE_CHANNEL_REDIRECT_MISSING,
 }

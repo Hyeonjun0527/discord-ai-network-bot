@@ -156,7 +156,7 @@ class NiaChannelSetupHandlerTest {
             isNull(), // avatarUrl = null
             eqK(actorId), // actorId(Long?, 박싱) = ctx.userId
             eqK("친구 단톡방의 한 사람처럼 짧게 한마디 거드는 니아"),
-            eqK("까칠하지만 장난스럽고 솔직하게"),
+            eqK("친근하고 장난스럽고 솔직하게"),
             eqK("very_short"),
             isNull(), // constitution
         )

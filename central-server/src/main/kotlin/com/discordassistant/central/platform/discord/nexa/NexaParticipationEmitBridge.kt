@@ -1506,7 +1506,7 @@ class NexaParticipationEmitBridge(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "nia야"),
                                     JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "응 왜~"),
                                     JudgeFewShotRawMessagePayload("m3", "member", 2_000, "nia야"),
-                                    JudgeFewShotRawMessagePayload("m4", "nia", 3_000, "왜 자꾸 불러 ㅋㅋ"),
+                                    JudgeFewShotRawMessagePayload("m4", "nia", 3_000, "응 여기 있어 ㅋㅋ 무슨 일인데"),
                                     JudgeFewShotRawMessagePayload("m5", "member", 4_000, "nia ya"),
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,

@@ -22,9 +22,8 @@ class SpeechModelConfig(
     @param:Value("\${central.speech.model:glm-4.5-air}") val model: String,
     @param:Value("\${central.speech.timeout-seconds:8}") private val timeoutSeconds: Long,
     @param:Value("\${central.speech.max-retries:1}") val maxRetries: Int,
-    // 발화 샘플링 randomness. 결정론(0)이면 같은 프롬프트에 같은 문장이 나와 반복 호명에 똑같이 답한다.
-    // 0.9 정도면 사람처럼 매번 표현이 달라지되 페르소나를 벗어나지 않는다. env 로 튜닝/rollback.
-    @param:Value("\${central.speech.temperature:0.9}") val temperature: Double,
+    // 발화 샘플링 randomness. 후보 2개 안에서 다양성을 확보하되 페르소나 이탈은 줄이는 보수적 기본값이다.
+    @param:Value("\${central.speech.temperature:0.5}") val temperature: Double,
 ) {
     companion object {
         const val DEFAULT_SPEECH_MODEL = "glm-4.5-air"

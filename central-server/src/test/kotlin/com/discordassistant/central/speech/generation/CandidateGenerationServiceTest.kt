@@ -16,12 +16,14 @@ import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
-/** NEXA-P14-T011: 발화 후보 생성 — 후보 수가 비용 cap을 넘지 않고 현재 운영 계약은 1개로 고정. */
+/** NEXA-P14-T011: 발화 후보 생성 — 후보 수가 비용 cap을 넘지 않고 한 번의 호출에서 최대 2개. */
 class CandidateGenerationServiceTest {
     private class CapturingPort : SpeechGenerationPort {
         var lastRequest: SpeechGenerationRequest? = null
+        var callCount: Int = 0
 
         override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
+            callCount++
             lastRequest = request
             val candidates = (1..request.candidateCount).map { SpeechCandidate("c$it", listOf("버블 $it")) }
             return SpeechGenerationResult(candidates, modelMetadata = "fake-model")
@@ -39,12 +41,13 @@ class CandidateGenerationServiceTest {
         )
 
     @Test
-    fun `candidate count is clamped to one by operation contract`() {
+    fun `candidate count is clamped to two by operation contract`() {
         val port = CapturingPort()
         val budget = GenerationBudget(maxCandidates = 3, maxOutputTokens = 256, maxContextTokens = 512)
         val result = service(port).generate(SpeechGenerationFixtures.packet(), budget)
-        assertThat(result.candidates).hasSize(1)
-        assertThat(port.lastRequest!!.candidateCount).isEqualTo(1)
+        assertThat(result.candidates).hasSize(2)
+        assertThat(port.lastRequest!!.candidateCount).isEqualTo(2)
+        assertThat(port.callCount).isEqualTo(1)
         assertThat(result.modelMetadata).isEqualTo("fake-model")
     }
 
@@ -64,6 +67,9 @@ class CandidateGenerationServiceTest {
         assertThat(req.systemPrompt).contains("니아")
         assertThat(req.systemPrompt).contains("하지 않을 것")
         assertThat(req.systemPrompt).contains("정확히 1개")
+        assertThat(req.systemPrompt).contains("서로 다른 표현의 후보를 정확히 2개")
+        assertThat(req.systemPrompt).contains("니아 기능채널 ai채팅")
+        assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
         // user prompt는 최소화된 장면.
         assertThat(req.userPrompt).contains("focus_thread")
     }

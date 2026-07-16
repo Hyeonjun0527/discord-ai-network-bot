@@ -43,6 +43,7 @@ import com.discordassistant.central.participation.application.judge.SingleJudgeD
 import com.discordassistant.central.participation.application.judge.SingleParticipationJudgePort
 import com.discordassistant.central.participation.application.model.ShadowModelRegistry
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
+import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.NiaFewShotStorePort
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
@@ -1635,7 +1636,8 @@ class NexaParticipationEmitBridgeTest {
         ): RawContextBulkRedactionResult = error("raw unavailable")
     }
 
-    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")
+    private fun flagService(mode: ShadowMode) =
+        NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), NexaParticipationConsentPort.Noop, "OFF")
 
     private fun emitSeam(
         candidates: List<SpeechCandidate> = listOf(SpeechCandidate("c1", listOf("좋아"))),

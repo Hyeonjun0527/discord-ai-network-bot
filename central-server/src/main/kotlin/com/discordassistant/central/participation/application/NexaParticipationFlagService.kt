@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.application
 
 import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
+import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
 import com.discordassistant.central.participation.domain.model.config.NexaParticipationGate
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Service
 class NexaParticipationFlagService(
     private val shadowModeStore: ShadowModeStorePort,
     private val flagPort: NexaParticipationFlagPort,
+    private val consentPort: NexaParticipationConsentPort,
     @Value("\${central.nexa.participation.global-default-lane:OFF}") globalDefaultLaneName: String,
     private val audit: AuditLog = AuditLog(),
 ) {
@@ -80,6 +82,8 @@ class NexaParticipationFlagService(
         source: String = SOURCE_MANUAL,
     ) {
         val pseudonym = guildPseudonym(guildId)
+        // 동의를 먼저 기록한다. 이후 flag 저장이 실패해도 발화는 활성화되지 않는 안전 방향이다.
+        consentPort.activateMemberChannel(guildId = guildId, channelId = channelId, actorId = actorId)
         flagPort.setChannelExcluded(pseudonym, channelId, false)
         flagPort.setChannelOverride(pseudonym, channelId, ParticipationLane.LIVE)
         recordChannelAudit(
@@ -104,6 +108,7 @@ class NexaParticipationFlagService(
         // 행이 삭제되는 순간 guild/global LIVE 로 fallback 해 그 채널에서 발화가 새는 창(race)을 없앤다.
         flagPort.setChannelExcluded(pseudonym, channelId, true)
         flagPort.setChannelOverride(pseudonym, channelId, null)
+        consentPort.deactivateMemberChannel(guildId = guildId, channelId = channelId)
         recordChannelAudit(
             action = "nexa_participation_channel_disabled",
             guildId = guildId,
@@ -119,6 +124,7 @@ class NexaParticipationFlagService(
         guildId: Long,
         channelId: Long,
     ) {
+        consentPort.clearChannel(guildId = guildId, channelId = channelId)
         flagPort.clearChannel(guildPseudonym(guildId), channelId)
     }
 
@@ -127,6 +133,7 @@ class NexaParticipationFlagService(
      * guildId 로 재입장 시(가명 동일) 관리자가 다시 켜지 않았는데도 stale LIVE 채널에서 니아가 발화할 수 있다.
      */
     fun cleanupGuild(guildId: Long) {
+        consentPort.revokeGuild(guildId)
         flagPort.clearGuild(guildPseudonym(guildId))
     }
 

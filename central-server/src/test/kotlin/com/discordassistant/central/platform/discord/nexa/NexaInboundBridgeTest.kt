@@ -15,6 +15,7 @@ import com.discordassistant.central.conversation.domain.model.event.GenericObser
 import com.discordassistant.central.conversation.domain.model.event.GuildId
 import com.discordassistant.central.conversation.domain.model.event.PrivacyClass
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeState
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
@@ -62,7 +63,8 @@ class NexaInboundBridgeTest {
 
     private fun ingestWith(store: EventStorePort) = IngestDiscordEventService(AllowConsent, store)
 
-    private fun flagService(mode: ShadowMode) = NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), "OFF")
+    private fun flagService(mode: ShadowMode) =
+        NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), NexaParticipationConsentPort.Noop, "OFF")
 
     private fun envelope(): IngestEnvelope =
         IngestEnvelope(

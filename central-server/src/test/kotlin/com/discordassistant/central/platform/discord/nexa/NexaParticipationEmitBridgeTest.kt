@@ -346,7 +346,7 @@ class NexaParticipationEmitBridgeTest {
                 judgeModeName = "final",
                 singleJudge = judge,
                 actionRouter = ParticipationActionRouter(scheduler),
-                fewShotService = NiaFewShotService(FakeFewShotStore(activeSet = null)),
+                fewShotService = NiaFewShotService(FakeFewShotStore(activeSet = null), NiaFewShotEvalService()),
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야"))

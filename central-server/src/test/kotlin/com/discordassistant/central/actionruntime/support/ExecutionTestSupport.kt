@@ -115,13 +115,20 @@ fun typingSpeakAction(
     contextVersion: Long = 1L,
     channelId: String = "chan-1",
     threadId: String = "thread-1",
+    replyToMessageId: String? = null,
 ): ScheduledSocialAction =
     ScheduledSocialAction
         .create(
             decisionId = decisionId,
             sampledActionIndex = index,
             type = ScheduledActionType.SPEAK,
-            target = ActionTarget(guildPseudonym = "guild-1", channelId = channelId, threadId = threadId),
+            target =
+                ActionTarget(
+                    guildPseudonym = "guild-1",
+                    channelId = channelId,
+                    threadId = threadId,
+                    replyToMessageId = replyToMessageId,
+                ),
             executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
             contextVersion = contextVersion,
             originRolloutMode = ShadowMode.LIVE,

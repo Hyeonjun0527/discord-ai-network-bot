@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -24,6 +25,7 @@ from types import ModuleType
 REPO = Path(__file__).resolve().parents[1]
 REPORT_GEN = REPO / "scripts" / "generate-nexa-eval-report.py"
 SIM30 = REPO / "scripts" / "simulate-30day-member.py"
+NIA_JUDGE_REPORT = REPO / "docs" / "nexa" / "quality" / "nia-judge-report.md"
 
 
 def _load(path: Path, name: str) -> ModuleType:
@@ -91,10 +93,50 @@ def _check_30day(errors: list[str]) -> None:
         errors.append("30-day sim is not deterministic for same seed")
 
 
+def _check_nia_judge_report(errors: list[str]) -> None:
+    if not NIA_JUDGE_REPORT.exists():
+        errors.append("missing NIA judge report")
+        return
+    text = NIA_JUDGE_REPORT.read_text(encoding="utf-8")
+    if "- status: **PASS**" not in text:
+        errors.append("NIA judge report status is not PASS")
+    if "- totalExamples: 40" not in text:
+        errors.append("NIA judge report missing totalExamples=40")
+    if "- hardAmbiguousExamples: 7" not in text:
+        errors.append("NIA judge report missing hardAmbiguousExamples=7")
+
+    expected_counts = {"SPEAK": 10, "WAIT": 9, "REACT": 6, "IGNORE": 10, "CANCEL": 5}
+    for action, expected in expected_counts.items():
+        pattern = rf"\| {action} \| {expected} \| {expected} \|"
+        if not re.search(pattern, text):
+            errors.append(f"NIA judge report action count mismatch for {action}")
+
+    for metric in (
+        "action_correctness",
+        "over_talk",
+        "under_talk",
+        "stale_memory_override",
+        "ambiguous_contrast",
+        "privacy",
+        "composition",
+        "coverage",
+        "schema",
+    ):
+        pattern = rf"\| {metric} \| PASS \| - \|"
+        if not re.search(pattern, text):
+            errors.append(f"NIA judge report metric not PASS: {metric}")
+
+    forbidden_report_tokens = ("rawMessages", "text:", "discord.com/channels", "<@", "<#")
+    for token in forbidden_report_tokens:
+        if token in text:
+            errors.append(f"NIA judge report leaks raw/Discord-shaped token: {token}")
+
+
 def main() -> int:
     errors: list[str] = []
     _check_report(errors)
     _check_30day(errors)
+    _check_nia_judge_report(errors)
     if errors:
         print("INVALID NEXA eval report / 30-day sim")
         for e in errors:

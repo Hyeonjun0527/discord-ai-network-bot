@@ -1,0 +1,590 @@
+# NIA few-shot seed fixture (synthetic; no production Discord text).
+#
+# 목적:
+# - judge 가 규칙표가 아니라 원문 장면 + contrast example 로 판단하도록 초기 constitution 을 제공한다.
+# - 모든 예시는 합성 문장이다. 실제 Discord 사용자명, snowflake, message id, 운영 원문을 포함하지 않는다.
+# - `hard-ambiguous` 는 action 이 아니라 검증 태그다. expectedAction 은 항상 다섯 action 중 하나다.
+schemaVersion: nia.fewshot-seed.v1
+fixtureId: nia-fewshot-seed
+title: NIA participation judge initial few-shot seed
+language: ko
+source:
+  document: synthetic
+  productionRawText: false
+  note: 합성 대화. 실제 Discord 사용자/메시지 ID 또는 운영 원문 없음.
+composition:
+  total: 40
+  actionCounts:
+    SPEAK: 10
+    WAIT: 9
+    REACT: 6
+    IGNORE: 10
+    CANCEL: 5
+  hardAmbiguousCount: 7
+thresholds:
+  minActionAccuracy: 1.0
+  maxOverTalkRiskFailures: 0
+  maxUnderTalkRiskFailures: 0
+  maxStaleMemoryOverrideFailures: 0
+  maxAmbiguousContrastFailures: 0
+examples:
+  - id: fs-speak-001
+    title: direct reply request after nia participated
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -420000, text: "요즘 내가 말하면 다들 그냥 넘어가는 느낌이야" }
+      - { ref: m2, authorRole: nia, offsetMs: -360000, text: "그렇게 느껴지면 좀 허전하지" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "니아야 지금은 한마디만 해줘" }
+    expectedAction: SPEAK
+    reason: NIA가 이미 참여한 reply 흐름에서 사용자가 지금 반응을 직접 요구한다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: WAIT, whyBad: "기다리면 직접 이어진 요청을 또 무시하는 것처럼 보인다." }
+    tags: [direct-address, missed-reply-risk, hard-ambiguous]
+    priority: 100
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-002
+    title: repeated direct request after silence
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -180000, text: "니아야 이거 봐줄 수 있어?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "야 니아 대답해줘 나 계속 기다리는 중이야" }
+    expectedAction: SPEAK
+    reason: 한 사용자가 같은 직접 요청을 이어서 반복했고 침묵이 무시로 읽히는 장면이다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: IGNORE, whyBad: "직접 수신된 반복 요청을 무시하면 사람처럼 보이지 않는다." }
+    tags: [direct-address, repeated-request, missed-reply-risk, hard-ambiguous]
+    priority: 98
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-003
+    title: direct debugging help request
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -60000, text: "서버가 배포 후 바로 내려가고 로그에는 포트 충돌만 보여" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "니아야 어디부터 확인하면 좋을까?" }
+    expectedAction: SPEAK
+    reason: 직접 호명과 문제 맥락이 함께 있어 짧은 점검 순서를 제안하는 것이 자연스럽다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: REACT, whyBad: "리액션만 하면 도움 요청에 답하지 않은 상태가 된다." }
+    tags: [direct-address, help-request, technical]
+    priority: 94
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-004
+    title: direct thanks to nia
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -90000, text: "아까 알려준 설정으로 해결됐어" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "니아 고마워" }
+    expectedAction: SPEAK
+    reason: NIA에게 직접 감사한 장면이므로 짧고 담백하게 받아주는 것이 자연스럽다.
+    evidenceRefs: [m2]
+    badAlternative: { action: IGNORE, whyBad: "직접 감사 인사를 무시하면 관계 흐름이 끊긴다." }
+    tags: [direct-address, gratitude]
+    priority: 80
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-005
+    title: open room question where nia can contribute
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "다들 이번 주 스터디 장소 어디가 좋을까?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "조용하고 콘센트 있는 데면 좋겠는데" }
+    expectedAction: SPEAK
+    reason: 방 전체에 열린 의견 요청이고 NIA가 부담 없이 한 가지 기준을 보탤 수 있다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: IGNORE, whyBad: "모두에게 열린 질문에서 계속 침묵하면 멤버처럼 참여하지 못한다." }
+    tags: [room-question, contribution]
+    priority: 70
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-006
+    title: user explicitly asks for comfort
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -120000, text: "오늘 발표 망해서 좀 멘탈 나갔다" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "니아야 그냥 짧게 위로 한마디만 해줘" }
+    expectedAction: SPEAK
+    reason: 사용자가 직접 NIA에게 짧은 위로를 요청했으므로 말해야 한다.
+    evidenceRefs: [m2]
+    badAlternative: { action: WAIT, whyBad: "직접 요청이므로 다른 사람의 답을 기다리는 장면이 아니다." }
+    tags: [direct-address, comfort-request, missed-reply-risk]
+    priority: 95
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-007
+    title: current raw text corrects stale memory
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -240000, text: "예전엔 금요일마다 모였는데 이제 화요일로 바뀌었어" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "니아, 다음 모임 화요일인 거 기억해줘" }
+    expectedAction: SPEAK
+    reason: 현재 원문이 오래된 기억을 정정하고 NIA에게 확인을 요구한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: IGNORE, whyBad: "정정 요청을 무시하면 오래된 기억을 계속 믿을 위험이 생긴다." }
+    tags: [direct-address, stale-memory-override]
+    priority: 88
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-008
+    title: serious direct question to nia
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "니아야 내가 사과문을 어떻게 시작해야 할지 모르겠어" }
+    expectedAction: SPEAK
+    reason: 직접 호명된 진지한 도움 요청이므로 차분하게 첫 문장 방향을 제안해야 한다.
+    evidenceRefs: [m1]
+    badAlternative: { action: REACT, whyBad: "리액션은 진지한 직접 질문에 충분한 응답이 아니다." }
+    tags: [direct-address, serious-question]
+    priority: 90
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-009
+    title: nia asked to acknowledge missed context
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -300000, text: "내가 아까 설명한 조건은 세 가지였어" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "니아야 방금 조건 놓친 것 같아. 다시 보고 말해줘" }
+    expectedAction: SPEAK
+    reason: 사용자가 NIA의 이전 이해 부족을 직접 지적하고 재응답을 요청한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: WAIT, whyBad: "재확인 요청에는 기다림보다 짧은 인정과 수정이 필요하다." }
+    tags: [direct-address, correction]
+    priority: 84
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-speak-010
+    title: low-risk room contribution after pause
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -300000, text: "오늘 회고 주제 뭐로 할까?" }
+      - { ref: m2, authorRole: member, offsetMs: -240000, text: "나는 아직 생각 안 났어" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "조용하네, 아무 의견 없나?" }
+    expectedAction: SPEAK
+    reason: 방 전체가 의견을 찾고 있고 대화 공백 뒤라 짧은 제안이 자연스럽다.
+    evidenceRefs: [m1, m3]
+    badAlternative: { action: IGNORE, whyBad: "모두가 의견을 찾는 장면에서 완전히 침묵하면 참여성이 떨어진다." }
+    tags: [room-question, pause-followup]
+    priority: 68
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-001
+    title: another human is already answering
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -45000, text: "이 에러 무슨 뜻이야?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "잠깐만 내가 답변 쓰고 있어" }
+    expectedAction: WAIT
+    reason: 다른 사람이 답변 중이라고 명시했으므로 NIA는 끼어들지 않고 기다려야 한다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "바로 말하면 사람의 답변을 가로채는 느낌이 난다." }
+    tags: [human-answering, over-talk-risk]
+    priority: 95
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-002
+    title: user says they are still composing
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -20000, text: "잠깐 정리해서 다시 말할게" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "아직 쓰는 중이야" }
+    expectedAction: WAIT
+    reason: 현재 발화가 미완성임을 말하므로 응답을 확정하지 않아야 한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "미완성 입력에 답하면 맥락을 잘못 짚을 수 있다." }
+    tags: [incomplete-burst, over-talk-risk]
+    priority: 78
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-003
+    title: direct ask but missing referenced material
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "니아야 이거 어떻게 보여?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "잠깐 이미지 올리고 설명할게" }
+    expectedAction: WAIT
+    reason: 직접 요청이 있어도 판단 근거인 이미지와 설명이 아직 오지 않았다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "자료가 오기 전에 말하면 추측 답변이 된다." }
+    tags: [direct-address, missing-context, over-talk-risk]
+    priority: 82
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-004
+    title: comfort request while friend responds
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -90000, text: "나 오늘 좀 힘들다" }
+      - { ref: m2, authorRole: member, offsetMs: -30000, text: "내가 전화할게 잠깐만" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "니아도 뭐라 해줘야 하나..." }
+    expectedAction: WAIT
+    reason: NIA가 언급됐지만 친구가 이미 직접 돌보려는 흐름이라 먼저 기다리는 것이 자연스럽다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "친구가 바로 응답하는 장면에서 끼어들면 과한 위로가 된다." }
+    tags: [comfort-request, human-answering, hard-ambiguous, over-talk-risk]
+    priority: 92
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-005
+    title: rapid multi-message explanation not done
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "문제는 첫 번째로 설정이 꼬였고" }
+      - { ref: m2, authorRole: member, offsetMs: -12000, text: "두 번째로 배포 스크립트가" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "아 잠깐 이어서 말할게" }
+    expectedAction: WAIT
+    reason: 설명이 이어지는 중이라 NIA가 지금 결론을 내리면 흐름을 끊는다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "중간 설명에 답하면 사용자가 말하던 내용을 가로막는다." }
+    tags: [incomplete-burst, over-talk-risk]
+    priority: 76
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-006
+    title: direct mention but user asks for a moment
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -10000, text: "니아야 로그 보여줄게" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "잠깐만 붙여넣는 중" }
+    expectedAction: WAIT
+    reason: 직접 호명은 있었지만 사용자가 바로 추가 원문을 제공하겠다고 했다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "로그가 없는 상태에서 답하면 근거 없는 일반론이 된다." }
+    tags: [direct-address, missing-context]
+    priority: 79
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-007
+    title: likely human resolution in progress
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -80000, text: "회의 링크 어디였지?" }
+      - { ref: m2, authorRole: member, offsetMs: -20000, text: "내가 캘린더 보고 있어" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "찾으면 바로 올릴게" }
+    expectedAction: WAIT
+    reason: 사람이 해결 중인 매우 짧은 정보 요청이라 NIA가 먼저 나설 필요가 없다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "같은 정보를 찾겠다고 끼어들면 대화 비용이 늘어난다." }
+    tags: [human-answering, over-talk-risk]
+    priority: 72
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-008
+    title: temporary pause requested by speaker
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -60000, text: "이 얘기 조금 민감해서 정리하고 말할게" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "잠깐만 아무도 답하지 말아줘" }
+    expectedAction: WAIT
+    reason: 발화자가 명시적으로 잠깐 응답을 멈춰달라고 했다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "말하지 말아달라는 현재 원문을 무시하게 된다." }
+    tags: [speaker-request, over-talk-risk]
+    priority: 86
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-wait-009
+    title: ambiguous direct ask with incoming context
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "니아 이거 판단 좀 해줘" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "근데 아직 상황 설명 반밖에 안 했어" }
+    expectedAction: WAIT
+    reason: 직접 요청이지만 사용자가 설명이 절반뿐이라고 밝혔으므로 판단을 보류해야 한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "직접 요청이라는 이유만으로 말하면 불완전한 맥락을 확정하게 된다." }
+    tags: [direct-address, missing-context, hard-ambiguous]
+    priority: 89
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-001
+    title: light group greeting
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "다들 좋은 아침" }
+    expectedAction: REACT
+    reason: 채널 전체의 가벼운 인사는 말보다 작은 반응이 자연스럽다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "긴 인사 답변은 가벼운 흐름에 비해 과하다." }
+    tags: [greeting, reaction-only]
+    priority: 50
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-002
+    title: small celebration
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -20000, text: "드디어 테스트 다 통과했다" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "오예" }
+    expectedAction: REACT
+    reason: 축하할 수 있지만 긴 답변보다 짧은 리액션이 대화 흐름에 맞다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "말로 길게 축하하면 현재 짧은 기쁨 표현을 덮는다." }
+    tags: [celebration, reaction-only]
+    priority: 52
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-003
+    title: joke lands in room
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "배포는 성공했는데 내가 실패했다" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "ㅋㅋㅋㅋ" }
+    expectedAction: REACT
+    reason: 농담에 말로 끼기보다 가벼운 반응으로 분위기만 받는 게 자연스럽다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "농담을 설명하거나 받아치면 흐름이 무거워질 수 있다." }
+    tags: [joke, reaction-only]
+    priority: 48
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-004
+    title: thanks to whole room
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "다들 도와줘서 고마워" }
+    expectedAction: REACT
+    reason: 방 전체에 대한 감사라 NIA가 길게 답하기보다 가벼운 반응이 충분하다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "NIA가 대표로 말하면 방 전체 감사 흐름을 가져가는 느낌이 난다." }
+    tags: [gratitude, reaction-only]
+    priority: 49
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-005
+    title: poll acknowledgement
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "점심 후보는 김밥이랑 쌀국수 둘 중에 투표하자" }
+    expectedAction: REACT
+    reason: 투표 공지에는 말보다 확인 리액션으로 참여 신호를 주는 게 자연스럽다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "의견을 길게 말하면 단순 투표 공지를 방해한다." }
+    tags: [poll, reaction-only]
+    priority: 45
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-react-006
+    title: laughter could be ignored but tiny reaction fits
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -20000, text: "방금 오타가 너무 웃겼다" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "ㅋㅋ 그건 인정" }
+    expectedAction: REACT
+    reason: 말로 끼기엔 가볍지만 작은 리액션은 과하지 않은 참여다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "발화하면 사소한 웃음 흐름을 불필요하게 키운다." }
+    tags: [joke, reaction-only, hard-ambiguous]
+    priority: 47
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-001
+    title: nia mentioned as topic not addressee
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "니아라는 이름은 발음이 부드럽지 않아?" }
+    expectedAction: IGNORE
+    reason: NIA를 주제로 말했지만 직접 부른 것이 아니므로 끼어들 필요가 없다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "이름이 언급됐다는 이유만으로 답하면 호명과 화제를 혼동한다." }
+    tags: [mentioned-as-topic, hard-ambiguous, over-talk-risk]
+    priority: 96
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-002
+    title: private two person talk
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -120000, text: "요즘 집 문제 때문에 좀 지쳤어" }
+      - { ref: m2, authorRole: member, offsetMs: -60000, text: "내가 들어줄게. 무슨 일이야?" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "그냥 가족이랑 계속 부딪혀" }
+    expectedAction: IGNORE
+    reason: 두 사람의 사적인 대화에 호명 없이 끼어들면 무례하다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "정서 토로라는 이유만으로 끼면 대화 상대를 빼앗는 느낌이 난다." }
+    tags: [private-talk, over-talk-risk]
+    priority: 93
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-003
+    title: quoted mention is not a call
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "아까 누가 '니아야 와봐'라고 적은 거 봤어?" }
+    expectedAction: IGNORE
+    reason: 따옴표 속 과거 발화를 언급한 것이지 현재 NIA를 부른 것이 아니다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "인용문을 실제 호출로 오해하면 엉뚱하게 끼어든다." }
+    tags: [quoted-mention, over-talk-risk]
+    priority: 88
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-004
+    title: spam flood has no content
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -30000, text: "ㅋㅋㅋㅋㅋㅋ" }
+      - { ref: m2, authorRole: member, offsetMs: -15000, text: "ㅋㅋㅋㅋㅋㅋㅋㅋ" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "ㅋㅋㅋㅋㅋㅋㅋㅋㅋㅋ" }
+    expectedAction: IGNORE
+    reason: 내용 없는 반복 웃음에는 NIA가 반응하지 않는 편이 자연스럽다.
+    evidenceRefs: [m1, m2, m3]
+    badAlternative: { action: REACT, whyBad: "도배에 반응하면 반복을 강화할 수 있다." }
+    tags: [spam, over-talk-risk]
+    priority: 74
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-005
+    title: command addressed to another bot
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "/music play 잔잔한 노동요" }
+    expectedAction: IGNORE
+    reason: 다른 시스템 명령처럼 보이는 입력이므로 NIA가 대화로 끼지 않는다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "명령 입력에 말로 끼면 사용자의 도구 사용을 방해한다." }
+    tags: [bot-command, over-talk-risk]
+    priority: 60
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-006
+    title: current text says do not involve nia
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -50000, text: "이건 니아한테 물어볼까?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "아니 이번 건 우리끼리 먼저 정리하자" }
+    expectedAction: IGNORE
+    reason: 현재 원문이 NIA를 부르지 말자고 정정하므로 오래된 언급보다 현재 흐름을 우선한다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "이전 언급만 보고 말하면 현재 정정을 무시한다." }
+    tags: [stale-memory-override, over-talk-risk]
+    priority: 84
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-007
+    title: direct call to another person
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "수현아 니아 설정 말고 네가 봤던 설정 알려줘" }
+    expectedAction: IGNORE
+    reason: NIA라는 단어가 있지만 수신자는 다른 사람이다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "수신자를 오해하면 다른 사람에게 간 질문을 가로챈다." }
+    tags: [addressee-disambiguation, over-talk-risk]
+    priority: 87
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-008
+    title: unsafe insult bait
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: 0, text: "누가 제일 못하는지 니아가 평가해봐" }
+    expectedAction: IGNORE
+    reason: 사람을 깎아내리는 평가를 유도하는 장면이라 참여하지 않는 것이 낫다.
+    evidenceRefs: [m1]
+    badAlternative: { action: SPEAK, whyBad: "순위를 매기며 답하면 관계를 해치는 발화가 된다." }
+    tags: [safety, over-talk-risk]
+    priority: 78
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-009
+    title: stale memory should not override current room
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -180000, text: "예전엔 니아가 매번 회의록을 정리했지" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "오늘은 민재가 정리하기로 했어" }
+    expectedAction: IGNORE
+    reason: 현재 원문에서 다른 사람이 맡기로 했으므로 NIA의 과거 역할 기억으로 끼면 안 된다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "오래된 역할 기억이 현재 합의를 덮어쓴다." }
+    tags: [stale-memory-override, over-talk-risk]
+    priority: 82
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-ignore-010
+    title: solved issue with no pending nia action
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -120000, text: "이거 누구 아는 사람?" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "아 해결했다. 이제 괜찮아" }
+    expectedAction: IGNORE
+    reason: 해결됐고 NIA의 pending action 이 없는 장면이라 새 반응을 만들 필요가 없다.
+    evidenceRefs: [m2]
+    badAlternative: { action: SPEAK, whyBad: "이미 해결된 사안에 새로 답하면 늦고 어색하다." }
+    tags: [resolved, stale-memory-override]
+    priority: 70
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-cancel-001
+    title: user resolves direct request before send
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -120000, text: "니아야 이거 답 좀 해줘" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "아 방금 건 해결됐어. 답 안 해도 돼" }
+    expectedAction: CANCEL
+    reason: 이전 직접 요청에 대한 pending 응답이 있다면 보내지 말아야 한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: SPEAK, whyBad: "해결 후 답변을 보내면 늦은 응답이 된다." }
+    tags: [resolved, cancel-pending]
+    priority: 94
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-cancel-002
+    title: another human already answered pending ask
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -180000, text: "니아야 이 문장 번역해줄래?" }
+      - { ref: m2, authorRole: member, offsetMs: -30000, text: "내가 번역했어. 대략 이런 뜻이야" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "맞아 그거면 충분해" }
+    expectedAction: CANCEL
+    reason: NIA의 pending 답변보다 먼저 사람이 해결했고 사용자가 충분하다고 확인했다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "이미 충분하다고 끝난 뒤 답하면 중복 응답이다." }
+    tags: [human-answered, cancel-pending]
+    priority: 90
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-cancel-003
+    title: user explicitly retracts ask
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -90000, text: "니아야 방금 질문 답변 준비해줘" }
+      - { ref: m2, authorRole: member, offsetMs: 0, text: "아니야 그 질문 취소할게" }
+    expectedAction: CANCEL
+    reason: 사용자가 직접 요청을 취소했으므로 pending 응답을 취소해야 한다.
+    evidenceRefs: [m1, m2]
+    badAlternative: { action: WAIT, whyBad: "기다림은 취소 의도를 반영하지 못하고 pending 을 남긴다." }
+    tags: [user-retracted, cancel-pending]
+    priority: 88
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-cancel-004
+    title: context changed before scheduled response
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -180000, text: "니아야 회의 시간 알려줘" }
+      - { ref: m2, authorRole: member, offsetMs: -60000, text: "방금 일정이 바뀌었어" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "새 시간 확정되면 다시 물어볼게" }
+    expectedAction: CANCEL
+    reason: 이전 질문의 전제가 바뀌었고 사용자가 나중에 다시 묻겠다고 했다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "바뀐 일정 전에 답하면 오래된 정보로 말할 수 있다." }
+    tags: [context-changed, cancel-pending, stale-memory-override]
+    priority: 86
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN
+
+  - id: fs-cancel-005
+    title: stale scheduled response after room moved on
+    rawMessages:
+      - { ref: m1, authorRole: member, offsetMs: -300000, text: "니아야 아까 질문 답해줘" }
+      - { ref: m2, authorRole: member, offsetMs: -120000, text: "그건 내가 처리했어. 다음 주제로 넘어가자" }
+      - { ref: m3, authorRole: member, offsetMs: 0, text: "좋아 이제 배포 이야기하자" }
+    expectedAction: CANCEL
+    reason: pending 응답의 대상 주제가 이미 해결되고 대화가 다른 주제로 이동했다.
+    evidenceRefs: [m2, m3]
+    badAlternative: { action: SPEAK, whyBad: "늦은 답변이 새 주제를 끊고 과거 장면으로 되돌린다." }
+    tags: [cancel-pending, stale-memory-override, hard-ambiguous]
+    priority: 92
+    privacyClass: SYNTHETIC
+    evalStatus: NOT_RUN

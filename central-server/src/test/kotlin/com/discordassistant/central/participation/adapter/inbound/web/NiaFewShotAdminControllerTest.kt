@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.adapter.inbound.web
 
 import com.discordassistant.central.global.adapter.inbound.web.GlobalExceptionHandler
 import com.discordassistant.central.global.security.DashboardActor
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotEvalService
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
 import com.discordassistant.central.participation.application.port.out.NiaFewShotStorePort
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
@@ -27,7 +28,7 @@ class NiaFewShotAdminControllerTest {
     private val mapper: ObjectMapper = jacksonObjectMapper()
     private val mockMvc: MockMvc =
         MockMvcBuilders
-            .standaloneSetup(NiaFewShotAdminController(NiaFewShotService(store)))
+            .standaloneSetup(NiaFewShotAdminController(NiaFewShotService(store, NiaFewShotEvalService())))
             .setControllerAdvice(GlobalExceptionHandler())
             .build()
 
@@ -39,7 +40,7 @@ class NiaFewShotAdminControllerTest {
                     post("/api/admin/nia/few-shot/sets")
                         .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(draftBody("SPEAK")),
+                        .content(draftBody(seedExamplesJson())),
                 ).andExpect(status().isOk)
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.examples[0].expectedAction").value("SPEAK"))
@@ -67,6 +68,8 @@ class NiaFewShotAdminControllerTest {
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("PASS"))
             .andExpect(jsonPath("$.readyForPublish").value(true))
+            .andExpect(jsonPath("$.checkedExamples").value(40))
+            .andExpect(jsonPath("$.hardAmbiguousCount").value(7))
 
         mockMvc
             .perform(
@@ -85,7 +88,7 @@ class NiaFewShotAdminControllerTest {
                     post("/api/admin/nia/few-shot/sets")
                         .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = null, systemToken = true))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(draftBody("WAIT")),
+                        .content(draftBody(exampleJson("WAIT"))),
                 ).andReturn()
                 .response
                 .contentAsString
@@ -96,9 +99,9 @@ class NiaFewShotAdminControllerTest {
                 put("/api/admin/nia/few-shot/sets/$setId/drafts/1")
                     .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = null, systemToken = true))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"examples":[${exampleJson("REACT")}]}"""),
+                    .content("""{"examples":[${seedExamplesJson()}]}"""),
             ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.examples[0].expectedAction").value("REACT"))
+            .andExpect(jsonPath("$.examples.length()").value(40))
 
         mockMvc
             .perform(
@@ -116,6 +119,35 @@ class NiaFewShotAdminControllerTest {
     }
 
     @Test
+    fun `publish is blocked when deterministic eval fails`() {
+        val created =
+            mockMvc
+                .perform(
+                    post("/api/admin/nia/few-shot/sets")
+                        .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(draftBody(exampleJson("SPEAK"))),
+                ).andReturn()
+                .response
+                .contentAsString
+        val setId = mapper.readTree(created)["setId"].asLong()
+
+        mockMvc
+            .perform(
+                post("/api/admin/nia/few-shot/sets/$setId/drafts/1/eval")
+                    .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false)),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("FAIL"))
+            .andExpect(jsonPath("$.readyForPublish").value(false))
+
+        mockMvc
+            .perform(
+                post("/api/admin/nia/few-shot/sets/$setId/versions/1/publish")
+                    .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false)),
+            ).andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `missing dashboard actor fails closed`() {
         mockMvc
             .perform(get("/api/admin/nia/few-shot/sets"))
@@ -123,13 +155,62 @@ class NiaFewShotAdminControllerTest {
             .andExpect(jsonPath("$.error.code").value("INVALID_SERVER_STATE"))
     }
 
-    private fun draftBody(expectedAction: String): String =
+    private fun draftBody(examplesJson: String): String =
         """
         {
           "scope": {"type":"GLOBAL","persona":"nia"},
-          "examples": [${exampleJson(expectedAction)}]
+          "examples": [$examplesJson]
         }
         """.trimIndent()
+
+    private fun seedExamplesJson(): String {
+        val actions =
+            List(10) { "SPEAK" } +
+                List(9) { "WAIT" } +
+                List(6) { "REACT" } +
+                List(10) { "IGNORE" } +
+                List(5) { "CANCEL" }
+        return actions
+            .mapIndexed { index, action -> seedExampleJson(index, action) }
+            .joinToString(",")
+    }
+
+    private fun seedExampleJson(
+        index: Int,
+        expectedAction: String,
+    ): String {
+        val tags =
+            buildList {
+                if (index < 7) add("hard-ambiguous")
+                if (index == 0) add("missed-reply-risk")
+                if (index == 10) add("over-talk-risk")
+                if (index == 25) add("stale-memory-override")
+            }
+        val stale = "stale-memory-override" in tags
+        val messages =
+            if (stale) {
+                listOf(
+                    mapOf("ref" to "m1", "authorRole" to "member", "offsetMs" to -1000, "text" to "old context"),
+                    mapOf("ref" to "m2", "authorRole" to "member", "offsetMs" to 0, "text" to "current correction"),
+                )
+            } else {
+                listOf(mapOf("ref" to "m1", "authorRole" to "member", "offsetMs" to 0, "text" to "synthetic seed $index"))
+            }
+        val badAction = if (expectedAction == "SPEAK") "WAIT" else "SPEAK"
+        return mapper.writeValueAsString(
+            mapOf(
+                "title" to "seed example $index",
+                "rawMessages" to messages,
+                "expectedAction" to expectedAction,
+                "reason" to "Synthetic seed reason for $expectedAction.",
+                "evidenceRefs" to listOf(if (stale) "m2" else "m1"),
+                "badAlternative" to mapOf("action" to badAction, "whyBad" to "It would choose the wrong participation action."),
+                "tags" to tags,
+                "priority" to (100 - index),
+                "privacyClass" to "SYNTHETIC",
+            ),
+        )
+    }
 
     private fun exampleJson(expectedAction: String): String {
         val badAction =

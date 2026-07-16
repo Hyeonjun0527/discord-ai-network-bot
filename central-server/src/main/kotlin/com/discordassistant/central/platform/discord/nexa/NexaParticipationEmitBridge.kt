@@ -219,7 +219,11 @@ class NexaParticipationEmitBridge(
                 evaluateAndEmit(signal, originRolloutMode = mode)
             } catch (e: Exception) {
                 // 활성 participation 채널은 judge/안전 경계를 우회하지 않는다. 실패는 로그 후 비발화로 fail-closed한다.
-                log.warn("NEXA participation 발화 평가 실패(channel={}) — 이번 턴 fail-closed: {}", signal.channelId, e.message)
+                log.warn(
+                    "NIA_TURN_FAILED trace={} stage=EVALUATE_AND_EMIT reason={}",
+                    diagnosticTraceOf(signal),
+                    e.message,
+                )
                 ParticipationEmitOutcome.Failed
             }
         return turnOutcome(mode, recordTrace(signal = signal, mode = mode, outcome = outcome))
@@ -915,7 +919,7 @@ class NexaParticipationEmitBridge(
         mode: ShadowMode,
         outcome: ParticipationEmitOutcome,
     ): ParticipationEmitOutcome {
-        traceStore.append(
+        val trace =
             ParticipationGateTrace(
                 correlationId = correlationIdOf(signal),
                 guildId = signal.guildId,
@@ -941,8 +945,20 @@ class NexaParticipationEmitBridge(
                         recentAgentBurstCount = signal.recentAgentBurstCount,
                         hasTimestamp = signal.tsMs > 0,
                     ),
-            ),
-        )
+            )
+        traceStore.append(trace)
+        if (mode.evaluatesPolicy) {
+            log.info(
+                "NIA_TURN_RESULT trace={} mode={} outcome={} reason={} policy={} speech={} willSpeak={}",
+                diagnosticTraceOf(signal),
+                trace.mode,
+                trace.outcome,
+                trace.reasonCode,
+                trace.policyAction,
+                trace.speechOutcome,
+                trace.willSpeak,
+            )
+        }
         return outcome
     }
 
@@ -982,6 +998,8 @@ class NexaParticipationEmitBridge(
     ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = messageId)
 
     private fun correlationIdOf(signal: ParticipationMessageSignal): String = "participation:${signal.channelId}:${signal.sceneSeq}"
+
+    private fun diagnosticTraceOf(signal: ParticipationMessageSignal): String = sha256Hex(correlationIdOf(signal)).take(12)
 
     private fun recordedAtOf(signal: ParticipationMessageSignal): Instant =
         if (signal.tsMs > 0) Instant.ofEpochMilli(signal.tsMs) else Instant.EPOCH

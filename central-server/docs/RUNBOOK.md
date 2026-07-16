@@ -7,7 +7,8 @@
 - 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
 - 빠른 점검: 배포 위치에서 `./ops_runtime_secret_audit.sh`(host `.env*`/secret file/평문 env),
   `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
-  세 스크립트는 `central-deploy.yml`이 배포 디렉터리로 복사한다. 파일이 없다면 아직 최신 배포가 돌지 않은 상태다.
+  니아 무응답은 `./ops_nia_turn_trace.sh 30`으로 최근 30분의 정책→발화→예약→전송 상태와 종결 원인을 한 번에 본다.
+  네 스크립트는 `central-deploy.yml`이 배포 디렉터리로 복사한다. 파일이 없다면 아직 최신 배포가 돌지 않은 상태다.
 - 주기 점검: GitHub Actions `central ops audit`가 6시간마다 같은 runtime-secret/health/policy 감사를 읽기 전용으로 실행한다.
 
 ## 장애 대응
@@ -44,6 +45,19 @@
   ```
 - 실패하면 출력된 `guild_id`/`channel_id`를 기준으로 웹 대시보드에서 해당 채널을 허용한다.
 - 감사가 통과하면 채널 정책 문제는 아니므로 provider pool, role policy, quota, cloud/provider backend 오류를 이어서 본다.
+
+### 6) 니아가 메시지를 받았지만 답하지 않음
+- 최근 턴을 원문이나 Discord ID 노출 없이 한 행씩 추적한다. `verdict`가 첫 번째 확인 지점이다.
+  ```bash
+  ssh ssh.yeon.world
+  cd ~/deploy/central-server
+  ./ops_nia_turn_trace.sh 30
+  docker compose logs --since=30m central-server | grep 'NIA_TURN_'
+  ```
+- `BROKEN:MISSING_SPEECH`는 정책 이후 발화 파이프라인 미진입, `BROKEN:MISSING_ACTION`은 발화 성공 뒤 예약 실패,
+  `PENDING:*`는 아직 실행 중, `FAILED:*`/`CANCELLED`는 예약 행의 종결 원인을 뜻한다.
+- 한 결정만 다시 보려면 출력된 12자리 `trace` 해시를 두 번째 인자로 넘긴다.
+  (`./ops_nia_turn_trace.sh 1440 <trace>`). 상관관계 원문이나 Discord ID는 출력하지 않는다.
 
 ## 롤백
 - 이전 이미지 태그로 되돌리기:
@@ -85,7 +99,7 @@
 - `central-server/scripts/ops_*.sh`를 수정하면 병합 전에 다음을 실행한다.
   ```bash
   shellcheck central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
-    central-server/scripts/ops_runtime_secret_audit.sh
+    central-server/scripts/ops_runtime_secret_audit.sh central-server/scripts/ops_nia_turn_trace.sh
   bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
-    central-server/scripts/ops_runtime_secret_audit.sh
+    central-server/scripts/ops_runtime_secret_audit.sh central-server/scripts/ops_nia_turn_trace.sh
   ```

@@ -138,7 +138,9 @@ jobs:
           cp central-server/scripts/ops_healthcheck.sh "$DEST/ops_healthcheck.sh"
           cp central-server/scripts/ops_policy_audit.sh "$DEST/ops_policy_audit.sh"
           cp central-server/scripts/ops_runtime_secret_audit.sh "$DEST/ops_runtime_secret_audit.sh"
-          chmod 755 "$DEST/ops_healthcheck.sh" "$DEST/ops_policy_audit.sh" "$DEST/ops_runtime_secret_audit.sh"
+          cp central-server/scripts/ops_nia_turn_trace.sh "$DEST/ops_nia_turn_trace.sh"
+          chmod 755 "$DEST/ops_healthcheck.sh" "$DEST/ops_policy_audit.sh" \
+            "$DEST/ops_runtime_secret_audit.sh" "$DEST/ops_nia_turn_trace.sh"
           cd "$DEST"
           umask 077
 

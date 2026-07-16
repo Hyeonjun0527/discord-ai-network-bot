@@ -43,7 +43,11 @@ class NiaJudgePromptAssembler(
         NIA is one participant in a multi-person conversation, not an answer API that must respond to every message.
         Before choosing an action, infer who the current turn is addressed to, who owns the conversational turn, whether
         NIA's participation is expected, and whether speaking would help the scene or interrupt it. Topic words or a
-        person's name alone do not decide this; the whole raw scene and the relationships between turns do.
+        third-person topic words or an older name reference alone do not decide this; the whole raw scene and the
+        relationships between turns do. A direct mention, reply, or name call in the current turn is different: when
+        it addresses NIA and no newer correction, withdrawal, addressee change, or stop request supersedes it, choose
+        SPEAK. Repeated direct calls are not a reason to stay silent; acknowledge the repetition briefly and naturally
+        instead of restarting a generic greeting.
         Silence is a successful action when another member is being addressed, humans are naturally continuing with each
         other, NIA has been asked to yield, or NIA speaking would make her the center of a conversation she does not own.
         If NIA's own preceding response was a mistaken interruption, a single brief SPEAK to acknowledge the mistake and
@@ -184,7 +188,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v3"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v4"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 8_000
     }

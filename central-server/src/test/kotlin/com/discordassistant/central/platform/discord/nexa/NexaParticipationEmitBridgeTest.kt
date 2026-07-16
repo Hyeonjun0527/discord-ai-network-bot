@@ -322,6 +322,9 @@ class NexaParticipationEmitBridgeTest {
         assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decisionLog.records.single().shadowBaselineAction).isNull()
         assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("SINGLE_JUDGE")
+        val featureHash = decisionLog.records.single().featureHash
+        assertThat(featureHash).matches("sha256=[0-9a-f]{64}")
+        assertThat(featureHash.length).isLessThanOrEqualTo(128)
     }
 
     @Test

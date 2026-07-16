@@ -30,12 +30,15 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v3")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v4")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
             .contains(
                 "NIA is one participant in a multi-person conversation",
+                "A direct mention, reply, or name call in the current turn is different",
+                "no newer correction, withdrawal, addressee change, or stop request supersedes it",
+                "Repeated direct calls are not a reason to stay silent",
                 "Silence is a successful action",
                 "mistaken interruption",
                 "newer correction, withdrawal, or addressee change",

@@ -17,8 +17,7 @@ class NiaParticipationJudge(
         }
         val firstRejected = first as NiaJudgeOutputParseResult.Rejected
 
-        // A repair prompt can only correct malformed model output. Retrying a timeout/provider failure doubles the
-        // bounded call budget while offering no new output to repair, so degrade fail-closed immediately instead.
+        // 복구 프롬프트는 모델이 반환한 형식 오류만 고칠 수 있다. 공급자 실패를 재시도하면 새 출력 없이 호출 예산만 두 배가 된다.
         if (firstRejected.code == JUDGE_LLM_ERROR_CODE) {
             return degradedDecision(request, firstRejected)
         }
@@ -57,6 +56,7 @@ class NiaParticipationJudge(
         request: SingleJudgeDecisionRequest,
         rejection: NiaJudgeOutputParseResult.Rejected,
     ): SingleJudgeDecision {
+        directAddressFallback(request, rejection)?.let { return it }
         val fallback =
             listOf(SocialActionKind.WAIT, SocialActionKind.IGNORE)
                 .firstOrNull { it in request.constraints.lowConfidenceFallbackActions && it in request.constraints.allowedActions }
@@ -89,6 +89,29 @@ class NiaParticipationJudge(
                     )
             }
         return SingleJudgeDecisionGuard.apply(request, decision).finalDecision
+    }
+
+    private fun directAddressFallback(
+        request: SingleJudgeDecisionRequest,
+        rejection: NiaJudgeOutputParseResult.Rejected,
+    ): SingleJudgeDecision? {
+        val constraints = request.constraints
+        if (!request.sceneSnapshot.directAddressed || !constraints.speechAllowed) return null
+        if (SocialActionKind.SPEAK !in constraints.allowedActions) return null
+        return SingleJudgeDecision(
+            action = SocialActionKind.SPEAK,
+            confidence = SingleJudgeDecisionGuard.LOW_CONFIDENCE_THRESHOLD,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = null,
+            speechIntent =
+                JudgeSpeechIntent(
+                    intentSummary = "acknowledge the current direct address",
+                    sceneDirection = "one short natural reply; if asked to stop or yield, acknowledge and yield",
+                    actHint = "acknowledge",
+                ),
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge_output.degraded.direct_address.${rejection.code}"),
+        )
     }
 
     companion object {

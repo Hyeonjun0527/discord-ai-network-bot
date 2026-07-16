@@ -64,6 +64,7 @@ class NiaJudgePromptAssemblerTest {
         val llmRequest = NiaJudgePromptAssembler().assemble(sampleRequest())
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
+        assertThat(llmRequest.timeoutMillis).isEqualTo(18_000)
         assertThat(payload.at("/metadata/sceneSeq").asLong()).isEqualTo(7L)
         assertThat(payload.at("/metadata/contextVersion").asLong()).isEqualTo(3L)
         assertThat(payload.toString()).doesNotContain("guild_a", "channel_a")

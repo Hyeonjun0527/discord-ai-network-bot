@@ -15,7 +15,7 @@ class NiaJudgeOutputParser(
 
     fun parse(content: String): NiaJudgeOutputParseResult =
         runCatching {
-            val root = mapper.readTree(content)
+            val root = mapper.readTree(jsonObjectFrom(content))
             parseRoot(root)
         }.getOrElse { error ->
             NiaJudgeOutputParseResult.Rejected(
@@ -23,6 +23,13 @@ class NiaJudgeOutputParser(
                 message = error.message ?: error::class.simpleName.orEmpty(),
             )
         }
+
+    private fun jsonObjectFrom(content: String): String {
+        val start = content.indexOf('{')
+        val end = content.lastIndexOf('}')
+        require(start >= 0 && end > start) { "judge output must contain a JSON object" }
+        return content.substring(start, end + 1)
+    }
 
     private fun parseRoot(root: JsonNode): NiaJudgeOutputParseResult {
         require(root.isObject) { "judge output must be a JSON object" }
@@ -204,7 +211,7 @@ class NiaJudgeOutputParser(
     }
 
     private fun JsonNode.optionalStableCode(field: String): String? {
-        val value = optionalText(field) ?: return null
+        val value = optionalText(field)?.lowercase(Locale.ROOT) ?: return null
         require(value.isStableCode()) { "optional stable code field is invalid: $field" }
         return value
     }

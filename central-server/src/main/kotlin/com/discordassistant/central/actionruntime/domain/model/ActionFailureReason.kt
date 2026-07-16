@@ -6,8 +6,8 @@ package com.discordassistant.central.actionruntime.domain.model
  *
  * **acceptance(T009) — 영구 실패를 무한 재시도하지 않고 상태와 reason 이 남는다**:
  * - [DISCORD_TRANSIENT] 만 [isRetryable]=true(일시 오류 — 잠시 후 재시도하면 풀릴 수 있음).
- * - [PERMISSION_DENIED]/[TARGET_MISSING]/[MODEL_TIMEOUT] 은 retry 해도 같은 결과이거나(권한·대상 부재) 비용만
- *   키우므로 즉시 [ActionStatus.FAILED] 로 종결([isRetryable]=false). 상태와 이 reason 이 남아 사후 분석 가능.
+ * - [PERMISSION_DENIED]/[TARGET_MISSING]/[INVALID_REQUEST]/[MODEL_TIMEOUT] 은 retry 해도 같은 결과이거나
+ *   (권한·대상·잘못된 요청) 비용만 키우므로 즉시 [ActionStatus.FAILED] 로 종결([isRetryable]=false).
  *
  * 순수성: Spring/JPA/JDA 미참조.
  */
@@ -25,6 +25,9 @@ enum class ActionFailureReason(
 
     /** 대상 부재(채널/스레드/메시지 삭제됨) — 재시도해도 동일. 영구 실패. */
     TARGET_MISSING("target_missing", isRetryable = false),
+
+    /** JDA가 전송 전에 거부한 잘못된 요청(ID 형식 등) — 코드/입력 오류이므로 재시도하지 않는다. */
+    INVALID_REQUEST("invalid_request", isRetryable = false),
 
     /** 모델(speech 생성) timeout — 비용·지연만 키움. 영구 실패로 종결(상위가 다음 결정에서 재시도). */
     MODEL_TIMEOUT("model_timeout", isRetryable = false),

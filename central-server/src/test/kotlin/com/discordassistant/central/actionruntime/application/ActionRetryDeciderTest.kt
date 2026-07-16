@@ -59,6 +59,7 @@ class ActionRetryDeciderTest {
         listOf(
             ActionFailureReason.PERMISSION_DENIED,
             ActionFailureReason.TARGET_MISSING,
+            ActionFailureReason.INVALID_REQUEST,
             ActionFailureReason.MODEL_TIMEOUT,
         ).forEach { reason ->
             assertThat(decider.decide(action(attempt = 0), reason)).isEqualTo(RetryDecision.Fail(reason))
@@ -70,6 +71,7 @@ class ActionRetryDeciderTest {
         assertThat(ActionFailureReason.DISCORD_TRANSIENT.isRetryable).isTrue()
         assertThat(ActionFailureReason.PERMISSION_DENIED.isRetryable).isFalse()
         assertThat(ActionFailureReason.TARGET_MISSING.isRetryable).isFalse()
+        assertThat(ActionFailureReason.INVALID_REQUEST.isRetryable).isFalse()
         assertThat(ActionFailureReason.MODEL_TIMEOUT.isRetryable).isFalse()
     }
 }

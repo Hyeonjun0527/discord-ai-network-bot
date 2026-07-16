@@ -55,11 +55,19 @@ class JpaScheduledActionStoreTest
             channel: String = "c1",
             thread: String = "t1",
             user: String? = "u1",
+            replyToMessageId: String? = null,
         ) = ScheduledSocialAction.create(
             decisionId = decision,
             sampledActionIndex = index,
             type = ScheduledActionType.SPEAK,
-            target = ActionTarget(guild, channel, thread, subjectPseudonym = user),
+            target =
+                ActionTarget(
+                    guild,
+                    channel,
+                    thread,
+                    subjectPseudonym = user,
+                    replyToMessageId = replyToMessageId,
+                ),
             executeAfter = executeAfter,
             contextVersion = 7,
             originRolloutMode = ShadowMode.CANARY,
@@ -98,10 +106,18 @@ class JpaScheduledActionStoreTest
             val productionShapedThreadId = "discord:${"g".repeat(46)}:${"1".repeat(19)}"
             assertThat(productionShapedThreadId).hasSize(74)
 
-            val action = action(decision = "production-thread", thread = productionShapedThreadId)
+            val replyToMessageId = "1234567890123456789"
+            val action =
+                action(
+                    decision = "production-thread",
+                    thread = productionShapedThreadId,
+                    replyToMessageId = replyToMessageId,
+                )
 
             assertThat(store.schedule(action)).isTrue()
-            assertThat(store.find(action.identity)!!.target.threadId).isEqualTo(productionShapedThreadId)
+            val restoredTarget = store.find(action.identity)!!.target
+            assertThat(restoredTarget.threadId).isEqualTo(productionShapedThreadId)
+            assertThat(restoredTarget.replyToMessageId).isEqualTo(replyToMessageId)
         }
 
         @Test

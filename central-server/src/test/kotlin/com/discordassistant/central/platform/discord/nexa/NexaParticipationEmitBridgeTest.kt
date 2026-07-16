@@ -158,6 +158,8 @@ class NexaParticipationEmitBridgeTest {
         assertThat(emitted.result.willSpeak).isTrue()
         assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
         assertThat(scheduler.scheduled.single().originRolloutMode).isEqualTo(ShadowMode.SHADOW_PREDICT)
+        val scheduledTarget = scheduler.scheduled.single().target
+        assertThat(scheduledTarget.replyToMessageId).isEqualTo("10")
     }
 
     @Test

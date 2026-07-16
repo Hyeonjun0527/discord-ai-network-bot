@@ -236,9 +236,9 @@ class ActionExecutionService(
         return action.isStale(current)
     }
 
-    /** reply 대상(원 메시지 ID) — SPEAK 는 thread/메시지 참조에 reply, REACT 는 별도 경로라 여기선 사용 안 함. */
+    /** reply 대상(원 메시지 ID) — 대화 초점 키인 threadId를 Discord snowflake로 오인하지 않는다. */
     private fun replyTargetFor(action: ScheduledSocialAction): String? =
-        if (action.type == ScheduledActionType.SPEAK) action.target.threadId.takeIf { it.isNotBlank() } else null
+        if (action.type == ScheduledActionType.SPEAK) action.target.replyToMessageId else null
 
     private fun record(
         action: ScheduledSocialAction,

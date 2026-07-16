@@ -895,12 +895,7 @@ class NexaParticipationEmitBridge(
                             userId = signal.userId,
                             channelId = signal.channelId,
                         ),
-                    actionTarget =
-                        ActionTarget(
-                            guildPseudonym = guildPseudonym,
-                            channelId = channelKey,
-                            threadId = "discord:$guildPseudonym:$channelKey",
-                        ),
+                    actionTarget = actionTarget(signal, guildPseudonym, channelKey),
                     sampledActionIndex = 0,
                     seed = signal.seed,
                     executeAfter = Instant.now(),
@@ -1169,7 +1164,7 @@ class NexaParticipationEmitBridge(
                 decisionId = correlationIdOf(signal),
                 sampledActionIndex = 0,
                 action = socialAction,
-                target = actionTarget(guildPseudonym, channelKey),
+                target = actionTarget(signal, guildPseudonym, channelKey),
                 executeAfter = Instant.now().plusMillis(decision.delay.millis),
                 contextVersion = signal.contextVersion,
                 originRolloutMode = originRolloutMode,
@@ -1244,6 +1239,7 @@ class NexaParticipationEmitBridge(
         }
 
     private fun actionTarget(
+        signal: ParticipationMessageSignal,
         guildPseudonym: String,
         channelKey: String,
     ): ActionTarget =
@@ -1251,6 +1247,7 @@ class NexaParticipationEmitBridge(
             guildPseudonym = guildPseudonym,
             channelId = channelKey,
             threadId = "discord:$guildPseudonym:$channelKey",
+            replyToMessageId = signal.messageId.toString(),
         )
 
     private fun appendDecisionLog(record: DecisionLogRecord) {

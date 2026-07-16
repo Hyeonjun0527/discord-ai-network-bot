@@ -51,6 +51,20 @@ class ScheduledSocialActionTest {
             .hasMessageContaining("최대 ${ActionTarget.MAX_THREAD_ID_LENGTH}자")
     }
 
+    @Test
+    fun `ActionTarget reply 대상은 Discord 숫자 ID만 허용한다`() {
+        assertThat(
+            ActionTarget("g1", "c1", "focus", replyToMessageId = "1".repeat(20)).replyToMessageId,
+        ).hasSize(ActionTarget.MAX_REPLY_TO_MESSAGE_ID_LENGTH)
+
+        assertThatThrownBy { ActionTarget("g1", "c1", "focus", replyToMessageId = "discord:focus") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Discord 숫자 ID")
+        assertThatThrownBy { ActionTarget("g1", "c1", "focus", replyToMessageId = "1".repeat(21)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("최대 ${ActionTarget.MAX_REPLY_TO_MESSAGE_ID_LENGTH}자")
+    }
+
     // ── T001: 상태 전이는 도메인 메서드로만, 불법 전이 거부 ──
 
     @Test

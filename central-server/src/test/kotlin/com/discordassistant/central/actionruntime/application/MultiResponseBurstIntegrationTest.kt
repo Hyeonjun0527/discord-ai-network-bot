@@ -77,8 +77,15 @@ class MultiResponseBurstIntegrationTest {
         val scheduler = InMemoryActionScheduler(clock)
         val reeval = ControllableReevaluation(currentVersion = 1L)
         val audit = InMemoryActionAudit()
-        // threadId=원 메시지 참조 → reply 대상. SPEAK 의 reply 대상은 thread/message 참조.
-        val action = typingSpeakAction(contextVersion = 1L, threadId = "origin-msg-42")
+        val replyToMessageId = "1234567890123456789"
+        val action =
+            typingSpeakAction(
+                contextVersion = 1L,
+                threadId = "conversation-focus",
+                replyToMessageId = replyToMessageId,
+            )
+        assertThat(action.target.threadId).isEqualTo("conversation-focus")
+        assertThat(action.target.replyToMessageId).isEqualTo(replyToMessageId)
         scheduler.put(action)
 
         // 정책이 명시한 멀티 버블(3개).
@@ -95,7 +102,7 @@ class MultiResponseBurstIntegrationTest {
         assertThat(executor.sentBubbleIndexes).containsExactly(0)
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
         // reply target 보존: 첫 버블에 원 메시지 참조가 실린다(이후 버블은 reply 없음 — 보내지지도 않았다).
-        assertThat(replyTargets[0]).isEqualTo("origin-msg-42")
+        assertThat(replyTargets[0]).isEqualTo(replyToMessageId)
         assertThat(replyTargets).doesNotContainKey(1)
     }
 }

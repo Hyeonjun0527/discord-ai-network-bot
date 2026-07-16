@@ -21,6 +21,8 @@ data class ActionTarget(
      * user opt-out/동의 철회는 이 값을 가진 새 예약만 사용자 단위로 즉시 제거한다.
      */
     val subjectPseudonym: String? = null,
+    /** 첫 SPEAK 버블이 답장할 Discord 메시지 snowflake. thread/focus 식별자와 의미가 다르므로 별도로 보관한다. */
+    val replyToMessageId: String? = null,
 ) {
     init {
         require(guildPseudonym.isNotBlank()) { "guildPseudonym 은 비어 있을 수 없다" }
@@ -30,9 +32,20 @@ data class ActionTarget(
             "threadId 는 최대 ${MAX_THREAD_ID_LENGTH}자여야 한다: actual=${threadId.length}"
         }
         require(subjectPseudonym == null || subjectPseudonym.isNotBlank()) { "subjectPseudonym 은 빈 문자열일 수 없다" }
+        require(
+            replyToMessageId == null ||
+                (
+                    replyToMessageId.isNotEmpty() &&
+                        replyToMessageId.length <= MAX_REPLY_TO_MESSAGE_ID_LENGTH &&
+                        replyToMessageId.all { it in '0'..'9' }
+                ),
+        ) {
+            "replyToMessageId 는 최대 ${MAX_REPLY_TO_MESSAGE_ID_LENGTH}자의 Discord 숫자 ID여야 한다"
+        }
     }
 
     companion object {
         const val MAX_THREAD_ID_LENGTH = 256
+        const val MAX_REPLY_TO_MESSAGE_ID_LENGTH = 20
     }
 }

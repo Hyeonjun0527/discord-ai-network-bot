@@ -57,6 +57,7 @@ class NiaParticipationJudge(
         rejection: NiaJudgeOutputParseResult.Rejected,
     ): SingleJudgeDecision {
         directAddressFallback(request, rejection)?.let { return it }
+        contextualFollowUpFallback(request, rejection)?.let { return it }
         val fallback =
             listOf(SocialActionKind.WAIT, SocialActionKind.IGNORE)
                 .firstOrNull { it in request.constraints.lowConfidenceFallbackActions && it in request.constraints.allowedActions }
@@ -95,8 +96,14 @@ class NiaParticipationJudge(
         request: SingleJudgeDecisionRequest,
         rejection: NiaJudgeOutputParseResult.Rejected,
     ): SingleJudgeDecision? {
+        val scene = request.sceneSnapshot
         val constraints = request.constraints
-        if (!request.sceneSnapshot.directAddressed || !constraints.speechAllowed) return null
+        val conversationMovedElsewhere =
+            scene.textSignals.replyTargetKind == "human" ||
+                scene.textSignals.otherAddresseeLikely ||
+                scene.conversationState.humansTalkingToEachOtherLikely
+        if (scene.textSignals.stopRequested || scene.conversationState.resolvedLikely || conversationMovedElsewhere) return null
+        if (!scene.directAddressed || !constraints.speechAllowed) return null
         if (SocialActionKind.SPEAK !in constraints.allowedActions) return null
         return SingleJudgeDecision(
             action = SocialActionKind.SPEAK,
@@ -114,8 +121,44 @@ class NiaParticipationJudge(
         )
     }
 
+    private fun contextualFollowUpFallback(
+        request: SingleJudgeDecisionRequest,
+        rejection: NiaJudgeOutputParseResult.Rejected,
+    ): SingleJudgeDecision? {
+        val scene = request.sceneSnapshot
+        val constraints = request.constraints
+        val continuation = scene.conversationState.niaTurnContinuationLikely
+        val responseExpected = scene.textSignals.isQuestion || scene.textSignals.callPressure > 0.0
+        val conversationMovedElsewhere =
+            scene.textSignals.replyTargetKind == "human" ||
+                scene.textSignals.otherAddresseeLikely ||
+                scene.conversationState.humansTalkingToEachOtherLikely
+        val unsafeToSpeak =
+            scene.textSignals.stopRequested ||
+                scene.conversationState.resolvedLikely ||
+                scene.runtimeGuardState.rateLimitPressure >= MAX_CONTEXTUAL_FALLBACK_PRESSURE ||
+                scene.runtimeGuardState.antiSpamPressure >= MAX_CONTEXTUAL_FALLBACK_PRESSURE
+        if (!continuation || !responseExpected || conversationMovedElsewhere || unsafeToSpeak) return null
+        if (!constraints.speechAllowed || SocialActionKind.SPEAK !in constraints.allowedActions) return null
+        return SingleJudgeDecision(
+            action = SocialActionKind.SPEAK,
+            confidence = SingleJudgeDecisionGuard.LOW_CONFIDENCE_THRESHOLD,
+            delay = JudgeDecisionDelay.IMMEDIATE,
+            reactionCandidate = null,
+            speechIntent =
+                JudgeSpeechIntent(
+                    intentSummary = "answer the current conversational follow-up",
+                    sceneDirection = "one short natural reply that continues NIA's immediately preceding turn",
+                    actHint = "reply",
+                ),
+            toneAxes = JudgeToneAxes.NEUTRAL,
+            reasonCode = JudgeReasonCode("judge_output.degraded.contextual_follow_up.${rejection.code}"),
+        )
+    }
+
     companion object {
         const val DEFAULT_REPAIR_DELAY_MILLIS: Long = 1_000
         private const val JUDGE_LLM_ERROR_CODE: String = "judge_llm_error"
+        private const val MAX_CONTEXTUAL_FALLBACK_PRESSURE: Double = 0.8
     }
 }

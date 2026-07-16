@@ -207,6 +207,8 @@ data class JudgeSceneTextSignals(
     val replyTargetKind: String,
     val emotionalIntensity: Double,
     val callPressure: Double,
+    val stopRequested: Boolean = false,
+    val otherAddresseeLikely: Boolean = false,
 ) {
     init {
         require(replyTargetKind.isNotBlank()) { "replyTargetKind 는 비어 있을 수 없다" }
@@ -222,6 +224,8 @@ data class JudgeSceneTextSignals(
                 replyTargetKind = "none",
                 emotionalIntensity = 0.0,
                 callPressure = 0.0,
+                stopRequested = false,
+                otherAddresseeLikely = false,
             )
     }
 }
@@ -246,6 +250,7 @@ data class JudgeConversationSceneState(
     val resolvedLikely: Boolean,
     val humansTalkingToEachOtherLikely: Boolean = false,
     val niaAddressedOrIdleOpportunity: Boolean = false,
+    val niaTurnContinuationLikely: Boolean = false,
 ) {
     companion object {
         val EMPTY: JudgeConversationSceneState =
@@ -255,6 +260,7 @@ data class JudgeConversationSceneState(
                 resolvedLikely = false,
                 humansTalkingToEachOtherLikely = false,
                 niaAddressedOrIdleOpportunity = false,
+                niaTurnContinuationLikely = false,
             )
     }
 }

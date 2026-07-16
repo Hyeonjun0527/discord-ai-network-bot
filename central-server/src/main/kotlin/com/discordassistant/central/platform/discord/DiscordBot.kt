@@ -75,6 +75,7 @@ private const val RECENT_CHANNEL_CONTEXT_FETCH_LIMIT = 120
 private const val RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT = 100
 private const val RECENT_CHANNEL_CONTEXT_MAX_TURNS = 80
 private const val RECENT_CHANNEL_CONTEXT_MAX_RAW_CHARS = 12_000
+private const val NIA_TURN_CONTINUATION_MAX_AGE_MILLIS = 10 * 60 * 1_000L
 private const val DISCORD_SHUTDOWN_GRACE_MILLIS = 2_000L
 private const val DISCORD_FORCED_SHUTDOWN_GRACE_MILLIS = 2_000L
 private val NIA_DIRECT_ADDRESS_PREFIX = Regex("""^\s*니아(?:야|아)?(?=$|[\s.!?~,，。！？])""")
@@ -206,6 +207,42 @@ internal data class DiscordRecentPromptMessage(
     val createdAtEpochMillis: Long,
     val replyToMessageId: Long? = null,
 )
+
+internal data class NiaTurnContinuation(
+    val likely: Boolean,
+    val lastNiaSpokeAgeSeconds: Double?,
+)
+
+internal fun deriveNiaTurnContinuation(
+    messages: List<DiscordRecentPromptMessage>,
+    currentMessageId: Long,
+    botUserId: Long,
+    currentRepliesToHuman: Boolean,
+): NiaTurnContinuation {
+    val ordered = messages.sortedBy { it.createdAtEpochMillis }
+    val currentIndex = ordered.indexOfLast { it.id == currentMessageId }
+    if (currentIndex < 0) return NiaTurnContinuation(likely = false, lastNiaSpokeAgeSeconds = null)
+
+    val current = ordered[currentIndex]
+    val earlier = ordered.subList(0, currentIndex)
+    val latestNia = earlier.lastOrNull { it.bot && it.authorId == botUserId }
+    val ageMillis = latestNia?.let { current.createdAtEpochMillis - it.createdAtEpochMillis }?.takeIf { it >= 0 }
+    val lastSpokeAgeSeconds = ageMillis?.div(1_000.0)
+    if (latestNia == null || earlier.lastOrNull()?.id != latestNia.id || currentRepliesToHuman) {
+        return NiaTurnContinuation(likely = false, lastNiaSpokeAgeSeconds = lastSpokeAgeSeconds)
+    }
+
+    val repliedMember =
+        latestNia.replyToMessageId
+            ?.let { replyId -> earlier.lastOrNull { it.id == replyId && !it.bot } }
+    val precedingMember = earlier.dropLast(1).lastOrNull { !it.bot }
+    val sameMember = (repliedMember ?: precedingMember)?.authorId == current.authorId
+    val recentEnough = ageMillis != null && ageMillis <= NIA_TURN_CONTINUATION_MAX_AGE_MILLIS
+    return NiaTurnContinuation(
+        likely = sameMember && recentEnough,
+        lastNiaSpokeAgeSeconds = lastSpokeAgeSeconds,
+    )
+}
 
 internal fun buildDiscordRecentContextTurns(
     messages: List<DiscordRecentPromptMessage>,
@@ -1491,6 +1528,13 @@ class DiscordBot(
                 val niaReply = event.message.referencedMessage?.takeIf { it.author.idLong == selfId }
                 val replyToNia = niaReply != null
                 val replyToHuman = event.message.referencedMessage?.let { !it.author.isBot && it.author.idLong != selfId } ?: false
+                val niaTurnContinuation =
+                    deriveNiaTurnContinuation(
+                        messages = recentMessages,
+                        currentMessageId = event.messageIdLong,
+                        botUserId = selfId,
+                        currentRepliesToHuman = replyToHuman,
+                    )
 
                 // continuation(A7): 트리거가 니아 발화에 대한 reply 면, 그 referencedMessage(니아 발화) 토큰을 continuation
                 // 후보로 쓴다. 니아 메시지는 봇 author 라 이 핸들러로 직접 오지 않으므로(early-return), reply 의
@@ -1549,6 +1593,8 @@ class DiscordBot(
                             priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
                             firstMessageText = derived.firstMessageText,
                             conversationMentionsNia = derived.conversationMentionsNia,
+                            lastNiaSpokeAgeSeconds = niaTurnContinuation.lastNiaSpokeAgeSeconds,
+                            niaTurnContinuationLikely = niaTurnContinuation.likely,
                             tsMs = tsMs,
                             sceneSeq = messageId,
                             contextVersion = messageId,
@@ -1702,7 +1748,12 @@ class DiscordBot(
                 } else {
                     answers.replyToMessageWithPseudoStream(event.message, reply)
                 }
-                rememberNiaReply(event.channel.idLong, event.jda.selfUser.idLong, reply.content)
+                rememberNiaReply(
+                    channelId = event.channel.idLong,
+                    botUserId = event.jda.selfUser.idLong,
+                    content = reply.content,
+                    replyToMessageId = event.messageIdLong,
+                )
                 renderMs = elapsedMs(renderStartedAt)
                 log.info(
                     "Discord message AI latency guild={} channel={} user={} fast={} webhook={} toneMs={} askMs={} renderMs={} totalMs={} replyChars={}",
@@ -1809,6 +1860,7 @@ class DiscordBot(
             channelId: Long,
             botUserId: Long,
             content: String,
+            replyToMessageId: Long,
         ) {
             if (content.isBlank()) return
             val now = System.currentTimeMillis()
@@ -1820,6 +1872,7 @@ class DiscordBot(
                     bot = true,
                     content = content,
                     createdAtEpochMillis = now,
+                    replyToMessageId = replyToMessageId,
                 )
             rememberRecentMessage(channelId, message)
         }

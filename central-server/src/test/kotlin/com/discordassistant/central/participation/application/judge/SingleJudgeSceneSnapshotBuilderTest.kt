@@ -132,6 +132,138 @@ class SingleJudgeSceneSnapshotBuilderTest {
     }
 
     @Test
+    fun `colloquial follow-up question and nia turn continuity remain separate evidence`() {
+        val result =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "머하노",
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                    lastNiaSpokeAgeSeconds = 193.0,
+                ),
+            )
+
+        assertThat(result.sceneSnapshot.directAddressed).isFalse()
+        assertThat(result.sceneSnapshot.textSignals.isQuestion).isTrue()
+        assertThat(result.sceneSnapshot.conversationState.niaTurnContinuationLikely).isTrue()
+        assertThat(result.sceneSnapshot.agentState.lastSpokeAgeSeconds).isEqualTo(193.0)
+    }
+
+    @Test
+    fun `explicit stop request remains distinct from call pressure`() {
+        val stopRequest =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "대답하지 마",
+                    directAddressed = false,
+                    niaTurnContinuationLikely = true,
+                ),
+            )
+        val ordinaryStatement =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "대답하지만 확신은 없어"),
+            )
+        val responseComplaint =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "왜 반응 안 해?"),
+            )
+        val quietRequest =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "조용히 말해줘"),
+            )
+        val similarWord =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "그만큼 좋아"),
+            )
+        val responseOptional =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "대답 안 해도 돼"),
+            )
+        val compactStop =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "니아야 그만해", directAddressed = true),
+            )
+        val shortStop =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "니아야 답하지 마", directAddressed = true),
+            )
+
+        assertThat(stopRequest.sceneSnapshot.textSignals.callPressure).isGreaterThan(0.0)
+        assertThat(stopRequest.sceneSnapshot.textSignals.stopRequested).isTrue()
+        assertThat(ordinaryStatement.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(responseComplaint.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(quietRequest.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(similarWord.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(responseOptional.sceneSnapshot.textSignals.stopRequested).isTrue()
+        assertThat(compactStop.sceneSnapshot.textSignals.stopRequested).isTrue()
+        assertThat(shortStop.sceneSnapshot.textSignals.stopRequested).isTrue()
+    }
+
+    @Test
+    fun `named human addressee is explicit handoff evidence`() {
+        val namedHandoff =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "서연아 뭐해?",
+                    niaTurnContinuationLikely = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+        val embeddedNamedHandoff =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "근데 서연아 뭐해?",
+                    niaTurnContinuationLikely = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+        val laterNamedHandoff =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "진짜야? 서연아 너는?",
+                    niaTurnContinuationLikely = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+        val correctedHandoff =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "아니 니아 말고 서연이한테 한 말이야",
+                    directAddressed = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+        val ordinaryQuestion =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "뭐야 이거", niaTurnContinuationLikely = true),
+            )
+        val adjectiveQuestion =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "괜찮아?",
+                    niaTurnContinuationLikely = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+        val confirmationQuestion =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(
+                    triggerText = "진짜야?",
+                    niaTurnContinuationLikely = true,
+                    knownHumanDisplayNames = setOf("서연"),
+                ),
+            )
+
+        assertThat(namedHandoff.sceneSnapshot.textSignals.otherAddresseeLikely).isTrue()
+        assertThat(embeddedNamedHandoff.sceneSnapshot.textSignals.otherAddresseeLikely).isTrue()
+        assertThat(laterNamedHandoff.sceneSnapshot.textSignals.otherAddresseeLikely).isTrue()
+        assertThat(correctedHandoff.sceneSnapshot.textSignals.otherAddresseeLikely).isTrue()
+        assertThat(ordinaryQuestion.sceneSnapshot.textSignals.otherAddresseeLikely).isFalse()
+        assertThat(adjectiveQuestion.sceneSnapshot.textSignals.otherAddresseeLikely).isFalse()
+        assertThat(confirmationQuestion.sceneSnapshot.textSignals.otherAddresseeLikely).isFalse()
+    }
+
+    @Test
     fun `human to human flow and idle opportunity are explicit scene signals`() {
         val humanThread =
             SingleJudgeSceneSnapshotBuilder.build(
@@ -251,6 +383,7 @@ class SingleJudgeSceneSnapshotBuilderTest {
         pendingActionIds: List<String> = emptyList(),
         humanLikelyAnswering: Boolean = false,
         resolvedLikely: Boolean = false,
+        niaTurnContinuationLikely: Boolean = false,
         directAddressPressure: Double = 0.0,
         replyChainDepth: Int = 0,
         nicknameCall: Boolean = false,
@@ -258,6 +391,7 @@ class SingleJudgeSceneSnapshotBuilderTest {
         humansTalkingToEachOtherLikely: Boolean = false,
         rateLimitPressure: Double = 0.0,
         antiSpamPressure: Double = 0.0,
+        knownHumanDisplayNames: Set<String> = emptySet(),
         relationshipObservation: RelationshipObservation? = null,
         memoryObservation: MemoryObservation? = null,
     ): SingleJudgeSceneObservation =
@@ -274,6 +408,7 @@ class SingleJudgeSceneSnapshotBuilderTest {
             pendingActionIds = pendingActionIds,
             humanLikelyAnswering = humanLikelyAnswering,
             resolvedLikely = resolvedLikely,
+            niaTurnContinuationLikely = niaTurnContinuationLikely,
             directAddressPressure = directAddressPressure,
             replyChainDepth = replyChainDepth,
             nicknameCall = nicknameCall,
@@ -281,6 +416,7 @@ class SingleJudgeSceneSnapshotBuilderTest {
             humansTalkingToEachOtherLikely = humansTalkingToEachOtherLikely,
             rateLimitPressure = rateLimitPressure,
             antiSpamPressure = antiSpamPressure,
+            knownHumanDisplayNames = knownHumanDisplayNames,
             relationshipObservation = relationshipObservation,
             memoryObservation = memoryObservation,
         )

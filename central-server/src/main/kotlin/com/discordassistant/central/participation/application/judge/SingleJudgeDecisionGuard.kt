@@ -18,6 +18,12 @@ object SingleJudgeDecisionGuard {
             current = fallbackDecision(current, fallback, "action_not_allowed")
         }
 
+        if (current.action == SocialActionKind.SPEAK && request.sceneSnapshot.textSignals.stopRequested) {
+            val fallback = fallbackAction(request)
+            adjustments += adjustment("explicit_stop_request", current.action, fallback)
+            current = fallbackDecision(current, fallback, "explicit_stop")
+        }
+
         if (current.action == SocialActionKind.SPEAK && current.confidence < LOW_CONFIDENCE_THRESHOLD) {
             val fallback = fallbackAction(request)
             adjustments += adjustment("low_confidence_speak", current.action, fallback)

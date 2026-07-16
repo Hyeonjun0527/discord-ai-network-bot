@@ -65,6 +65,20 @@ class SingleJudgeDecisionGuardTest {
     }
 
     @Test
+    fun `explicit stop request overrides an accepted SPEAK decision`() {
+        val guarded =
+            SingleJudgeDecisionGuard.apply(
+                request = sampleRequest(stopRequested = true),
+                decision = speakDecision(confidence = 0.9),
+            )
+
+        assertThat(guarded.finalDecision.action).isEqualTo(SocialActionKind.WAIT)
+        assertThat(guarded.finalDecision.speechIntent).isNull()
+        assertThat(guarded.finalDecision.reasonCode.code).endsWith(".explicit_stop")
+        assertThat(guarded.adjustments.map { it.code }).containsExactly("explicit_stop_request")
+    }
+
+    @Test
     fun `delay 는 runtime max 를 넘지 않게 잘린다`() {
         val guarded =
             SingleJudgeDecisionGuard.apply(
@@ -101,6 +115,7 @@ class SingleJudgeDecisionGuardTest {
     }
 
     private fun sampleRequest(
+        stopRequested: Boolean = false,
         constraints: JudgeDecisionConstraints =
             JudgeDecisionConstraints(
                 allowedActions = SocialActionKind.entries.toSet(),
@@ -137,6 +152,15 @@ class SingleJudgeDecisionGuardTest {
                     conversationMentionsNia = true,
                     recentAgentBurstCount = 0,
                     silenceMillis = 5_000,
+                    textSignals =
+                        JudgeSceneTextSignals(
+                            contentAvailable = true,
+                            isQuestion = false,
+                            replyTargetKind = "none",
+                            emotionalIntensity = 0.0,
+                            callPressure = 0.0,
+                            stopRequested = stopRequested,
+                        ),
                 ),
             featureVector = FeatureVectorView.empty(version = FeatureCatalog.VERSION),
             memoryRefs = emptyList(),

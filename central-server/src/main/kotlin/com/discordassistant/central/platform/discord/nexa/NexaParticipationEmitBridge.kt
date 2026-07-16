@@ -1245,12 +1245,18 @@ class NexaParticipationEmitBridge(
     }
 
     private fun featureHashOf(signal: ParticipationMessageSignal): String =
-        "mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}"
+        featureHashOf("mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}")
 
     private fun featureHashOf(featureVector: FeatureVectorView): String =
-        featureVector.features.entries.joinToString(";") { (id, value) ->
-            "${id.id}=${if (value.missing) "missing" else value.value}"
-        }
+        featureHashOf(
+            featureVector.features.entries
+                .sortedBy { it.key.id }
+                .joinToString(";") { (id, value) ->
+                    "${id.id}=${if (value.missing) "missing" else value.value}"
+                },
+        )
+
+    private fun featureHashOf(canonicalFeatures: String): String = "sha256=${sha256Hex(canonicalFeatures)}"
 
     private fun rawWindowTrace(signal: ParticipationMessageSignal): RawWindowTrace {
         val store = rawContextStore ?: return RawWindowTrace.EMPTY

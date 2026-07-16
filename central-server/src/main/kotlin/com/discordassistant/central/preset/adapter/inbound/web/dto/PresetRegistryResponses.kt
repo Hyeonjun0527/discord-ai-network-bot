@@ -1,26 +1,81 @@
 package com.discordassistant.central.preset.adapter.inbound.web.dto
 
+import com.discordassistant.central.preset.application.PresetCatalogFacets
 import com.discordassistant.central.preset.application.PresetCatalogResult
+import com.discordassistant.central.preset.application.PresetDetail
 import com.discordassistant.central.preset.application.PresetImportHistoryResult
+import com.discordassistant.central.preset.application.PresetImportPreview
 import com.discordassistant.central.preset.application.PresetImportResult
+import com.discordassistant.central.preset.application.PresetImportSummary
+import com.discordassistant.central.preset.application.PresetModerationSummary
+import com.discordassistant.central.preset.application.PresetRecommendation
 import com.discordassistant.central.preset.application.PresetRecommendationResult
+import com.discordassistant.central.preset.application.PresetReportSummary
 import com.discordassistant.central.preset.application.PresetReportWriteResult
+import com.discordassistant.central.preset.application.PresetSummary
+import com.discordassistant.central.preset.application.PresetWebCapability
 import com.discordassistant.central.preset.application.PresetWebReadiness
 import com.discordassistant.central.preset.application.PresetWriteResult
+import com.discordassistant.central.preset.application.PublishedPresetDetail
+import com.discordassistant.central.preset.application.PublishedPresetSummary
 import com.discordassistant.central.preset.application.PublishedPresetWriteResult
 
-// 응답 DTO (인바운드 웹 어댑터). 조립 책임만 컨트롤러 인라인 mapOf 에서 흡수했다.
-// 각 toMap() 은 원본 mapOf 의 키 이름·값·순서·null·조건부키를 1바이트도 바꾸지 않고 그대로 재현한다
-// (OpenApiContractTest·클라이언트 계약). 입력은 application 의 *Result DTO 만 참조한다(엔티티/리포지토리 의존 금지).
+// 응답 DTO (인바운드 웹 어댑터). 기존 JSON field 이름은 유지하되 Map 기반 응답 조립을 제거한다.
 
-/** preset write 응답: create/saveFromChannel/update 가 공유하던 직렬화(기존 top-level presetWriteResult). */
+data class PresetListResponse(
+    val presets: List<PresetSummary>,
+)
+
+data class PresetDetailResponse(
+    val preset: PresetDetail,
+)
+
+data class PublishedPresetDetailResponse(
+    val preset: PublishedPresetDetail,
+)
+
+data class PresetCatalogFacetsResponse(
+    val facets: PresetCatalogFacets,
+)
+
+data class PresetModerationSummaryResponse(
+    val summary: PresetModerationSummary,
+)
+
+data class PresetReportsResponse(
+    val reports: List<PresetReportSummary>,
+)
+
+data class ImportPreviewResponse(
+    val preview: PresetImportPreview,
+)
+
+data class PresetDeleteResponse(
+    val deleted: Boolean,
+    val status: String,
+)
+
+data class PublishedPresetDeleteResponse(
+    val deleted: Boolean,
+    val status: String,
+)
+
+data class PublishedPresetUnlistResponse(
+    val unlisted: Boolean,
+    val status: String,
+)
+
+data class PublishedPresetRepublishResponse(
+    val republished: Boolean,
+    val status: String,
+)
+
+/** preset write 응답: create/saveFromChannel/update 가 공유하던 top-level 필드. */
 data class PresetWriteResponse(
     val id: Long,
     val currentRevisionId: Long?,
     val status: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "currentRevisionId" to currentRevisionId, "status" to status)
-
     companion object {
         fun from(result: PresetWriteResult): PresetWriteResponse =
             PresetWriteResponse(id = result.id, currentRevisionId = result.currentRevisionId, status = result.status)
@@ -34,8 +89,6 @@ data class PublishPresetResponse(
     val slug: String,
     val title: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status, "slug" to slug, "title" to title)
-
     companion object {
         fun from(result: PublishedPresetWriteResult): PublishPresetResponse =
             PublishPresetResponse(id = result.id, status = result.status, slug = result.slug, title = result.title)
@@ -50,15 +103,6 @@ data class UpdatePublishedPresetResponse(
     val slug: String,
     val title: String,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "id" to id,
-            "revisionId" to revisionId,
-            "status" to status,
-            "slug" to slug,
-            "title" to title,
-        )
-
     companion object {
         fun from(result: PublishedPresetWriteResult): UpdatePublishedPresetResponse =
             UpdatePublishedPresetResponse(
@@ -80,16 +124,6 @@ data class ImportPresetResponse(
     val createdBehaviorVersionId: Long?,
     val status: String,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "id" to id,
-            "importedPresetId" to importedPresetId,
-            "sourceRevisionId" to sourceRevisionId,
-            "createdChannelAiId" to createdChannelAiId,
-            "createdBehaviorVersionId" to createdBehaviorVersionId,
-            "status" to status,
-        )
-
     companion object {
         fun from(result: PresetImportResult): ImportPresetResponse =
             ImportPresetResponse(
@@ -103,13 +137,11 @@ data class ImportPresetResponse(
     }
 }
 
-/** like/unlike 응답(기존 top-level likeWriteResult). */
+/** like/unlike 응답. */
 data class LikePresetResponse(
     val id: Long,
     val likeCount: Int,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "likeCount" to likeCount)
-
     companion object {
         fun from(result: PublishedPresetWriteResult): LikePresetResponse = LikePresetResponse(id = result.id, likeCount = result.likeCount)
     }
@@ -121,8 +153,6 @@ data class ReportPresetResponse(
     val status: String,
     val reasonCode: String,
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "status" to status, "reasonCode" to reasonCode)
-
     companion object {
         fun from(result: PresetReportWriteResult): ReportPresetResponse =
             ReportPresetResponse(id = result.id, status = result.status, reasonCode = result.reasonCode)
@@ -136,14 +166,6 @@ data class ReviewPresetReportResponse(
     val reviewedBy: Long?,
     val reviewedAt: String?,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "id" to id,
-            "status" to status,
-            "reviewedBy" to reviewedBy,
-            "reviewedAt" to reviewedAt,
-        )
-
     companion object {
         fun from(result: PresetReportWriteResult): ReviewPresetReportResponse =
             ReviewPresetReportResponse(
@@ -157,67 +179,66 @@ data class ReviewPresetReportResponse(
 
 /** catalog 검색 응답(presets + query/category/sort/limit echo, limit=effectiveLimit 클램프). */
 data class PresetCatalogResponse(
-    val result: PresetCatalogResult,
+    val presets: List<PublishedPresetSummary>,
+    val query: String?,
+    val category: String?,
+    val sort: String,
+    val limit: Int,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "presets" to result.presets,
-            "query" to result.query,
-            "category" to result.category,
-            "sort" to result.sort,
-            "limit" to result.effectiveLimit,
-        )
-
     companion object {
-        fun from(result: PresetCatalogResult): PresetCatalogResponse = PresetCatalogResponse(result)
+        fun from(result: PresetCatalogResult): PresetCatalogResponse =
+            PresetCatalogResponse(
+                presets = result.presets,
+                query = result.query,
+                category = result.category,
+                sort = result.sort,
+                limit = result.effectiveLimit,
+            )
     }
 }
 
 /** recommended 응답(recommendations + category/limit echo, limit=effectiveLimit 클램프). */
 data class PresetRecommendationResponse(
-    val result: PresetRecommendationResult,
+    val recommendations: List<PresetRecommendation>,
+    val category: String?,
+    val limit: Int,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "recommendations" to result.recommendations,
-            "category" to result.category,
-            "limit" to result.effectiveLimit,
-        )
-
     companion object {
-        fun from(result: PresetRecommendationResult): PresetRecommendationResponse = PresetRecommendationResponse(result)
+        fun from(result: PresetRecommendationResult): PresetRecommendationResponse =
+            PresetRecommendationResponse(
+                recommendations = result.recommendations,
+                category = result.category,
+                limit = result.effectiveLimit,
+            )
     }
 }
 
 /** importHistory 응답(guildId/channelId echo + imports). */
 data class PresetImportHistoryResponse(
-    val result: PresetImportHistoryResult,
+    val guildId: Long,
+    val channelId: Long?,
+    val imports: List<PresetImportSummary>,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "guildId" to result.guildId,
-            "channelId" to result.channelId,
-            "imports" to result.imports,
-        )
-
     companion object {
-        fun from(result: PresetImportHistoryResult): PresetImportHistoryResponse = PresetImportHistoryResponse(result)
+        fun from(result: PresetImportHistoryResult): PresetImportHistoryResponse =
+            PresetImportHistoryResponse(guildId = result.guildId, channelId = result.channelId, imports = result.imports)
     }
 }
 
 /** web-readiness 응답(capability 매트릭스·admin 토큰 헤더·다음 행동). */
 data class PresetWebReadinessResponse(
-    val result: PresetWebReadiness,
+    val status: String,
+    val capabilities: List<PresetWebCapability>,
+    val adminTokenHeader: String,
+    val nextAction: String,
 ) {
-    fun toMap(): Map<String, Any?> =
-        mapOf(
-            "status" to result.status,
-            "capabilities" to result.capabilities,
-            "adminTokenHeader" to result.adminTokenHeader,
-            "nextAction" to result.nextAction,
-        )
-
     companion object {
-        fun from(result: PresetWebReadiness): PresetWebReadinessResponse = PresetWebReadinessResponse(result)
+        fun from(result: PresetWebReadiness): PresetWebReadinessResponse =
+            PresetWebReadinessResponse(
+                status = result.status,
+                capabilities = result.capabilities,
+                adminTokenHeader = result.adminTokenHeader,
+                nextAction = result.nextAction,
+            )
     }
 }

@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.adapter.inbound.web
 
+import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceResponse
 import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceRequest
@@ -73,13 +74,19 @@ class KnowledgeIngestionController(
     ) = indexingService().completeIndexJobSafely(guildId, jobId, request.status, request.reason)
 
     private fun indexingService(): KnowledgeIndexingService =
-        indexing ?: throw IllegalStateException("knowledge indexing service is not configured")
+        indexing
+            ?: throw PreconditionFailedException(
+                message = "knowledge indexing service is not configured",
+                failedCondition = "knowledge_indexing_service_configured",
+                blockedAction = "KNOWLEDGE_INDEXING_OPERATION",
+                actionGuide = "KnowledgeIndexingService 를 등록한 뒤 index job API 를 호출해 주세요.",
+            )
 
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
         @PathVariable guildId: Long,
         @RequestBody request: CreateKnowledgeSpaceRequest,
-    ): Map<String, Any?> {
+    ): CreateKnowledgeSpaceResponse {
         val space =
             ingestion.createSpace(
                 guildId = guildId,
@@ -90,7 +97,7 @@ class KnowledgeIngestionController(
                 embeddingModel = request.embeddingModel,
                 indexName = request.indexName,
             )
-        return CreateKnowledgeSpaceResponse.from(space).toMap()
+        return CreateKnowledgeSpaceResponse.from(space)
     }
 
     @GetMapping("/{guildId}/spaces/{spaceId}/sources")
@@ -117,7 +124,7 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
         @PathVariable spaceId: Long,
         @RequestBody request: AddKnowledgeSourceRequest,
-    ): Map<String, Any?> =
+    ): AddKnowledgeSourceResponse =
         AddKnowledgeSourceResponse
             .from(
                 ingestion.addSourceWithInlineIndexing(
@@ -133,7 +140,7 @@ class KnowledgeIngestionController(
                         ),
                     indexing = indexing,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/approve")
     fun approveSource(
@@ -141,9 +148,9 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
         @PathVariable sourceId: Long,
         @RequestBody request: ApproveKnowledgeSourceRequest,
-    ): Map<String, Any?> {
+    ): ApproveKnowledgeSourceResponse {
         val source = ingestion.approveSourceForIndexing(guildId, spaceId, sourceId, request.reason)
-        return ApproveKnowledgeSourceResponse.from(source).toMap()
+        return ApproveKnowledgeSourceResponse.from(source)
     }
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/indexed")
@@ -152,9 +159,9 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
         @PathVariable sourceId: Long,
         @RequestBody request: MarkKnowledgeSourceIndexedRequest,
-    ): Map<String, Any?> {
+    ): MarkKnowledgeSourceIndexedResponse {
         val source = ingestion.markSourceIndexed(guildId, spaceId, sourceId, request.chunkCount)
-        return MarkKnowledgeSourceIndexedResponse.from(source).toMap()
+        return MarkKnowledgeSourceIndexedResponse.from(source)
     }
 
     @GetMapping("/{guildId}/search")
@@ -197,7 +204,7 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
         @PathVariable sourceId: Long,
         @RequestBody request: DeleteKnowledgeSourceRequest,
-    ): Map<String, Any?> =
+    ): RemoveKnowledgeSourceResponse =
         RemoveKnowledgeSourceResponse
             .from(
                 ingestion.removeSourceAndTombstone(
@@ -208,7 +215,7 @@ class KnowledgeIngestionController(
                     actorUserId = request.actorUserId,
                     indexing = indexing,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/reject")
     fun reject(
@@ -216,8 +223,8 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
         @PathVariable sourceId: Long,
         @RequestBody request: RejectKnowledgeSourceRequest,
-    ): Map<String, Any?> {
+    ): RejectKnowledgeSourceResponse {
         val source = ingestion.rejectSource(guildId, spaceId, sourceId, request.reason)
-        return RejectKnowledgeSourceResponse.from(source).toMap()
+        return RejectKnowledgeSourceResponse.from(source)
     }
 }

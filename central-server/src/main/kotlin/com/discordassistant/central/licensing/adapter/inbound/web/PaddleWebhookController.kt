@@ -1,5 +1,6 @@
 package com.discordassistant.central.licensing.adapter.inbound.web
 
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.licensing.application.BillingService
 import com.discordassistant.central.licensing.application.PaddleSignatureVerifier
@@ -29,16 +30,19 @@ class PaddleWebhookController(
         @RequestHeader(name = "Paddle-Signature", required = false) signature: String?,
     ): PaddleWebhookResponse {
         if (!verifier.verify(rawBody, signature)) {
-            throw PreconditionFailedException(
-                message = "Paddle webhook 서명 검증에 실패했습니다",
-                failedCondition = "paddle_signature_valid",
-                blockedAction = "PROCESS_PADDLE_WEBHOOK",
-                actionGuide = "Paddle-Signature 헤더와 webhook secret 설정을 확인해 주세요.",
-                httpStatus = 401,
-                errorCode = "UNAUTHORIZED",
-            )
+            throw invalidPaddleSignature()
         }
         val outcome = billing.handle(rawBody)
         return PaddleWebhookResponse(outcome.name)
     }
+
+    private fun invalidPaddleSignature(): PreconditionFailedException =
+        PreconditionFailedException(
+            message = "서명 검증 실패",
+            failedCondition = "paddle_signature_valid",
+            blockedAction = "PROCESS_PADDLE_WEBHOOK",
+            actionGuide = "Paddle-Signature 헤더와 webhook secret 설정을 확인해 주세요.",
+            httpStatus = 401,
+            errorCode = ApiErrorCodes.UNAUTHORIZED,
+        )
 }

@@ -27,15 +27,10 @@ import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRe
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetRepository
 import com.discordassistant.central.preset.application.PresetBehaviorInput
-import com.discordassistant.central.preset.application.PresetCatalogFacets
-import com.discordassistant.central.preset.application.PresetDetail
-import com.discordassistant.central.preset.application.PresetImportPreview
 import com.discordassistant.central.preset.application.PresetImportSummary
-import com.discordassistant.central.preset.application.PresetModerationSummary
 import com.discordassistant.central.preset.application.PresetRecommendation
 import com.discordassistant.central.preset.application.PresetRegistryService
 import com.discordassistant.central.preset.application.PresetReportSummary
-import com.discordassistant.central.preset.application.PublishedPresetDetail
 import com.discordassistant.central.preset.application.PublishedPresetSummary
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
@@ -134,9 +129,9 @@ class PresetRegistryServiceTest
                     SaveChannelPresetRequest(actorUserId = 77, name = "코딩 튜터 프리셋", category = "dev"),
                 )
 
-            val presetId = saved["id"] as Long
-            assertEquals("draft", saved["status"])
-            val detail = controller.presetDetail(presetId)["preset"] as PresetDetail
+            val presetId = saved.id
+            assertEquals("draft", saved.status)
+            val detail = controller.presetDetail(presetId).preset
             assertEquals("코딩 튜터 프리셋", detail.preset.name)
             assertEquals("dev", detail.preset.category)
             val revision = detail.revisions.single()
@@ -174,8 +169,8 @@ class PresetRegistryServiceTest
                             ),
                     ),
                 )
-            val presetId = created["id"] as Long
-            assertNotNull(created["currentRevisionId"])
+            val presetId = created.id
+            assertNotNull(created.currentRevisionId)
 
             val updated =
                 controller.update(
@@ -196,19 +191,19 @@ class PresetRegistryServiceTest
                             ),
                     ),
                 )
-            assertEquals("draft", updated["status"])
+            assertEquals("draft", updated.status)
             assertEquals(2, revisions.findByPresetIdOrderByRevisionDesc(presetId).first().revision)
-            val guildList = controller.listGuildPresets(100)["presets"] as List<*>
+            val guildList = controller.listGuildPresets(100).presets
             assertEquals(1, guildList.size)
-            val localDetail = controller.presetDetail(presetId)["preset"] as PresetDetail
+            val localDetail = controller.presetDetail(presetId).preset
             assertEquals(2, localDetail.revisions.size)
             assertEquals("코드 리뷰", localDetail.revisions.first().purpose)
 
             val published = controller.publish(presetId, PublishPresetRequest(actorUserId = 77))
-            val publishedId = published["id"] as Long
-            assertEquals("published", published["status"])
-            assertEquals("코딩-튜터-v2-$presetId", published["slug"])
-            val publishedList = controller.publishedPresets()["presets"] as List<*>
+            val publishedId = published.id
+            assertEquals("published", published.status)
+            assertEquals("코딩-튜터-v2-$presetId", published.slug)
+            val publishedList = controller.publishedPresets().presets
             assertEquals(1, publishedList.size)
             val publishedSummary = publishedList.first() as PublishedPresetSummary
             assertEquals("코드 리뷰", publishedSummary.purpose)
@@ -220,7 +215,7 @@ class PresetRegistryServiceTest
             assertEquals("공개 프리셋 작성자", publishedSummary.publisherLabel)
             assertEquals("코딩-튜터-v2-$presetId", publishedSummary.slug)
             assertNotNull(publishedPresets.findBySlug(publishedSummary.slug))
-            val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
+            val publishedDetail = controller.publishedPresetDetail(publishedId).preset
             assertEquals("concise", publishedDetail.behavior.tone)
             assertEquals(listOf("coding", "night"), publishedDetail.behavior.providerTagFilter)
 
@@ -238,16 +233,16 @@ class PresetRegistryServiceTest
                     publishedId,
                     ImportPresetRequest(targetGuildId = 101, targetChannelId = 202, actorUserId = 89, confirmConflicts = true),
                 )
-            assertNotNull(imported["importedPresetId"])
-            assertEquals(publishedDetail.published.revisionId, imported["sourceRevisionId"])
-            assertEquals("applied", imported["status"])
-            assertNotNull(imported["createdChannelAiId"])
-            assertNotNull(imported["createdBehaviorVersionId"])
+            assertNotNull(imported.importedPresetId)
+            assertEquals(publishedDetail.published.revisionId, imported.sourceRevisionId)
+            assertEquals("applied", imported.status)
+            assertNotNull(imported.createdChannelAiId)
+            assertNotNull(imported.createdBehaviorVersionId)
             assertEquals(1, imports.findByTargetGuildId(101).size)
             val channelAi = channelAis.findByGuildIdAndChannelId(101, 202)
             assertNotNull(channelAi)
-            assertEquals(imported["createdChannelAiId"], channelAi?.id)
-            assertEquals(imported["createdBehaviorVersionId"], channelAi?.activeBehaviorVersionId)
+            assertEquals(imported.createdChannelAiId, channelAi?.id)
+            assertEquals(imported.createdBehaviorVersionId, channelAi?.activeBehaviorVersionId)
             val importedBehavior = behaviorVersions.findByChannelAiIdAndId(channelAi!!.id, channelAi.activeBehaviorVersionId!!)
             assertEquals("코드 리뷰", importedBehavior?.purpose)
             assertEquals("concise", importedBehavior?.tone)
@@ -259,12 +254,12 @@ class PresetRegistryServiceTest
             assertEquals(2, importedRouting?.maxCandidates)
             assertEquals("coding,night", importedRouting?.providerTagFilter)
             assertEquals(1, publishedPresets.findById(publishedId).get().importCount)
-            val importHistoryBeforeDelete = controller.importHistory(101, channelId = 202)["imports"] as List<*>
+            val importHistoryBeforeDelete = controller.importHistory(101, channelId = 202).imports
             val importedSummaryBeforeDelete = importHistoryBeforeDelete.single() as PresetImportSummary
-            assertEquals(imported["id"], importedSummaryBeforeDelete.id)
+            assertEquals(imported.id, importedSummaryBeforeDelete.id)
             assertEquals(publishedId, importedSummaryBeforeDelete.publishedPresetId)
-            assertEquals(imported["sourceRevisionId"], importedSummaryBeforeDelete.sourceRevisionId)
-            assertEquals(imported["importedPresetId"], importedSummaryBeforeDelete.importedPresetId)
+            assertEquals(imported.sourceRevisionId, importedSummaryBeforeDelete.sourceRevisionId)
+            assertEquals(imported.importedPresetId, importedSummaryBeforeDelete.importedPresetId)
             assertEquals("applied", importedSummaryBeforeDelete.status)
             assertTrue(importedSummaryBeforeDelete.detachedCopy)
 
@@ -277,17 +272,17 @@ class PresetRegistryServiceTest
                         details = "검토 필요 token=super-secret",
                     ),
                 )
-            val reportId = report["id"] as Long
-            assertEquals("open", report["status"])
-            assertEquals("sensitive_data", report["reasonCode"])
+            val reportId = report.id
+            assertEquals("open", report.status)
+            assertEquals("sensitive_data", report.reasonCode)
             val duplicateReport =
                 controller.report(
                     publishedId,
                     ReportPresetRequest(reporterUserId = 90, reason = "중복 신고"),
                 )
-            assertEquals(reportId, duplicateReport["id"])
+            assertEquals(reportId, duplicateReport.id)
             assertEquals(1, reports.findByStatus(PresetReportStatus.OPEN).size)
-            val openReports = controller.reports()["reports"] as List<*>
+            val openReports = controller.reports().reports
             assertEquals(1, openReports.size)
             val openReport = openReports.single() as PresetReportSummary
             assertEquals("검토 필요 [redacted]", openReport.reason)
@@ -295,7 +290,7 @@ class PresetRegistryServiceTest
             assertEquals("검토 필요 [redacted]", openReport.details)
             assertEquals(1, publishedPresets.findById(publishedId).get().reportCount)
             assertEquals(PublishedPresetStatus.UNDER_REVIEW, publishedPresets.findById(publishedId).get().status)
-            assertEquals(0, (controller.publishedPresets()["presets"] as List<*>).size)
+            assertEquals(0, (controller.publishedPresets().presets).size)
             assertThrows(IllegalArgumentException::class.java) {
                 controller.importPreset(
                     publishedId,
@@ -304,14 +299,14 @@ class PresetRegistryServiceTest
             }
 
             val reviewed = controller.reviewReport(reportId, ReviewPresetReportRequest(decision = "dismiss", reviewerUserId = 91))
-            assertEquals("dismiss", reviewed["status"])
-            assertEquals(91L, reviewed["reviewedBy"])
+            assertEquals("dismiss", reviewed.status)
+            assertEquals(91L, reviewed.reviewedBy)
             assertEquals(91L, reports.findById(reportId).orElseThrow().reviewedBy)
             assertEquals(PublishedPresetStatus.PUBLISHED, publishedPresets.findById(publishedId).get().status)
-            assertEquals(1, (controller.publishedPresets()["presets"] as List<*>).size)
+            assertEquals(1, (controller.publishedPresets().presets).size)
 
             val removed = controller.deletePublished(publishedId)
-            assertEquals("removed", removed["status"])
+            assertEquals("removed", removed.status)
             assertEquals(PublishedPresetStatus.REMOVED, publishedPresets.findById(publishedId).get().status)
             assertThrows(IllegalArgumentException::class.java) {
                 controller.importPreset(
@@ -319,7 +314,7 @@ class PresetRegistryServiceTest
                     ImportPresetRequest(targetGuildId = 103, targetChannelId = 204, actorUserId = 89, confirmConflicts = true),
                 )
             }
-            val importHistoryAfterDelete = controller.importHistory(101, channelId = 202)["imports"] as List<*>
+            val importHistoryAfterDelete = controller.importHistory(101, channelId = 202).imports
             val preservedImport = importHistoryAfterDelete.single() as PresetImportSummary
             assertEquals(importedSummaryBeforeDelete.id, preservedImport.id)
             assertEquals(importedSummaryBeforeDelete.publishedPresetId, preservedImport.publishedPresetId)
@@ -347,9 +342,9 @@ class PresetRegistryServiceTest
                             ),
                     ),
                 )
-            val presetId = created["id"] as Long
+            val presetId = created.id
             val published = controller.publish(presetId, PublishPresetRequest(actorUserId = 77))
-            val publishedId = published["id"] as Long
+            val publishedId = published.id
             val originalRevisionId = publishedPresets.findById(publishedId).orElseThrow().revisionId
 
             val imported =
@@ -357,8 +352,8 @@ class PresetRegistryServiceTest
                     publishedId,
                     ImportPresetRequest(targetGuildId = 711, targetChannelId = null, actorUserId = 88),
                 )
-            val importedPresetId = imported["importedPresetId"] as Long
-            assertEquals(originalRevisionId, imported["sourceRevisionId"])
+            val importedPresetId = imported.importedPresetId!!
+            assertEquals(originalRevisionId, imported.sourceRevisionId)
 
             val updatedPublished =
                 controller.updatePublished(
@@ -375,15 +370,15 @@ class PresetRegistryServiceTest
                             ),
                     ),
                 )
-            val newRevisionId = updatedPublished["revisionId"] as Long
+            val newRevisionId = updatedPublished.revisionId
             assertTrue(newRevisionId > originalRevisionId)
             assertEquals(newRevisionId, publishedPresets.findById(publishedId).orElseThrow().revisionId)
             assertEquals("초기 공지 작성", revisions.findById(originalRevisionId).orElseThrow().purpose)
             assertEquals("릴리즈 노트 작성", revisions.findById(newRevisionId).orElseThrow().purpose)
 
-            val importedDetail = controller.presetDetail(importedPresetId)["preset"] as PresetDetail
+            val importedDetail = controller.presetDetail(importedPresetId).preset
             assertEquals("초기 공지 작성", importedDetail.revisions.single().purpose)
-            val history = controller.importHistory(711)["imports"] as List<*>
+            val history = controller.importHistory(711).imports
             val preserved = history.single() as PresetImportSummary
             assertEquals(originalRevisionId, preserved.sourceRevisionId)
             assertEquals(importedPresetId, preserved.importedPresetId)
@@ -448,33 +443,33 @@ class PresetRegistryServiceTest
             service.likePreset(publishedTranslation.id, userId = 902)
             (910L..919L).forEach { service.likePreset(publishedRisky.id, userId = it) }
 
-            val queryResult = controller.publishedPresets(query = "코드", sort = "popular", limit = 10)["presets"] as List<*>
+            val queryResult = controller.publishedPresets(query = "코드", sort = "popular", limit = 10).presets
             val queryPreset = queryResult.single() as PublishedPresetSummary
             assertEquals("코딩 튜터", queryPreset.title)
             assertEquals("dev", queryPreset.category)
             assertEquals(listOf("kotlin", "code-review"), queryPreset.tags)
 
-            val tagQueryResult = controller.publishedPresets(query = "code-review", sort = "popular", limit = 10)["presets"] as List<*>
+            val tagQueryResult = controller.publishedPresets(query = "code-review", sort = "popular", limit = 10).presets
             assertEquals("코딩 튜터", (tagQueryResult.single() as PublishedPresetSummary).title)
-            val codingDetail = controller.publishedPresetDetail(publishedCoding.id)["preset"] as PublishedPresetDetail
+            val codingDetail = controller.publishedPresetDetail(publishedCoding.id).preset
             assertEquals(listOf("kotlin", "code-review"), codingDetail.published.tags)
             assertEquals(listOf("kotlin", "code-review"), codingDetail.behavior.tags)
             assertEquals(listOf("이 Kotlin 에러 왜 나나요?", "이 코드 리뷰해줘"), codingDetail.behavior.exampleQuestions)
-            val slugDetail = controller.publishedPresetDetailBySlug(publishedCoding.slug)["preset"] as PublishedPresetDetail
+            val slugDetail = controller.publishedPresetDetailBySlug(publishedCoding.slug).preset
             assertEquals(publishedCoding.id, slugDetail.published.id)
 
-            val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10)["presets"] as List<*>
+            val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10).presets
             val categoryPreset = categoryResult.single() as PublishedPresetSummary
             assertEquals("번역 니아", categoryPreset.title)
 
-            val popular = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
+            val popular = controller.publishedPresets(sort = "likes", limit = 2).presets
             val topPreset = popular.first() as PublishedPresetSummary
             assertEquals(2, popular.size)
             assertEquals("위험하지만 인기 프리셋", topPreset.title)
             assertEquals(10, topPreset.likeCount)
             assertEquals("standard", topPreset.minQualityTier)
 
-            val recommendations = controller.recommendedPresets(limit = 4)["recommendations"] as List<*>
+            val recommendations = controller.recommendedPresets(limit = 4).recommendations
             val topRecommendation = recommendations.first() as PresetRecommendation
             assertEquals("번역 니아", topRecommendation.preset.title)
             assertTrue(
@@ -486,10 +481,10 @@ class PresetRegistryServiceTest
                         }
                 },
             )
-            val devRecommendations = controller.recommendedPresets(category = "dev", limit = 1)["recommendations"] as List<*>
+            val devRecommendations = controller.recommendedPresets(category = "dev", limit = 1).recommendations
             assertEquals("코딩 튜터", (devRecommendations.single() as PresetRecommendation).preset.title)
 
-            val facets = controller.catalogFacets()["facets"] as PresetCatalogFacets
+            val facets = controller.catalogFacets().facets
             assertEquals(4, facets.totalPublished)
             assertEquals(13, facets.totalLikes)
             assertTrue(facets.categories.any { it.value == "dev" && it.count == 2 })
@@ -503,16 +498,16 @@ class PresetRegistryServiceTest
             val report = service.reportPreset(publishedRisky.id, reporterUserId = 990, reason = "추천 제외 검토")
             service.reviewReport(report.id, decision = "dismiss")
 
-            val catalogAfterDismiss = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
+            val catalogAfterDismiss = controller.publishedPresets(sort = "likes", limit = 2).presets
             assertEquals("위험하지만 인기 프리셋", (catalogAfterDismiss.first() as PublishedPresetSummary).title)
-            val recommendationsAfterDismiss = controller.recommendedPresets(limit = 4)["recommendations"] as List<*>
+            val recommendationsAfterDismiss = controller.recommendedPresets(limit = 4).recommendations
             assertTrue(
                 recommendationsAfterDismiss.none {
                     val recommendation = it as PresetRecommendation
                     recommendation.preset.title == "위험하지만 인기 프리셋"
                 },
             )
-            val facetsAfterDismiss = controller.catalogFacets()["facets"] as PresetCatalogFacets
+            val facetsAfterDismiss = controller.catalogFacets().facets
             assertEquals(4, facetsAfterDismiss.totalPublished)
             assertEquals("번역 니아", facetsAfterDismiss.topPresets.first().title)
         }
@@ -767,7 +762,7 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 301, targetChannelId = 401, actorUserId = 88),
                 )
-            val preview = response["preview"] as PresetImportPreview
+            val preview = response.preview
 
             assertEquals("overwrite_channel_ai", preview.action)
             assertEquals(true, preview.willOverwriteChannelAi)
@@ -795,7 +790,7 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 301, targetChannelId = 401, actorUserId = 88, confirmConflicts = true),
                 )
-            assertEquals("applied", imported["status"])
+            assertEquals("applied", imported.status)
             assertEquals(1, imports.findByTargetGuildId(301).size)
         }
 
@@ -818,8 +813,8 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 311, targetChannelId = 411, actorUserId = 88),
                 )
-            assertEquals(originalRevisionId, importedV1["sourceRevisionId"])
-            val v1BehaviorId = importedV1["createdBehaviorVersionId"] as Long
+            assertEquals(originalRevisionId, importedV1.sourceRevisionId)
+            val v1BehaviorId = importedV1.createdBehaviorVersionId!!
             val importedChannel = channelAis.findByGuildIdAndChannelId(311, 411)!!
             assertEquals("고객지원 v1", behaviorVersions.findByChannelAiIdAndId(importedChannel.id, v1BehaviorId)?.purpose)
 
@@ -833,13 +828,13 @@ class PresetRegistryServiceTest
                         behavior = PresetBehaviorInput(purpose = "고객지원 v2", tone = "professional", responseMode = "deep"),
                     ),
                 )
-            val newRevisionId = updated["revisionId"] as Long
+            val newRevisionId = updated.revisionId
 
             assertTrue(newRevisionId != originalRevisionId)
             assertEquals(2, revisions.findByPresetIdOrderByRevisionDesc(preset.id).first().revision)
             assertEquals(v1BehaviorId, channelAis.findByGuildIdAndChannelId(311, 411)?.activeBehaviorVersionId)
             assertEquals("고객지원 v1", behaviorVersions.findByChannelAiIdAndId(importedChannel.id, v1BehaviorId)?.purpose)
-            val detail = controller.publishedPresetDetail(published.id)["preset"] as PublishedPresetDetail
+            val detail = controller.publishedPresetDetail(published.id).preset
             assertEquals("고객지원 v2", detail.behavior.purpose)
             assertEquals("deep", detail.behavior.responseMode)
 
@@ -848,13 +843,13 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 312, targetChannelId = 412, actorUserId = 89),
                 )
-            assertEquals(newRevisionId, importedV2["sourceRevisionId"])
+            assertEquals(newRevisionId, importedV2.sourceRevisionId)
             val v2Channel = channelAis.findByGuildIdAndChannelId(312, 412)!!
-            val v2Behavior = behaviorVersions.findByChannelAiIdAndId(v2Channel.id, importedV2["createdBehaviorVersionId"] as Long)
+            val v2Behavior = behaviorVersions.findByChannelAiIdAndId(v2Channel.id, importedV2.createdBehaviorVersionId!!)
             assertEquals("고객지원 v2", v2Behavior?.purpose)
             assertEquals("professional", v2Behavior?.tone)
 
-            val history = controller.importHistory(311)["imports"] as List<*>
+            val history = controller.importHistory(311).imports
             val importedSummary = history.single() as PresetImportSummary
             assertEquals(published.id, importedSummary.publishedPresetId)
             assertEquals(311, importedSummary.targetGuildId)
@@ -864,7 +859,7 @@ class PresetRegistryServiceTest
             assertEquals(true, importedSummary.detachedCopy)
             assertEquals(v1BehaviorId, importedSummary.createdBehaviorVersionId)
 
-            val channelHistory = controller.importHistory(311, channelId = 999)["imports"] as List<*>
+            val channelHistory = controller.importHistory(311, channelId = 999).imports
             assertTrue(channelHistory.isEmpty())
         }
 
@@ -906,7 +901,7 @@ class PresetRegistryServiceTest
 
             val removed = controller.delete(preset.id)
 
-            assertEquals("removed", removed["status"])
+            assertEquals("removed", removed.status)
             assertEquals(PresetStatus.REMOVED, presets.findById(preset.id).get().status)
             assertEquals(1, revisions.findByPresetIdOrderByRevisionDesc(preset.id).size)
             assertThrows(IllegalArgumentException::class.java) {
@@ -946,7 +941,7 @@ class PresetRegistryServiceTest
 
             val removed = controller.deletePublished(published.id)
 
-            assertEquals("removed", removed["status"])
+            assertEquals("removed", removed.status)
             assertEquals(0, service.searchPublishedPresets().size)
             assertEquals(0, service.recommendedPublishedPresets().size)
             assertEquals(0, service.catalogFacets().totalPublished)
@@ -992,7 +987,7 @@ class PresetRegistryServiceTest
 
             val unlisted = controller.unlistPublished(published.id)
 
-            assertEquals("unlisted", unlisted["status"])
+            assertEquals("unlisted", unlisted.status)
             assertEquals(0, service.searchPublishedPresets().size)
             assertEquals(0, service.recommendedPublishedPresets().size)
             assertThrows(IllegalArgumentException::class.java) {
@@ -1016,7 +1011,7 @@ class PresetRegistryServiceTest
 
             val republished = controller.republishPublished(published.id)
 
-            assertEquals("published", republished["status"])
+            assertEquals("published", republished.status)
             assertEquals(1, service.searchPublishedPresets().size)
             assertEquals("공유 공지 프리셋", service.publishedPresetDetail(published.id).published.title)
             val imported = service.importPreset(published.id, targetGuildId = 131, targetChannelId = 231, importedBy = 89)
@@ -1175,7 +1170,7 @@ class PresetRegistryServiceTest
                 reasonCode = "sensitive_data",
             )
 
-            val summary = controller.moderationSummary()["summary"] as PresetModerationSummary
+            val summary = controller.moderationSummary().summary
 
             assertEquals(2, summary.totalPublishedRows)
             assertEquals(1, summary.activePublishedCount)

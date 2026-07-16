@@ -1,5 +1,9 @@
 package com.discordassistant.central.global.security
 
+import com.discordassistant.central.global.adapter.inbound.web.ApiError
+import com.discordassistant.central.global.adapter.inbound.web.ApiErrorResponse
+import com.discordassistant.central.global.error.ApiErrorCodes
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -14,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 class AiNetworkApiSecurityFilter(
     @param:Value("\${central.dashboard.admin-token:}") private val adminToken: String,
     @param:Value("\${central.dashboard.admin-user-ids:}") private val adminUserIdsRaw: String,
+    private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
     // 관리자 Discord user id 허용목록(콤마 구분). 비면 OAuth 로그인만으로는 관리자 권한을 주지 않는다.
     private val adminUserIds: Set<String> =
@@ -35,19 +40,31 @@ class AiNetworkApiSecurityFilter(
             val actor = resolveAdminActor(request)
             if (actor == null) {
                 // 필터는 MVC 밖이라 GlobalExceptionHandler 를 못 탄다 → 같은 통일 모양의 JSON 을 직접 쓴다.
-                response.status = HttpServletResponse.SC_FORBIDDEN
-                response.contentType = "application/json;charset=UTF-8"
-                val requestId = MDC.get(RequestIdFilter.MDC_KEY)
-                val requestIdField = if (requestId != null) ""","requestId":"$requestId"""" else ""
-                response.writer.write(
-                    """{"success":false,"status":403,"error":{"code":"dashboard_admin_required",""" +
-                        """"message":"AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다."}$requestIdField}""",
-                )
+                writeForbidden(response)
                 return
             }
             request.setAttribute(DashboardActor.REQUEST_ATTRIBUTE, actor)
         }
         filterChain.doFilter(request, response)
+    }
+
+    private fun writeForbidden(response: HttpServletResponse) {
+        response.status = HttpServletResponse.SC_FORBIDDEN
+        response.contentType = "application/json;charset=UTF-8"
+        val payload =
+            ApiErrorResponse(
+                error =
+                    ApiError(
+                        code = ApiErrorCodes.DASHBOARD_ADMIN_REQUIRED,
+                        message = "AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다.",
+                        failedCondition = "dashboard_admin_authenticated",
+                        blockedAction = "AI_NETWORK_ADMIN_ACCESS",
+                        actionGuide = "Discord OAuth로 로그인하거나 X-Dashboard-Admin-Token 헤더를 포함해 다시 요청하세요.",
+                    ),
+                status = HttpServletResponse.SC_FORBIDDEN,
+                requestId = MDC.get(RequestIdFilter.MDC_KEY),
+            )
+        objectMapper.writeValue(response.writer, payload)
     }
 
     private fun requiresAdminAccess(request: HttpServletRequest): Boolean {

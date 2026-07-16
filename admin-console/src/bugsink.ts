@@ -16,9 +16,12 @@ if (import.meta.env.PROD && dsn) {
 
 export type BugsinkApiContext = {
   requestId?: string;
+  serverRequestId?: string;
   method?: string;
   apiEndpoint?: string;
+  requestUrl?: string;
   httpStatus?: number;
+  errorCode?: string;
   serverBaseUrl?: string;
 };
 
@@ -39,8 +42,11 @@ export function captureConsoleError(error: unknown, context?: BugsinkApiContext)
     scope.setTag("app", "admin-console");
     scope.setTag("environment", environment);
     if (context?.requestId) scope.setTag("requestId", context.requestId);
+    if (context?.serverRequestId) scope.setTag("serverRequestId", context.serverRequestId);
     if (context?.apiEndpoint) scope.setTag("apiEndpoint", context.apiEndpoint);
+    if (context?.requestUrl) scope.setTag("requestUrl", context.requestUrl);
     if (context?.httpStatus !== undefined) scope.setTag("httpStatus", String(context.httpStatus));
+    if (context?.errorCode) scope.setTag("errorCode", context.errorCode);
     if (context) scope.setContext("api", context);
     Sentry.captureException(error);
   });

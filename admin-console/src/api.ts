@@ -1,21 +1,25 @@
 import { captureConsoleError, type BugsinkApiContext } from "./bugsink";
+import {
+  ApiRequestError,
+  ApiResponseParseError,
+  REQUEST_ID_HEADER,
+  type ApiMethod,
+  type ApiOptions,
+  type DashboardPanel,
+  type DashboardPartialError,
+  type DashboardState,
+  type GuildSummary,
+  parseApiErrorPayload,
+  resolveRequestTarget,
+  toPartialDashboardError,
+} from "./api-contract";
 
-export type GuildSummary = {
-  id: string | number;
-  name: string;
-};
+export { ApiRequestError, ApiResponseParseError };
+export type { ApiOptions, DashboardPartialError, DashboardPanel, DashboardState, GuildSummary };
 
-export type DashboardState = {
-  guilds: GuildSummary[];
-  overview: Record<string, unknown> | null;
-  aiNetwork: Record<string, unknown> | null;
-  requests: Record<string, unknown>[];
-  usageTrend: Record<string, unknown>[];
-};
-
-export type ApiOptions = {
-  baseUrl: string;
-  adminToken: string;
+type RequestJsonOptions = {
+  method?: ApiMethod;
+  body?: unknown;
 };
 
 export type NiaFewShotScope = {
@@ -83,59 +87,58 @@ export type NiaFewShotEval = {
 };
 
 export type NiaFewShotPreview = Record<string, unknown>;
-
-const REQUEST_ID_HEADER = "X-Request-Id";
-
-function apiBase(baseUrl: string) {
-  return baseUrl.trim().replace(/\/$/, "");
-}
-
 function createRequestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function resolveServerBaseUrl(baseUrl: string) {
-  return apiBase(baseUrl) || window.location.origin;
 }
 
 function buildApiContext(
   path: string,
   options: ApiOptions,
   requestId: string,
-  method: string,
+  method: ApiMethod,
   httpStatus?: number,
+  serverRequestId?: string,
+  errorCode?: string,
 ): BugsinkApiContext {
+  const target = resolveRequestTarget(path, options.baseUrl);
   return {
     requestId,
+    serverRequestId,
     method,
     apiEndpoint: path.split("?")[0] || path,
+    requestUrl: target.requestUrl,
     httpStatus,
-    serverBaseUrl: resolveServerBaseUrl(options.baseUrl),
+    errorCode,
+    serverBaseUrl: target.serverBaseUrl,
   };
 }
 
-async function requestJson<T>(
-  path: string,
-  options: ApiOptions,
-  init: { method?: string; body?: unknown } = {},
-): Promise<T> {
+async function parseSuccessJson<T>(path: string, response: Response, requestId: string): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    throw new ApiResponseParseError(path, response, requestId, error);
+  }
+}
+
+async function requestJson<T>(path: string, options: ApiOptions, requestOptions: RequestJsonOptions = {}): Promise<T> {
+  const method = requestOptions.method ?? "GET";
   const requestId = createRequestId();
-  const url = `${apiBase(options.baseUrl)}${path}`;
+  const target = resolveRequestTarget(path, options.baseUrl);
   const headers: Record<string, string> = { Accept: "application/json", [REQUEST_ID_HEADER]: requestId };
-  const method = init.method ?? "GET";
   if (options.adminToken.trim()) {
     headers["X-Dashboard-Admin-Token"] = options.adminToken.trim();
   }
-  if (init.body !== undefined) {
+  if (requestOptions.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(target.fetchUrl, {
       method,
       headers,
       credentials: "include",
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body),
     });
   } catch (error) {
     captureConsoleError(error, buildApiContext(path, options, requestId, method));
@@ -143,24 +146,85 @@ async function requestJson<T>(
   }
   if (!response.ok) {
     const body = await response.text();
-    const error = new Error(`${response.status} ${path}${body ? `: ${body.slice(0, 180)}` : ""}`);
-    captureConsoleError(error, buildApiContext(path, options, requestId, method, response.status));
+    const error = new ApiRequestError(path, response, parseApiErrorPayload(body));
+    captureConsoleError(
+      error,
+      buildApiContext(path, options, requestId, method, response.status, error.requestId, error.code),
+    );
     throw error;
   }
-  return (await response.json()) as T;
+  try {
+    return await parseSuccessJson<T>(path, response, requestId);
+  } catch (error) {
+    captureConsoleError(
+      error,
+      buildApiContext(
+        path,
+        options,
+        requestId,
+        method,
+        response.status,
+        error instanceof ApiResponseParseError ? error.serverRequestId : undefined,
+        error instanceof ApiResponseParseError ? error.code : undefined,
+      ),
+    );
+    throw error;
+  }
+}
+
+async function loadOptionalPanel<T>(
+  panel: DashboardPanel,
+  path: string,
+  fallback: T,
+  options: ApiOptions,
+  partialErrors: DashboardPartialError[],
+): Promise<T> {
+  try {
+    return await requestJson<T>(path, options);
+  } catch (error) {
+    partialErrors.push(toPartialDashboardError(panel, path, error));
+    return fallback;
+  }
 }
 
 export async function loadDashboard(guildId: string, options: ApiOptions): Promise<DashboardState> {
+  const partialErrors: DashboardPartialError[] = [];
+  const guildsPromise = requestJson<GuildSummary[]>("/api/dashboard/guilds", options);
+  const overviewPromise = guildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${guildId}/overview`, options) : null;
+  const aiNetworkPromise = guildId
+    ? loadOptionalPanel<Record<string, unknown> | null>(
+        "aiNetwork",
+        `/api/ai-network/${guildId}/dashboard`,
+        null,
+        options,
+        partialErrors,
+      )
+    : null;
+  const requestsPromise = guildId
+    ? loadOptionalPanel<Record<string, unknown>[]>(
+        "requests",
+        `/api/dashboard/${guildId}/requests`,
+        [],
+        options,
+        partialErrors,
+      )
+    : [];
+  const usageTrendPromise = guildId
+    ? loadOptionalPanel<Record<string, unknown>[]>(
+        "usageTrend",
+        `/api/dashboard/${guildId}/usage-trend?days=14`,
+        [],
+        options,
+        partialErrors,
+      )
+    : [];
+
   const [guilds, overview, aiNetwork, requests, usageTrend] = await Promise.all([
-    requestJson<GuildSummary[]>("/api/dashboard/guilds", options).catch(() => []),
-    guildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${guildId}/overview`, options) : null,
-    guildId
-      ? requestJson<Record<string, unknown>>(`/api/ai-network/${guildId}/dashboard`, options).catch(() => null)
-      : null,
-    guildId ? requestJson<Record<string, unknown>[]>(`/api/dashboard/${guildId}/requests`, options).catch(() => []) : [],
-    guildId
-      ? requestJson<Record<string, unknown>[]>(`/api/dashboard/${guildId}/usage-trend?days=14`, options).catch(() => [])
-      : [],
+    guildsPromise,
+    overviewPromise,
+    aiNetworkPromise,
+    requestsPromise,
+    usageTrendPromise,
   ]);
 
   return {
@@ -169,6 +233,7 @@ export async function loadDashboard(guildId: string, options: ApiOptions): Promi
     aiNetwork,
     requests,
     usageTrend,
+    partialErrors,
   };
 }
 

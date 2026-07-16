@@ -49,7 +49,7 @@ class ChannelAiCustomizationController(
     @PostMapping("/wizard/draft")
     fun draft(
         @RequestBody request: ChannelAiWizardDraftRequest,
-    ): Map<String, Any?> =
+    ): ChannelAiWizardDraftResponse =
         ChannelAiWizardDraftResponse
             .from(
                 customization.draftFromAnswers(
@@ -58,7 +58,7 @@ class ChannelAiCustomizationController(
                     answerLength = request.answerLength,
                     customName = request.name,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/{guildId}/{channelId}/wizard")
     fun createFromWizard(
@@ -66,7 +66,7 @@ class ChannelAiCustomizationController(
         @PathVariable channelId: Long,
         @RequestBody request: ChannelAiWizardRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> =
+    ): ChannelAiWizardResultResponse =
         ChannelAiWizardResultResponse
             .from(
                 customization.createFromWizardAsTrustedDashboardAdmin(
@@ -81,7 +81,7 @@ class ChannelAiCustomizationController(
                     answerLength = request.answerLength,
                     constitution = request.constitution,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/{guildId}/{channelId}/rollback")
     fun rollback(
@@ -89,7 +89,7 @@ class ChannelAiCustomizationController(
         @PathVariable channelId: Long,
         @RequestBody request: RollbackChannelAiVersionRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> =
+    ): ChannelAiWizardResultResponse =
         ChannelAiWizardResultResponse
             .from(
                 customization.rollbackToVersionAsTrustedDashboardAdmin(
@@ -101,14 +101,14 @@ class ChannelAiCustomizationController(
                     requireApproval = request.requireApproval,
                     reason = request.reason,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/proposals/{proposalId}/approve")
     fun approve(
         @PathVariable proposalId: Long,
         @RequestBody request: ReviewChannelAiProposalRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> =
+    ): ApproveChannelAiProposalResponse =
         ApproveChannelAiProposalResponse
             .from(
                 customization.approveProposalAsTrustedDashboardAdmin(
@@ -117,14 +117,14 @@ class ChannelAiCustomizationController(
                     reviewerUserId = actorOf(httpRequest).userId,
                     reason = request.reason,
                 ),
-            ).toMap()
+            )
 
     @PostMapping("/proposals/{proposalId}/reject")
     fun reject(
         @PathVariable proposalId: Long,
         @RequestBody request: ReviewChannelAiProposalRequest,
         httpRequest: HttpServletRequest,
-    ): Map<String, Any?> =
+    ): RejectChannelAiProposalResponse =
         RejectChannelAiProposalResponse
             .from(
                 customization.rejectProposalAsTrustedDashboardAdmin(
@@ -133,7 +133,7 @@ class ChannelAiCustomizationController(
                     reviewerUserId = actorOf(httpRequest).userId,
                     reason = request.reason,
                 ),
-            ).toMap()
+            )
 
     @GetMapping("/{guildId}/ai-admin-roles")
     fun aiAdminRoles(
@@ -161,7 +161,7 @@ class ChannelAiCustomizationController(
     @GetMapping("/{guildId}/proposals/pending")
     fun pending(
         @PathVariable guildId: Long,
-    ): List<Map<String, Any?>> = customization.pendingProposals(guildId).map { PendingProposalResponse.from(it).toMap() }
+    ): List<PendingProposalResponse> = customization.pendingProposals(guildId).map(PendingProposalResponse::from)
 
     @PostMapping("/{guildId}/{channelId}/prompt-preview")
     fun promptPreview(
@@ -184,5 +184,5 @@ class ChannelAiCustomizationController(
     fun history(
         @PathVariable guildId: Long,
         @PathVariable channelId: Long,
-    ): Map<String, Any?> = ChannelAiHistoryResponse.from(customization.channelHistory(guildId, channelId)).toMap()
+    ): ChannelAiHistoryResponse = ChannelAiHistoryResponse.from(customization.channelHistory(guildId, channelId))
 }

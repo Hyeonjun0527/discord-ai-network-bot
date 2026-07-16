@@ -3,6 +3,7 @@ package com.discordassistant.central.provider.adapter.inbound.web
 import com.discordassistant.central.ainetwork.application.GuildQualityReports
 import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
+import com.discordassistant.central.global.error.ApiErrorCodes
 import com.discordassistant.central.global.error.PreconditionFailedException
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
@@ -279,20 +280,20 @@ class ProviderAdminController(
     fun niaPersona(
         @RequestParam(name = "durableToken", required = false, defaultValue = "") durableToken: String,
     ): NiaPersonaResponse {
-        if (!durableToken.startsWith("dv1.")) throw projectAdminRequired()
-        val binding = tokens.verify(durableToken) ?: throw projectAdminRequired()
-        if (!projectAdmins.isProjectAdmin(binding.providerId)) throw projectAdminRequired()
+        if (!durableToken.startsWith("dv1.")) throw niaPersonaForbidden()
+        val binding = tokens.verify(durableToken) ?: throw niaPersonaForbidden()
+        if (!projectAdmins.isProjectAdmin(binding.providerId)) throw niaPersonaForbidden()
         return NiaPersonaResponse(NexaIdentity.NIA_DEFAULT_PERSONA, NexaIdentity.NIA_FEWSHOT)
     }
 
-    private fun projectAdminRequired(): PreconditionFailedException =
+    private fun niaPersonaForbidden(): PreconditionFailedException =
         PreconditionFailedException(
             message = "프로젝트 관리자만 볼 수 있어요",
             failedCondition = "project_admin_authenticated",
             blockedAction = "READ_NIA_PERSONA",
             actionGuide = "프로젝트 관리자 durable 토큰으로 다시 요청해 주세요.",
             httpStatus = 403,
-            errorCode = "FORBIDDEN",
+            errorCode = ApiErrorCodes.FORBIDDEN,
         )
 
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */

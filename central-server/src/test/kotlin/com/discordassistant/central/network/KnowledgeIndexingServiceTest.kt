@@ -213,11 +213,12 @@ class KnowledgeIndexingServiceTest
                     retrievalPolicies = retrievalPolicies,
                 )
             val controller = KnowledgeIngestionController(ingestion, search, service)
-            val spaceId =
+            val space =
                 controller.createSpace(
                     103,
                     CreateKnowledgeSpaceRequest(channelId = 203, displayName = "웹 지식", actorUserId = 7),
-                )["id"] as Long
+                )
+            val spaceId = space.id
 
             val result =
                 controller.addSource(
@@ -231,10 +232,10 @@ class KnowledgeIndexingServiceTest
                     ),
                 )
 
-            assertEquals("indexed", result["status"])
-            assertEquals(true, result["inlineIndexed"])
-            assertEquals(2, result["chunkCount"])
-            assertTrue((result["indexJobId"] as Long) > 0)
+            assertEquals("indexed", result.status)
+            assertEquals(true, result.inlineIndexed)
+            assertEquals(2, result.chunkCount)
+            assertTrue(result.indexJobId!! > 0)
             val found = search.search(103, "즉시 검색", limit = 5, channelId = 203)
             assertEquals(1, found.results.size)
             assertEquals("웹 RAG 운영 규칙", found.results.single().title)
@@ -256,11 +257,12 @@ class KnowledgeIndexingServiceTest
                     retrievalPolicies = retrievalPolicies,
                 )
             val controller = KnowledgeIngestionController(ingestion, search, service)
-            val spaceId =
+            val space =
                 controller.createSpace(
                     105,
                     CreateKnowledgeSpaceRequest(channelId = 205, displayName = "삭제 전파 지식", actorUserId = 7),
-                )["id"] as Long
+                )
+            val spaceId = space.id
             val added =
                 controller.addSource(
                     105,
@@ -272,7 +274,7 @@ class KnowledgeIndexingServiceTest
                         actorUserId = 7,
                     ),
                 )
-            val sourceId = added["id"] as Long
+            val sourceId = added.id
             assertEquals(2, service.readyChunks(105, spaceId).size)
 
             val deleted =
@@ -283,11 +285,11 @@ class KnowledgeIndexingServiceTest
                     DeleteKnowledgeSourceRequest(reason = "obsolete", actorUserId = 7),
                 )
 
-            val deletionJobId = deleted["deletionIndexJobId"] as Long
+            val deletionJobId = deleted.deletionIndexJobId!!
             assertTrue(deletionJobId > 0)
-            assertEquals(1, deleted["tombstonedDocumentCount"])
-            assertEquals(2, deleted["tombstonedChunkCount"])
-            assertEquals(0, deleted["remainingReadyChunkCount"])
+            assertEquals(1, deleted.tombstonedDocumentCount)
+            assertEquals(2, deleted.tombstonedChunkCount)
+            assertEquals(0, deleted.remainingReadyChunkCount)
             assertTrue(service.readyChunks(105, spaceId).isEmpty())
             assertTrue(documents.findByKnowledgeSourceId(sourceId).all { it.status == KnowledgeDocumentStatus.DELETED })
             assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(spaceId, KnowledgeChunkStatus.DELETED).size >= 2)

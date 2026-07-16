@@ -26,6 +26,13 @@ data class ActionTarget(
         require(guildPseudonym.isNotBlank()) { "guildPseudonym 은 비어 있을 수 없다" }
         require(channelId.isNotBlank()) { "channelId 는 비어 있을 수 없다" }
         require(threadId.isNotBlank()) { "threadId 는 비어 있을 수 없다" }
+        require(threadId.length <= MAX_THREAD_ID_LENGTH) {
+            "threadId 는 최대 ${MAX_THREAD_ID_LENGTH}자여야 한다: actual=${threadId.length}"
+        }
         require(subjectPseudonym == null || subjectPseudonym.isNotBlank()) { "subjectPseudonym 은 빈 문자열일 수 없다" }
+    }
+
+    companion object {
+        const val MAX_THREAD_ID_LENGTH = 256
     }
 }

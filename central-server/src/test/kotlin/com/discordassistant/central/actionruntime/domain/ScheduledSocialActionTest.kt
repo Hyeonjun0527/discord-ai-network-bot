@@ -31,6 +31,26 @@ class ScheduledSocialActionTest {
             maxAttempts = maxAttempts,
         )
 
+    @Test
+    fun `ActionTarget thread id는 저장소 계약 길이까지만 허용한다`() {
+        assertThat(
+            ActionTarget(
+                guildPseudonym = "g1",
+                channelId = "c1",
+                threadId = "t".repeat(ActionTarget.MAX_THREAD_ID_LENGTH),
+            ).threadId,
+        ).hasSize(ActionTarget.MAX_THREAD_ID_LENGTH)
+
+        assertThatThrownBy {
+            ActionTarget(
+                guildPseudonym = "g1",
+                channelId = "c1",
+                threadId = "t".repeat(ActionTarget.MAX_THREAD_ID_LENGTH + 1),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("최대 ${ActionTarget.MAX_THREAD_ID_LENGTH}자")
+    }
+
     // ── T001: 상태 전이는 도메인 메서드로만, 불법 전이 거부 ──
 
     @Test

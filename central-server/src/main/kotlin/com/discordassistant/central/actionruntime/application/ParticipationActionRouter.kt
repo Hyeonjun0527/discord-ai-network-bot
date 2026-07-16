@@ -94,7 +94,7 @@ class ParticipationActionRouter(
                     executeAfter = executeAfter,
                     contextVersion = contextVersion,
                     originRolloutMode = originRolloutMode,
-                ).markScheduled()
+                )
         val scheduled = scheduler.schedule(action)
         return RouteResult.Scheduled(type = type, newlyScheduled = scheduled)
     }

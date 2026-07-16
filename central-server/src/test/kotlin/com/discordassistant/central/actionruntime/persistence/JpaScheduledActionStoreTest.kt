@@ -4,6 +4,8 @@ import com.discordassistant.central.actionruntime.adapter.outbound.persistence.J
 import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionContentEntity
 import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionContentRepository
 import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionRepository
+import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
+import com.discordassistant.central.actionruntime.application.RouteResult
 import com.discordassistant.central.actionruntime.application.port.inbound.RevocationScope
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
@@ -11,6 +13,8 @@ import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.participation.domain.model.action.SocialAction
+import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -67,6 +71,25 @@ class JpaScheduledActionStoreTest
             assertThat(persisted.status).isEqualTo(ActionStatus.SCHEDULED)
             assertThat(persisted.contextVersion).isEqualTo(7)
             assertThat(persisted.originRolloutMode).isEqualTo(ShadowMode.CANARY)
+        }
+
+        @Test
+        fun `participation 라우터와 JPA 저장소를 연결해도 한 번만 SCHEDULED 로 전이한다`() {
+            val router = ParticipationActionRouter(store)
+
+            val result =
+                router.route(
+                    decisionId = "live-turn",
+                    sampledActionIndex = 0,
+                    action = SocialAction.Speak(SpeechRequestRef("live-turn")),
+                    target = ActionTarget("g1", "c1", "t1"),
+                    executeAfter = now,
+                    contextVersion = 7,
+                    originRolloutMode = ShadowMode.LIVE,
+                )
+
+            assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.SPEAK, newlyScheduled = true))
+            assertThat(store.find(ActionIdentity.of("live-turn", 0))!!.status).isEqualTo(ActionStatus.SCHEDULED)
         }
 
         @Test

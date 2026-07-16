@@ -66,7 +66,8 @@ flowchart TD
         R2["유효 기억 (memory refs) — 관측·진술된 사실 요약"]
         RULE["반복 회피 지시 — 지난 발화 되풀이 금지, 사람처럼 변주"]
     end
-    SIN --> GEN["출력 — 버블 문장 후보 JSON (temperature 로 매번 다르게)"]
+    SIN --> GEN["출력 — 서로 다른 버블 문장 후보 2개 JSON"]
+    GEN --> CRITIC["critic — 짜증·수습 누락·기능채널 안내 누락 후보 제거"]
 ```
 
 - 발화 프롬프트는 최근 turn 을 **따옴표로 격리된 장면 데이터**로 감싸서, 사용자가 쓴 문장이 시스템 지시를
@@ -80,13 +81,14 @@ flowchart TD
 |---|---|---|
 | 모델 | `glm-4.5-air` | `glm-4.5-air` |
 | thinking(추론모드) | 꺼짐(disabled) | 꺼짐(disabled) |
-| temperature | **없음 → 결정론** (일관된 판단) | **0.9 → 매번 다른 문장** (사람다움) |
+| temperature | **없음 → 결정론** (일관된 판단) | **0.5 → 제한된 다양성** (페르소나 이탈 억제) |
+| 후보/호출 | 행동 1개 / 호출 1회 | 문장 후보 2개 / 호출 1회 |
 | 목적 | "말할까?" 한 번의 선택 | "뭐라고?" 실제 문구 생성 |
 | 실패 시 | null → 폴백 정책 | 침묵으로 안전 하강(전송 0) |
 
 > 모든 GLM 경로(판단·발화·무료질문·관리도구)는 `glm-4.5-air` 로 통일한다 — 속도 최우선·비용 (근거: ADR 0006).
 > 왜 판단은 결정론이고 발화만 temperature 인가? **판단이 오락가락하면(SPEAK↔IGNORE) 이상하다. 반대로 발화가
-> 매번 똑같으면(같은 문장 반복) 기계 같다.** 그래서 정반대로 튜닝한다.
+> 매번 똑같으면(같은 문장 반복) 기계 같다.** 발화는 보수적 온도에서 후보 2개를 한 번에 만들고 critic 이 고른다.
 
 ---
 
@@ -108,7 +110,7 @@ sequenceDiagram
     Judge-->>Bot: SPEAK / WAIT / REACT / IGNORE
     alt 판단이 SPEAK
         Bot->>Speech: 정체성 + 맥락 + 기억 전달
-        Speech-->>Bot: 문장 후보 (temperature 로 변주)
+        Speech-->>Bot: 문장 후보 2개 (한 번 호출)
         Bot->>Gate: rate limit 과 ShadowMode 검사
         alt LIVE 이고 통과
             Gate->>Ch: 실제 전송

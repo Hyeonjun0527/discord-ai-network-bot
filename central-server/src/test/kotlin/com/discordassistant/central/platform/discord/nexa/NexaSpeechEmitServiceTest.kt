@@ -99,9 +99,12 @@ class NexaSpeechEmitServiceTest {
     // ── fakes (외부 GLM·영속만) ──
     private class FakeGenerationPort(
         private val candidates: List<SpeechCandidate>,
+        private val onGenerate: () -> Unit = {},
     ) : SpeechGenerationPort {
-        override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult =
-            SpeechGenerationResult(candidates, modelMetadata = "mock")
+        override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
+            onGenerate()
+            return SpeechGenerationResult(candidates, modelMetadata = "mock")
+        }
     }
 
     private class CapturingParticipationLog : ParticipationDecisionLogPort {
@@ -207,11 +210,13 @@ class NexaSpeechEmitServiceTest {
         registry: ShadowModelRegistry = approvedRegistry(),
         correlationRecorder: NexaCorrelationRecorderPort = NexaCorrelationRecorderPort.Noop,
         contentWriter: SpeechContentWriter = SpeechContentWriter { _, _ -> },
+        turnGenerations: NiaTurnGenerationTracker = NiaTurnGenerationTracker(),
+        onGenerate: () -> Unit = {},
     ): NexaSpeechEmitService {
         val consentPolicy = ConsentPolicyPort { _, _, _ -> consent }
         val generationService =
             CandidateGenerationService(
-                generationPort = FakeGenerationPort(candidates),
+                generationPort = FakeGenerationPort(candidates, onGenerate),
                 socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
@@ -231,6 +236,7 @@ class NexaSpeechEmitServiceTest {
             correlationRecorder = correlationRecorder,
             contentWriter = contentWriter,
             speechDecisionLog = speechLog,
+            turnGenerations = turnGenerations,
         )
     }
 
@@ -306,6 +312,27 @@ class NexaSpeechEmitServiceTest {
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
         assertThat(correlationRecorder.records.single())
             .isEqualTo(NexaCorrelation("corr-1", "corr-1", "corr-1#0", "policy-v1"))
+    }
+
+    @Test
+    fun `발화 생성 중 새 사람 메시지가 도착하면 생성 결과를 예약하지 않는다`() {
+        val tracker = NiaTurnGenerationTracker()
+        val scheduler = FakeScheduler()
+        tracker.observe(channelId = 3L, generation = 1L)
+        val seam =
+            seam(
+                candidates = listOf(SpeechCandidate("c1", listOf("오 그거 좋네"))),
+                consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                scheduler = scheduler,
+                turnGenerations = tracker,
+                onGenerate = { tracker.observe(channelId = 3L, generation = 2L) },
+            )
+
+        val result = seam.emit(request())
+
+        assertThat(result.superseded).isTrue()
+        assertThat(result.willSpeak).isFalse()
+        assertThat(scheduler.scheduled).isEmpty()
     }
 
     @Test

@@ -22,7 +22,9 @@ class IdentityKernelAssemblerTest {
             assembler(IdentityKernelMeta.of("니아", emptySet(), administratorApproved = false)).assemble(1L)
         // SSOT 본문을 그대로 읽어 넣는다 — assembler 가 다시 정의하지 않는다.
         assertThat(section.personaBlock).isEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
-        assertThat(section.personaBlock).contains("왜 자꾸 불러 ㅋㅋ")
+        assertThat(section.personaBlock).contains("다익스트라 알고리즘 알려줘")
+        assertThat(section.personaBlock).contains("니아 기능채널 ai채팅에다가 물어봐")
+        assertThat(section.personaBlock).doesNotContain("왜 자꾸 불러 ㅋㅋ", "할 말 있으면 해봐")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
     }
 
@@ -30,7 +32,7 @@ class IdentityKernelAssemblerTest {
     fun `default nia persona follows core traits without assistant greeting boilerplate`() {
         val prompt = NexaIdentity.NIA_DEFAULT_PERSONA + "\n" + NexaIdentity.NIA_FEWSHOT
 
-        assertThat(prompt).contains("친구 단톡방", "까칠함", "장난스러움", "솔직함")
+        assertThat(prompt).contains("친구 단톡방", "친근함", "장난스러움", "솔직함")
         assertThat(prompt).doesNotContain(
             "사용자: 안녕?",
             "니아: 안녕하세요",

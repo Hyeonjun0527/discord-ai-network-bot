@@ -80,7 +80,7 @@ object EmotionRenderer {
 
     /**
      * 톤 힌트 한 줄 — **아주 약한 미세 지시**(고정 말버릇·이모지 금지, §13.2). 답변 길이·핵심 성격·이름·존중은
-     * 절대 안 건드린다(I11). 부정(COOL)이어도 공격 인격이 아니라 *살짝 시큰둥*까지만(§13.2 되돌림 조건).
+     * 절대 안 건드린다(I11). 부정(COOL)이어도 공격 인격이 아니라 차분하고 말수가 적은 정도까지만 허용한다.
      */
     private fun directiveOf(
         intensity: ToneIntensity,
@@ -90,7 +90,7 @@ object EmotionRenderer {
         val feel =
             when (valence) {
                 ToneValence.WARM -> "평소보다 $degree 기분이 좋은 결"
-                ToneValence.COOL -> "평소보다 $degree 시큰둥한 결"
+                ToneValence.COOL -> "평소보다 $degree 차분하고 말수가 적은 결"
                 ToneValence.NEUTRAL -> return ""
             }
         return "(말투 미세 지시: 지금 니아는 ${feel}이다. 반응 온도에만 *아주 약하게* 반영해라 — " +

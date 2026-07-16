@@ -88,9 +88,21 @@ class ActionExecutionServiceTest {
 
     @Test
     fun `T015 — 부분 취소 시에도 typing 이 종료된다`() {
-        val executor = RecordingDiscordExecutor()
         val scheduler = InMemoryActionScheduler(clock)
-        val reeval = ControllableReevaluation(currentVersion = 2L) // index>0 에서 stale → 잔여 취소.
+        val reeval = ControllableReevaluation(currentVersion = 1L, validOnReevaluate = false)
+        val executor =
+            object : RecordingDiscordExecutor() {
+                override fun sendBubble(
+                    channelId: String,
+                    speechPlanRef: String,
+                    bubbleIndex: Int,
+                    replyToMessageId: String?,
+                ): ExecutionResult {
+                    val result = super.sendBubble(channelId, speechPlanRef, bubbleIndex, replyToMessageId)
+                    if (bubbleIndex == 0) reeval.currentVersion = 2L
+                    return result
+                }
+            }
         val audit = InMemoryActionAudit()
         val action = typingSpeakAction(contextVersion = 1L)
         scheduler.put(action)
@@ -197,10 +209,39 @@ class ActionExecutionServiceTest {
     }
 
     @Test
-    fun `T020 — 첫 버블 뒤 contextVersion 이 바뀌면 잔여 버블을 보내지 않고 부분 취소한다`() {
+    fun `전송 직전 contextVersion이 바뀌면 typing과 첫 버블 없이 취소한다`() {
         val executor = RecordingDiscordExecutor()
         val scheduler = InMemoryActionScheduler(clock)
-        val reeval = ControllableReevaluation(currentVersion = 1L)
+        val reeval = ControllableReevaluation(currentVersion = 2L, validOnReevaluate = false)
+        val audit = InMemoryActionAudit()
+        val action = typingSpeakAction(contextVersion = 1L)
+        scheduler.put(action)
+
+        val outcome = service(executor, scheduler, reeval, audit).execute(ShadowMode.LIVE, action, BurstPlan.single("plan-a"))
+
+        assertThat(outcome).isEqualTo(ExecutionOutcome.Cancelled(ActionExecutionService.REASON_CONTEXT_CHANGED_BEFORE_SEND))
+        assertThat(executor.totalExecutorCalls).isZero()
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+        assertThat(audit.phasesOf(action.identity.value)).containsExactly(ActionAuditPhase.CANCELLED)
+    }
+
+    @Test
+    fun `T020 — 첫 버블 뒤 contextVersion 이 바뀌면 잔여 버블을 보내지 않고 부분 취소한다`() {
+        val scheduler = InMemoryActionScheduler(clock)
+        val reeval = ControllableReevaluation(currentVersion = 1L, validOnReevaluate = false)
+        val executor =
+            object : RecordingDiscordExecutor() {
+                override fun sendBubble(
+                    channelId: String,
+                    speechPlanRef: String,
+                    bubbleIndex: Int,
+                    replyToMessageId: String?,
+                ): ExecutionResult {
+                    val result = super.sendBubble(channelId, speechPlanRef, bubbleIndex, replyToMessageId)
+                    if (bubbleIndex == 0) reeval.currentVersion = 2L
+                    return result
+                }
+            }
         val audit = InMemoryActionAudit()
         val action = typingSpeakAction(contextVersion = 1L)
         scheduler.put(action)
@@ -212,10 +253,6 @@ class ActionExecutionServiceTest {
                     Bubble(2, "plan-c", Duration.ZERO),
                 ),
             )
-        // 첫 버블 전송 직후 reeval 이 바뀌도록: 첫 sendBubble 은 기본 성공, 그 사이 버전 변경을 흉내내기 위해
-        // currentVersion 을 2 로 미리 바꿔두면 index>0 의 사전 체크에서 stale 로 잡힌다.
-        reeval.currentVersion = 2L
-
         val outcome = service(executor, scheduler, reeval, audit).execute(ShadowMode.LIVE, action, plan)
 
         assertThat(outcome).isInstanceOf(ExecutionOutcome.PartiallyCancelled::class.java)

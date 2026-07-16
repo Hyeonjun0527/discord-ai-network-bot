@@ -132,7 +132,7 @@ class NexaPolicyDecisionLogEntity(
     @Column(name = "fewshot_set_id") var fewShotSetId: String? = null,
     @Column(name = "fewshot_version") var fewShotVersion: Int? = null,
     @Column(name = "raw_window_hash") var rawWindowHash: String? = null,
-    @Column(name = "raw_window_message_refs_json", length = 2048) var rawWindowMessageRefsJson: String = "[]",
+    @Column(name = "raw_window_message_refs_json", columnDefinition = "TEXT") var rawWindowMessageRefsJson: String = "[]",
     @Column(name = "seed") var seed: Long = 0,
     @Column(name = "removed_kinds") var removedKinds: String = "",
     @Column(name = "reason_code") var reasonCode: String? = null,

@@ -120,6 +120,22 @@ class JpaParticipationDecisionLogTest
             assertThat(found.finalDecisionSource).isEqualTo("SINGLE_JUDGE_SHADOW")
         }
 
+        @Test
+        fun `raw window message refs longer than the former varchar limit round-trip`() {
+            val refs =
+                (1..40)
+                    .map { index -> "raw_context_message:v1:${index.toString().padStart(3, '0')}-${"a".repeat(110)}" }
+                    .toSet()
+
+            log.append(
+                record("corr-long-refs", SocialActionKind.SPEAK, Instant.now())
+                    .copy(rawWindowMessageRefs = refs),
+            )
+
+            assertThat(log.findByCorrelationId("corr-long-refs")!!.rawWindowMessageRefs)
+                .containsExactlyInAnyOrderElementsOf(refs)
+        }
+
         private fun record(
             correlationId: String,
             kind: SocialActionKind,

@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 758
-- Cross-node import edges: 699
+- Kotlin files scanned: 759
+- Cross-node import edges: 704
 
 ## Nodes
 
@@ -17,7 +17,7 @@
 | `channelai` | 21 |
 | `conversation` | 84 |
 | `dev` | 1 |
-| `global` | 44 |
+| `global` | 45 |
 | `globalpromptset` | 3 |
 | `guild` | 6 |
 | `knowledge` | 30 |
@@ -59,7 +59,7 @@
 | `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
 | `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
 | `channelai` | `shared` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.shared.ContentSafety` |
-| `conversation` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/DbConsentPolicyAdapter.kt` | `com.discordassistant.central.global.crypto.ScopedPseudonymizer` |
+| `conversation` | `global` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/inbound/web/ConversationProjectionOpsController.kt` | `com.discordassistant.central.global.error.InvalidRequestException` |
 | `dev` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `dev` | `relay` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
@@ -77,9 +77,9 @@
 | `guild` | `shared` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/inbound/web/DashboardWriteController.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `knowledge` | `ainetwork` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIndexingPlanner.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
 | `knowledge` | `channelai` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeAuditWriter.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity` |
-| `knowledge` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/outbound/persistence/KnowledgeEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
+| `knowledge` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/inbound/web/KnowledgeIngestionController.kt` | `com.discordassistant.central.global.error.PreconditionFailedException` |
 | `knowledge` | `shared` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIndexingPlanner.kt` | `com.discordassistant.central.shared.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS` |
-| `licensing` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt` | `com.discordassistant.central.global.error.PreconditionFailedException` |
+| `licensing` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt` | `com.discordassistant.central.global.error.ApiErrorCodes` |
 | `licensing` | `provider` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt` | `com.discordassistant.central.provider.application.TokenService` |
 | `licensing` | `requestlog` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/outbound/ContributionAdapter.kt` | `com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogRepository` |
 | `multiresponse` | `ainetwork` | 20 | `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/adapter/inbound/web/MultiResponseController.kt` | `com.discordassistant.central.ainetwork.application.DashboardAudience` |
@@ -129,7 +129,7 @@
 | `preset` | `shared` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt` | `com.discordassistant.central.shared.ContentSafety` |
 | `provider` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.ainetwork.application.GuildQualityReports` |
 | `provider` | `channelai` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.channelai.application.GuildChannelAiQuery` |
-| `provider` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.global.error.PreconditionFailedException` |
+| `provider` | `global` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.global.error.ApiErrorCodes` |
 | `provider` | `globalpromptset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `provider` | `guild` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.guild.application.GuildChannelPolicy` |
 | `provider` | `knowledge` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin` |

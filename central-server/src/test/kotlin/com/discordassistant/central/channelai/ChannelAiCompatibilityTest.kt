@@ -12,6 +12,7 @@ import com.discordassistant.central.channelai.application.ChannelAiWizardDraft
 import com.discordassistant.central.channelai.application.ChannelAiWizardResult
 import com.discordassistant.central.channelai.application.PendingProposalView
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeState
 import com.discordassistant.central.participation.application.port.out.ShadowModeStorePort
@@ -76,7 +77,13 @@ class ChannelAiCompatibilityTest {
 
     @Test
     fun `미설정 길드 채널은 NEXA 비활성이라 기존 channelai 경로만 동작한다`() {
-        val service = NexaParticipationFlagService(EmptyModeStore(), EmptyFlagPort(), "OFF")
+        val service =
+            NexaParticipationFlagService(
+                EmptyModeStore(),
+                EmptyFlagPort(),
+                NexaParticipationConsentPort.Noop,
+                "OFF",
+            )
 
         assertThat(service.effectiveMode(guildId = 123L, channelId = 456L)).isEqualTo(ShadowMode.OFF)
         assertThat(service.isNexaActive(guildId = 123L, channelId = 456L)).isFalse()

@@ -72,6 +72,13 @@ class ActionExecutionService(
             return ExecutionOutcome.Suppressed(currentMode)
         }
 
+        val target = action.toReevaluationTarget()
+        if (!isStillValid(action, target)) {
+            record(action, ActionAuditPhase.CANCELLED, reason = REASON_CONTEXT_CHANGED_BEFORE_SEND)
+            scheduler.cancel(action.identity)
+            return ExecutionOutcome.Cancelled(REASON_CONTEXT_CHANGED_BEFORE_SEND)
+        }
+
         // typing 시작(P12) — 실패해도 전송 자체를 막지 않되, 대상 부재면 우아하게 종결(T018).
         when (val typing = executor.startTyping(action.target.channelId)) {
             is ExecutionResult.Failed -> {
@@ -111,7 +118,7 @@ class ActionExecutionService(
                 }
             }
             // 첫 버블 뒤부터 contextVersion 재확인 — 바뀌었으면 잔여 버블 취소(T020).
-            if (bubble.index > 0 && isContextChanged(action, target)) {
+            if (bubble.index > 0 && !isStillValid(action, target)) {
                 record(action, ActionAuditPhase.TYPING_STOPPED)
                 scheduler.markPartiallySent(action.identity)
                 record(action, ActionAuditPhase.PARTIALLY_CANCELLED, reason = REASON_CONTEXT_CHANGED)
@@ -228,12 +235,18 @@ class ActionExecutionService(
             }
         }
 
-    private fun isContextChanged(
+    private fun isStillValid(
         action: ScheduledSocialAction,
         target: ReevaluationTarget,
     ): Boolean {
-        val current = reevaluation.currentContextVersion(target) ?: return true // 장면 소멸 = 바뀐 것.
-        return action.isStale(current)
+        val current = reevaluation.currentContextVersion(target) ?: return false
+        if (!action.isStale(current)) return true
+        return reevaluation.stillValid(
+            decisionId = action.decisionId,
+            target = target,
+            scheduledContextVersion = action.contextVersion,
+            currentContextVersion = current,
+        )
     }
 
     /** reply 대상(원 메시지 ID) — 대화 초점 키인 threadId를 Discord snowflake로 오인하지 않는다. */
@@ -267,6 +280,7 @@ class ActionExecutionService(
 
     companion object {
         const val REASON_CONTEXT_CHANGED: String = "context_changed_mid_burst"
+        const val REASON_CONTEXT_CHANGED_BEFORE_SEND: String = "context_changed_before_send"
         const val REASON_TOO_STALE: String = "too_stale_backpressure"
         const val REASON_REVOKED_MID_BURST: String = "consent_revoked_mid_burst"
     }

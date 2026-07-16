@@ -9,6 +9,7 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
+import com.discordassistant.central.platform.discord.nexa.NiaTurnGenerationTracker
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
@@ -370,6 +371,7 @@ class DiscordBot(
     private val niaSocialMind: NiaSocialMindService,
     // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
     private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+    private val niaTurnGenerations: NiaTurnGenerationTracker,
     private val participationFlags: NexaParticipationFlagService,
     // 니아 채널 자동 만들기 시 ai채팅·ai그림을 LLM 채널 허용 목록에 등록(자동응답↔LLM 정책 불일치 방지). PolicyService 빈.
     private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
@@ -495,6 +497,7 @@ class DiscordBot(
                 adminAssistant,
                 niaSocialMind,
                 participationEmitBridge,
+                niaTurnGenerations,
                 participationFlags,
                 channelAllowList,
                 mentionAskEnabled = messageContentIntent,
@@ -658,6 +661,7 @@ class DiscordBot(
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
         private val niaSocialMind: NiaSocialMindService,
         private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
+        private val niaTurnGenerations: NiaTurnGenerationTracker,
         private val participationFlags: NexaParticipationFlagService,
         private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
         private val mentionAskEnabled: Boolean,
@@ -1459,6 +1463,10 @@ class DiscordBot(
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild) return
             val channelId = event.channel.idLong
+            if (!event.author.isBot && !event.message.isWebhookMessage) {
+                // FIFO worker 밖에서 먼저 갱신해야, 이미 judge 중인 이전 메시지도 새 장면 도착을 감지해 결과를 버린다.
+                niaTurnGenerations.observe(channelId, event.messageIdLong)
+            }
             val admission =
                 channelEventDispatcher.submit(channelId) {
                     runChannelEvent("receive", channelId) { processMessageReceived(event) }

@@ -60,6 +60,7 @@ class MultiResponseBurstIntegrationTest {
 
     @Test
     fun `acceptance — reply target 이 첫 버블에 보존되고 도중 cancel 시 잔여 버블을 보내지 않는다`() {
+        val reeval = ControllableReevaluation(currentVersion = 1L, validOnReevaluate = false)
         // replyToMessageId 를 캡처하는 executor(첫 버블만 reply 대상이 실려야 한다).
         val replyTargets = mutableMapOf<Int, String?>()
         val executor =
@@ -71,11 +72,12 @@ class MultiResponseBurstIntegrationTest {
                     replyToMessageId: String?,
                 ): ExecutionResult {
                     replyTargets[bubbleIndex] = replyToMessageId
-                    return super.sendBubble(channelId, speechPlanRef, bubbleIndex, replyToMessageId)
+                    val result = super.sendBubble(channelId, speechPlanRef, bubbleIndex, replyToMessageId)
+                    if (bubbleIndex == 0) reeval.currentVersion = 2L
+                    return result
                 }
             }
         val scheduler = InMemoryActionScheduler(clock)
-        val reeval = ControllableReevaluation(currentVersion = 1L)
         val audit = InMemoryActionAudit()
         val replyToMessageId = "1234567890123456789"
         val action =
@@ -91,9 +93,6 @@ class MultiResponseBurstIntegrationTest {
         // 정책이 명시한 멀티 버블(3개).
         val plan = adapter.fromBubbles(listOf("b0", "b1", "b2"))
         assertThat(plan.bubbleCount).isEqualTo(3)
-
-        // 첫 버블 전송 후 contextVersion 변경 → 잔여 버블 취소(중간 cancel).
-        reeval.currentVersion = 2L
 
         val outcome = service(executor, scheduler, reeval, audit).execute(ShadowMode.LIVE, action, plan)
 

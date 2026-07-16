@@ -73,6 +73,7 @@ class NexaSpeechEmitService(
     private val contentWriter: SpeechContentWriter,
     private val speechDecisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
     private val clock: Clock = Clock.systemUTC(),
+    private val turnGenerations: NiaTurnGenerationTracker = NiaTurnGenerationTracker(),
 ) {
     private val log = LoggerFactory.getLogger(NexaSpeechEmitService::class.java)
 
@@ -125,9 +126,19 @@ class NexaSpeechEmitService(
                     ),
             )
 
+        val pipelineWillSpeak = pipelineResult.outcome == SpeechDecisionOutcome.SPEAK && pipelineResult.selected != null
+        if (pipelineWillSpeak && !isLatestScene(request)) {
+            log.info(
+                "NIA_TURN_SUPERSEDED stage=BEFORE_SCHEDULE channel={} generation={}",
+                request.provenance.channelId,
+                request.provenance.contextVersion,
+            )
+            return NexaSpeechEmitResult.superseded(safe, pipelineResult)
+        }
+
         // 4) 전송 예약 — 파이프라인이 실제 SPEAK 로 통과했을 때만 SPEAK 예약. 그 외에는 IGNORE 라우팅(예약 없음).
         val action: SocialAction =
-            if (pipelineResult.outcome == SpeechDecisionOutcome.SPEAK && pipelineResult.selected != null) {
+            if (pipelineWillSpeak) {
                 SocialAction.Speak(SpeechRequestRef(correlationId = request.provenance.correlationId))
             } else {
                 SocialAction.Ignore
@@ -165,6 +176,11 @@ class NexaSpeechEmitService(
             pipelineResult = pipelineResult,
             routeResult = routeResult,
         )
+    }
+
+    private fun isLatestScene(request: NexaSpeechEmitRequest): Boolean {
+        val channelId = request.provenance.channelId.toLongOrNull() ?: return true
+        return turnGenerations.isLatest(channelId, request.provenance.contextVersion)
     }
 
     private fun recordSpeechNotInvoked(
@@ -289,6 +305,8 @@ data class NexaSpeechEmitResult(
     val pipelineResult: PipelineResult?,
     /** 전송 라우팅 결과(SPEAK 아니면 null — 예약 미시도). */
     val routeResult: RouteResult?,
+    /** 발화 생성 중 새 사람 메시지가 도착해 예약하지 않은 결과. */
+    val superseded: Boolean = false,
 ) {
     /** 실제로 발화가 예약됐는가(파이프라인 SPEAK 통과 + SPEAK 예약). */
     val willSpeak: Boolean
@@ -298,5 +316,16 @@ data class NexaSpeechEmitResult(
         /** 안전 override 후 최종 행동이 SPEAK 가 아니어서 파이프라인·예약을 거치지 않은 결과(발화 없음). */
         fun notSpeaking(safe: SafeDecision): NexaSpeechEmitResult =
             NexaSpeechEmitResult(safeDecision = safe, pipelineResult = null, routeResult = null)
+
+        fun superseded(
+            safe: SafeDecision,
+            pipelineResult: PipelineResult,
+        ): NexaSpeechEmitResult =
+            NexaSpeechEmitResult(
+                safeDecision = safe,
+                pipelineResult = pipelineResult,
+                routeResult = null,
+                superseded = true,
+            )
     }
 }

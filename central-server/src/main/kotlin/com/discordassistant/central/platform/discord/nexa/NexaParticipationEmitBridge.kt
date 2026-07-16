@@ -127,6 +127,7 @@ class NexaParticipationEmitBridge(
     private val singleJudge: SingleParticipationJudgePort? = null,
     private val fewShotService: NiaFewShotService? = null,
     private val actionRouter: ParticipationActionRouter? = null,
+    private val turnGenerations: NiaTurnGenerationTracker = NiaTurnGenerationTracker(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
     private val judgeMode = NexaJudgeMode.parse(judgeModeName)
@@ -195,6 +196,16 @@ class NexaParticipationEmitBridge(
             return turnOutcome(
                 mode,
                 recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed),
+            )
+        }
+        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+            return turnOutcome(
+                mode,
+                recordTrace(
+                    signal = signal,
+                    mode = mode,
+                    outcome = ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_JUDGE),
+                ),
             )
         }
         if (mode.allowsRealSend && judgeMode != NexaJudgeMode.FINAL) {
@@ -497,6 +508,10 @@ class NexaParticipationEmitBridge(
 
         val response = policy.decide(request)
 
+        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+            return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE)
+        }
+
         // 2) SPEAK 가 가장 유력하지 않으면 emit 를 부르지 않는다(IGNORE/REACT/WAIT 는 발화 없음). emit 가 안전 override 로
         //    다시 한 번 접지만, 여기서 먼저 거르면 불필요한 발화 파이프라인·생성 비용을 피한다(KISS).
         if (response.mostLikelyAction != com.discordassistant.central.participation.domain.model.action.SocialActionKind.SPEAK) {
@@ -628,6 +643,21 @@ class NexaParticipationEmitBridge(
                 )
                 return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
             }
+
+        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+            logSingleJudgeDecision(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                channelKey = channelKey,
+                request = request,
+                decision = decision,
+                actionKind = decision.action,
+                reasonCode = NiaTurnSupersessionStage.AFTER_JUDGE.reasonCode,
+                featureVector = sceneBuild.featureVector,
+                shadowBaselineAction = null,
+            )
+            return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE)
+        }
 
         if (decision.action == SocialActionKind.SPEAK) {
             return emitSpeak(
@@ -836,6 +866,9 @@ class NexaParticipationEmitBridge(
         attribution: DecisionAttribution = response.defaultAttribution(),
         originRolloutMode: ShadowMode,
     ): ParticipationEmitOutcome {
+        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+            return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SPEECH_GENERATION)
+        }
         logPolicyDecision(
             signal = signal,
             guildPseudonym = guildPseudonym,
@@ -911,6 +944,9 @@ class NexaParticipationEmitBridge(
                 )
             }
         val result = emit.emit(emitRequest)
+        if (result.superseded) {
+            return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SCHEDULE)
+        }
         // 니아가 발화했으니 pingpong 앵커를 이 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들면 즉시 wake).
         // 니아 자기 메시지는 이 브리지로 안 오므로(봇 author early-return), 발화 시점을 여기서 앵커로 삼는다.
         markNiaSpoke(channelKey, signal.tsMs)
@@ -1938,6 +1974,11 @@ sealed interface ParticipationEmitOutcome {
         val channelKey: String,
     ) : ParticipationEmitOutcome
 
+    /** 더 최신 사람 메시지가 도착해 이 장면의 판단·생성·예약을 폐기했다. 원문 문맥은 이미 저장된 상태다. */
+    data class Superseded(
+        val stage: NiaTurnSupersessionStage,
+    ) : ParticipationEmitOutcome
+
     /** SPEAK 분포 → emit 호출됨. 그 결과(예약/안전 하강 등). 실제 전송 여부는 ShadowMode 전송 경계가 별도 결정. */
     data class Emitted(
         val result: NexaSpeechEmitResult,
@@ -1972,6 +2013,7 @@ private val ParticipationEmitOutcome.traceOutcome: String
             is ParticipationEmitOutcome.RuleWait -> "RULE_WAIT"
             is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
             is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
+            is ParticipationEmitOutcome.Superseded -> "SUPERSEDED"
             is ParticipationEmitOutcome.Emitted -> "EMITTED"
             ParticipationEmitOutcome.Failed -> "FAILED"
         }
@@ -1983,6 +2025,7 @@ private val ParticipationEmitOutcome.traceReasonCode: String?
             is ParticipationEmitOutcome.RuleWait -> reasonCode
             is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
             is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
+            is ParticipationEmitOutcome.Superseded -> stage.reasonCode
             else -> null
         }
 
@@ -2020,3 +2063,12 @@ private val ParticipationEmitOutcome.traceConsentStage: String?
 
 private val ParticipationEmitOutcome.traceWillSpeak: Boolean?
     get() = (this as? ParticipationEmitOutcome.Emitted)?.result?.willSpeak
+
+enum class NiaTurnSupersessionStage(
+    val reasonCode: String,
+) {
+    BEFORE_JUDGE("SUPERSEDED_BEFORE_JUDGE"),
+    AFTER_JUDGE("SUPERSEDED_AFTER_JUDGE"),
+    BEFORE_SPEECH_GENERATION("SUPERSEDED_BEFORE_SPEECH_GENERATION"),
+    BEFORE_SCHEDULE("SUPERSEDED_BEFORE_SCHEDULE"),
+}

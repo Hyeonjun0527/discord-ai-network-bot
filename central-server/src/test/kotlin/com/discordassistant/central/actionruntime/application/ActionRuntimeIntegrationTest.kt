@@ -193,13 +193,13 @@ class ActionRuntimeIntegrationTest {
     }
 
     @Test
-    fun `부분 전송 — 첫 버블 뒤 contextVersion 변경 시 잔여 미전송, terminal CANCELLED`() {
+    fun `전송 직전 contextVersion 변경 시 첫 버블 없이 terminal CANCELLED`() {
         val action = speak(contextVersion = 1L)
         val clock = MutableTestClock(due)
         val scheduler = InMemoryActionScheduler(clock)
         scheduler.schedule(action)
-        // poll 시점엔 버전 동일(1) → 진행. 실행 중 index>0 사전 검사에서 stale 이 되도록 reeval 버전을 2 로.
-        val reeval = ControllableReevaluation(currentVersion = 1L)
+        // poll 시점엔 버전 동일(1) → 진행. poll과 실제 실행 사이 새 메시지가 오면 첫 버블 전에도 취소한다.
+        val reeval = ControllableReevaluation(currentVersion = 1L, validOnReevaluate = false)
         val executor = RecordingDiscordExecutor()
         val audit = InMemoryActionAudit()
         val poller =
@@ -220,8 +220,8 @@ class ActionRuntimeIntegrationTest {
         reeval.currentVersion = 2L // 실행 직전 장면 변경(다른 메시지 도착).
         val outcome = execution.execute(ShadowMode.LIVE, claimed.action, plan)
 
-        assertThat(outcome).isInstanceOf(ExecutionOutcome.PartiallyCancelled::class.java)
-        assertThat(executor.sentBubbleIndexes).containsExactly(0) // 첫 버블만.
+        assertThat(outcome).isEqualTo(ExecutionOutcome.Cancelled(ActionExecutionService.REASON_CONTEXT_CHANGED_BEFORE_SEND))
+        assertThat(executor.sentBubbleIndexes).isEmpty()
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
     }
 

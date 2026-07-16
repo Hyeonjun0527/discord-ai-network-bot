@@ -332,6 +332,55 @@ class NexaParticipationEmitBridgeTest {
     }
 
     @Test
+    fun `연속 사람 메시지는 모든 원문을 저장하고 최신 장면만 judge와 발화를 수행한다`() {
+        val tracker = NiaTurnGenerationTracker()
+        val scheduler = FakeScheduler()
+        val rawStore = CapturingRawContextStore()
+        val judge =
+            SupersedingJudge(speakDecision()) {
+                (2L..5L).forEach { tracker.observe(channelId = 3L, generation = it) }
+            }
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                rawContextStore = rawStore,
+                singleJudge = judge,
+                actionRouter = ParticipationActionRouter(scheduler),
+                turnGenerations = tracker,
+            )
+        tracker.observe(channelId = 3L, generation = 1L)
+
+        val outcomes =
+            (1L..5L).map { generation ->
+                bridge.onMessage(
+                    signal(
+                        mentioned = true,
+                        triggerText = "니아야 $generation",
+                        rawText = "니아야 $generation",
+                        messageId = generation,
+                        contextVersion = generation,
+                    ),
+                )
+            }
+
+        assertThat(outcomes[0])
+            .isEqualTo(ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE))
+        assertThat(outcomes.subList(1, 4))
+            .allMatch { it == ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_JUDGE) }
+        assertThat(outcomes[4]).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(judge.calls).isEqualTo(2)
+        assertThat(scheduler.scheduled).hasSize(1)
+        assertThat(scheduler.scheduled.single().contextVersion).isEqualTo(5L)
+        assertThat(rawStore.entries.map { it.messageId }).containsExactly(1L, 2L, 3L, 4L, 5L)
+    }
+
+    @Test
     fun `judge final mode carries default whole-scene few-shot when admin set is absent`() {
         val scheduler = FakeScheduler()
         val judge = CapturingJudge(speakDecision())
@@ -1484,6 +1533,7 @@ class NexaParticipationEmitBridgeTest {
         relationshipObservation: RelationshipObservation? = null,
         memoryObservation: MemoryObservation? = null,
         recentRawMessages: List<ParticipationRawSceneMessage> = emptyList(),
+        contextVersion: Long = 1L,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
@@ -1523,8 +1573,8 @@ class NexaParticipationEmitBridgeTest {
             relationshipObservation = relationshipObservation,
             memoryObservation = memoryObservation,
             tsMs = tsMs,
-            sceneSeq = 10L,
-            contextVersion = 1L,
+            sceneSeq = messageId,
+            contextVersion = contextVersion,
             seed = 7L,
         )
 
@@ -1876,6 +1926,20 @@ class NexaParticipationEmitBridgeTest {
 
         override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
             lastRequest = request
+            return decision
+        }
+    }
+
+    private class SupersedingJudge(
+        private val decision: SingleJudgeDecision,
+        private val onFirstCall: () -> Unit,
+    ) : SingleParticipationJudgePort {
+        var calls: Int = 0
+            private set
+
+        override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
+            calls++
+            if (calls == 1) onFirstCall()
             return decision
         }
     }

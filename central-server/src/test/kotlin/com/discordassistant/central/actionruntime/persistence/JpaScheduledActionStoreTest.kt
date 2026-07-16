@@ -53,12 +53,13 @@ class JpaScheduledActionStoreTest
             executeAfter: Instant = now,
             guild: String = "g1",
             channel: String = "c1",
+            thread: String = "t1",
             user: String? = "u1",
         ) = ScheduledSocialAction.create(
             decisionId = decision,
             sampledActionIndex = index,
             type = ScheduledActionType.SPEAK,
-            target = ActionTarget(guild, channel, "t1", subjectPseudonym = user),
+            target = ActionTarget(guild, channel, thread, subjectPseudonym = user),
             executeAfter = executeAfter,
             contextVersion = 7,
             originRolloutMode = ShadowMode.CANARY,
@@ -90,6 +91,17 @@ class JpaScheduledActionStoreTest
 
             assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.SPEAK, newlyScheduled = true))
             assertThat(store.find(ActionIdentity.of("live-turn", 0))!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        }
+
+        @Test
+        fun `운영 Discord target 형식의 thread id를 저장하고 복원한다`() {
+            val productionShapedThreadId = "discord:${"g".repeat(46)}:${"1".repeat(19)}"
+            assertThat(productionShapedThreadId).hasSize(74)
+
+            val action = action(decision = "production-thread", thread = productionShapedThreadId)
+
+            assertThat(store.schedule(action)).isTrue()
+            assertThat(store.find(action.identity)!!.target.threadId).isEqualTo(productionShapedThreadId)
         }
 
         @Test

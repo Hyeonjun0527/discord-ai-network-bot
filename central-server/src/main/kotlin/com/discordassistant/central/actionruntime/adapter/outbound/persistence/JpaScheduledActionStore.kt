@@ -282,7 +282,7 @@ class ScheduledActionEntity(
     @Column(name = "action_type") var actionType: String = "",
     @Column(name = "guild_pseudonym") var guildPseudonym: String = "",
     @Column(name = "channel_id") var channelId: String = "",
-    @Column(name = "thread_id") var threadId: String = "",
+    @Column(name = "thread_id", length = ActionTarget.MAX_THREAD_ID_LENGTH) var threadId: String = "",
     @Column(name = "subject_pseudonym") var subjectPseudonym: String? = null,
     @Column(name = "execute_after") var executeAfter: Instant = Instant.EPOCH,
     @Column(name = "context_version") var contextVersion: Long = 0,

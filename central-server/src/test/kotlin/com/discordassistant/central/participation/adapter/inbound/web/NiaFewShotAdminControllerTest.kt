@@ -11,7 +11,6 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
@@ -118,9 +117,10 @@ class NiaFewShotAdminControllerTest {
 
     @Test
     fun `missing dashboard actor fails closed`() {
-        assertThatThrownBy {
-            mockMvc.perform(get("/api/admin/nia/few-shot/sets"))
-        }.hasRootCauseInstanceOf(IllegalStateException::class.java)
+        mockMvc
+            .perform(get("/api/admin/nia/few-shot/sets"))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.error.code").value("INVALID_SERVER_STATE"))
     }
 
     private fun draftBody(expectedAction: String): String =

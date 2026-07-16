@@ -72,6 +72,7 @@ class GlobalExceptionHandlerTest {
                 details = mapOf("allowedValues" to listOf("image/jpeg", "image/png"), "actualValue" to "image/heic"),
                 blockedAction = "UPDATE_PROFILE_IMAGE",
                 actionGuide = "JPEG 또는 PNG 이미지를 올려 주세요.",
+                errorCode = "PROFILE_IMAGE_MIME_NOT_ALLOWED",
             )
 
         @GetMapping("/test/server-failure")

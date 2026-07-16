@@ -595,9 +595,9 @@ class MultiResponseServiceTest
             )
 
             val started = controller.startRun(156, StartMultiResponseRunRequest(channelId = 256, requestId = "fanout-exclusion-space"))
-            val planned = candidates.findByRunId(started["id"] as Long)
+            val planned = candidates.findByRunId(started.id)
 
-            assertEquals(1, started["candidateCount"])
+            assertEquals(1, started.candidateCount)
             assertEquals(listOf(602L), planned.map { it.providerUserId })
         }
 

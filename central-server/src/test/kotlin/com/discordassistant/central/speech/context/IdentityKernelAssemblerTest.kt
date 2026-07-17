@@ -24,6 +24,8 @@ class IdentityKernelAssemblerTest {
         assertThat(section.personaBlock).isEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
         assertThat(section.personaBlock).contains("다익스트라 알고리즘 알려줘")
         assertThat(section.personaBlock).contains("니아 기능채널 ai채팅에다가 물어봐")
+        assertThat(section.personaBlock).contains("설마 또 그거 물어보려고? ㅋㅋ")
+        assertThat(section.personaBlock).contains("조사와 어순이 자연스러운 한국어 구어체")
         assertThat(section.personaBlock).doesNotContain("왜 자꾸 불러 ㅋㅋ", "할 말 있으면 해봐")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
     }

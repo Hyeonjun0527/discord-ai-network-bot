@@ -43,7 +43,7 @@ data class GenerationBudget(
     fun clampOutputTokens(requested: Int): Int = requested.coerceIn(1, maxOutputTokens)
 
     companion object {
-        /** 기본 budget(설정 미지정 길드 폴백). 한 모델 호출에서 후보 2개를 받아 critic 이 고른다. */
+        /** 기본 budget(설정 미지정 길드 폴백). 한 모델 호출에서 후보 2개를 받아 전송 제약 안에서 고른다. */
         val DEFAULT =
             GenerationBudget(
                 maxCandidates = 2,

@@ -61,7 +61,7 @@ class JpaSpeechDecisionLogTest
                     highRiskDowngraded = false,
                     consentBlocked = false,
                     generatedCandidateCount = 2,
-                    criticBlockReasons = setOf("CONVERSATIONAL_BOUNDARY", "BURST_SHAPE_MISMATCH"),
+                    criticBlockReasons = setOf("SECRET_DISCLOSURE", "BURST_SHAPE_MISMATCH"),
                     selectedContentRef = "candidate-short",
                     createdAt = Instant.parse("2026-06-30T11:01:00Z"),
                 ),
@@ -71,6 +71,6 @@ class JpaSpeechDecisionLogTest
             assertThat(found.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
             assertThat(found.selectedContentRef).isEqualTo("candidate-short")
             assertThat(found.criticBlockReasons)
-                .containsExactlyInAnyOrder("CONVERSATIONAL_BOUNDARY", "BURST_SHAPE_MISMATCH")
+                .containsExactlyInAnyOrder("SECRET_DISCLOSURE", "BURST_SHAPE_MISMATCH")
         }
     }

@@ -70,7 +70,7 @@ import java.time.ZoneOffset
  * 실제 [ParticipationActionRouter]·실제 [ShadowModelRegistry] 를 한 경로로 구동한다. 외부 GLM 호출(SpeechGenerationPort)과
  * 영속 포트만 fake 로 대체한다(실 GLM·운영 배포 금지). 검증:
  *  - **H1**: 동의 철회(ConsentPolicyPort DENIED) 시 외부 전송 0 — SPEAK 예약되지 않음.
- *  - **M1~M3**: allowlist payload 격리(생성 서비스 내부)·비밀/AI 정체성 critic·고위험 fallback 이 **전송 전** 적용돼
+ *  - **M1~M3**: allowlist payload 격리(생성 서비스 내부)·비밀 유출/전송 형식 검증·고위험 fallback 이 **전송 전** 적용돼
  *    위험 후보가 예약되지 않는다.
  *  - **H2**: 미서명/변조 LIVE 모델은 [ArtifactIntegrityException] 으로 거부되어 발화가 일어나지 않는다.
  */

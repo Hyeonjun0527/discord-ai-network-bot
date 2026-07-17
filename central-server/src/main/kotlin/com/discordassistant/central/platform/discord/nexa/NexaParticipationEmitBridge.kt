@@ -98,7 +98,7 @@ import java.time.Instant
  *     분당 빈도 게이트를 둔다. 둘 중 하나라도 거부면 emit 를 **호출하지 않는다**(GLM 토큰 0). LIVE 로 실제 전송이
  *     일어나도 이 게이트가 과발화·토큰 폭주를 hard cap 으로 막는다.
  *  4. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
- *     경로가 ConsentGate(2단계 동의)·SpeechCritic·AiIdentityDisclosureCritic·LIVE 모델 검증을 **강제**한다. 이
+ *     경로가 ConsentGate(2단계 동의)·비밀 유출/전송 형식 검증·LIVE 모델 검증을 **강제**한다. 이
  *     브리지는 emit 를 호출만 하며 **우회 경로를 만들지 않는다**.
  *  5. **fail-closed**: FINAL judge가 실제 전송을 소유한 채널의 평가/emit 실패는 흡수하고 로그를 남기며 legacy 응답으로
  *     우회하지 않는다. shadow 채널은 관찰만 하고 기존 응답 계약을 보존한다.

@@ -22,13 +22,13 @@ NEXA participation/speech/보안은 **이미 광범위하게 구현돼 있고, f
 `NexaSpeechEmitService.emit(NexaSpeechEmitRequest)` → `NexaSpeechPipelineService.run(...)` 내부:
 - `consentGate.checkAllowed(subjectPseudonym, ProcessingStage.SPEECH_GENERATION)` — 생성 직전 동의 (`NexaSpeechPipelineService.kt:68`)
 - `consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)` — 외부 LLM 요청 직전 동의 (`:89`)
-- `candidateSelector = securityCriticSelector()` — SpeechCritic·AiIdentityDisclosureCritic 후보 검열 (`NexaSpeechEmitConfig.kt:69`)
+- `candidateSelector = securityCriticSelector()` — 비밀 유출·Discord 버블 형식 검증 (`NexaSpeechEmitConfig.kt:69`)
 - emit seam 자체가 LIVE 모델 무결성 검증(selectForLiveVerified) 강제 (`NexaSpeechEmitService.kt`)
 
-→ **메시지 핸들러가 emit 만 부르면 동의·검열·모델검증이 자동으로 전부 통과된다.**
+→ **메시지 핸들러가 emit 만 부르면 동의·전송 제약·모델검증이 자동으로 전부 통과된다.**
 보안 클래스 전수: ConsentGate·PolicyBackedConsentGate·ConsentRevocationService(철회),
 Redaction cascade(MemoryRedactionCascade·CascadeMemoryRedactionService·RedactingMessageConverter),
-Critic(SpeechCritic·AiIdentityDisclosureCritic·AssistantStyleDetector·TargetAndSceneCritic).
+전송 검증(SecretDisclosureCritic·BurstShapeCritic).
 
 ## 1. 단계적 활성화 (각 단계 = 인간 게이트, AGENTS §5)
 

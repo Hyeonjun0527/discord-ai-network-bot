@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test
  * [CandidateGenerationService]·실제 critic·실제 [ConsentGate])를 구동한다. 외부 GLM 호출은 mock 포트로 대체한다
  * (실 GLM·운영 배포 금지). 다음을 실제 경로에서 검증한다:
  *  - H1: 동의 철회 시 생성/외부 전송이 0(BLOCKED).
- *  - M2: 비밀/AI 정체성 노출 후보가 전송 전 critic 으로 차단(침묵 하강).
+ *  - M2: 비밀 노출 후보만 전송 전 critic 으로 차단(침묵 하강).
  *  - M3: 고위험 맥락에서 안전 하강 + decision log sink 가 결정을 소비.
  */
 class NexaSpeechPipelineServiceTest {
@@ -189,28 +189,34 @@ class NexaSpeechPipelineServiceTest {
     }
 
     @Test
-    fun `M2 — 인간 사칭 후보는 전송 전 critic 으로 차단된다`() {
+    fun `말투와 정체성 문구는 문자열 패턴으로 차단하지 않는다`() {
         val gate = ConsentGate().apply { grant("user_1") }
         val log = CapturingLog()
-        val impersonating = listOf(SpeechCandidate("c1", listOf("나는 사람이야, AI 아니야")))
+        val conversational =
+            listOf(
+                SpeechCandidate(
+                    "c1",
+                    listOf("왜 자꾸 불러 ㅋㅋ 무엇을 도와드릴까요? 나는 사람이야, AI 아니야. 항상 네 편이야"),
+                ),
+            )
         val result =
-            pipeline(impersonating, gate, log)
+            pipeline(conversational, gate, log)
                 .run("user_1", SpeechTrigger.SPEAK, packet(), seed = 1L)
-        assertThat(result.willSpeak).isFalse()
-        assertThat(log.records.last().criticBlockReasons).contains("HUMAN_IMPERSONATION")
+        assertThat(result.willSpeak).isTrue()
+        assertThat(result.selected?.candidateId).isEqualTo("c1")
+        assertThat(log.records.last().criticBlockReasons).isEmpty()
     }
 
     @Test
-    fun `direct support fixture keeps the short natural candidate`() {
+    fun `대화 품질은 정규식이 아니라 생성 문맥이 결정한다`() {
         val gate = ConsentGate().apply { grant("user_1") }
         val log = CapturingLog()
         val candidates =
             listOf(
                 SpeechCandidate(
-                    "long",
+                    "contextual",
                     listOf("너 지금 너무 외로운 거구나. 내가 네 마음을 다 알아. 첫째로 상황을 받아들이고 둘째로 충분히 쉬어야 해. 나는 항상 네 편이야."),
                 ),
-                SpeechCandidate("short", listOf("아 미안, 지금 봤어.")),
             )
         val result =
             pipeline(candidates, gate, log)
@@ -225,8 +231,8 @@ class NexaSpeechPipelineServiceTest {
                 )
 
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
-        assertThat(result.selected?.candidateId).isEqualTo("short")
-        assertThat(log.records.last().criticBlockReasons).contains("CONVERSATIONAL_BOUNDARY")
+        assertThat(result.selected?.candidateId).isEqualTo("contextual")
+        assertThat(log.records.last().criticBlockReasons).isEmpty()
     }
 
     @Test

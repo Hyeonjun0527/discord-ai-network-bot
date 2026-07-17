@@ -131,7 +131,7 @@ class NiaRawContextPrivacyBoundaryTest {
             highRiskDowngraded = false,
             consentBlocked = false,
             generatedCandidateCount = 2,
-            criticBlockReasons = setOf("CONVERSATIONAL_BOUNDARY"),
+            criticBlockReasons = setOf("SECRET_DISCLOSURE"),
         ).toString()
 
     private fun exceptionSurface(): String = ConsentRevokedException("user_3", ProcessingStage.JUDGE_CALL).toString()

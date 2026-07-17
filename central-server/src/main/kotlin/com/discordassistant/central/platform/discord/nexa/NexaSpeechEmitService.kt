@@ -47,8 +47,8 @@ import java.time.Instant
  *     participation.application.model.ArtifactIntegrityException] 으로 차단되어 **발화가 일어나지 않는다**. 검증
  *     없는 LIVE 승격 경로는 이 seam 에 존재하지 않는다(상태(APPROVED)만으로 LIVE 불가).
  *  3. **발화 파이프라인**([NexaSpeechPipelineService], H1·M1·M2): ConsentGate(생성 직전·외부 전송 직전 2회 동의
- *     재확인 — 철회/OBSERVE_ONLY 면 BLOCKED) → allowlist payload 격리(생성 서비스 내부) → 생성 → 비밀/AI 정체성
- *     critic + 고위험 fallback(전송 전 차단) → decision log. 동의가 없으면 후보 생성·외부 전송이 0 이다.
+ *     재확인 — 철회/OBSERVE_ONLY 면 BLOCKED) → allowlist payload 격리(생성 서비스 내부) → 생성 → 비밀 유출·전송 형식
+ *     검증 + 고위험 fallback(전송 전 차단) → decision log. 동의가 없으면 후보 생성·외부 전송이 0 이다.
  *  4. **전송 예약**([ParticipationActionRouter], 전송 경계): 파이프라인이 SPEAK 로 통과한 경우에만 SPEAK 를 예약한다
  *     (실제 send 의 shadow OBSERVE_ONLY hard block 은 actionruntime executor 가 별도 책임 — 본 seam 은 우회 차단·
  *     순서 강제). 파이프라인이 차단/침묵이면 IGNORE 로 라우팅해 전송을 예약하지 않는다.

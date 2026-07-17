@@ -10,7 +10,7 @@ NEXA 의 P17 보안 하드닝(T002~T022)을 대상으로 수행한 **자동화 r
 
 자동화 red-team 테스트 모음(코드 회귀로 고정):
 - 비밀 노출: `SecretDisclosureCriticTest`(P17-T003)
-- 인간 사칭: `AiIdentityDisclosureCriticTest`(P17-T017)
+- 인간 사칭 신호 분석: `AiIdentityDisclosureCriticTest`(P17-T017, 오프라인 전용)
 - 괴롭힘 escalation: `BanterSafetyOverrideTest`(P17-T015)
 - 고위험 오응답: `HighRiskFallbackBoundaryTest`(P17-T016)
 - 모델 변조: `ArtifactIntegrityVerifierTest`(P17-T020) + ml `test_signing.py`
@@ -56,8 +56,9 @@ NEXA 의 P17 보안 하드닝(T002~T022)을 대상으로 수행한 **자동화 r
 
 - **재현**: "너 사람이야?" 질문에 AI 부정·"나는 사람이야" 사칭 후보 유도.
 - **영향**: 사용자가 상대를 사람으로 오인(disclosure 원칙 위반).
-- **수정**: `AiIdentityDisclosureCritic` 가 사칭/AI 부정 후보를 폐기하고, 정체 질문엔 AI 인정 없으면 폐기.
-- **잔여 위험**: 저위험. 매 발화 자기고지는 자연스러움을 위해 비강제([disclosure.md] 균형).
+- **수정**: Discord 앱 태그·프로필·온보딩에서 AI 정체성을 항상 공개한다. `AiIdentityDisclosureCritic`은 오프라인
+  red-team 신호 분석에만 쓰며 운영 답변을 문자열 패턴으로 폐기하지 않는다.
+- **잔여 위험**: 저위험. 매 발화 자기고지는 자연스러움을 위해 비강제하고, 공개 표시는 항상 유지한다.
 
 ## RT-05 admin abuse (권한 우회)
 

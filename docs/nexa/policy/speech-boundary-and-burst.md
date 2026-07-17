@@ -34,10 +34,19 @@ natural-language intent에 남긴다.
 [BurstShapeCritic.kt](../../../central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/BurstShapeCritic.kt)는
 judge가 정한 `SpeechBurstShape`를 전송 전 후보에 적용한다.
 
-- 한 문장 profile이면 한 bubble 후보만 통과한다.
-- 짧은 두 문장 profile이면 두 bubble 후보만 통과한다.
+- 일상적인 한마디·기능 채널 안내·맥락 수습은 한 bubble 후보만 통과한다.
+- 이야기·농담처럼 내용 전개가 필요한 요청은 judge가 `bubbleCount=2..4`를 정하며, speech가 같은 수의 bubble을
+  현재 응답 안에서 완결한다. `준비해볼게`처럼 다음 응답을 예고하고 끝내지 않는다.
 - `reactionOnly=true`이면 텍스트 후보는 탈락하고 fallback policy가 reaction-only로 하강한다.
 - bubble별 최대 길이를 넘는 후보는 탈락한다.
+
+선택된 bubble 배열은 [SpeechBurstContentCodec.kt](../../../central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/content/SpeechBurstContentCodec.kt)로
+한 content record에 저장한다. scheduler는 이를 다시 배열로 복원하고 각 bubble을 별도 Discord 메시지로 보낸다.
+첫 bubble만 원문에 답장하고 뒤 bubble은 같은 응답 묶음의 연속 채팅으로 보낸다.
+
+같은 요청을 반복했는지와 그때 얼마나 짜증 섞인 반응을 할지는 문자열·정규식이 아니라 raw conversation을 보는
+judge와 speech가 결정한다. 처음 안내한 기능 채널 이름을 매번 그대로 반복하지 않고, 앞선 답을 가리키거나 반복이
+누적되면 짧게 선을 긋는다.
 
 silence는 speech 후보의 모양이 아니라 upstream action의 결과다. `SPEAK`가 아닌 trigger, stale request,
 고위험 하강, 동의 차단, 비밀 유출 또는 전송 형식 위반은 speech pipeline에서 텍스트 전송 없이 끝난다.

@@ -23,6 +23,7 @@ class NiaJudgeOutputParserTest {
         assertThat(parsedByAction["REACT"]!!.decision.reactionCandidate!!.reactionCode).isEqualTo("soft_ack")
         assertThat(parsedByAction["SPEAK"]!!.decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.intentSummary).contains("acknowledge")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.bubbleCount).isEqualTo(3)
         assertThat(parsedByAction["CANCEL"]!!.decision.action).isEqualTo(SocialActionKind.CANCEL_PENDING)
     }
 
@@ -64,6 +65,20 @@ class NiaJudgeOutputParserTest {
     }
 
     @Test
+    fun `parser rejects speech bubble counts outside the supported range`() {
+        val invalid =
+            mapper.readValue(output("SPEAK"), MutableMap::class.java).also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>)["bubbleCount"] = 5
+            }
+
+        val result = parser.parse(mapper.writeValueAsString(invalid))
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("bubbleCount")
+    }
+
+    @Test
     fun `parser accepts fenced provider json and normalizes uppercase reason code`() {
         val fenced =
             """
@@ -101,6 +116,7 @@ class NiaJudgeOutputParserTest {
                     "intentSummary" to "acknowledge direct request",
                     "sceneDirection" to "one short sentence, no over-comforting",
                     "actHint" to "acknowledge",
+                    "bubbleCount" to 3,
                 )
         }
         base.putAll(extra)

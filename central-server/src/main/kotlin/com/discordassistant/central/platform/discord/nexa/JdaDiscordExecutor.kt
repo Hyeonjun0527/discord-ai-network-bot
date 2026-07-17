@@ -41,5 +41,5 @@ class JdaDiscordExecutor(
         speechPlanRef: String,
         bubbleIndex: Int,
         replyToMessageId: String?,
-    ): ExecutionResult = message.send(channelId, speechPlanRef, replyToMessageId)
+    ): ExecutionResult = message.send(channelId, speechPlanRef, bubbleIndex, replyToMessageId)
 }

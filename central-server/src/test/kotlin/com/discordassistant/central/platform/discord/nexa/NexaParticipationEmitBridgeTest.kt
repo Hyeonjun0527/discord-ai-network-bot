@@ -332,6 +332,37 @@ class NexaParticipationEmitBridgeTest {
     }
 
     @Test
+    fun `final judge bubble count controls speech shape and expanded output budget`() {
+        val scheduler = FakeScheduler()
+        val generationPort = CapturingGenerationPort(listOf("이야기 시작", "중간", "반전 ㅋㅋ"))
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit =
+                    emitSeam(
+                        consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                        scheduler = scheduler,
+                        generationPort = generationPort,
+                    ),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(speakDecision(bubbleCount = 3)),
+                actionRouter = ParticipationActionRouter(scheduler),
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = false, triggerText = "니아야 재밌는 이야기 해봐"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        val request = generationPort.lastRequest!!
+        assertThat(request.systemPrompt).contains("정확히 3개", "bubble_count=3")
+        assertThat(request.maxOutputTokens).isEqualTo(1024)
+        assertThat(scheduler.scheduled).hasSize(1)
+    }
+
+    @Test
     fun `연속 사람 메시지는 모든 원문을 저장하고 최신 장면만 judge와 발화를 수행한다`() {
         val tracker = NiaTurnGenerationTracker()
         val scheduler = FakeScheduler()
@@ -1813,13 +1844,18 @@ class NexaParticipationEmitBridgeTest {
         }
     }
 
-    private fun speakDecision(): SingleJudgeDecision =
+    private fun speakDecision(bubbleCount: Int = 1): SingleJudgeDecision =
         SingleJudgeDecision(
             action = SocialActionKind.SPEAK,
             confidence = 0.8,
             delay = JudgeDecisionDelay.IMMEDIATE,
             reactionCandidate = null,
-            speechIntent = JudgeSpeechIntent(intentSummary = "answer direct social request", sceneDirection = "one short reply"),
+            speechIntent =
+                JudgeSpeechIntent(
+                    intentSummary = "answer direct social request",
+                    sceneDirection = "deliver the requested content now",
+                    bubbleCount = bubbleCount,
+                ),
             toneAxes = JudgeToneAxes.NEUTRAL,
             reasonCode = JudgeReasonCode("judge.shadow"),
         )
@@ -2026,12 +2062,14 @@ class NexaParticipationEmitBridgeTest {
             SpeechGenerationResult(candidates, modelMetadata = "mock")
     }
 
-    private class CapturingGenerationPort : SpeechGenerationPort {
+    private class CapturingGenerationPort(
+        private val bubbles: List<String> = listOf("좋아"),
+    ) : SpeechGenerationPort {
         var lastRequest: SpeechGenerationRequest? = null
 
         override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
             lastRequest = request
-            return SpeechGenerationResult(listOf(SpeechCandidate("c1", listOf("좋아"))), modelMetadata = "mock")
+            return SpeechGenerationResult(listOf(SpeechCandidate("c1", bubbles)), modelMetadata = "mock")
         }
     }
 

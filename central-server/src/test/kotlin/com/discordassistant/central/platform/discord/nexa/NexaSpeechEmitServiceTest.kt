@@ -1,6 +1,7 @@
 package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
@@ -136,6 +137,19 @@ class NexaSpeechEmitServiceTest {
         }
     }
 
+    private class CapturingContentWriter : SpeechContentWriter {
+        var storedRef: String? = null
+        var storedContent: String? = null
+
+        override fun store(
+            speechPlanRef: String,
+            content: String,
+        ) {
+            storedRef = speechPlanRef
+            storedContent = content
+        }
+    }
+
     private class FakeScheduler : ActionSchedulerPort {
         val scheduled = mutableListOf<ScheduledSocialAction>()
 
@@ -240,13 +254,16 @@ class NexaSpeechEmitServiceTest {
         )
     }
 
-    private fun packet(turns: List<ConversationTurn> = listOf(ConversationTurn("user_2", "안녕"))): SpeechScenePacket =
+    private fun packet(
+        turns: List<ConversationTurn> = listOf(ConversationTurn("user_2", "안녕")),
+        fragmentCount: Int = 1,
+    ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
             target = SpeechTarget.member("user_2"),
             recentTurns = turns,
             socialAct = SpeechSocialAct.ACKNOWLEDGE,
-            burstShape = SpeechBurstShape(1, 280, false),
+            burstShape = SpeechBurstShape(fragmentCount, 280, false),
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
         )
 
@@ -279,12 +296,13 @@ class NexaSpeechEmitServiceTest {
     private fun request(
         candidatesUnused: Unit = Unit,
         liveModel: LiveModelVerification? = null,
+        scenePacket: SpeechScenePacket = packet(),
     ): NexaSpeechEmitRequest =
         NexaSpeechEmitRequest(
             provenance = provenance,
             rawDistribution = speakDistribution(),
             safetyContext = BanterSafetyContext(),
-            packet = packet(),
+            packet = scenePacket,
             consentSubjectPseudonym = subjectPseudonym,
             actionTarget = ActionTarget(guildPseudonym = "guild_x", channelId = "3", threadId = "thread_1"),
             sampledActionIndex = 0,
@@ -312,6 +330,26 @@ class NexaSpeechEmitServiceTest {
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
         assertThat(correlationRecorder.records.single())
             .isEqualTo(NexaCorrelation("corr-1", "corr-1", "corr-1#0", "policy-v1"))
+    }
+
+    @Test
+    fun `selected bubbles are persisted as a decodable multi message burst`() {
+        val scheduler = FakeScheduler()
+        val writer = CapturingContentWriter()
+        val bubbles = listOf("이야기 시작", "중간 내용", "마지막 반전 ㅋㅋ")
+        val seam =
+            seam(
+                candidates = listOf(SpeechCandidate("c1", bubbles)),
+                consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                scheduler = scheduler,
+                contentWriter = writer,
+            )
+
+        val result = seam.emit(request(scenePacket = packet(fragmentCount = 3)))
+
+        assertThat(result.willSpeak).isTrue()
+        assertThat(writer.storedRef).isEqualTo("corr-1#0")
+        assertThat(SpeechBurstContentCodec.decode(writer.storedContent!!)).containsExactlyElementsOf(bubbles)
     }
 
     @Test

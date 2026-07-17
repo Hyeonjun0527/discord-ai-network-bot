@@ -69,6 +69,9 @@ class CandidateGenerationServiceTest {
         assertThat(req.systemPrompt).contains("정확히 1개")
         assertThat(req.systemPrompt).contains("서로 다른 표현의 후보를 정확히 2개")
         assertThat(req.systemPrompt).contains("니아 기능채널 ai채팅")
+        assertThat(req.systemPrompt).contains("이미 같은 안내를 했다면 채널명과 안내 문장을 반복하지 않는다")
+        assertThat(req.systemPrompt).contains("이번 답변의 bubble 안에서 실제 내용을 바로 끝까지 들려준다")
+        assertThat(req.maxOutputTokens).isEqualTo(1024)
         assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
         // user prompt는 최소화된 장면.
         assertThat(req.userPrompt).contains("focus_thread")

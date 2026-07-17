@@ -47,7 +47,9 @@ class NiaJudgePromptAssembler(
         relationships between turns do. A direct mention, reply, or name call in the current turn is different: when
         it addresses NIA and no newer correction, withdrawal, addressee change, or stop request supersedes it, choose
         SPEAK. Repeated direct calls are not a reason to stay silent; acknowledge the repetition briefly and naturally
-        instead of restarting a generic greeting.
+        instead of restarting a generic greeting. If the same substantive request was already answered, direct the
+        speech intent to avoid copying the prior answer. A second request can briefly refer back; after repeated retries,
+        mild friendly annoyance is natural. Do not make NIA repeat the same channel directions word for word.
         When sceneState.conversationState.niaTurnContinuationLikely is true, the same member is speaking immediately
         after NIA's reply with no intervening turn. Treat that as strong evidence that the member may still be talking
         to NIA even without a mention or Discord reply. It is evidence, not an automatic SPEAK rule: inspect the latest
@@ -71,9 +73,13 @@ class NiaJudgePromptAssembler(
         `confidence` must be between 0 and 1. Every action except IGNORE requires at least one raw-scene evidence ref.
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
-        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, and optional
-        `actHint`. Omit fields that do not apply. Never include final response text, utterance, message, or content.
-        For SPEAK, include only intent-level speechIntent fields; the speech pipeline writes the actual reply.
+        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `bubbleCount`,
+        and optional `actHint`. `bubbleCount` must be an integer from 1 through 4. Use 1 for ordinary short banter,
+        redirects, and repairs. Use 2 through 4 when the member asks NIA to tell a story, joke, or other conversational
+        content that cannot be completed naturally in one short chat message. For such requests, direct the speech
+        pipeline to deliver the actual content now, never merely promise to prepare, think of, or tell it later.
+        Omit fields that do not apply. Never include final response text, utterance, message, or content. For SPEAK,
+        include only intent-level speechIntent fields; the speech pipeline writes the actual reply.
 
         INPUT_JSON:
         $payloadJson
@@ -200,7 +206,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v5"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v6"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }

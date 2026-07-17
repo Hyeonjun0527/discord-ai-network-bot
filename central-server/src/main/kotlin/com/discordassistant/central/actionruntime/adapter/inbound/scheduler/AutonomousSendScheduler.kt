@@ -3,6 +3,7 @@ package com.discordassistant.central.actionruntime.adapter.inbound.scheduler
 import com.discordassistant.central.actionruntime.adapter.outbound.multiresponse.MultiResponseBurstAdapter
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.ExecutionOutcome
+import com.discordassistant.central.actionruntime.application.port.out.SpeechContentResolver
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionDisposition
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionPoller
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
@@ -25,8 +26,7 @@ import org.springframework.stereotype.Component
  *  - **origin + current hard block**: [ActionExecutionService.execute] 는 예약 당시 rollout mode를 전송 상한으로 넘기고,
  *    [com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort] 가 실행 직전 현재 모드와 교집합을
  *    낸다. SHADOW 예약이 채널 승격만으로 실제 전송 권한을 얻을 수 없다.
- *  - **단일 버블**: 아직 멀티 버블 burst 는 만들지 않는다 — [MultiResponseBurstAdapter.fromPseudoStream] 으로 버블 1개
- *    ([com.discordassistant.central.actionruntime.domain.model.BurstPlan.single]) 계획만 세운다.
+ *  - **버블 보존**: speech가 확정한 버블 수를 저장 content에서 복원해 각각 별도 Discord 메시지로 실행한다.
  *  - **SPEAK 만**: content 가 있는 것은 SPEAK 뿐이다. REACT 는 아직 미지원이라 로그만 남기고 건너뛴다(별도 실행 경로 필요).
  *  - **graceful**: poll·개별 execute 실패는 흡수한다(runCatching + 로그) — 한 건 실패가 tick 전체나 다른 예약을 막지 않는다.
  *
@@ -38,6 +38,7 @@ class AutonomousSendScheduler(
     private val dueActionPoller: DueActionPoller,
     private val actionExecutionService: ActionExecutionService,
     private val burstAdapter: MultiResponseBurstAdapter,
+    private val contentResolver: SpeechContentResolver,
     private val shadowStatus: ShadowStatusService,
     private val canarySignals: CanarySignalCollector,
 ) {
@@ -66,8 +67,8 @@ class AutonomousSendScheduler(
                 continue
             }
             runCatching {
-                // 단일 버블 계획(참조=예약 identity — content 저장 키와 동일). 예약 당시 mode와 현재 mode가 함께 전송을 게이팅한다.
-                val plan = burstAdapter.fromPseudoStream(action.identity.value)
+                val content = contentResolver.resolve(action.identity.value)
+                val plan = burstAdapter.fromPersistedSpeech(action.identity.value, content)
                 actionExecutionService.execute(action.originRolloutMode, action, plan)
             }.onSuccess { outcome ->
                 // 실행 결과를 canary 신호로 집계한다(자동 중단 SAFETY NET 의 입력). 완료=발화, 동의 철회 mid-burst=

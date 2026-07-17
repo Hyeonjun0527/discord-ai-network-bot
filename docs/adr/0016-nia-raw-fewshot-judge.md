@@ -52,6 +52,8 @@ raw conversation window
 8. speech는 `SPEAK` 이후 문장 후보를 만들 뿐, 말할지 여부를 다시 판단하지 않는다.
 9. safety/consent는 차단·하강만 할 수 있고, NIA를 말하게 만들 수 없다.
 10. 모든 non-IGNORE 결정은 raw message refs, few-shot version, judge prompt version, reason을 남긴다.
+11. judge는 `SPEAK`와 함께 `bubbleCount=1..4`를 정한다. 일상 대화는 한 bubble, 이야기·농담처럼 전개가 필요한
+    응답은 여러 bubble로 생성하고 actionruntime이 각 bubble을 별도 Discord 메시지로 전송한다.
 
 ## 비-목표 (Non-Goals)
 

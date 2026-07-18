@@ -1,9 +1,11 @@
 package com.discordassistant.central.actionruntime.adapter.inbound.scheduler
 
 import com.discordassistant.central.actionruntime.adapter.outbound.multiresponse.MultiResponseBurstAdapter
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.BackpressureGate
 import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
+import com.discordassistant.central.actionruntime.application.port.out.SpeechContentResolver
 import com.discordassistant.central.actionruntime.application.reevaluate.StaleActionReevaluator
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionPoller
 import com.discordassistant.central.actionruntime.application.scheduler.SceneEvidenceProvider
@@ -87,7 +89,14 @@ class AutonomousSendSchedulerTest {
         // modePort 통과(예약 당시 LIVE 권한 그대로).
         val service = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
         val orchestrator =
-            AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
+            AutonomousSendScheduler(
+                poller(),
+                service,
+                burstAdapter,
+                SpeechContentResolver { "단일 메시지" },
+                mock(ShadowStatusService::class.java),
+                canarySignals,
+            )
 
         orchestrator.tick()
 
@@ -106,7 +115,14 @@ class AutonomousSendSchedulerTest {
         // 채널 현재 모드가 SHADOW_PREDICT — 예약 당시 LIVE라도 실행 직전 재확인이 더 좁힌다.
         val service = executionService(executor) { _, _ -> ShadowMode.SHADOW_PREDICT }
         val orchestrator =
-            AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
+            AutonomousSendScheduler(
+                poller(),
+                service,
+                burstAdapter,
+                SpeechContentResolver { "단일 메시지" },
+                mock(ShadowStatusService::class.java),
+                canarySignals,
+            )
 
         orchestrator.tick()
 
@@ -122,11 +138,40 @@ class AutonomousSendSchedulerTest {
         // 현재 채널은 LIVE로 승격됐지만, scheduler가 immutable shadow origin을 executor 경계에 전달해야 한다.
         val service = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
         val orchestrator =
-            AutonomousSendScheduler(poller(), service, burstAdapter, mock(ShadowStatusService::class.java), canarySignals)
+            AutonomousSendScheduler(
+                poller(),
+                service,
+                burstAdapter,
+                SpeechContentResolver { "단일 메시지" },
+                mock(ShadowStatusService::class.java),
+                canarySignals,
+            )
 
         orchestrator.tick()
 
         assertThat(executor.totalExecutorCalls).isEqualTo(0)
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+    }
+
+    @Test
+    fun `multi bubble speech is executed as one Discord message per bubble`() {
+        val action = scheduleDueSpeak()
+        val executor = RecordingDiscordExecutor()
+        val service = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
+        val stored = SpeechBurstContentCodec.encode(listOf("첫 버블", "둘째 버블", "마지막 버블"))
+        val orchestrator =
+            AutonomousSendScheduler(
+                poller(),
+                service,
+                burstAdapter,
+                SpeechContentResolver { stored },
+                mock(ShadowStatusService::class.java),
+                canarySignals,
+            )
+
+        orchestrator.tick()
+
+        assertThat(executor.sentBubbleIndexes).containsExactly(0, 1, 2)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.COMPLETED)
     }
 }

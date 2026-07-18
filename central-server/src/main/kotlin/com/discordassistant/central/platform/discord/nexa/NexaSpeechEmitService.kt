@@ -2,6 +2,7 @@ package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.RouteResult
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
@@ -47,8 +48,8 @@ import java.time.Instant
  *     participation.application.model.ArtifactIntegrityException] 으로 차단되어 **발화가 일어나지 않는다**. 검증
  *     없는 LIVE 승격 경로는 이 seam 에 존재하지 않는다(상태(APPROVED)만으로 LIVE 불가).
  *  3. **발화 파이프라인**([NexaSpeechPipelineService], H1·M1·M2): ConsentGate(생성 직전·외부 전송 직전 2회 동의
- *     재확인 — 철회/OBSERVE_ONLY 면 BLOCKED) → allowlist payload 격리(생성 서비스 내부) → 생성 → 비밀/AI 정체성
- *     critic + 고위험 fallback(전송 전 차단) → decision log. 동의가 없으면 후보 생성·외부 전송이 0 이다.
+ *     재확인 — 철회/OBSERVE_ONLY 면 BLOCKED) → allowlist payload 격리(생성 서비스 내부) → 생성 → 비밀 유출·전송 형식
+ *     검증 + 고위험 fallback(전송 전 차단) → decision log. 동의가 없으면 후보 생성·외부 전송이 0 이다.
  *  4. **전송 예약**([ParticipationActionRouter], 전송 경계): 파이프라인이 SPEAK 로 통과한 경우에만 SPEAK 를 예약한다
  *     (실제 send 의 shadow OBSERVE_ONLY hard block 은 actionruntime executor 가 별도 책임 — 본 seam 은 우회 차단·
  *     순서 강제). 파이프라인이 차단/침묵이면 IGNORE 로 라우팅해 전송을 예약하지 않는다.
@@ -212,8 +213,8 @@ class NexaSpeechEmitService(
     }
 
     /**
-     * SPEAK 가 **새로** 예약된 경우([RouteResult.Scheduled] newlyScheduled=true) 선택된 후보의 버블을 합쳐 본문으로
-     * 저장한다(참조 키 = [ActionIdentity].of(correlationId, sampledActionIndex).value — 예약 행동 identity 와 동일).
+     * SPEAK 가 **새로** 예약된 경우([RouteResult.Scheduled] newlyScheduled=true) 선택된 후보의 버블 배열을 버전
+     * codec으로 저장한다(참조 키 = [ActionIdentity].of(correlationId, sampledActionIndex).value — 예약 행동 identity 와 동일).
      * 저장 실패는 흡수한다(발화 emit·예약 경로 보호). 이미 예약된 결정 재처리(newlyScheduled=false)나 비 SPEAK 는 건너뛴다.
      */
     private fun persistSpeechContent(
@@ -223,7 +224,9 @@ class NexaSpeechEmitService(
     ) {
         val selected = pipelineResult.selected ?: return
         if (routeResult !is RouteResult.Scheduled || !routeResult.newlyScheduled) return
-        val body = selected.bubbles.joinToString("\n").takeIf { it.isNotBlank() } ?: return
+        val bubbles = selected.bubbles.map { it.trim() }.filter { it.isNotEmpty() }
+        if (bubbles.isEmpty()) return
+        val body = SpeechBurstContentCodec.encode(bubbles)
         val speechPlanRef =
             ActionIdentity.of(request.provenance.correlationId, request.sampledActionIndex).value
         runCatching { contentWriter.store(speechPlanRef, body) }

@@ -1,5 +1,6 @@
 package com.discordassistant.central.actionruntime.adapter.outbound.multiresponse
 
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.domain.model.Bubble
 import com.discordassistant.central.actionruntime.domain.model.BurstPlan
 import org.springframework.stereotype.Component
@@ -44,6 +45,16 @@ class MultiResponseBurstAdapter {
                 )
             }
         return BurstPlan(bubbles)
+    }
+
+    /** 저장된 speech content의 버블 수만큼 같은 본문 참조를 인덱스별 전송 계획으로 펼친다. */
+    fun fromPersistedSpeech(
+        speechPlanRef: String,
+        storedContent: String?,
+    ): BurstPlan {
+        val count = storedContent?.let(SpeechBurstContentCodec::decode)?.size ?: 1
+        if (count <= 1) return fromPseudoStream(speechPlanRef)
+        return fromBubbles(List(count) { speechPlanRef })
     }
 
     companion object {

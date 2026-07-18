@@ -4,7 +4,7 @@
 **어떻게 판단하고(judge)**, **어떻게 말하는지(speech)** 를 코드 기준으로 쉽게 설명한다. 다이어그램은 Mermaid 로
 그렸다.
 
-> 핵심 한 줄: **니아는 메시지마다 LLM을 두 번 부른다 — ① "말할까?"(판단) → ② "뭐라고?"(발화).**
+> 핵심 한 줄: **니아는 먼저 "말할까?"를 한 번 판단하고, `SPEAK`일 때만 "뭐라고?"를 한 번 더 생성한다.**
 > 판단은 일관성을 위해 결정론적으로, 발화는 사람처럼 매번 다르게(temperature) 돌린다.
 
 ---
@@ -16,11 +16,11 @@ flowchart TD
     U["사용자가 니아수다 채널에 메시지"] --> R["onMessageReceived 진입"]
     R --> MEM["최근 대화 버퍼에 기록 (rememberRecentMessage)"]
     MEM --> FWD["forwardToParticipation — 참여 브리지로 위임"]
-    FWD --> JUDGE{"판단 LLM (judge) — SPEAK 또는 WAIT 또는 REACT 또는 IGNORE"}
-    JUDGE -->|"SPEAK"| SPEECH["발화 LLM (speech) — 실제 문장 생성"]
+    FWD --> JUDGE{"판단 LLM (judge) — action과 bubbleCount 결정"}
+    JUDGE -->|"SPEAK, 1~4 bubbles"| SPEECH["발화 LLM (speech) — 실제 문장 배열 생성"]
     JUDGE -->|"WAIT 또는 REACT 또는 IGNORE"| QUIET["침묵하거나 가벼운 이모지 반응"]
     SPEECH --> GATE{"안전 게이트 — 분당 rate limit 과 채널 ShadowMode"}
-    GATE -->|"LIVE 이고 통과"| SEND["Discord 로 실제 전송"]
+    GATE -->|"LIVE 이고 통과"| SEND["bubble마다 별도 Discord 메시지로 전송"]
     GATE -->|"차단 또는 shadow"| NOSEND["전송 0 (관찰만)"]
     SEND --> ECHO["봇 자신의 발화가 버퍼로 되돌아옴"]
     ECHO -.-> MEM
@@ -48,12 +48,14 @@ flowchart TD
         E["원문 장면 (quoted scene) — 채널 최근 대화 전체, 가명 라벨"]
         F["프롬프트 인젝션 방어 — 따옴표 안 명령은 정책을 못 바꾼다"]
     end
-    JIN --> OUT["출력 — action, confidence, reason 하나의 JSON"]
+    JIN --> OUT["출력 — action, confidence, reason, speechIntent 하나의 JSON"]
 ```
 
 - **원문 장면**은 채널별 **암호화 raw-context 링버퍼**에서 온다(스코프당 최대 20만 자). 니아 자신의 지난 발화도
   포함되고, 실제 Discord user id 는 **가명 라벨**로만 들어간다.
 - 판단은 마지막 메시지 하나가 아니라 **장면 전체**를 읽는다.
+- `SPEAK`이면 일상 대화·기능 안내는 보통 `bubbleCount=1`, 이야기·농담처럼 전개가 필요한 응답은
+  `bubbleCount=2..4`로 정한다.
 
 ### 2-2. 발화(speech)가 보는 것
 
@@ -66,12 +68,17 @@ flowchart TD
         R2["유효 기억 (memory refs) — 관측·진술된 사실 요약"]
         RULE["반복 회피 지시 — 지난 발화 되풀이 금지, 사람처럼 변주"]
     end
-    SIN --> GEN["출력 — 서로 다른 버블 문장 후보 2개 JSON"]
-    GEN --> CRITIC["critic — 짜증·수습 누락·기능채널 안내 누락 후보 제거"]
+    SIN --> GEN["출력 — judge가 정한 1~4개 bubble을 가진 후보 2개 JSON"]
+    GEN --> CHECK["전송 검증 — 비밀 유출·버블 형식만 검사"]
+    CHECK --> PICK["후보 선택 — 모델 불확실성과 seed 기반 샘플링"]
 ```
 
 - 발화 프롬프트는 최근 turn 을 **따옴표로 격리된 장면 데이터**로 감싸서, 사용자가 쓴 문장이 시스템 지시를
   위조하지 못하게 한다(인젝션 방어).
+- 말투·맥락 수습·기능채널 안내 여부는 문자열이나 정규식으로 후보를 탈락시키지 않는다. 전체 장면을 받은 생성 모델이
+  페르소나와 few-shot에 따라 판단하며, 전송 검증은 비밀 유출과 Discord 버블 형식처럼 객관적인 제약만 다룬다.
+- 이야기·농담 요청은 `준비해볼게` 같은 예고로 끝내지 않고 현재 응답에서 실제 내용을 완결한다. 같은 요청이 반복되면
+  앞선 안내를 다시 복사하지 않고, 대화 맥락상 필요할 때 짧게 선을 긋는다.
 
 ---
 
@@ -83,12 +90,14 @@ flowchart TD
 | thinking(추론모드) | 꺼짐(disabled) | 꺼짐(disabled) |
 | temperature | **없음 → 결정론** (일관된 판단) | **0.5 → 제한된 다양성** (페르소나 이탈 억제) |
 | 후보/호출 | 행동 1개 / 호출 1회 | 문장 후보 2개 / 호출 1회 |
+| 출력 한도 | 판단 JSON에 필요한 범위 | 최대 **1,024 tokens**, bubble당 최대 **280자** |
 | 목적 | "말할까?" 한 번의 선택 | "뭐라고?" 실제 문구 생성 |
 | 실패 시 | null → 폴백 정책 | 침묵으로 안전 하강(전송 0) |
 
 > 모든 GLM 경로(판단·발화·무료질문·관리도구)는 `glm-4.5-air` 로 통일한다 — 속도 최우선·비용 (근거: ADR 0006).
 > 왜 판단은 결정론이고 발화만 temperature 인가? **판단이 오락가락하면(SPEAK↔IGNORE) 이상하다. 반대로 발화가
-> 매번 똑같으면(같은 문장 반복) 기계 같다.** 발화는 보수적 온도에서 후보 2개를 한 번에 만들고 critic 이 고른다.
+> 매번 똑같으면(같은 문장 반복) 기계 같다.** 발화는 보수적 온도에서 후보 2개를 한 번에 만들고, 객관적인 전송
+> 제약을 통과한 후보 중 하나를 고른다.
 
 ---
 
@@ -107,13 +116,15 @@ sequenceDiagram
     User->>Bot: 메시지 전송
     Bot->>Buf: 최근 대화에 기록
     Bot->>Judge: 장면 + 입력신호 전달
-    Judge-->>Bot: SPEAK / WAIT / REACT / IGNORE
+    Judge-->>Bot: action + bubbleCount 1~4
     alt 판단이 SPEAK
         Bot->>Speech: 정체성 + 맥락 + 기억 전달
-        Speech-->>Bot: 문장 후보 2개 (한 번 호출)
+        Speech-->>Bot: bubble 배열 후보 2개 (한 번 호출)
         Bot->>Gate: rate limit 과 ShadowMode 검사
         alt LIVE 이고 통과
-            Gate->>Ch: 실제 전송
+            loop 선택된 각 bubble
+                Gate->>Ch: 별도 Discord 메시지로 전송
+            end
             Ch-->>Buf: 봇 발화가 다시 맥락으로
         else 차단 또는 shadow
             Gate-->>Bot: 전송 0 (관찰만)
@@ -159,6 +170,8 @@ flowchart LR
 | regex로 "니아야"만 매칭 → "nia ya" 놓침 | judge(LLM)가 호명 의도를 이해 (표기 무관) |
 | 같은 호명에 같은 문장 반복(결정론) | 발화 temperature 로 매번 다르게 + 반복 회피 지시 |
 | few-shot 예시를 그대로 순환 | 예시는 태도만, 실제 문구는 페르소나 분포에서 샘플링 |
+| 이야기 요청에 "준비해볼게"만 답함 | 현재 응답에서 2~4개 짧은 채팅으로 실제 이야기를 완결 |
+| 반복 요청마다 같은 기능 채널 문구 복사 | raw context를 보고 앞선 답을 가리키거나 누적 반복에 짧게 선을 긋기 |
 
 ### 6-1. 아직 "기계처럼" 남아 있는 지점 (감사 결과)
 

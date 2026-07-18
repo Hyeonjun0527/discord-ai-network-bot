@@ -1,6 +1,7 @@
 package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
@@ -70,7 +71,7 @@ import java.time.ZoneOffset
  * 실제 [ParticipationActionRouter]·실제 [ShadowModelRegistry] 를 한 경로로 구동한다. 외부 GLM 호출(SpeechGenerationPort)과
  * 영속 포트만 fake 로 대체한다(실 GLM·운영 배포 금지). 검증:
  *  - **H1**: 동의 철회(ConsentPolicyPort DENIED) 시 외부 전송 0 — SPEAK 예약되지 않음.
- *  - **M1~M3**: allowlist payload 격리(생성 서비스 내부)·비밀/AI 정체성 critic·고위험 fallback 이 **전송 전** 적용돼
+ *  - **M1~M3**: allowlist payload 격리(생성 서비스 내부)·비밀 유출/전송 형식 검증·고위험 fallback 이 **전송 전** 적용돼
  *    위험 후보가 예약되지 않는다.
  *  - **H2**: 미서명/변조 LIVE 모델은 [ArtifactIntegrityException] 으로 거부되어 발화가 일어나지 않는다.
  */
@@ -133,6 +134,19 @@ class NexaSpeechEmitServiceTest {
 
         override fun record(correlation: NexaCorrelation) {
             records += correlation
+        }
+    }
+
+    private class CapturingContentWriter : SpeechContentWriter {
+        var storedRef: String? = null
+        var storedContent: String? = null
+
+        override fun store(
+            speechPlanRef: String,
+            content: String,
+        ) {
+            storedRef = speechPlanRef
+            storedContent = content
         }
     }
 
@@ -240,13 +254,16 @@ class NexaSpeechEmitServiceTest {
         )
     }
 
-    private fun packet(turns: List<ConversationTurn> = listOf(ConversationTurn("user_2", "안녕"))): SpeechScenePacket =
+    private fun packet(
+        turns: List<ConversationTurn> = listOf(ConversationTurn("user_2", "안녕")),
+        fragmentCount: Int = 1,
+    ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
             target = SpeechTarget.member("user_2"),
             recentTurns = turns,
             socialAct = SpeechSocialAct.ACKNOWLEDGE,
-            burstShape = SpeechBurstShape(1, 280, false),
+            burstShape = SpeechBurstShape(fragmentCount, 280, false),
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
         )
 
@@ -279,12 +296,13 @@ class NexaSpeechEmitServiceTest {
     private fun request(
         candidatesUnused: Unit = Unit,
         liveModel: LiveModelVerification? = null,
+        scenePacket: SpeechScenePacket = packet(),
     ): NexaSpeechEmitRequest =
         NexaSpeechEmitRequest(
             provenance = provenance,
             rawDistribution = speakDistribution(),
             safetyContext = BanterSafetyContext(),
-            packet = packet(),
+            packet = scenePacket,
             consentSubjectPseudonym = subjectPseudonym,
             actionTarget = ActionTarget(guildPseudonym = "guild_x", channelId = "3", threadId = "thread_1"),
             sampledActionIndex = 0,
@@ -312,6 +330,26 @@ class NexaSpeechEmitServiceTest {
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
         assertThat(correlationRecorder.records.single())
             .isEqualTo(NexaCorrelation("corr-1", "corr-1", "corr-1#0", "policy-v1"))
+    }
+
+    @Test
+    fun `selected bubbles are persisted as a decodable multi message burst`() {
+        val scheduler = FakeScheduler()
+        val writer = CapturingContentWriter()
+        val bubbles = listOf("이야기 시작", "중간 내용", "마지막 반전 ㅋㅋ")
+        val seam =
+            seam(
+                candidates = listOf(SpeechCandidate("c1", bubbles)),
+                consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                scheduler = scheduler,
+                contentWriter = writer,
+            )
+
+        val result = seam.emit(request(scenePacket = packet(fragmentCount = 3)))
+
+        assertThat(result.willSpeak).isTrue()
+        assertThat(writer.storedRef).isEqualTo("corr-1#0")
+        assertThat(SpeechBurstContentCodec.decode(writer.storedContent!!)).containsExactlyElementsOf(bubbles)
     }
 
     @Test

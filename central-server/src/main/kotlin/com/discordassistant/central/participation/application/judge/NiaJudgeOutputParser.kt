@@ -144,6 +144,7 @@ class NiaJudgeOutputParser(
                     intentSummary = speechIntent.requiredText("intentSummary"),
                     sceneDirection = speechIntent.requiredText("sceneDirection"),
                     actHint = speechIntent.optionalText("actHint"),
+                    bubbleCount = speechIntent.optionalInt("bubbleCount", JudgeSpeechIntent.MIN_BUBBLE_COUNT),
                 )
             }
             else -> null
@@ -210,6 +211,15 @@ class NiaJudgeOutputParser(
         return value.asLong()
     }
 
+    private fun JsonNode.optionalInt(
+        field: String,
+        default: Int,
+    ): Int {
+        val value = this[field] ?: return default
+        require(value.isIntegralNumber) { "optional int field must be an integer: $field" }
+        return value.asInt()
+    }
+
     private fun JsonNode.optionalStableCode(field: String): String? {
         val value = optionalText(field)?.lowercase(Locale.ROOT) ?: return null
         require(value.isStableCode()) { "optional stable code field is invalid: $field" }
@@ -240,7 +250,7 @@ class NiaJudgeOutputParser(
                 "riskFlags",
                 "reevaluateAfterMs",
             )
-        private val SPEECH_INTENT_FIELDS = setOf("intentSummary", "sceneDirection", "actHint")
+        private val SPEECH_INTENT_FIELDS = setOf("intentSummary", "sceneDirection", "actHint", "bubbleCount")
         private val TONE_AXIS_FIELDS = setOf("warmth", "playfulness", "directness", "emotionalIntensity")
         private val FINAL_TEXT_FIELDS = setOf("text", "message", "content", "utterance", "finalResponse", "final_response")
     }

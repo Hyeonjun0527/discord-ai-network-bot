@@ -35,7 +35,7 @@ NEXA(사람처럼 참여하는 AI 멤버) 운영 중 발생할 수 있는 보안
 
 ## 3. prompt leak (시스템 지침·정체성 커널 노출)
 
-- **봉쇄**: 누출 후보 경로 차단, `SecretDisclosureCritic`·`AiIdentityDisclosureCritic` 게이트 강화 검토.
+- **봉쇄**: 누출 후보 경로 차단, `SecretDisclosureCritic` 게이트 강화 검토.
 - **증거 보존**: 누출 트리거(injection 패턴) 보존(원문 비밀은 enum/메타만 — 누출 원문 재기록 금지).
 - **복구**: 가드레일/critic 패턴 보강, 필요 시 model rollback.
 - **통지**: 보안 책임자 내부 보고. 비밀 노출이면 §1 키 회전 병행.

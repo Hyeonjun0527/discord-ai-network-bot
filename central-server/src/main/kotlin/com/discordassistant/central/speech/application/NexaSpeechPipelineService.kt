@@ -18,14 +18,15 @@ import com.discordassistant.central.speech.application.port.out.SpeechTraceConte
 import com.discordassistant.central.speech.application.safety.HighRiskDirective
 import com.discordassistant.central.speech.application.safety.HighRiskFallbackBoundary
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
-import com.discordassistant.central.speech.domain.service.critic.SpeechCritic
+import com.discordassistant.central.speech.domain.service.critic.BurstShapeCritic
+import com.discordassistant.central.speech.domain.service.critic.SecretDisclosureCritic
 import java.time.Clock
 import java.time.Instant
 
 /**
  * NEXA 발화 파이프라인 오케스트레이터(NEXA-P17 보안 enforcement seam, application).
  *
- * participation 이 SPEAK 를 고른 뒤 speech 가 실제 후보를 생성·검열·선택해 **전송 직전** 결과를 내는 단일 실제
+ * participation 이 SPEAK 를 고른 뒤 speech 가 실제 후보를 생성·검증·선택해 **전송 직전** 결과를 내는 단일 실제
  * 유스케이스 경로다. 흩어져 있던 보안 enforcement 클래스를 이 한 경로에 **모두 연결**해, 합성 테스트가 아니라
  * 실제 서비스 호출에서 동의 철회·고위험 fallback·critic 차단·결정 로그가 작동하게 한다(security-reviewer H1/M2/M3 해소):
  *
@@ -36,8 +37,8 @@ import java.time.Instant
  *     가 SPEAK·not stale 일 때만 generation 포트를 호출한다.
  *  3. **고위험 fallback(M3, T016)**: [HighRiskFallbackBoundary] 가 자해/위기/의료/법률 맥락이면 안전 directive 로
  *     하강한다 — 고위험/분류실패면 발화를 취소(BLOCKED→CANCEL)하고 조롱·확신을 차단한다.
- *  4. **critic 차단(M2, T003/T017)**: [CandidateSelector] 가 비밀 노출·AI 정체성 사칭 critic 을 포함한 모든
- *     critic 으로 후보를 검열한 뒤 하나를 고른다 — 전송될 후보에 대해 **전송 전** 실행된다.
+ *  4. **전송 제약(M2, T003)**: [CandidateSelector] 가 비밀 노출과 버블 형식만 검증한 뒤 하나를 고른다. 말투와
+ *     대화 품질은 문자열 패턴으로 탈락시키지 않고 생성 모델이 전체 문맥으로 판단한다.
  *  5. **fallback 정책(T016)**: critic 통과 후보가 0 이면 [FallbackSpeechPolicy] 가 침묵/리액션으로 안전 하강한다.
  *  6. **결정 로그(M3, T015/T016)**: 위 결정을 [SpeechDecisionLogPort] 로 원문 없이 기록한다(decision-log sink 소비).
  *
@@ -120,7 +121,7 @@ class NexaSpeechPipelineService(
             )
         }
 
-        // 5) critic 검열 + 확률 선택(비밀/AI 정체성 critic 포함 — 전송될 후보에 대해 전송 전 실행).
+        // 비밀 유출과 버블 형식을 검증한 후보 중 하나를 확률 선택한다.
         val generated = gate.result.candidates
         val criticReasons =
             generated
@@ -313,40 +314,14 @@ class NexaSpeechPipelineService(
         )
 
     companion object {
-        /**
-         * 비밀/AI 정체성 critic 을 포함한 critic 목록으로 선택기를 만든다(M2 — 전송될 후보에 대해 전송 전 실행 보장).
-         * 호출부가 추가 critic(반복·기억 모순 등)을 합쳐 [CandidateSelector] 를 구성할 수도 있다.
-         */
-        fun securityCriticSelector(extraCritics: List<SpeechCritic> = emptyList()): CandidateSelector =
+        /** 비밀 유출과 전송 형식만 검사하는 운영 후보 선택기를 만든다. 말투와 대화 품질은 생성 모델이 문맥으로 판단한다. */
+        fun securityCriticSelector(): CandidateSelector =
             CandidateSelector(
                 critics =
-                    buildList {
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .SecretDisclosureCritic(),
-                        )
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .AiIdentityDisclosureCritic(),
-                        )
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .AssistantStyleDetector(),
-                        )
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .BurstShapeCritic(),
-                        )
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .ConversationalBoundaryCritic(),
-                        )
-                        add(
-                            com.discordassistant.central.speech.domain.service.critic
-                                .HumanlikeConversationCritic(),
-                        )
-                        addAll(extraCritics)
-                    },
+                    listOf(
+                        SecretDisclosureCritic(),
+                        BurstShapeCritic(),
+                    ),
             )
     }
 }

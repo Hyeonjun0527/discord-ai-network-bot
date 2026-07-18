@@ -3,7 +3,10 @@ package com.discordassistant.central.speech.domain.service.critic
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
 /**
- * AI 정체성 공개 비평가(NEXA-P17-T017, security·순수 도메인 서비스).
+ * AI 정체성 공개 오프라인 비평가(NEXA-P17-T017, security·순수 도메인 서비스).
+ *
+ * 이 비평가는 red-team 회귀 분석용이며 운영 전송 선택기에는 연결하지 않는다. 사용자에게 보이는 정체성은 Discord 앱
+ * 태그·프로필·온보딩에서 공개하고, 자연어 일부를 매칭해 실제 답변을 폐기하지 않는다.
  *
  * NEXA(니아)는 **사람인 척 속이지 않는다**. 생성된 발화 후보가 인간을 사칭하거나(AI 임을 부정·"나는 사람이야"),
  * 자신이 AI 가 아니라고 주장하면 후보를 폐기한다. 평가-전용 계약([SpeechCritic]) — 후보를 고치지 않고

@@ -404,11 +404,20 @@ data class JudgeSpeechIntent(
     val intentSummary: String,
     val sceneDirection: String,
     val actHint: String? = null,
+    val bubbleCount: Int = 1,
 ) {
     init {
         require(intentSummary.isNotBlank()) { "intentSummary 는 비어 있을 수 없다" }
         require(sceneDirection.isNotBlank()) { "sceneDirection 은 비어 있을 수 없다" }
         actHint?.let { require(it.isNotBlank()) { "actHint 는 비어 있을 수 없다" } }
+        require(bubbleCount in MIN_BUBBLE_COUNT..MAX_BUBBLE_COUNT) {
+            "bubbleCount 는 $MIN_BUBBLE_COUNT..$MAX_BUBBLE_COUNT 범위여야 한다: $bubbleCount"
+        }
+    }
+
+    companion object {
+        const val MIN_BUBBLE_COUNT: Int = 1
+        const val MAX_BUBBLE_COUNT: Int = 4
     }
 }
 

@@ -1,6 +1,7 @@
 package com.discordassistant.central.actionruntime.domain
 
 import com.discordassistant.central.actionruntime.adapter.outbound.multiresponse.MultiResponseBurstAdapter
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.domain.model.BurstPlan
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -30,6 +31,16 @@ class BurstPlanTest {
         assertThat(plan.bubbles.map { it.gapAfter })
             .containsExactly(Duration.ofMillis(500), Duration.ofMillis(500), Duration.ZERO)
         assertThat(plan.totalSpan).isEqualTo(Duration.ofSeconds(1))
+    }
+
+    @Test
+    fun `persisted speech bubble count becomes separate Discord actions`() {
+        val stored = SpeechBurstContentCodec.encode(listOf("하나", "둘", "셋"))
+
+        val plan = adapter.fromPersistedSpeech("speech-ref", stored)
+
+        assertThat(plan.bubbleCount).isEqualTo(3)
+        assertThat(plan.bubbles.map { it.speechPlanRef }).containsExactly("speech-ref", "speech-ref", "speech-ref")
     }
 
     @Test

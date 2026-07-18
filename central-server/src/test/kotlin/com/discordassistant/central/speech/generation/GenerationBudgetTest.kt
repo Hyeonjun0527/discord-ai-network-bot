@@ -29,4 +29,9 @@ class GenerationBudgetTest {
         assertThat(budget.clampOutputTokens(500)).isEqualTo(100)
         assertThat(budget.clampOutputTokens(50)).isEqualTo(50)
     }
+
+    @Test
+    fun `default output budget supports multi bubble conversational content`() {
+        assertThat(GenerationBudget.DEFAULT.maxOutputTokens).isEqualTo(1024)
+    }
 }

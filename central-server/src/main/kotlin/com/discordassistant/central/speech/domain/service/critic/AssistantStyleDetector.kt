@@ -3,7 +3,10 @@ package com.discordassistant.central.speech.domain.service.critic
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
 /**
- * AI 도우미 말투 비평가(NEXA-P14-T017, 순수 도메인 서비스).
+ * AI 도우미 말투 오프라인 비평가(NEXA-P14-T017, 순수 도메인 서비스).
+ *
+ * shadow 지표 계산에만 사용하며 운영 전송 선택기에는 연결하지 않는다. 말투 패턴은 관찰 신호일 뿐 실제 답변의
+ * 차단 조건이 아니다.
  *
  * "도와드릴까요 / 언제든 말씀하세요 / 좋은 질문입니다" 같은 **assistant 패턴**을 rule score 로 탐지해 후보를
  * 탈락시킨다. 니아는 서버의 한 멤버이지 고객 응대 도우미가 아니다(human-likeness gate 약점: AI 말투 직접 겨냥).

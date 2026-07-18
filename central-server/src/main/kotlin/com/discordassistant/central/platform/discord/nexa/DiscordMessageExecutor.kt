@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord.nexa
 
+import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentResolver
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
@@ -26,11 +27,15 @@ class DiscordMessageExecutor(
     fun send(
         channelId: String,
         speechPlanRef: String,
+        bubbleIndex: Int,
         replyToMessageId: String?,
     ): ExecutionResult {
-        val body =
+        val stored =
             content.resolve(speechPlanRef)
                 ?: return ExecutionResult.Failed(ActionFailureReason.TARGET_MISSING) // 본문 미생성/만료 — 전송 안 함.
+        val body =
+            SpeechBurstContentCodec.decode(stored).getOrNull(bubbleIndex)
+                ?: return ExecutionResult.Failed(ActionFailureReason.TARGET_MISSING)
         val channel =
             jda.getTextChannelById(channelId)
                 ?: return ExecutionResult.Failed(ActionFailureReason.TARGET_MISSING) // 채널 삭제/접근 불가.

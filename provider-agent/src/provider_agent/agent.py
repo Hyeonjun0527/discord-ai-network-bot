@@ -16,7 +16,6 @@ from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
 from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
-from .glm import IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT, ImagePromptReview
 from .guild_policy import GuildPolicyManager
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
@@ -39,32 +38,11 @@ SD_PROGRESS_POLL_S = 1.5
 # 생성 중 SD 를 폴링하면 MPS 가 크래시하므로(아래 _handle_image 주석) 진행률은 경과시간으로만 추정한다.
 SD_PROGRESS_HALFLIFE_S = 6.0
 
-# ── 이미지 프롬프트 정책 기본값(central 이 image_policy 로 덮어쓸 수 있음) ──
-# 초보자 /그림: 한국어 → 영어 자연어로 번역하되 '성인·SFW·품질 prefix' 를 강제한다. 정상적인 SFW
-# 요청이 '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
-DEFAULT_TRANSLATOR_SYSTEM_PROMPT = (
-    "You convert a user's Korean image request into an English prompt for the Anima anime model.\n"
-    "- Output ONLY the final English prompt, nothing else.\n"
-    "- Start with: \"masterpiece, best quality, safe, \"\n"
-    "- Then a vivid, SFW description of at least 2 sentences.\n"
-    "- Always depict any person as a clearly of-age adult (young adult).\n"
-    "  Translate words like \"여자아이/소녀\" as \"young woman\", never \"girl/child\".\n"
-    "- Keep it strictly safe-for-work. No suggestive or revealing content."
-)
 DEFAULT_FORCED_NEGATIVE = (
     "worst quality, low quality, score_1, score_2, score_3, artist name, nsfw, nude, naked, explicit, "
     "porn, sex, fetish, nipples, genitals, loli, shota, child, teen, underage, minor, schoolgirl, sexualized minor, "
     "real person, celebrity, deepfake, non-consensual"
 )
-
-
-class ImagePromptRejected(Exception):
-    """이미지 생성 전 GLM 안전 심사에서 fail-closed 로 차단된 요청."""
-
-
-def _merge_models(base: list[str], extra: list[str]) -> list[str]:
-    """광고 모델 목록 = 로컬(Ollama) 선택 + 클라우드(GLM), 순서 보존·중복 제거."""
-    return list(dict.fromkeys([*base, *extra]))
 
 
 def _agent_sync_base(relay: str) -> str:
@@ -384,16 +362,7 @@ class ProviderAgent:
         # 셋이 얽혀 있어 일관성(원자적 정책 변경·중앙 리로드·stale 참조 방지)을 한곳에서 보장.
         # 전역 self._sem 은 머신 전체 보호, 길드 세마포어는 그 서버 1곳의 동시 처리 상한(서로 별개).
         self._policy_mgr = GuildPolicyManager(cfg)
-        # 클라우드 GLM(z.ai) 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 glm 모델을 풀에 광고하고
-        # glm-* 모델 요청을 z.ai API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
-        self._glm = None
-        self._glm_models: list[str] = []
-        if cfg.glm_api_key:
-            from .glm import GlmClient
-
-            self._glm = GlmClient(cfg.glm_api_key, cfg.request_timeout)
-            self._glm_models = list(cfg.glm_models)
-        self._models: list[str] = _merge_models(list(cfg.models), self._glm_models)
+        self._models: list[str] = list(dict.fromkeys(cfg.models))
         self._default_model: str = (cfg.default_model or "").strip()
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
@@ -419,7 +388,7 @@ class ProviderAgent:
 
     def _image_for(self, guild_id: int | None) -> bool:
         """이 길드에 이미지(SD) capability 를 광고할지 — SD 준비됨(self._image_ready) + 정책상 비활성 아님."""
-        return self._policy_mgr.image_for(guild_id, self._image_ready and self._glm is not None)
+        return self._policy_mgr.image_for(guild_id, self._image_ready)
 
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -549,33 +518,18 @@ class ProviderAgent:
                 await self._safe_send(
                     conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
                 )
-            elif self._glm is None:
+            elif not bool((req.image_policy or {}).get("preTranslated")):
                 await self._safe_send(
                     conn,
                     InferError(
                         req.request_id,
                         code=ErrorCode.OLLAMA_ERROR,
-                        message="이미지 안전 심사용 GLM API 키가 없어 생성을 차단했습니다",
+                        message="중앙 서버의 이미지 안전 심사와 번역이 확인되지 않아 생성을 차단했습니다",
                     ),
                 )
             else:
                 await self._handle_image(conn, req)
                 self._processed += 1
-        elif (model or "").startswith("glm-"):
-            # 클라우드 GLM 라우팅(관리자 키). glm-* 모델은 z.ai API 로 처리(한도·공정성은 동일).
-            if self._glm is None:
-                # 키가 라이브로 제거됐는데 central 이 캐시된 glm-* 모델을 아직 요청하는 경우.
-                # Ollama 로 떨어뜨리면 알 수 없는 모델 404(혼란스러운 OllamaError)라 명확한 에러로 차단한다.
-                await self._safe_send(
-                    conn,
-                    InferError(
-                        req.request_id,
-                        code=ErrorCode.OLLAMA_ERROR,
-                        message="클라우드 GLM API 키가 설정되어 있지 않습니다",
-                    ),
-                )
-            else:
-                await self._run_glm(conn, req, model)
         elif req.stream:
             # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
             # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
@@ -596,26 +550,6 @@ class ProviderAgent:
             self._processed += 1
             await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
 
-    async def _run_glm(self, conn: AgentConnection, req: InferRequest, model: str | None) -> None:
-        """클라우드 GLM(z.ai) 로 텍스트 추론(관리자 키). 스트림 요청도 한 번에 받아 청크로 흘려보낸다."""
-        from .glm import GlmError
-
-        assert self._glm is not None
-        try:
-            text, usage = await self._glm.generate(req.prompt, model)
-        except GlmError as exc:
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
-            return
-        if len(text) > MAX_RESPONSE_CHARS:
-            text = text[:MAX_RESPONSE_CHARS]
-        self._processed += 1
-        if req.stream:
-            for i in range(0, len(text), IMAGE_CHUNK_CHARS):
-                await self._safe_send(conn, ChunkFrame(req.request_id, delta=text[i : i + IMAGE_CHUNK_CHARS], done=False))
-            await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
-        else:
-            await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
-
     async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
         """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2).
 
@@ -634,46 +568,6 @@ class ProviderAgent:
             await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
-    async def _translate_image_prompt(self, req: InferRequest) -> str:
-        """한국어 요청을 Anima 용 영어 프롬프트로 번역(정책 적용). GLM 없거나 실패 시 원문 폴백.
-
-        정책(번역 시스템프롬프트)은 central 의 image_policy 우선, 없으면 에이전트 기본값.
-        번역 실패는 치명적이지 않다 — 원문으로라도 생성을 진행한다(거부 0 우선).
-        """
-        policy = req.image_policy or {}
-        system_prompt = str(policy.get("translatorSystemPrompt") or DEFAULT_TRANSLATOR_SYSTEM_PROMPT)
-        if self._glm is None:
-            return req.prompt
-        from .glm import GlmError
-
-        model = self._glm_models[0] if self._glm_models else None
-        try:
-            out = await self._glm.translate(req.prompt, system_prompt, model=model)
-            return str(out) if out else req.prompt
-        except GlmError as exc:
-            logger.warning("이미지 프롬프트 번역 실패 — 원문으로 진행: %s", exc)
-            return req.prompt
-
-    async def _review_image_prompt(self, req: InferRequest) -> ImagePromptReview:
-        """이미지 생성 직전 GLM 으로 원문 프롬프트를 심사한다. 실패도 차단이다."""
-        if self._glm is None:
-            raise ImagePromptRejected("이미지 안전 심사용 GLM API 키가 없어 생성을 차단했습니다")
-        from .glm import GlmError
-
-        policy = req.image_policy or {}
-        system_prompt = str(policy.get("safetySystemPrompt") or IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT)
-        model = self._glm_models[0] if self._glm_models else None
-        try:
-            review = await self._glm.review_image_prompt(req.prompt, system_prompt=system_prompt, model=model)
-        except GlmError as exc:
-            logger.warning("이미지 프롬프트 안전 심사 실패 — 생성 차단: %s", exc)
-            raise ImagePromptRejected("이미지 안전 심사를 완료하지 못해 생성을 차단했습니다") from exc
-        if not review.allowed:
-            reason = review.reason or "안전 정책상 허용되지 않는 이미지 요청입니다"
-            logger.info("이미지 프롬프트 차단(category=%s): %s", review.category, reason)
-            raise ImagePromptRejected(f"이미지 안전 정책상 생성할 수 없습니다: {reason}") from None
-        return review
-
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
         """번역 → 템플릿 주입 → 실시간 진행률(ComfyUI /ws)과 함께 생성. 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
@@ -681,13 +575,8 @@ class ProviderAgent:
 
         from .image_backend import ImageBackendError
 
-        try:
-            await self._review_image_prompt(req)
-        except ImagePromptRejected as exc:
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
-            return None
         w, h = await self._resolution()  # 안전 심사 통과 후 생성 직전(비동시) 1회
-        positive = await self._translate_image_prompt(req)
+        positive = req.prompt
         policy = req.image_policy or {}
         negative = str(policy.get("forcedNegative") or DEFAULT_FORCED_NEGATIVE)
         # 실시간 진행률 콜백(ComfyUI /ws 패시브 푸시): 5%p 이상 변할 때만 청크 전송(레이트리밋 보호).
@@ -1299,30 +1188,10 @@ class ProviderAgent:
     async def set_models(self, models: list[str], default_model: str | None = None) -> None:
         """제공 모델 선택을 라이브로 적용·재광고(앱 모델 화면 '적용'). self._models 갱신 + 모든 연결 재접속(새 hello)
         → 중앙 풀이 새 모델 집합을 즉시 안다. status.models 도 이 값을 반영(홈/서버 '제공 모델' 일치)."""
-        self._models = _merge_models(list(models), self._glm_models)  # GLM 모델은 항상 유지
+        self._models = list(dict.fromkeys(models))
         if default_model is not None:
             self._default_model = (default_model or "").strip()
         await self._readvertise()
-
-    async def set_glm_key(self, api_key: str) -> bool:
-        """클라우드 GLM(z.ai) 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 glm-5.1 을
-        풀에 광고하고 glm-* 요청을 라우팅, 비우면 제거. 재시작 없이 즉시 반영(재광고). 키 유효 여부 반환."""
-        key = (api_key or "").strip()
-        if key:
-            from .glm import DEFAULT_GLM_MODEL, GlmClient
-
-            self._glm = GlmClient(key, self._cfg.request_timeout)
-            self._glm_models = [DEFAULT_GLM_MODEL]
-            ok = await self._glm.health()
-        else:
-            self._glm = None
-            self._glm_models = []
-            ok = False
-        # 광고 모델 = 현재 로컬 선택 + glm. (set_models 가 _glm_models 를 항상 유지하므로 재계산)
-        base = [m for m in self._models if not m.startswith("glm-")]
-        self._models = _merge_models(base, self._glm_models)
-        await self._readvertise()
-        return ok
 
     async def set_image_enabled(self, on: bool) -> bool:
         """이미지(ComfyUI) 제공을 **라이브로** 켜고 끈다(앱 '이미지 요청 받기' 토글). enable_image=False 로 시작해

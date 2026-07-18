@@ -38,7 +38,7 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 | `CENTRAL_DB_PASSWORD` | 필수 | Postgres 비밀번호(컨테이너와 일치) |
 | `CENTRAL_DURABLE_SECRET` | 필수 | durable 프로바이더 토큰 HMAC 키. 기존 토큰 유지를 위해 값을 회전하지 않는다. |
 | `NEXA_FIELD_ENC_KEY` | 필수 | NEXA raw context 필드 암호화 키 |
-| `ZAI_API_KEY` | 필수 | z.ai 무료질문·NEXA speech 키 |
+| `OPENAI_API_KEY` | 필수 | Luna 무료질문·NEXA 판단·발화 키 |
 | `CONNECT_DISCORD_CLIENT_SECRET` | OAuth용 | 디스코드 OAuth 앱 client secret |
 
 **현재 같은 Environment에 개별 Secret으로 보관하고 secret file로 전달하는 운영 설정:**

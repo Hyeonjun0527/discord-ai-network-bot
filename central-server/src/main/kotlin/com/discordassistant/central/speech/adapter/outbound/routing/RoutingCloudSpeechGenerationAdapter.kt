@@ -28,7 +28,7 @@ import java.util.concurrent.TimeoutException
  * timeout·retry·stale 가드는 [CloudCallBudget](T014)에서 가져온다.
  *
  * **acceptance(T002) — provider-agent GLM 경로를 호출하지 않고 requestlog/quota 연동을 유지한다**: 외부 호출은
- * 오직 [CloudLlm] 포트(central 이 z.ai 를 직접 호출하는 ADR 0006 경로 — provider-agent 우회 없음)를 거치고,
+ * 오직 [CloudLlm] 포트(central 이 OpenAI를 직접 호출하며 provider-agent를 우회)를 거치고,
  * token 사용량은 [com.discordassistant.central.speech.application.port.out.SpeechUsageRecorderPort] 로 central
  * 관측에 남긴다.
  *

@@ -35,7 +35,7 @@ curl -s localhost:8085/actuator/health   # {"status":"UP"}
 로그에 `Discord(JDA) 기동 완료` 가 보이면 봇 온라인.
 
 니아 자율 발화는 로컬 기본값이 OFF다. 켜려면 `NEXA_AUTONOMOUS_SEND_ENABLED=true`와 함께
-`NEXA_FIELD_ENC_KEY`, `ZAI_API_KEY`를 설정해야 하며, 하나라도 없으면 조용히 침묵하지 않고 서버가 즉시 부팅 실패한다.
+`NEXA_FIELD_ENC_KEY`, `OPENAI_API_KEY`를 설정해야 하며, 하나라도 없으면 조용히 침묵하지 않고 서버가 즉시 부팅 실패한다.
 compose의 Redis health가 통과해야 실행 permit도 활성화된다. 실제 Discord 전송은 이 전역 스위치와 별개로 채널 lane이
 `CANARY` 또는 `LIVE`일 때만 가능하다.
 

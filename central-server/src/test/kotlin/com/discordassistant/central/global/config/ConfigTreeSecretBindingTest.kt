@@ -23,7 +23,7 @@ class ConfigTreeSecretBindingTest {
                 "central.relay.public-url" to "wss://example.test/agent",
                 "central.durable.secret" to "durable-secret",
                 "nexa.field-enc-key" to "field-secret",
-                "central.cloud.zai-api-key" to "zai-secret",
+                "central.cloud.openai-api-key" to "openai-secret",
                 "central.connect.discord-client-id" to "oauth-client-id",
                 "central.connect.discord-client-secret" to "oauth-secret",
                 "central.oauth.enabled" to "true",

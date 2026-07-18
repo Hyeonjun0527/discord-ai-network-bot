@@ -600,29 +600,29 @@ class CommandServiceTest
         }
 
         @Test
-        fun `ask — 로컬 없이 클라우드 전용 프로바이더면 무료 클라우드(☁️)로 답한다`() {
+        fun `ask — provider가 광고한 GLM 이름도 외부 클라우드 특례 없이 로컬 모델로 취급한다`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 88, guildId = 100)
             conn.session = s
-            s.capability = s.capability.copy(models = listOf("glm-4.5-air")) // 클라우드 전용(로컬 모델 없음)
+            s.capability = s.capability.copy(models = listOf("glm-local"))
             registry.register(s)
             try {
                 val cctx = CommandContext(guildId = 100, channelId = 200, userId = 880088, roleIds = setOf(1L), isAdmin = false)
                 val r = commands.ask(cctx, "코드 설명")
                 assertTrue(r.content.startsWith("echo:"), r.content)
-                assertEquals("glm-4.5-air", conn.lastInfer!!.model) // 무료 클라우드 모델로 라우팅
+                assertEquals(null, conn.lastInfer!!.model)
             } finally {
                 registry.unregister(s)
             }
         }
 
         @Test
-        fun `ask — 빠른 응답은 고정문구 없이 빠른 AI 모델로 라우팅한다`() {
+        fun `ask — 빠른 응답은 OpenAI 비활성일 때 예전 GLM provider로 폴백하지 않는다`() {
             val conn = EchoConn()
             val guildId = 9188L
             val s = ProviderSession(conn, providerId = 9188, guildId = guildId)
             conn.session = s
-            s.capability = s.capability.copy(models = listOf("glm-4.5-air"))
+            s.capability = s.capability.copy(models = listOf("glm-local"))
             registry.register(s)
             try {
                 val cctx =
@@ -635,18 +635,15 @@ class CommandServiceTest
                     )
                 val r = commands.ask(cctx, "니아야?", fastResponse = true)
 
-                assertTrue(r.content.startsWith("echo:"), r.content)
-                assertEquals("glm-4.5-air", conn.lastInfer!!.model)
-                assertTrue(conn.lastInfer!!.prompt.contains("니아야?"))
+                assertTrue(r.content.contains("처리할 수 없습니다"), r.content)
+                assertEquals(null, conn.lastInfer)
             } finally {
                 registry.unregister(s)
             }
         }
 
         @Test
-        fun `ask — 로컬 우선 시도가 실패하면 무료 클라우드(☁️)로 폴백해 답한다`() {
-            // 로컬(비-클라우드 exaone) 프로바이더가 추론 실패(InferError) + 클라우드(glm-4.5-air) 프로바이더 공존.
-            // 모델을 exaone 으로 지정 → 1차는 exaone(실패) → 무료 클라우드 glm-4.5-air 폴백 → 성공(☁️).
+        fun `ask — 로컬 실패 뒤 OpenAI가 비활성이면 예전 GLM provider로 폴백하지 않는다`() {
             val failing = FailingConn()
             val local = ProviderSession(failing, providerId = 93, guildId = 100)
             failing.session = local
@@ -654,16 +651,14 @@ class CommandServiceTest
             val cloudConn = EchoConn()
             val cloud = ProviderSession(cloudConn, providerId = 94, guildId = 100)
             cloudConn.session = cloud
-            cloud.capability = cloud.capability.copy(models = listOf("glm-4.5-air")) // 무료 클라우드
+            cloud.capability = cloud.capability.copy(models = listOf("glm-local"))
             registry.register(local)
             registry.register(cloud)
             try {
                 val cctx = CommandContext(guildId = 100, channelId = 200, userId = 930093, roleIds = setOf(1L), isAdmin = false)
                 val r = commands.ask(cctx, "코드 설명", requestedModel = "exaone3.5:7.8b")
-                // 로컬 실패 → 같은 프롬프트로 클라우드 2차 호출. 멱등성 가드가 "동일한 요청"으로 막으면 폴백이 영구 실패한다.
-                assertFalse(r.content.contains("동일한 요청"), "멱등성 가드가 클라우드 폴백을 막으면 안 됨: ${r.content}")
-                assertTrue(r.content.startsWith("echo:"), "로컬 실패 → 무료 클라우드 폴백: ${r.content}")
-                assertEquals("glm-4.5-air", cloudConn.lastInfer!!.model)
+                assertTrue(r.content.contains("처리할 수 없습니다"), r.content)
+                assertEquals(null, cloudConn.lastInfer)
             } finally {
                 registry.unregister(local)
                 registry.unregister(cloud)
@@ -697,8 +692,7 @@ class CommandServiceTest
         }
 
         @Test
-        fun `imagine — 로컬 ComfyUI 없으면 무료 클라우드 SD(☁️), 로컬 연결되면 로컬(🖥️)`() {
-            // 클라우드 SD 전용 프로바이더(관리자 유료 API)만 있을 때 → ☁️ 로 처리.
+        fun `imagine — 이미지 provider가 있어도 OpenAI 안전 심사가 비활성이면 fail closed 한다`() {
             val cloudConn = ImageEchoConn()
             val cloud = ProviderSession(cloudConn, providerId = 60, guildId = 100)
             cloudConn.session = cloud
@@ -707,9 +701,8 @@ class CommandServiceTest
             try {
                 val cctx = CommandContext(guildId = 100, channelId = 200, userId = 600600, roleIds = setOf(1L), isAdmin = true)
                 val r1 = commands.imagine(cctx, "고양이")
-                assertTrue(r1.content.startsWith("🖼️ ☁️"), r1.content) // 클라우드만 → ☁️
-                assertTrue(r1.imagePng != null)
-                // 로컬 ComfyUI 를 따로 연결하면 그 서버는 로컬 우선 → 🖥️.
+                assertTrue(r1.content.contains("안전 심사"), r1.content)
+                assertEquals(null, r1.imagePng)
                 val localConn = ImageEchoConn()
                 val local = ProviderSession(localConn, providerId = 61, guildId = 100)
                 localConn.session = local
@@ -717,7 +710,8 @@ class CommandServiceTest
                 registry.register(local)
                 try {
                     val r2 = commands.imagine(cctx, "강아지")
-                    assertTrue(r2.content.startsWith("🖼️ 🖥️"), r2.content) // 로컬 있으면 🖥️
+                    assertTrue(r2.content.contains("안전 심사"), r2.content)
+                    assertEquals(null, r2.imagePng)
                 } finally {
                     registry.unregister(local)
                 }

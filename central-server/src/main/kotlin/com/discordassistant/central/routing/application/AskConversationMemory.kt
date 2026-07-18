@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 프라이버시: 채널+유저 단위로 격리(다른 유저·채널의 맥락이 섞이지 않음)·짧은 윈도우·TTL·인메모리(영속·로깅 없음).
  * 채널AI/NEXA 의 이력과 **분리된 /질문 전용** 스토어다 — 그쪽 동작에 영향을 주지 않는다.
  *
- * z.ai(OpenAI 호환) messages 앞에 붙일 [CloudTurn] 리스트(role user/assistant, 시간순)를 반환한다.
+ * OpenAI Responses input 앞에 붙일 [CloudTurn] 리스트(role user/assistant, 시간순)를 반환한다.
  */
 @Component
 class AskConversationMemory(
@@ -32,7 +32,7 @@ class AskConversationMemory(
 
     /**
      * 이 채널+유저의 최근 대화 히스토리(시간순). 만료됐으면 비우고 빈 리스트를 돌려준다.
-     * z.ai 호출 시 이번 질문보다 **앞에** 붙여 멀티턴 맥락("방금 뭐라고 했지?")을 제공한다.
+     * OpenAI 호출 시 이번 질문보다 **앞에** 붙여 멀티턴 맥락("방금 뭐라고 했지?")을 제공한다.
      */
     fun history(
         channelId: Long,

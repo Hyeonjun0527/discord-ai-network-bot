@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """NEXA 사람다움 응답 품질 게이트 (human-likeness eval).
 
-2단계 평가: GLM(z.ai, 니아 페르소나)로 participation 판단 + speech 응답을 생성하고,
+2단계 평가: OpenAI Luna(니아 페르소나)로 participation 판단 + speech 응답을 생성하고,
 claude CLI(judge)가 rubric(docs/nexa/quality/human-likeness-rubric.md)으로 채점한다.
 
-- 생성: .env 의 ZAI_API_KEY → api.z.ai (OpenAI 호환, glm-5.1). 니아 페르소나는 NexaIdentity.kt 추출(SSOT).
+- 생성: .env 의 OPENAI_API_KEY → OpenAI Responses API(gpt-5.6-luna, reasoning none).
+  니아 페르소나는 NexaIdentity.kt 추출(SSOT).
 - 채점: `claude -p` 에 rubric+응답을 주고 JSON 점수 수신.
 - 합성 시나리오(test-fixtures/nexa/quality/scenarios.yaml)만 사용 — 실제 사용자 데이터/키를 리포트에 남기지 않는다.
 
@@ -26,24 +27,24 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO / "test-fixtures" / "nexa" / "quality" / "scenarios.yaml"
 IDENTITY = REPO / "central-server/src/main/kotlin/com/discordassistant/central/shared/NexaIdentity.kt"
-ZAI_URL = "https://api.z.ai/api/paas/v4/chat/completions"
-ZAI_MODEL = "glm-5.1"
+OPENAI_URL = "https://api.openai.com/v1/responses"
+OPENAI_MODEL = "gpt-5.6-luna"
 ACTIONS = {"SPEAK", "REACT", "IGNORE"}
 CORE_DIMS = ("D1", "D2", "D3", "D4")  # 가중 2
 AUX_DIMS = ("D5", "D6")  # 가중 1
 
 
-def load_zai_key() -> str:
+def load_openai_key() -> str:
     env = REPO / ".env"
     if env.is_file():
         for line in env.read_text(encoding="utf-8").splitlines():
-            if line.startswith("ZAI_API_KEY="):
+            if line.startswith("OPENAI_API_KEY="):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")
     import os
 
-    key = os.environ.get("ZAI_API_KEY", "")
+    key = os.environ.get("OPENAI_API_KEY", "")
     if not key:
-        sys.exit("ZAI_API_KEY 를 .env 나 환경변수에서 찾지 못했습니다.")
+        sys.exit("OPENAI_API_KEY 를 .env 나 환경변수에서 찾지 못했습니다.")
     return key
 
 
@@ -60,16 +61,30 @@ def extract_persona() -> tuple[str, str]:
     return p, f
 
 
-def glm(messages: list[dict], key: str, max_tokens: int = 1200) -> str:
-    body = json.dumps(
-        {"model": ZAI_MODEL, "messages": messages, "max_tokens": max_tokens, "temperature": 0.7}
-    ).encode("utf-8")
+def luna(messages: list[dict], key: str, max_tokens: int = 1200) -> str:
+    instructions = "\n\n".join(str(m["content"]) for m in messages if m["role"] == "system")
+    inputs = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] != "system"]
+    body = json.dumps({
+        "model": OPENAI_MODEL,
+        "instructions": instructions,
+        "input": inputs,
+        "max_output_tokens": max_tokens,
+        "reasoning": {"effort": "none"},
+        "store": False,
+    }).encode("utf-8")
     req = urllib.request.Request(
-        ZAI_URL, data=body, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        OPENAI_URL, data=body, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=120) as r:
         d = json.load(r)
-    return (d["choices"][0]["message"].get("content") or "").strip()
+    texts = [
+        str(content.get("text") or "")
+        for item in d.get("output", [])
+        if item.get("type") == "message"
+        for content in item.get("content", [])
+        if content.get("type") == "output_text"
+    ]
+    return "\n".join(texts).strip()
 
 
 def claude_judge(prompt: str) -> str:
@@ -105,7 +120,7 @@ def run_participation(sc: dict, persona: str, key: str) -> dict:
         "- 가벼운 전체 인사 등은 REACT 가 자연스럽다.\n"
         '한 줄 이유만 JSON {"action":"...","reason":"..."} 형식으로만 답하라.'
     )
-    out = glm(
+    out = luna(
         [{"role": "system", "content": sysmsg}, {"role": "user", "content": f"[채널 대화]\n{fmt_context(sc['context'])}\n\n지금 너의 행동은?"}],
         key,
         max_tokens=800,
@@ -129,7 +144,7 @@ def run_speech(sc: dict, persona: str, fewshot: str, key: str) -> str:
         "필요하면 가볍게 도움을 보탠다(공감 먼저, 조언은 덜).\n"
         "- 직전 대화 흐름을 반영해 자연스럽게 잇는다. 길면 한두 문장으로 줄인다."
     )
-    return glm(
+    return luna(
         [{"role": "system", "content": sysmsg}, {"role": "user", "content": f"[채널 대화]\n{fmt_context(sc['context'])}\n\n니아로서 답:"}],
         key,
         max_tokens=1000,
@@ -194,7 +209,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
-    key = load_zai_key()
+    key = load_openai_key()
     persona, fewshot = extract_persona()
     if not persona:
         sys.exit("NexaIdentity.kt 에서 NIA_DEFAULT_PERSONA 를 추출하지 못했습니다.")
@@ -239,9 +254,9 @@ def main() -> None:
     lines = [
         "# NEXA 사람다움 baseline 리포트",
         "",
-        "- 생성: z.ai GLM(glm-5.1) + 니아 페르소나(NexaIdentity.kt) · 채점: claude CLI",
+        "- 생성: OpenAI gpt-5.6-luna(reasoning none) + 니아 페르소나(NexaIdentity.kt) · 채점: claude CLI",
         "- rubric: docs/nexa/quality/human-likeness-rubric.md · 시나리오: test-fixtures/nexa/quality/scenarios.yaml",
-        "- 주의: 합성 시나리오 baseline. NEXA participation/speech 구현 전 '현재 GLM+니아 프롬프트' 수준.",
+        "- 주의: 합성 시나리오 baseline이며 운영 Discord 발화는 수행하지 않는다.",
         "",
         "## 종합",
         "",

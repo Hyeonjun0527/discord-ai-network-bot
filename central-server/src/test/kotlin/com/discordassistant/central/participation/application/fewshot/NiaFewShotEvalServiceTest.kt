@@ -15,19 +15,14 @@ class NiaFewShotEvalServiceTest {
     private val service = NiaFewShotEvalService()
 
     @Test
-    fun `seed composition passes deterministic publish gate`() {
-        val result = service.evaluate(version(seedExamples()))
+    fun `small curated set can pass publish gate`() {
+        val examples = listOf(example(0, NiaFewShotAction.SPEAK))
+        val result = service.evaluate(version(examples))
 
         assertThat(result.status).isEqualTo("PASS")
         assertThat(result.readyForPublish).isTrue()
-        assertThat(result.checkedExamples).isEqualTo(40)
-        assertThat(result.actionCoverage)
-            .containsEntry("SPEAK", 10)
-            .containsEntry("WAIT", 9)
-            .containsEntry("REACT", 6)
-            .containsEntry("IGNORE", 10)
-            .containsEntry("CANCEL", 5)
-        assertThat(result.hardAmbiguousCount).isEqualTo(7)
+        assertThat(result.checkedExamples).isEqualTo(1)
+        assertThat(result.actionCoverage).containsEntry("SPEAK", 1)
         assertThat(result.failures).isEmpty()
     }
 
@@ -35,7 +30,6 @@ class NiaFewShotEvalServiceTest {
     fun `eval fails when publish gate evidence is incomplete`() {
         val invalid =
             seedExamples()
-                .dropLast(1)
                 .mapIndexed { index, example ->
                     if (index == 0) {
                         example.copy(
@@ -52,7 +46,7 @@ class NiaFewShotEvalServiceTest {
         assertThat(result.status).isEqualTo("FAIL")
         assertThat(result.readyForPublish).isFalse()
         assertThat(result.failures.map { it.code })
-            .contains("composition.total", "composition.action.CANCEL", "privacy.production_derived", "privacy.production_shaped_text")
+            .contains("privacy.production_derived", "privacy.production_shaped_text")
     }
 
     private fun seedExamples(): List<NiaFewShotExample> {

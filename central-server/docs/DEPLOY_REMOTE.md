@@ -26,7 +26,7 @@ push(central-server/**) ─▶ build (self-hosted: yeon-arm)
 | `DISCORD_BOT_TOKEN` | 필수 | 봇 토큰 |
 | `CENTRAL_DURABLE_SECRET` | 필수 | durable 토큰 HMAC 키 |
 | `NEXA_FIELD_ENC_KEY` | 필수 | NEXA raw context 필드 암호화 키 |
-| `ZAI_API_KEY` | 필수 | z.ai 키 |
+| `OPENAI_API_KEY` | 필수 | OpenAI Luna 키 |
 | `CONNECT_DISCORD_CLIENT_SECRET` | 필수 | Discord OAuth client secret |
 | `DISCORD_ENABLED`, `RELAY_PUBLIC_URL` | 필수 | 봇·relay 운영 설정 |
 | `CONNECT_DISCORD_CLIENT_ID` | 필수 | Discord OAuth client ID |

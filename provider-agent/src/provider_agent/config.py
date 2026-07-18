@@ -34,8 +34,6 @@ class AgentConfig:
     pause_on_battery: bool = True  # 배터리(방전) 중에는 자동 pause(자원 보호)
     pause_on_high_load: bool = True  # CPU 고부하 시 자동 pause(자원 보호)
     enable_image: bool = False  # 로컬 SD 이미지 생성 capability 광고(opt-in, SD Phase 1)
-    glm_api_key: str = ""  # 클라우드 GLM(z.ai) 백엔드 키(관리자 1개로 서버 전체 무료 제공). 비면 미사용. central 엔 안 올림
-    glm_models: tuple[str, ...] = ()  # 광고할 GLM 모델(키 있을 때 기본 glm-5.1)
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     comfy_broadcast: bool = False  # deprecated: ComfyUI 웹 생성물 자동 포워드는 안전 정책상 비활성.
     image_backend: str = "comfyui"  # 이미지 엔진: comfyui(로컬) | stability | runpod. 클라우드 키가 있으면 자동 선택
@@ -71,7 +69,7 @@ def _env(name: str, default: str = "") -> str:
 def _load_dotenv() -> None:
     """``.env`` 파일이 있으면 KEY=VALUE 를 os.environ 에 보강한다(이미 설정된 값은 유지).
 
-    의존성 없이 가볍게: ZAI_API_KEY 같은 키를 ``.env`` 에 넣는 흐름 지원(관리자 편의). 후보 위치는
+    의존성 없이 가볍게 환경 설정을 ``.env`` 에 넣는 흐름을 지원한다. 후보 위치는
     현재 작업 디렉터리와 provider-agent 패키지 루트(레포에서 `provider-agent/.env`). 따옴표/주석 처리.
     """
     import pathlib
@@ -146,7 +144,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     from .config_file import load_config, save_config
     from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
-    _load_dotenv()  # .env(ZAI_API_KEY 등) 보강 — 실제 환경변수/CLI 가 우선
+    _load_dotenv()  # .env 보강 — 실제 환경변수/CLI 가 우선
     parser = build_parser()
     args = parser.parse_args(argv)
     saved = load_config()  # 저장된 설정(없으면 빈 dict)
@@ -169,13 +167,6 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         parser.error(str(exc))
 
     enable_image = bool(args.enable_image) or bool(saved.get("enable_image"))
-    # 클라우드 GLM(z.ai) 백엔드(관리자 키 1개). env ZAI_API_KEY > 저장 설정. 있으면 기본 모델 광고.
-    from .glm import DEFAULT_GLM_MODEL
-
-    glm_api_key = (_env("ZAI_API_KEY") or str(saved.get("glm_api_key") or "")).strip()
-    glm_models = tuple(saved.get("glm_models") or ())
-    if glm_api_key and not glm_models:
-        glm_models = (DEFAULT_GLM_MODEL,)
     # ComfyUI 백엔드(이미지 엔진). ComfyUI 는 "프로젝트 단위 단일 인스턴스"가 아니라 각 유저가 자기
     # 로컬에서 직접 띄우는 것이므로, 주소는 오직 per-user 저장 설정(앱 UI 입력)에서만 온다. 비면 앱이
     # 관리하는 로컬 ComfyUI(localhost:8188). 환경변수(프로젝트 env)로 외부 주소를 주입하지 않는다.
@@ -240,8 +231,6 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         allow_remote_ollama=allow_remote_ollama,
         pause_on_battery=not bool(args.run_on_battery),
         enable_image=enable_image,
-        glm_api_key=glm_api_key,
-        glm_models=glm_models,
         comfy_url=comfy_url,
         comfy_broadcast=comfy_broadcast,
         image_backend=image_backend,

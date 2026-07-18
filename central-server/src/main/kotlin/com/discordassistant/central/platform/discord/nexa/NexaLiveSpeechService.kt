@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service
  * 어드민 "NEXA 테스트 — 실제 발화 모드" application 서비스(어드민 대시보드 전용, platform 어댑터 seam).
  *
  * shadow 시뮬레이터([NexaSimulator])가 만든 participation 결정을 그대로 재생하되, **SPEAK 결정에 한해**
- * 실제 발화 파이프라인([NexaSpeechPipelineService])을 호출해 **실제 GLM(z.ai)** 으로 진짜 문장을 생성한다.
+ * 실제 발화 파이프라인([NexaSpeechPipelineService])을 호출해 **Luna(OpenAI)** 로 진짜 문장을 생성한다.
  * 이전 turn 들은 [ConversationContextSelector] 로 **대화 맥락**으로 주입되고, 시나리오가 명시한 유효 기억은
  * [MemoryRef] 로 함께 주입된다 — "NEXA 가 앞 대화를 기억하고 사람처럼 답하는지" 를 눈으로 본다.
  *

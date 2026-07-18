@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
 @Component
 class CloudCompleteActionEvaluationAdapter(
     private val cloudLlm: CloudLlm,
-    @param:Value("\${central.nexa.speech.action-evaluator.model:glm-4.5-air}") private val model: String,
+    @param:Value("\${central.nexa.speech.action-evaluator.model:gpt-5.6-luna}") private val model: String,
 ) : CompleteActionEvaluationPort {
     private val log = LoggerFactory.getLogger(CloudCompleteActionEvaluationAdapter::class.java)
     private val mapper = ObjectMapper()
@@ -24,7 +24,7 @@ class CloudCompleteActionEvaluationAdapter(
         if (!cloudLlm.isEnabled()) return null
         val result =
             runCatching {
-                cloudLlm.generate(prompt(request), model, history = emptyList(), thinking = CloudThinking.ENABLED)
+                cloudLlm.generate(prompt(request), model, history = emptyList(), thinking = CloudThinking.DISABLED)
             }.getOrElse { error ->
                 log.warn("완전 행동 평가 실패(focus={}): {}", request.focusThreadKey, error::class.simpleName)
                 return failedEvaluation("EVALUATOR_REQUEST_FAILED")

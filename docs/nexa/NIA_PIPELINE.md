@@ -86,18 +86,16 @@ flowchart TD
 
 | 항목 | 판단 (judge) | 발화 (speech) |
 |---|---|---|
-| 모델 | `glm-4.5-air` | `glm-4.5-air` |
-| thinking(추론모드) | 꺼짐(disabled) | 꺼짐(disabled) |
-| temperature | **없음 → 결정론** (일관된 판단) | **0.5 → 제한된 다양성** (페르소나 이탈 억제) |
+| 모델 | `gpt-5.6-luna` | `gpt-5.6-luna` |
+| reasoning | `none` | `none` |
+| temperature | 전송하지 않음 | 전송하지 않음 |
 | 후보/호출 | 행동 1개 / 호출 1회 | 문장 후보 2개 / 호출 1회 |
 | 출력 한도 | 판단 JSON에 필요한 범위 | 최대 **1,024 tokens**, bubble당 최대 **280자** |
 | 목적 | "말할까?" 한 번의 선택 | "뭐라고?" 실제 문구 생성 |
 | 실패 시 | null → 폴백 정책 | 침묵으로 안전 하강(전송 0) |
 
-> 모든 GLM 경로(판단·발화·무료질문·관리도구)는 `glm-4.5-air` 로 통일한다 — 속도 최우선·비용 (근거: ADR 0006).
-> 왜 판단은 결정론이고 발화만 temperature 인가? **판단이 오락가락하면(SPEAK↔IGNORE) 이상하다. 반대로 발화가
-> 매번 똑같으면(같은 문장 반복) 기계 같다.** 발화는 보수적 온도에서 후보 2개를 한 번에 만들고, 객관적인 전송
-> 제약을 통과한 후보 중 하나를 고른다.
+> 판단·발화·무료질문·관리도구는 OpenAI `gpt-5.6-luna`, reasoning `none`으로 통일한다(근거: ADR 0006).
+> 발화 다양성은 temperature가 아니라 최근 장면, 관리형 few-shot, 후보 생성과 평가에서 만든다.
 
 ---
 
@@ -218,7 +216,7 @@ flowchart LR
 | 판단 컨텍스트 윈도(가명 장면) | `central-server/.../participation/application/context/JudgeContextWindow.kt` |
 | 발화 프롬프트 조립 | `central-server/.../speech/application/generation/CandidateGenerationService.kt` |
 | 발화 GLM 호출(temperature) | `central-server/.../speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` |
-| GLM 클라이언트(z.ai) | `central-server/.../routing/application/CloudLlm.kt` |
+| OpenAI Responses 클라이언트 | `central-server/.../routing/application/CloudLlm.kt` |
 | 니아 정체성·few-shot SSOT | `central-server/.../shared/NexaIdentity.kt` |
 | ShadowMode 단계 | `central-server/.../participation/domain/model/shadow/ShadowMode.kt` |
 | 모델·파라미터 결정(ADR) | `docs/adr/0006-central-cloud-llm-backend.md` |

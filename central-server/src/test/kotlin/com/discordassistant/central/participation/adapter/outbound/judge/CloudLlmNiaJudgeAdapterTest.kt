@@ -17,17 +17,17 @@ class CloudLlmNiaJudgeAdapterTest {
     @Test
     fun `deterministic cloud completion maps provider-neutral judge response`() {
         val cloudLlm = RecordingCloudLlm()
-        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "glm-4.5-air")
+        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "gpt-5.6-luna")
         val request = request()
 
         val response = adapter.complete(request)
 
         assertThat(cloudLlm.prompt).isEqualTo(request.prompt)
-        assertThat(cloudLlm.model).isEqualTo("glm-4.5-air")
+        assertThat(cloudLlm.model).isEqualTo("gpt-5.6-luna")
         assertThat(cloudLlm.history).isEmpty()
         assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.DISABLED)
         assertThat(response.content).isEqualTo(JUDGE_JSON)
-        assertThat(response.modelVersion).isEqualTo("glm-4.5-air")
+        assertThat(response.modelVersion).isEqualTo("gpt-5.6-luna")
         assertThat(response.finishReason).isEqualTo(CloudLlmNiaJudgeAdapter.FINISH_REASON_COMPLETED)
         assertThat(response.promptTokens).isEqualTo(17)
         assertThat(response.completionTokens).isEqualTo(9)
@@ -45,13 +45,13 @@ class CloudLlmNiaJudgeAdapterTest {
     }
 
     @Test
-    fun `모호한 장면 metadata는 제한적 내부 숙고를 활성화한다`() {
+    fun `모호한 장면 metadata가 있어도 reasoning은 none으로 유지한다`() {
         val cloudLlm = RecordingCloudLlm()
-        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "glm-4.5-air")
+        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "gpt-5.6-luna")
 
         adapter.complete(request().copy(metadata = mapOf("reasoning_mode" to "deliberate")))
 
-        assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.ENABLED)
+        assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.DISABLED)
     }
 
     @Test

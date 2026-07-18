@@ -6,7 +6,7 @@ capability 를 광고한다(클라우드 GLM 텍스트 백엔드와 같은 '관�
 
 Stability 가 직접 튜닝한 모델/파이프라인이라 기본값만으로 평균 품질이 안정적이다(초기 MVP·상업용
 일반 이미지에 유리). 키는 provider PC 에만 저장하고 central 엔 절대 올리지 않는다.
-프롬프트 안전 심사·SFW 변환은 이 파일이 아니라 클라우드 GLM(z.ai) 텍스트 백엔드가 수행한다.
+프롬프트 안전 심사·SFW 변환은 중앙 서버의 OpenAI 텍스트 백엔드가 수행한다.
 """
 from __future__ import annotations
 

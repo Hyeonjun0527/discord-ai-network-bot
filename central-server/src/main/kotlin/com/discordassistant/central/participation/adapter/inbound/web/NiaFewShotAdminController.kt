@@ -229,6 +229,7 @@ data class NiaFewShotExampleDto(
     val title: String,
     val rawMessages: List<NiaFewShotRawMessageDto>,
     val expectedAction: String,
+    val expectedReplies: List<String> = emptyList(),
     val reason: String,
     val evidenceRefs: Set<String>,
     val badAlternative: NiaFewShotBadAlternativeDto,
@@ -243,6 +244,7 @@ data class NiaFewShotExampleDto(
             title = title,
             rawMessages = rawMessages.map { it.toDomain() },
             expectedAction = NiaFewShotAction.valueOf(expectedAction.trim().uppercase()),
+            expectedReplies = expectedReplies,
             reason = reason,
             evidenceRefs = evidenceRefs,
             badAlternative = badAlternative.toDomain(),
@@ -408,6 +410,7 @@ private fun NiaFewShotExample.toDto(redactRawText: Boolean): NiaFewShotExampleDt
         title = title,
         rawMessages = rawMessages.map { it.toDto(redactRawText) },
         expectedAction = expectedAction.name,
+        expectedReplies = expectedReplies,
         reason = reason,
         evidenceRefs = evidenceRefs,
         badAlternative =

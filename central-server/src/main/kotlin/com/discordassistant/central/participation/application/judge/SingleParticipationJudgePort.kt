@@ -60,6 +60,7 @@ data class JudgeFewShotExamplePayload(
     val title: String,
     val rawMessages: List<JudgeFewShotRawMessagePayload>,
     val expectedAction: NiaFewShotAction,
+    val expectedReplies: List<String> = emptyList(),
     val reason: String,
     val evidenceRefs: Set<String>,
     val badAlternative: JudgeFewShotBadAlternativePayload,
@@ -75,6 +76,7 @@ data class JudgeFewShotExamplePayload(
         require(rawMessages.size <= MAX_RAW_MESSAGES) { "few-shot rawMessages 가 너무 많다" }
         require(reason.isNotBlank()) { "few-shot reason 은 비어 있을 수 없다" }
         require(reason.length <= MAX_REASON_CHARS) { "few-shot reason 이 너무 길다" }
+        require(expectedReplies.size <= MAX_EXPECTED_REPLIES) { "few-shot expectedReplies 가 너무 많다" }
         require(badAlternative.action != expectedAction) { "few-shot badAlternative 는 expectedAction 과 달라야 한다" }
         require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
         evidenceRefs.forEach { require(it.isStableRef()) { "few-shot evidence ref 는 안정 ref 여야 한다: $it" } }
@@ -90,6 +92,7 @@ data class JudgeFewShotExamplePayload(
         const val MAX_TITLE_CHARS: Int = 160
         const val MAX_REASON_CHARS: Int = 1_000
         const val MAX_RAW_MESSAGES: Int = 32
+        const val MAX_EXPECTED_REPLIES: Int = 4
     }
 }
 

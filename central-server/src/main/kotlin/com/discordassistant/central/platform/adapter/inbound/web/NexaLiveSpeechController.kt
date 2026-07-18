@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 어드민 "NEXA 테스트 — 실제 발화 모드" API — participation 결정에 더해 **SPEAK 결정마다 실제 GLM(z.ai)** 으로
+ * 어드민 "NEXA 테스트 — 실제 발화 모드" API — participation 결정에 더해 **SPEAK 결정마다 Luna(OpenAI)** 로
  * 진짜 문장을 생성한다(이전 turn 을 대화 맥락으로 + 유효 기억 주입). **실제 Discord 전송은 0**(생성까지만).
  *
  * **인증**: 경로(`/api/ai-network/nexa` 하위)는 [com.discordassistant.central.global.security

@@ -565,30 +565,30 @@ class RequestOrchestratorTest {
     )
 
     @Test
-    fun `정상 + glm + 키 있음 → cloudLlm 직결(sendInfer 미사용, providerId null)`() {
+    fun `정상 + Luna + 키 있음 → cloudLlm 직결(sendInfer 미사용, providerId null)`() {
         val reg = newRegistry()
         val session = register(reg, 1, "ok") // 풀에 provider 가 있어도 클라우드 직결이 우선
         val cloud = FakeCloudLlm(enabled = true)
-        val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "glm-5.1"))
+        val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "gpt-5.6-luna"))
 
         assertEquals(RequestState.COMPLETED, r.state, r.failReason)
         assertEquals("클라우드 답변", r.text)
         assertNull(r.providerId) // 풀 프로바이더가 아니라 central 직결
         assertEquals(1, cloud.generateCalls)
-        assertEquals("glm-5.1", cloud.lastModel)
+        assertEquals("gpt-5.6-luna", cloud.lastModel)
         // sendInfer 경로(에이전트)는 타지 않았다 — 세션에 추론 요청이 전달되지 않음.
         assertNull((session.connection as EchoConnection).lastInfer)
     }
 
     @Test
-    fun `glm 직결 — 멀티턴 history 와 thinking 이 cloudLlm 으로 전달된다`() {
+    fun `Luna 직결 — 멀티턴 history 와 thinking 힌트가 cloudLlm 으로 전달된다`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
         val cloud = FakeCloudLlm(enabled = true)
         val history = listOf(CloudTurn("user", "안녕"), CloudTurn("assistant", "안녕! 반가워"))
         val r =
             orchestratorWithCloud(reg, cloud).handle(
-                input.copy(preferredModel = "glm-5.1", prompt = "방금 뭐라고 했지?"),
+                input.copy(preferredModel = "gpt-5.6-luna", prompt = "방금 뭐라고 했지?"),
                 history = history,
                 thinking = CloudThinking.ENABLED,
             )
@@ -600,7 +600,7 @@ class RequestOrchestratorTest {
     }
 
     @Test
-    fun `정상 + glm + 키 없음 → 기존 에이전트 경로(sendInfer) 폴백`() {
+    fun `비 OpenAI 모델은 키가 없어도 기존 에이전트 경로로 처리한다`() {
         val reg = newRegistry()
         val session = register(reg, 1, "ok", models = listOf("glm-5.1"))
         val cloud = FakeCloudLlm(enabled = false)
@@ -613,7 +613,7 @@ class RequestOrchestratorTest {
     }
 
     @Test
-    fun `비-glm 모델 → 클라우드 미사용, 항상 sendInfer 경로(변경 없음)`() {
+    fun `비 OpenAI 모델은 클라우드 미사용, 항상 sendInfer 경로를 쓴다`() {
         val reg = newRegistry()
         val session = register(reg, 1, "ok", models = listOf("llama3.1:8b"))
         val cloud = FakeCloudLlm(enabled = true) // 키 있어도
@@ -626,7 +626,7 @@ class RequestOrchestratorTest {
     }
 
     @Test
-    fun `차단 사용자 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+    fun `차단 사용자 + Luna + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
         val cloud = FakeCloudLlm(enabled = true)
@@ -637,14 +637,14 @@ class RequestOrchestratorTest {
                     userId: Long,
                 ) = userId == 5L
             }
-        val r = orchestratorWithCloud(reg, cloud, blocklist = blocking).handle(input.copy(preferredModel = "glm-5.1"))
+        val r = orchestratorWithCloud(reg, cloud, blocklist = blocking).handle(input.copy(preferredModel = "gpt-5.6-luna"))
 
         assertEquals(RequestState.REJECTED, r.state)
         assertEquals(0, cloud.generateCalls)
     }
 
     @Test
-    fun `일일한도 초과 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+    fun `일일한도 초과 + Luna + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
         val cloud = FakeCloudLlm(enabled = true)
@@ -656,20 +656,20 @@ class RequestOrchestratorTest {
                     roleIds: Set<Long>,
                 ) = true
             }
-        val r = orchestratorWithCloud(reg, cloud, quota = overQuota).handle(input.copy(preferredModel = "glm-5.1"))
+        val r = orchestratorWithCloud(reg, cloud, quota = overQuota).handle(input.copy(preferredModel = "gpt-5.6-luna"))
 
         assertEquals(RequestState.REJECTED, r.state)
         assertEquals(0, cloud.generateCalls)
     }
 
     @Test
-    fun `금지 채널 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+    fun `금지 채널 + Luna + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
         val cloud = FakeCloudLlm(enabled = true)
         fakePolicy.channelAllowed = false
         try {
-            val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "glm-5.1"))
+            val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "gpt-5.6-luna"))
             assertEquals(RequestState.REJECTED, r.state)
             assertEquals(0, cloud.generateCalls)
         } finally {
@@ -707,7 +707,7 @@ class RequestOrchestratorTest {
                     systemPrompt: String,
                 ) = throw CloudLlmException("미사용")
             }
-        val r = orchestratorWithCloud(reg, failing).handle(input.copy(preferredModel = "glm-5.1"))
+        val r = orchestratorWithCloud(reg, failing).handle(input.copy(preferredModel = "gpt-5.6-luna"))
 
         assertEquals(RequestState.FAILED, r.state)
         assertEquals("클라우드 AI 일시 오류", r.failReason)

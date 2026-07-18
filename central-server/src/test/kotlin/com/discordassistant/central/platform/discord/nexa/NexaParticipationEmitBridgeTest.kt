@@ -4,6 +4,7 @@ import com.discordassistant.central.actionruntime.application.ParticipationActio
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
+import com.discordassistant.central.actionruntime.application.port.out.WaitReevaluationCommand
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
@@ -11,6 +12,8 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledActionTy
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.conversation.application.port.out.ConsentPolicyPort
 import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
+import com.discordassistant.central.conversation.application.scene.ConversationObservation
+import com.discordassistant.central.conversation.application.scene.InMemoryConversationSceneIngress
 import com.discordassistant.central.conversation.domain.model.ConsentDecision
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextAppendResult
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextBulkRedactionResult
@@ -34,7 +37,12 @@ import com.discordassistant.central.participation.application.feature.Relationsh
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotEvalService
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.judge.JudgeBeliefDelta
+import com.discordassistant.central.participation.application.judge.JudgeCommitmentStatus
+import com.discordassistant.central.participation.application.judge.JudgeCommitmentUpdate
+import com.discordassistant.central.participation.application.judge.JudgeCommonGroundUpdate
 import com.discordassistant.central.participation.application.judge.JudgeDecisionDelay
+import com.discordassistant.central.participation.application.judge.JudgeIntentHypothesisUpdate
 import com.discordassistant.central.participation.application.judge.JudgeReactionCandidate
 import com.discordassistant.central.participation.application.judge.JudgeReasonCode
 import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
@@ -79,6 +87,21 @@ import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.model.shadow.ShadowModeAudit
 import com.discordassistant.central.quota.application.InMemoryRateLimitStore
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
+import com.discordassistant.central.socialmemory.application.port.out.PendingIntentStore
+import com.discordassistant.central.socialmemory.domain.model.MemoryStatus
+import com.discordassistant.central.socialmemory.domain.model.intent.PendingIntent
+import com.discordassistant.central.socialpolicy.application.port.out.InteractionOutcomePort
+import com.discordassistant.central.socialpolicy.application.port.out.SceneBeliefStatePort
+import com.discordassistant.central.socialpolicy.application.port.out.SceneObservation
+import com.discordassistant.central.socialpolicy.domain.model.CommonGroundBelief
+import com.discordassistant.central.socialpolicy.domain.model.IntentHypothesisBelief
+import com.discordassistant.central.socialpolicy.domain.model.ObservedInteractionOutcome
+import com.discordassistant.central.socialpolicy.domain.model.ObservedOutcomeCode
+import com.discordassistant.central.socialpolicy.domain.model.RecentInteractionOutcomeBelief
+import com.discordassistant.central.socialpolicy.domain.model.RecentNiaActionBelief
+import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefDelta
+import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefState
+import com.discordassistant.central.socialpolicy.domain.model.UnresolvedInteraction
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -93,6 +116,7 @@ import com.discordassistant.central.speech.application.prompt.BurstPromptCompile
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
+import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Clock
@@ -160,7 +184,7 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
         assertThat(scheduler.scheduled.single().originRolloutMode).isEqualTo(ShadowMode.SHADOW_PREDICT)
         val scheduledTarget = scheduler.scheduled.single().target
-        assertThat(scheduledTarget.replyToMessageId).isEqualTo("10")
+        assertThat(scheduledTarget.targetMessageId).isEqualTo("10")
     }
 
     @Test
@@ -226,7 +250,8 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.NotSpeaking::class.java)
         assertThat(scheduler.scheduled).isEmpty()
-        assertThat(decisionLog.records.single().correlationId).isEqualTo("participation:3:10")
+        val channelRef = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = 1L, snowflake = 3L)
+        assertThat(decisionLog.records.single().correlationId).isEqualTo("participation:$channelRef:1")
         assertThat(decisionLog.records.single().actionKind).isEqualTo(SocialActionKind.IGNORE)
         assertThat(decisionLog.records.single().finalDecisionSource).isEqualTo("JUDGE_OFF_POLICY_ARGMAX")
         assertThat(
@@ -621,7 +646,7 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(waitOutcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.WAIT))
         assertThat(waitCounting.calls).isZero()
-        assertThat(waitScheduler.scheduled).isEmpty()
+        assertThat(waitScheduler.scheduled.single().type).isEqualTo(ScheduledActionType.WAIT)
 
         val reactScheduler = FakeScheduler()
         val reactCounting = countingEmitSeam(reactScheduler)
@@ -643,6 +668,108 @@ class NexaParticipationEmitBridgeTest {
         assertThat(reactOutcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.REACT))
         assertThat(reactCounting.calls).isZero()
         assertThat(reactScheduler.scheduled.single().type).isEqualTo(ScheduledActionType.REACT)
+    }
+
+    @Test
+    fun `프로세스 캐시가 비어도 WAIT outbox 라우팅 정보로 장면을 복구해 재판단한다`() {
+        val guildId = 1L
+        val channelId = 3L
+        val userId = 2L
+        val guildRef = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId, guildId)
+        val channelRef = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId, channelId)
+        val focus = "discord:$guildRef:channel:$channelRef"
+        val conversationIngress = InMemoryConversationSceneIngress()
+        val conversation =
+            conversationIngress.observe(
+                ConversationObservation(guildId, channelId, "message:10", clock.instant()),
+            )
+        val scene = FakeSceneBeliefStatePort(clock.instant())
+        scene.observe(
+            SceneObservation(
+                guildRef,
+                channelRef,
+                focus,
+                conversation.sceneSeq,
+                conversation.contextVersion,
+                "message:10",
+                clock.instant(),
+            ),
+        )
+        val judge = CapturingJudge(ignoreDecision())
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+                actionRouter = ParticipationActionRouter(scheduler),
+                conversationSceneIngress = conversationIngress,
+                sceneBeliefState = scene,
+                clock = clock,
+            )
+        val command =
+            WaitReevaluationCommand(
+                childDecisionId = "wait-child-1",
+                waitActionIdentity = "wait-parent#0",
+                guildPseudonym = guildRef,
+                channelId = channelRef,
+                threadId = focus,
+                subjectPseudonym = "subject-ref",
+                targetMessageId = "10",
+                routingGuildId = guildId.toString(),
+                routingChannelId = channelId.toString(),
+                routingUserId = userId.toString(),
+                observedContextVersion = conversation.contextVersion,
+                wakeAttempt = 1,
+                wakeUpHint = "burst_finalize",
+                expiresAt = clock.instant().plusSeconds(30),
+            )
+
+        assertThat(bridge.onWaitReevaluation(command)).isTrue()
+        assertThat(judge.lastRequest).isNotNull
+        assertThat(judge.lastRequest!!.sceneSnapshot.pendingActionIds).contains("wait-parent#0")
+    }
+
+    @Test
+    fun `만료 전 WAIT 장면 복원 실패는 완료 처리하지 않고 재시도한다`() {
+        val scheduler = FakeScheduler()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(ignoreDecision()),
+                actionRouter = ParticipationActionRouter(scheduler),
+                clock = clock,
+            )
+        val command =
+            WaitReevaluationCommand(
+                childDecisionId = "wait-child-retry",
+                waitActionIdentity = "wait-parent#0",
+                guildPseudonym = "guild-ref",
+                channelId = "channel-ref",
+                threadId = "missing-scene",
+                subjectPseudonym = "subject-ref",
+                targetMessageId = "10",
+                routingGuildId = "1",
+                routingChannelId = "3",
+                routingUserId = "2",
+                observedContextVersion = 1,
+                wakeAttempt = 1,
+                wakeUpHint = "burst_finalize",
+                expiresAt = clock.instant().plusSeconds(30),
+            )
+
+        assertThat(bridge.onWaitReevaluation(command)).isFalse()
     }
 
     @Test
@@ -746,7 +873,7 @@ class NexaParticipationEmitBridgeTest {
         val request = generationPort.lastRequest!!
         assertThat(request.socialAct).isEqualTo(SpeechSocialAct.ASK)
         assertThat(request.systemPrompt).contains("social_act=ask")
-        assertThat(request.systemPrompt).contains("다시 뒤집지 않는다")
+        assertThat(request.systemPrompt).contains("SPEAK는 잠정 판단")
         assertThat(request.systemPrompt).contains("정확히 2개")
         assertThat(request.systemPrompt).contains("응 여기 있어 ㅋㅋ 무슨 일인데")
         assertThat(request.userPrompt).contains("[judge 원문 장면")
@@ -951,7 +1078,7 @@ class NexaParticipationEmitBridgeTest {
     }
 
     @Test
-    fun `채널 한도 초과면 emit 을 호출하지 않고 RateLimited 를 돌려준다(토큰 0)`() {
+    fun `채널 실행 한도는 예약을 막지 않고 실제 실행 경계로 전달된다`() {
         val scheduler = FakeScheduler()
         val emit = countingEmitSeam(scheduler)
         val bridge =
@@ -967,15 +1094,17 @@ class NexaParticipationEmitBridgeTest {
             )
 
         val first = bridge.onMessage(signal(mentioned = true))
-        val second = bridge.onMessage(signal(mentioned = true))
+        val second = bridge.onMessage(signal(mentioned = true, messageId = 11L, sceneSeq = 11L))
 
         assertThat(first).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
-        assertThat(second).isInstanceOf(ParticipationEmitOutcome.RateLimited::class.java)
-        assertThat(emit.calls).isEqualTo(1) // 한도 초과분은 emit 미호출 — GLM 토큰 0
+        assertThat(second).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(2)
+        assertThat(scheduler.scheduled.filter { it.type == ScheduledActionType.SPEAK }).hasSize(2)
+        assertThat(scheduler.scheduled.last().executionPerChannelLimit).isEqualTo(1)
     }
 
     @Test
-    fun `전역 한도 초과면 다른 채널이라도 emit 을 호출하지 않는다(토큰 0)`() {
+    fun `전역 실행 한도는 다른 채널 후보에도 실제 실행 경계 값으로 전달된다`() {
         val scheduler = FakeScheduler()
         val emit = countingEmitSeam(scheduler)
         val bridge =
@@ -994,8 +1123,10 @@ class NexaParticipationEmitBridgeTest {
         val second = bridge.onMessage(signal(mentioned = true, channelId = 200L))
 
         assertThat(first).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
-        assertThat(second).isInstanceOf(ParticipationEmitOutcome.RateLimited::class.java)
-        assertThat(emit.calls).isEqualTo(1) // 전역 초과분은 emit 미호출 — GLM 토큰 0
+        assertThat(second).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(2)
+        assertThat(scheduler.scheduled.filter { it.type == ScheduledActionType.SPEAK }).hasSize(2)
+        assertThat(scheduler.scheduled.last().executionGlobalLimit).isEqualTo(1)
     }
 
     // ── dead-wired 7필드 실배선(이제 발동) ─────────────────────────────────────
@@ -1424,6 +1555,144 @@ class NexaParticipationEmitBridgeTest {
     }
 
     @Test
+    fun `message delete 는 같은 원문 근거의 열린 약속과 결과도 무효화한다`() {
+        val rawStore = CapturingRawContextStore()
+        val pending = FakePendingIntentStore()
+        val outcomes = FakeInteractionOutcomePort()
+        rawStore.entries += rawEntry(messageId = 10L, text = "삭제될 원문")
+        val bridge = bridgeWithRawStore(rawStore, pendingIntents = pending, interactionOutcomes = outcomes)
+
+        bridge.onMessageDeleted(
+            ParticipationRawContextRedactionSignal(
+                guildId = 1L,
+                channelId = 3L,
+                messageId = 10L,
+            ),
+        )
+
+        assertThat(pending.invalidatedEvidenceRefs.single()).startsWith("raw_context_message:")
+        assertThat(outcomes.invalidatedEvidenceRefs).containsExactlyElementsOf(pending.invalidatedEvidenceRefs)
+    }
+
+    @Test
+    fun `사람 반응과 judge 믿음·약속 갱신이 다음 장면 상태에 폐루프로 반영된다`() {
+        val triggerEvidence =
+            "raw_context_message:" +
+                ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = 1L, snowflake = 10L)
+        val scene = FakeSceneBeliefStatePort(clock.instant())
+        val pending = FakePendingIntentStore()
+        val outcomes =
+            FakeInteractionOutcomePort(
+                nextOutcome =
+                    ObservedInteractionOutcome(
+                        actionId = "nia-action-1",
+                        code = ObservedOutcomeCode.REPETITION_COMPLAINT,
+                        evidenceRef = "raw_context_message:human-feedback",
+                        observedAt = clock.instant(),
+                    ),
+            )
+        val judge =
+            CapturingJudge(
+                ignoreDecision().copy(
+                    beliefDelta =
+                        JudgeBeliefDelta(
+                            commonGround =
+                                listOf(
+                                    JudgeCommonGroundUpdate(
+                                        code = "feature_channel_already_guided",
+                                        confidence = 0.96,
+                                        evidenceRefs = setOf(triggerEvidence),
+                                    ),
+                                ),
+                            intentHypotheses =
+                                listOf(
+                                    JudgeIntentHypothesisUpdate(
+                                        participantRef = "user_2",
+                                        code = "testing_repetition",
+                                        probability = 0.74,
+                                        evidenceRefs = setOf(triggerEvidence),
+                                    ),
+                                ),
+                            commitments =
+                                listOf(
+                                    JudgeCommitmentUpdate(
+                                        commitmentRef = "story-1",
+                                        topic = "재미있는 이야기",
+                                        socialAct = "TELL_STORY",
+                                        evidenceRefs = setOf(triggerEvidence),
+                                        confidence = 0.9,
+                                        status = JudgeCommitmentStatus.ACTIVE,
+                                    ),
+                                    JudgeCommitmentUpdate(
+                                        commitmentRef = "story-1",
+                                        topic = "재미있는 이야기",
+                                        socialAct = "TELL_STORY",
+                                        evidenceRefs = setOf(triggerEvidence),
+                                        confidence = 0.95,
+                                        status = JudgeCommitmentStatus.COMPLETED,
+                                    ),
+                                ),
+                        ),
+                ),
+            )
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = FakeScheduler()),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+                sceneBeliefState = scene,
+                interactionOutcomes = outcomes,
+                pendingIntents = pending,
+                clock = clock,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = true,
+                    rawText = "왜 같은 말만 반복해?",
+                    triggerText = "왜 같은 말만 반복해?",
+                    tsMs = clock.millis(),
+                ),
+            )
+
+        assertThat(outcome).isEqualTo(ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE))
+        assertThat(
+            judge.lastRequest!!
+                .sceneSnapshot.socialBeliefState.recentOutcomes
+                .map { it.code },
+        ).contains("repetition_complaint")
+        assertThat(scene.current!!.commonGround.map { it.code }).contains("feature_channel_already_guided")
+        assertThat(scene.current!!.intentHypotheses.map { it.code }).contains("testing_repetition")
+        assertThat(scene.current!!.recentNiaActions.map { it.actionKind }).contains("ignore")
+        assertThat(
+            pending.saved.values
+                .single()
+                .topic,
+        ).isEqualTo("재미있는 이야기")
+        assertThat(
+            pending.saved.values
+                .single()
+                .confidence,
+        ).isEqualTo(0.9)
+        assertThat(
+            pending.saved.values
+                .single()
+                .status,
+        ).isEqualTo(MemoryStatus.ACTIVE)
+        assertThat(
+            pending.saved.values
+                .single()
+                .completedByActionId,
+        ).isNull()
+    }
+
+    @Test
     fun `message edit 는 judge 를 다시 돌리지 않고 raw context 원문만 교체한다`() {
         val scheduler = FakeScheduler()
         val rawStore = CapturingRawContextStore()
@@ -1515,6 +1784,8 @@ class NexaParticipationEmitBridgeTest {
     private fun bridgeWithRawStore(
         rawStore: RawContextStorePort,
         scheduler: FakeScheduler = FakeScheduler(),
+        pendingIntents: PendingIntentStore? = null,
+        interactionOutcomes: InteractionOutcomePort? = null,
     ): NexaParticipationEmitBridge =
         NexaParticipationEmitBridge(
             flags = flagService(ShadowMode.LIVE),
@@ -1525,6 +1796,8 @@ class NexaParticipationEmitBridgeTest {
             globalPerMin = 30,
             judgeModeName = "shadow",
             rawContextStore = rawStore,
+            pendingIntents = pendingIntents,
+            interactionOutcomes = interactionOutcomes,
         )
 
     private fun signal(
@@ -1565,6 +1838,7 @@ class NexaParticipationEmitBridgeTest {
         memoryObservation: MemoryObservation? = null,
         recentRawMessages: List<ParticipationRawSceneMessage> = emptyList(),
         contextVersion: Long = 1L,
+        sceneSeq: Long = messageId,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
@@ -1604,7 +1878,7 @@ class NexaParticipationEmitBridgeTest {
             relationshipObservation = relationshipObservation,
             memoryObservation = memoryObservation,
             tsMs = tsMs,
-            sceneSeq = messageId,
+            sceneSeq = sceneSeq,
             contextVersion = contextVersion,
             seed = 7L,
         )
@@ -1710,6 +1984,120 @@ class NexaParticipationEmitBridgeTest {
         }
     }
 
+    private class FakeSceneBeliefStatePort(
+        private val now: Instant,
+    ) : SceneBeliefStatePort {
+        var current: SceneBeliefState? = null
+
+        override fun observe(observation: SceneObservation): SceneBeliefState =
+            SceneBeliefState
+                .initial(observation.guildPseudonym, observation.channelId, observation.focusThreadKey, observation.observedAt)
+                .copy(
+                    sceneSeq = 1,
+                    contextVersion = 1,
+                    commonGround = listOf(CommonGroundBelief("prior_guidance", 0.9, setOf("raw_context_message:prior"))),
+                    intentHypotheses =
+                        listOf(
+                            IntentHypothesisBelief(
+                                "user_2",
+                                "playful_test",
+                                0.6,
+                                setOf("raw_context_message:prior"),
+                            ),
+                        ),
+                    recentNiaActions =
+                        listOf(
+                            RecentNiaActionBelief(
+                                "nia-action-0",
+                                "speak",
+                                "기능채널 안내",
+                                "raw_context_message:prior",
+                                0,
+                                now,
+                            ),
+                        ),
+                    recentOutcomes =
+                        listOf(
+                            RecentInteractionOutcomeBelief(
+                                "nia-action-0",
+                                "human_follow_up",
+                                "raw_context_message:prior",
+                                now,
+                            ),
+                        ),
+                    updatedAt = now,
+                ).also { current = it }
+
+        override fun find(focusThreadKey: String): SceneBeliefState? = current?.takeIf { it.focusThreadKey == focusThreadKey }
+
+        override fun applyDelta(
+            focusThreadKey: String,
+            expectedContextVersion: Long,
+            delta: SceneBeliefDelta,
+        ): SceneBeliefState? {
+            val state =
+                current?.takeIf { it.focusThreadKey == focusThreadKey && it.contextVersion == expectedContextVersion } ?: return null
+            return state.apply(delta).copy(contextVersion = state.contextVersion + 1, updatedAt = now).also { current = it }
+        }
+
+        override fun recordAction(
+            focusThreadKey: String,
+            action: RecentNiaActionBelief,
+        ): SceneBeliefState? = current?.takeIf { it.focusThreadKey == focusThreadKey }?.record(action)?.also { current = it }
+
+        override fun recordOutcome(
+            focusThreadKey: String,
+            outcome: RecentInteractionOutcomeBelief,
+        ): SceneBeliefState? = current?.takeIf { it.focusThreadKey == focusThreadKey }?.record(outcome)?.also { current = it }
+    }
+
+    private class FakeInteractionOutcomePort(
+        private var nextOutcome: ObservedInteractionOutcome? = null,
+    ) : InteractionOutcomePort {
+        val invalidatedEvidenceRefs = mutableListOf<String>()
+
+        override fun open(interaction: UnresolvedInteraction): Boolean = true
+
+        override fun observeLatest(
+            focusThreadKey: String,
+            code: ObservedOutcomeCode,
+            evidenceRef: String,
+            replyToMessageRef: String?,
+            observedAt: Instant,
+            explicitActionId: String?,
+        ): ObservedInteractionOutcome? = nextOutcome.also { nextOutcome = null }
+
+        override fun invalidateByEvidence(evidenceRef: String): Int {
+            invalidatedEvidenceRefs += evidenceRef
+            return 1
+        }
+    }
+
+    private class FakePendingIntentStore : PendingIntentStore {
+        val saved = linkedMapOf<String, PendingIntent>()
+        val invalidatedEvidenceRefs = mutableListOf<String>()
+
+        override fun save(intent: PendingIntent): PendingIntent = intent.also { saved[it.id] = it }
+
+        override fun findActive(
+            focusThreadKey: String,
+            now: Instant,
+        ): List<PendingIntent> = saved.values.filter { it.focusThreadKey == focusThreadKey }
+
+        override fun complete(
+            id: String,
+            completedAt: Instant,
+            completedByActionId: String,
+        ): PendingIntent? = saved[id]?.complete(completedAt, completedByActionId)?.also { saved[id] = it }
+
+        override fun invalidate(id: String): PendingIntent? = saved[id]
+
+        override fun invalidateBySource(sourceEventId: String): Int {
+            invalidatedEvidenceRefs += sourceEventId
+            return 1
+        }
+    }
+
     private object ThrowingRawContextStore : RawContextStorePort {
         override fun append(entry: RawContextEntry): RawContextAppendResult = error("raw unavailable")
 
@@ -1779,6 +2167,7 @@ class NexaParticipationEmitBridgeTest {
                 generationGate = SpeechGenerationGate(generationService),
                 candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
                 decisionLog = CapturingSpeechLog(),
+                completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaSpeechEmitService(
             safetyDecision = BanterSafetyDecisionService(CapturingParticipationLog(), clock),
@@ -1793,7 +2182,7 @@ class NexaParticipationEmitBridgeTest {
 
     /**
      * emit 호출 횟수를 세는 seam. [calls] = FakeGenerationPort.generate 호출 수 = emit 가 발화 파이프라인까지
-     * 진입한 횟수(= GLM 토큰을 쓰는 지점). rate limit 으로 skip 되면 emit.emit 자체가 안 불려 0 으로 남는다.
+     * 진입한 횟수(= 생성 GLM을 쓰는 지점). 실행 permit은 예약 뒤 각 실제 Discord SEND/REACT 호출을 제한한다.
      */
     private fun countingEmitSeam(scheduler: FakeScheduler): CountingEmit {
         val generationPort = CountingGenerationPort(listOf(SpeechCandidate("c1", listOf("좋아"))))
@@ -1811,6 +2200,7 @@ class NexaParticipationEmitBridgeTest {
                 generationGate = SpeechGenerationGate(generationService),
                 candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
                 decisionLog = CapturingSpeechLog(),
+                completeActionSelector = deterministicCompleteActionSelector(),
             )
         val service =
             NexaSpeechEmitService(

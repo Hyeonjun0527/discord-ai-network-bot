@@ -93,6 +93,99 @@ class NiaJudgeOutputParserTest {
         assertThat(parsed.decision.reasonCode.code).isEqualTo("direct_call_ack")
     }
 
+    @Test
+    fun `parser accepts evidence-backed commitment updates`() {
+        val result =
+            parser
+                .parse(
+                    output(
+                        "SPEAK",
+                        extra =
+                            mapOf(
+                                "beliefUpdates" to
+                                    mapOf(
+                                        "commitments" to
+                                            listOf(
+                                                mapOf(
+                                                    "commitmentRef" to "promise_1",
+                                                    "topic" to "재미있는 이야기",
+                                                    "socialAct" to "TELL_STORY",
+                                                    "evidenceRefs" to listOf("msg_1"),
+                                                    "confidence" to 0.9,
+                                                    "status" to "ACTIVE",
+                                                ),
+                                            ),
+                                    ),
+                            ),
+                    ),
+                ).accepted()
+
+        val commitment =
+            result.decision.beliefDelta.commitments
+                .single()
+        assertThat(commitment.commitmentRef).isEqualTo("promise_1")
+        assertThat(commitment.socialAct).isEqualTo("TELL_STORY")
+        assertThat(commitment.status).isEqualTo(JudgeCommitmentStatus.ACTIVE)
+    }
+
+    @Test
+    fun `parser rejects commitment updates without evidence`() {
+        val result =
+            parser.parse(
+                output(
+                    "SPEAK",
+                    extra =
+                        mapOf(
+                            "beliefUpdates" to
+                                mapOf(
+                                    "commitments" to
+                                        listOf(
+                                            mapOf(
+                                                "commitmentRef" to "promise_1",
+                                                "topic" to "재미있는 이야기",
+                                                "socialAct" to "TELL_STORY",
+                                                "evidenceRefs" to emptyList<String>(),
+                                                "confidence" to 0.9,
+                                                "status" to "ACTIVE",
+                                            ),
+                                        ),
+                                ),
+                        ),
+                ),
+            )
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("근거 ref")
+    }
+
+    @Test
+    fun `parser rejects commitment updates without confidence`() {
+        val result =
+            parser.parse(
+                output(
+                    "SPEAK",
+                    extra =
+                        mapOf(
+                            "beliefUpdates" to
+                                mapOf(
+                                    "commitments" to
+                                        listOf(
+                                            mapOf(
+                                                "commitmentRef" to "promise_1",
+                                                "topic" to "재미있는 이야기",
+                                                "socialAct" to "TELL_STORY",
+                                                "evidenceRefs" to listOf("msg_1"),
+                                                "status" to "ACTIVE",
+                                            ),
+                                        ),
+                                ),
+                        ),
+                ),
+            )
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+    }
+
     private fun output(
         action: String,
         evidenceRefs: List<String> = if (action == "IGNORE") emptyList() else listOf("msg_1"),

@@ -10,8 +10,8 @@ class GenerationBudgetTest {
     @Test
     fun `clampCandidateCount never exceeds budget or contract ceiling`() {
         val budget = GenerationBudget(maxCandidates = 4, maxOutputTokens = 256, maxContextTokens = 512)
-        assertThat(budget.clampCandidateCount(10)).isEqualTo(2) // 운영 계약 cap
-        assertThat(budget.clampCandidateCount(3)).isEqualTo(2)
+        assertThat(budget.clampCandidateCount(10)).isEqualTo(3)
+        assertThat(budget.clampCandidateCount(3)).isEqualTo(3)
         // 계약 상한(MAX_CANDIDATES)을 못 넘는다.
         val wide = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256, maxContextTokens = 512)
         assertThat(wide.clampCandidateCount(99)).isEqualTo(SpeechGenerationRequest.MAX_CANDIDATES)
@@ -33,5 +33,15 @@ class GenerationBudgetTest {
     @Test
     fun `default output budget supports multi bubble conversational content`() {
         assertThat(GenerationBudget.DEFAULT.maxOutputTokens).isEqualTo(1024)
+    }
+
+    @Test
+    fun `clear scenes use two candidates and ambiguous or open commitment scenes use three`() {
+        assertThat(GenerationBudget.forDecision(uncertainty = 0.24, hasOpenCommitment = false).maxCandidates)
+            .isEqualTo(2)
+        assertThat(GenerationBudget.forDecision(uncertainty = 0.25, hasOpenCommitment = false).maxCandidates)
+            .isEqualTo(3)
+        assertThat(GenerationBudget.forDecision(uncertainty = 0.0, hasOpenCommitment = true).maxCandidates)
+            .isEqualTo(3)
     }
 }

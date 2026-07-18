@@ -29,8 +29,26 @@ class NiaJudgePromptAssembler(
                     "output_schema" to NiaJudgeLlmRequest.OUTPUT_SCHEMA,
                     "scene_seq" to "${request.sceneSnapshot.ref.sceneSeq}",
                     "context_version" to "${request.sceneSnapshot.ref.contextVersion}",
+                    "reasoning_mode" to if (request.requiresDeliberation()) "deliberate" else "fast",
                 ),
         )
+    }
+
+    private fun SingleJudgeDecisionRequest.requiresDeliberation(): Boolean {
+        val scene = sceneSnapshot
+        val competingHypotheses =
+            scene.socialBeliefState.intentHypotheses
+                .filter { it.status == "ACTIVE" }
+                .groupBy(JudgeIntentHypothesisState::participantRef)
+                .values
+                .any { it.size > 1 }
+        val addressConflict = scene.directAddressed && scene.conversationState.humansTalkingToEachOtherLikely
+        val openLoop = scene.memoryState.pendingIntentActive == true
+        val correctiveOutcome =
+            scene.socialBeliefState.recentOutcomes.any {
+                it.code == "repetition_complaint" || it.code == "promise_complaint" || it.code == "negative_feedback"
+            }
+        return competingHypotheses || addressConflict || openLoop || correctiveOutcome
     }
 
     private fun buildPrompt(payloadJson: String): String =
@@ -62,6 +80,14 @@ class NiaJudgePromptAssembler(
         Treat a newer correction, withdrawal, or addressee change as stronger evidence than older name, mention, or
         reply signals. If NIA has not spoken after an invitation was retracted, IGNORE is normally the repair; if she
         just interrupted, at most one brief acknowledgement and yield is appropriate.
+        Treat sceneState.socialBeliefState as revisable evidence, not unquestionable truth. Use its common ground,
+        competing intent hypotheses, NIA's recent actions, and observed human outcomes when predicting what each complete action would cause.
+        Do not repeat a functional contribution already present in common ground unless new evidence makes it necessary.
+        Return beliefUpdates only for compact claims or hypotheses supported by evidenceRefs from the supplied scene.
+        Keep competing hypotheses instead of forcing certainty; supersede or reject older entries when new evidence changes them.
+        Track an explicit promise made by NIA as commitments ACTIVE until the promised act is actually performed. A future-tense
+        announcement is not completion. Mark the same commitmentRef COMPLETED only when the scene contains the performed story,
+        explanation, answer, follow-up, or apology.
         After yielding, judge every later turn from the raw scene again; re-enter only when NIA is genuinely addressed or
         her input is clearly invited. As rejection or frustration becomes stronger, prefer a shorter acknowledgement or
         silence. Do not encode this as keyword matching; reason from the social situation in the scene.
@@ -80,6 +106,12 @@ class NiaJudgePromptAssembler(
         pipeline to deliver the actual content now, never merely promise to prepare, think of, or tell it later.
         Omit fields that do not apply. Never include final response text, utterance, message, or content. For SPEAK,
         include only intent-level speechIntent fields; the speech pipeline writes the actual reply.
+        Optional beliefUpdates format:
+        {"commonGround":[{"code":"stable_code","confidence":0.0,"evidenceRefs":["ref"],"status":"ACTIVE"}],
+        "intentHypotheses":[{"participantRef":"stable_ref","code":"stable_code","probability":0.0,
+        "evidenceRefs":["ref"],"status":"ACTIVE"}],
+        "commitments":[{"commitmentRef":"stable_ref","topic":"short topic","socialAct":"TELL_STORY|EXPLAIN|ANSWER|REPLY|FIND_INFORMATION|FOLLOW_UP|APOLOGIZE",
+        "evidenceRefs":["ref"],"confidence":0.0,"status":"ACTIVE|COMPLETED|REJECTED"}]}. Omit it when no grounded update exists.
 
         INPUT_JSON:
         $payloadJson
@@ -197,6 +229,7 @@ class NiaJudgePromptAssembler(
             runtimeGuardState = runtimeGuardState,
             relationshipState = relationshipState,
             memoryState = memoryState,
+            socialBeliefState = socialBeliefState,
         )
 
     private fun SocialActionKind.toJudgeWireAction(): String =
@@ -301,6 +334,7 @@ private data class PromptSceneState(
     val runtimeGuardState: JudgeRuntimeGuardState,
     val relationshipState: JudgeRelationshipSceneState,
     val memoryState: JudgeMemorySceneState,
+    val socialBeliefState: JudgeSocialBeliefState,
 )
 
 private data class PromptFeatureValue(

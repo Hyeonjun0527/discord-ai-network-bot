@@ -18,14 +18,17 @@ platform/discord(adapter)
    conversation ──────(읽기)──────┐
         │                         │
         ▼                         ▼
-  participation ──(SPEAK 요청)──▶ speech ──(CloudLlm)──▶ routing
+  participation ──(잠정 SPEAK)──▶ speech ──(CloudLlm)──▶ routing
         │                         │  (읽기)
-        │ ScheduleAction          ├──▶ socialmemory(읽기)
+        │ ScheduleAction          ├──▶ socialmemory(열린 약속 읽기)
         ▼                         ├──▶ ainetwork(정체성 브리지, 읽기)
   actionruntime ─────────────────┴──▶ knowledge(SPEAK+retrieval 시)
         │  SendToDiscord
         ▼
 platform/discord(adapter, outbound)
+
+platform/discord(adapter) ──▶ socialpolicy(장면 믿음·행동 결과 projection)
+socialpolicy(adapter) ──(실행 결과 포트 구현)──▶ actionruntime
 
 socialmemory ──(InteractionObserved 구독)── conversation
 socialmemory ──(NiaAffinityBridge 읽기)──── ainetwork

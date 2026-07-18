@@ -1,5 +1,6 @@
 package com.discordassistant.central.global.crypto
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -7,6 +8,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class FieldCryptoTest {
+    @AfterEach
+    fun resetKey() {
+        FieldCrypto.configure(null)
+    }
+
     @Test
     fun `키 설정 시 암호화-복호화 round-trip`() {
         FieldCrypto.configure("test-key-1234567890")
@@ -37,5 +43,27 @@ class FieldCryptoTest {
         FieldCrypto.configure("k-2")
         assertNull(FieldCrypto.encrypt(null))
         assertNull(FieldCrypto.decrypt(null))
+    }
+
+    @Test
+    fun `암호문이 있는데 키가 사라지면 암호문을 평문으로 노출하지 않는다`() {
+        FieldCrypto.configure("key-before-restart")
+        val encrypted = FieldCrypto.encrypt("123456789012345678")!!
+
+        FieldCrypto.configure(null)
+
+        assertEquals(encrypted, FieldCrypto.decrypt(encrypted))
+        assertNull(FieldCrypto.decryptOrNull(encrypted))
+    }
+
+    @Test
+    fun `잘못된 키나 손상된 암호문은 null로 격리한다`() {
+        FieldCrypto.configure("correct-key")
+        val encrypted = FieldCrypto.encrypt("routing-value")!!
+
+        FieldCrypto.configure("wrong-key")
+
+        assertNull(FieldCrypto.decryptOrNull(encrypted))
+        assertNull(FieldCrypto.decryptOrNull("enc1:not-valid-base64"))
     }
 }

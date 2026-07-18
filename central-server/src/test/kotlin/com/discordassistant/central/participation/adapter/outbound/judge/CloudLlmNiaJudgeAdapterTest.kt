@@ -45,6 +45,16 @@ class CloudLlmNiaJudgeAdapterTest {
     }
 
     @Test
+    fun `모호한 장면 metadata는 제한적 내부 숙고를 활성화한다`() {
+        val cloudLlm = RecordingCloudLlm()
+        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "glm-4.5-air")
+
+        adapter.complete(request().copy(metadata = mapOf("reasoning_mode" to "deliberate")))
+
+        assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.ENABLED)
+    }
+
+    @Test
     fun `request timeout cancels slow cloud call`() {
         val cloudLlm =
             RecordingCloudLlm {

@@ -116,6 +116,7 @@ fun typingSpeakAction(
     channelId: String = "chan-1",
     threadId: String = "thread-1",
     replyToMessageId: String? = null,
+    targetMessageId: String? = null,
 ): ScheduledSocialAction =
     ScheduledSocialAction
         .create(
@@ -128,6 +129,8 @@ fun typingSpeakAction(
                     channelId = channelId,
                     threadId = threadId,
                     replyToMessageId = replyToMessageId,
+                    targetMessageId = targetMessageId,
+                    routingChannelId = channelId.toLongOrNull()?.takeIf { it > 0 }?.toString() ?: "123",
                 ),
             executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
             contextVersion = contextVersion,

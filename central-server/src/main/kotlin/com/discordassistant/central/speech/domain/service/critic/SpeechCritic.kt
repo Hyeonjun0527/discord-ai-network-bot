@@ -96,4 +96,10 @@ enum class CriticReason {
 
     /** participation 이 확정한 burst shape(조각 수·길이·reaction-only)와 후보가 맞지 않음. */
     BURST_SHAPE_MISMATCH,
+
+    /** participation 의 발화 의도를 실제로 수행하지 않고 예고·회피만 남김. */
+    INTENT_NOT_FULFILLED,
+
+    /** 장문 위로·설명식 답변·과한 친밀감·감정 단정처럼 사람 채팅 경계를 벗어난 후보. */
+    CONVERSATIONAL_BOUNDARY,
 }

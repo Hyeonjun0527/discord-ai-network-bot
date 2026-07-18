@@ -22,7 +22,7 @@ class ParticipationActionExecutionModeAdapterTest {
                 globalDefaultLaneName = "OFF",
             )
 
-        val mode = adapter.currentMode(ActionTarget("g1", "100", "t1"), ShadowMode.LIVE)
+        val mode = adapter.currentMode(ActionTarget("g1", "channel-ref", "t1", routingChannelId = "100"), ShadowMode.LIVE)
 
         assertThat(mode).isEqualTo(ShadowMode.OFF)
     }
@@ -50,7 +50,11 @@ class ParticipationActionExecutionModeAdapterTest {
                 globalDefaultLaneName = "LIVE",
             )
 
-        val mode = adapter.currentMode(ActionTarget("g1", "100", "t1"), ShadowMode.SHADOW_PREDICT)
+        val mode =
+            adapter.currentMode(
+                ActionTarget("g1", "channel-ref", "t1", routingChannelId = "100"),
+                ShadowMode.SHADOW_PREDICT,
+            )
 
         assertThat(mode).isEqualTo(ShadowMode.SHADOW_PREDICT)
     }
@@ -64,7 +68,7 @@ class ParticipationActionExecutionModeAdapterTest {
                 globalDefaultLaneName = "LIVE",
             )
 
-        val mode = adapter.currentMode(ActionTarget("g1", "100", "t1"), ShadowMode.CANARY)
+        val mode = adapter.currentMode(ActionTarget("g1", "channel-ref", "t1", routingChannelId = "100"), ShadowMode.CANARY)
 
         assertThat(mode).isEqualTo(ShadowMode.CANARY)
     }

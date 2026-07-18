@@ -16,6 +16,9 @@ interface ActionReevaluationPort {
      */
     fun currentContextVersion(target: ReevaluationTarget): Long?
 
+    /** WAIT child가 이어받을 영속 장면 버전. 일반 구현은 기존 contextVersion과 동일하다. */
+    fun currentSceneContextVersion(target: ReevaluationTarget): Long? = currentContextVersion(target)
+
     /**
      * stale 한 [decisionId] 행동을 **현재 맥락에서 다시 판단**하면 여전히 유효한지 묻는다(participation 재평가).
      * true 면 실행을 이어가고(TYPING), false 면 취소한다 — stale 한 action 을 그대로 실행하는 경로가 없다(T011).
@@ -35,10 +38,25 @@ data class ReevaluationTarget(
     val guildPseudonym: String,
     val channelId: String,
     val threadId: String,
+    /** Discord 최신 세대 조회용 원시 채널 ID. 영속 경계에서는 암호화되고 실행 시점에만 복호화된다. */
+    val routingChannelId: String? = null,
+    /** 예약을 만든 Discord 메시지 generation. 영속 저장된 암호화 targetMessageId에서 복원한다. */
+    val scheduledTurnGeneration: Long? = null,
+    /** 예약 당시 영속 conversation projection 버전. */
+    val scheduledSceneContextVersion: Long? = null,
 ) {
     init {
         require(guildPseudonym.isNotBlank()) { "guildPseudonym 은 비어 있을 수 없다" }
         require(channelId.isNotBlank()) { "channelId 는 비어 있을 수 없다" }
         require(threadId.isNotBlank()) { "threadId 는 비어 있을 수 없다" }
+        require(routingChannelId == null || routingChannelId.toLongOrNull()?.let { it > 0 } == true) {
+            "routingChannelId 는 양수 Discord ID여야 한다"
+        }
+        require(scheduledTurnGeneration == null || scheduledTurnGeneration > 0) {
+            "scheduledTurnGeneration 은 양수여야 한다"
+        }
+        require(scheduledSceneContextVersion == null || scheduledSceneContextVersion >= 0) {
+            "scheduledSceneContextVersion 은 음수일 수 없다"
+        }
     }
 }

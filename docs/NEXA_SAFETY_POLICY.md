@@ -122,7 +122,7 @@ NEXA 강제 가드레일(①)과 builtin 기본 페르소나(니아) **전문은
 | B2 | 라우팅 핫패스 **무로깅** | ✅ 충족 — 프롬프트/응답 미로깅, agent 로그 스크럽, Sentry send-default-pii:false |
 | B3 | 처리 후 **메모리 즉시 폐기** | ✅ 충족 — ProviderSession.pending future 완료 시 cleanup |
 | B4 | provider 약관에 **로그 보존 금지** 명시 | 약관(P0) + 앱 약관 안내 반영 |
-| B5 | 서버 설정·프롬프트·RAG 문서 **at-rest 암호화** | ✅ 구현 — EncryptedStringConverter(AES-GCM·점진·레거시호환), 키 NEXA_FIELD_ENC_KEY |
+| B5 | 서버 설정·프롬프트·RAG 문서 및 Discord 실행 routing metadata **at-rest 암호화** | ✅ 구현 — EncryptedStringConverter(AES-GCM·점진·레거시호환), routing 예약은 키 미설정 시 fail-closed, 키 NEXA_FIELD_ENC_KEY |
 | B6 | 이미지 경로 **CSAM 해시 스캔** | 변호사 검토 후(P0) |
 | B7 | **신고 수집·조치·감사** | 진행 중(관리 안전 탭, Gap-Safety) |
 | B8 | **영장·보존명령 협조 절차** | 운영 절차(문서) |

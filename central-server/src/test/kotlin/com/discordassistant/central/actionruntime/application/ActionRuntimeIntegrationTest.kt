@@ -50,7 +50,13 @@ class ActionRuntimeIntegrationTest {
         decisionId = decision,
         sampledActionIndex = index,
         type = ScheduledActionType.SPEAK,
-        target = ActionTarget("guild-1", channel, thread),
+        target =
+            ActionTarget(
+                "guild-1",
+                channel,
+                thread,
+                routingChannelId = channel.toLongOrNull()?.takeIf { it > 0 }?.toString() ?: "123",
+            ),
         executeAfter = due,
         contextVersion = contextVersion,
         originRolloutMode = ShadowMode.LIVE,

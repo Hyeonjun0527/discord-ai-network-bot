@@ -43,7 +43,12 @@ sealed interface SocialAction {
      */
     data class Wait(
         val delay: ActionDelay,
+        val wakeUpHint: String? = null,
     ) : SocialAction {
+        init {
+            require(wakeUpHint == null || wakeUpHint.isNotBlank()) { "wakeUpHint 는 빈 문자열일 수 없다" }
+        }
+
         override val kind: SocialActionKind get() = SocialActionKind.WAIT
         override val consumesGenerationQuota: Boolean get() = false
     }

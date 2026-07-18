@@ -1,6 +1,6 @@
 # ADR 0016: NIA raw-window + few-shot constitution + single judge
 
-- 상태(Status): 제안됨 (Proposed)
+- 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0017](./0017-nia-closed-loop-social-policy.md))
 - 날짜(Date): 2026-06-30
 - 결정자(Deciders): Hyeonjun0527
 - 관련: [ADR 0007 사회적 행위자 모델](./0007-nexa-social-member-context.md),
@@ -49,7 +49,8 @@ raw conversation window
 5. participation judge는 raw window와 active few-shot version을 입력으로 받아 정확히 하나의 action을 반환한다.
 6. 허용 action은 `IGNORE`, `WAIT`, `REACT`, `SPEAK`, `CANCEL`만이다.
 7. `EMOTIONAL_SUPPORT` 같은 감정/상황 enum은 action-selection driver로 추가하지 않는다.
-8. speech는 `SPEAK` 이후 문장 후보를 만들 뿐, 말할지 여부를 다시 판단하지 않는다.
+8. ~~speech는 `SPEAK` 이후 문장 후보를 만들 뿐, 말할지 여부를 다시 판단하지 않는다.~~ 실제 문구를 포함한 완전
+   행동 후보를 본 뒤 최종 SEND/REACT/IGNORE를 선택하도록 [ADR 0017](./0017-nia-closed-loop-social-policy.md)이 대체한다.
 9. safety/consent는 차단·하강만 할 수 있고, NIA를 말하게 만들 수 없다.
 10. 모든 non-IGNORE 결정은 raw message refs, few-shot version, judge prompt version, reason을 남긴다.
 11. judge는 `SPEAK`와 함께 `bubbleCount=1..4`를 정한다. 일상 대화는 한 bubble, 이야기·농담처럼 전개가 필요한

@@ -58,6 +58,7 @@ class NiaJudgeOutputParser(
         require(reevaluateAfterMs >= 0) { "reevaluateAfterMs must be non-negative: $reevaluateAfterMs" }
 
         val toneAxes = root.optionalToneAxes()
+        val beliefDelta = root.optionalBeliefDelta()
         val reasonCode = root.optionalStableCode("reasonCode") ?: "judge.${rawAction.lowercase(Locale.ROOT)}"
         val decision =
             SingleJudgeDecision(
@@ -68,6 +69,7 @@ class NiaJudgeOutputParser(
                 speechIntent = action.speechIntentFrom(root),
                 toneAxes = toneAxes,
                 reasonCode = JudgeReasonCode(reasonCode),
+                beliefDelta = beliefDelta,
             )
 
         return NiaJudgeOutputParseResult.Accepted(
@@ -169,6 +171,71 @@ class NiaJudgeOutputParser(
         )
     }
 
+    private fun JsonNode.optionalBeliefDelta(): JudgeBeliefDelta {
+        val belief = this["beliefUpdates"] ?: return JudgeBeliefDelta.EMPTY
+        require(belief.isObject) { "beliefUpdates must be an object" }
+        val unknown = belief.fieldNames().asSequence().toSet() - BELIEF_UPDATE_FIELDS
+        require(unknown.isEmpty()) { "unknown beliefUpdates fields: ${unknown.sorted()}" }
+
+        val commonGround =
+            belief.optionalObjectArray("commonGround").map { update ->
+                rejectUnknownNestedFields(update, COMMON_GROUND_FIELDS, "commonGround")
+                JudgeCommonGroundUpdate(
+                    code = update.requiredText("code"),
+                    confidence = update.requiredDouble("confidence"),
+                    evidenceRefs = update.optionalTextArray("evidenceRefs").toSet(),
+                    status = update.optionalBeliefStatus(),
+                )
+            }
+        val hypotheses =
+            belief.optionalObjectArray("intentHypotheses").map { update ->
+                rejectUnknownNestedFields(update, HYPOTHESIS_FIELDS, "intentHypotheses")
+                JudgeIntentHypothesisUpdate(
+                    participantRef = update.requiredText("participantRef"),
+                    code = update.requiredText("code"),
+                    probability = update.requiredDouble("probability"),
+                    evidenceRefs = update.optionalTextArray("evidenceRefs").toSet(),
+                    status = update.optionalBeliefStatus(),
+                )
+            }
+        val commitments =
+            belief.optionalObjectArray("commitments").map { update ->
+                rejectUnknownNestedFields(update, COMMITMENT_FIELDS, "commitments")
+                JudgeCommitmentUpdate(
+                    commitmentRef = update.requiredText("commitmentRef"),
+                    topic = update.requiredText("topic"),
+                    socialAct = update.requiredText("socialAct").uppercase(Locale.ROOT),
+                    evidenceRefs = update.optionalTextArray("evidenceRefs").toSet(),
+                    confidence = update.requiredDouble("confidence"),
+                    status = JudgeCommitmentStatus.valueOf(update.requiredText("status").uppercase(Locale.ROOT)),
+                )
+            }
+        hypotheses
+            .filter { it.status == JudgeBeliefStatus.ACTIVE }
+            .groupBy(JudgeIntentHypothesisUpdate::participantRef)
+            .forEach { (participant, values) ->
+                require(values.sumOf(JudgeIntentHypothesisUpdate::probability) <= 1.000001) {
+                    "active intent hypothesis probabilities exceed 1 for $participant"
+                }
+            }
+        return JudgeBeliefDelta(commonGround = commonGround, intentHypotheses = hypotheses, commitments = commitments)
+    }
+
+    private fun JsonNode.optionalBeliefStatus(): JudgeBeliefStatus {
+        val raw = optionalText("status") ?: return JudgeBeliefStatus.ACTIVE
+        return JudgeBeliefStatus.valueOf(raw.uppercase(Locale.ROOT))
+    }
+
+    private fun rejectUnknownNestedFields(
+        node: JsonNode,
+        allowed: Set<String>,
+        label: String,
+    ) {
+        require(node.isObject) { "$label entry must be an object" }
+        val unknown = node.fieldNames().asSequence().toSet() - allowed
+        require(unknown.isEmpty()) { "unknown $label fields: ${unknown.sorted()}" }
+    }
+
     private fun JsonNode.requiredText(field: String): String {
         val value = this[field]
         require(value != null && value.isTextual && value.asText().isNotBlank()) { "required text field missing: $field" }
@@ -235,6 +302,15 @@ class NiaJudgeOutputParser(
         }
     }
 
+    private fun JsonNode.optionalObjectArray(field: String): List<JsonNode> {
+        val value = this[field] ?: return emptyList()
+        require(value.isArray) { "field must be an array: $field" }
+        return value.map { node ->
+            require(node.isObject) { "array field must contain objects: $field" }
+            node
+        }
+    }
+
     companion object {
         private val TOP_LEVEL_FIELDS =
             setOf(
@@ -249,9 +325,14 @@ class NiaJudgeOutputParser(
                 "confidence",
                 "riskFlags",
                 "reevaluateAfterMs",
+                "beliefUpdates",
             )
         private val SPEECH_INTENT_FIELDS = setOf("intentSummary", "sceneDirection", "actHint", "bubbleCount")
         private val TONE_AXIS_FIELDS = setOf("warmth", "playfulness", "directness", "emotionalIntensity")
+        private val BELIEF_UPDATE_FIELDS = setOf("commonGround", "intentHypotheses", "commitments")
+        private val COMMON_GROUND_FIELDS = setOf("code", "confidence", "evidenceRefs", "status")
+        private val HYPOTHESIS_FIELDS = setOf("participantRef", "code", "probability", "evidenceRefs", "status")
+        private val COMMITMENT_FIELDS = setOf("commitmentRef", "topic", "socialAct", "evidenceRefs", "confidence", "status")
         private val FINAL_TEXT_FIELDS = setOf("text", "message", "content", "utterance", "finalResponse", "final_response")
     }
 }

@@ -4,12 +4,14 @@ import com.discordassistant.central.global.privacy.ConsentGate
 import com.discordassistant.central.global.privacy.ConsentRevokedException
 import com.discordassistant.central.global.privacy.ProcessingStage
 import com.discordassistant.central.speech.application.generation.CandidateSelector
+import com.discordassistant.central.speech.application.generation.CompleteActionSelection
+import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.FallbackSpeechPolicy
 import com.discordassistant.central.speech.application.generation.GenerationBudget
-import com.discordassistant.central.speech.application.generation.SelectionResult
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.generation.SpeechOutcome
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
+import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
@@ -54,6 +56,7 @@ class NexaSpeechPipelineService(
     private val highRiskBoundary: HighRiskFallbackBoundary = HighRiskFallbackBoundary(),
     private val fallbackPolicy: FallbackSpeechPolicy = FallbackSpeechPolicy(),
     private val decisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+    private val completeActionSelector: CompleteActionSelector = CompleteActionSelector(CompleteActionEvaluationPort.Noop),
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -68,6 +71,9 @@ class NexaSpeechPipelineService(
         stale: Boolean = false,
         budget: GenerationBudget = GenerationBudget.DEFAULT,
         traceContext: SpeechTraceContext = SpeechTraceContext.UNLINKED,
+        provisionalConfidence: Double = 0.0,
+        contextVersion: Long = 0,
+        triggerMessageRef: String? = null,
     ): PipelineResult {
         // 1) 동의 게이트(생성 직전). 철회/미동의면 생성 포트를 한 번도 호출하지 않고 차단.
         try {
@@ -128,45 +134,54 @@ class NexaSpeechPipelineService(
                 .flatMap { candidateSelector.rejectionReasons(it, packet) }
                 .map { it.name }
                 .toSet()
-        val selection = candidateSelector.select(generated, packet, seed)
-
-        // 6) fallback 정책 — critic 통과 후보가 없으면 침묵/리액션으로 안전 하강.
-        return when (selection) {
-            is SelectionResult.Selected ->
-                speak(packet, traceContext, directive, selection.candidate, generated.size, criticReasons)
-            SelectionResult.Silence ->
-                when (fallbackPolicy.decide(gate.result, packet)) {
-                    SpeechOutcome.ReactionOnly ->
-                        reactionOnly(
-                            packet,
-                            traceContext,
-                            directive,
-                            generated.size,
-                            criticReasons,
-                            blockedStage = "CANDIDATE_SELECTION",
-                            blockedReason = "FALLBACK_REACTION_ONLY",
-                        )
-                    SpeechOutcome.Cancel ->
-                        cancel(
-                            packet,
-                            traceContext,
-                            directive,
-                            generated.size,
-                            criticReasons,
-                            blockedStage = "CANDIDATE_SELECTION",
-                            blockedReason = "FALLBACK_CANCEL",
-                        )
-                    is SpeechOutcome.Speak ->
-                        cancel(
-                            packet,
-                            traceContext,
-                            directive,
-                            generated.size,
-                            criticReasons,
-                            blockedStage = "CANDIDATE_SELECTION",
-                            blockedReason = "CRITIC_REJECTED_ALL",
-                        ) // critic 전원 탈락 → 침묵.
+        val survivors = candidateSelector.survivors(generated, packet)
+        val fallbackOutcome = fallbackPolicy.decide(gate.result, packet)
+        val completeSelection =
+            if (survivors.isNotEmpty() || fallbackOutcome == SpeechOutcome.ReactionOnly) {
+                // 생성 뒤 별도의 외부 가치 평가가 이어질 수 있으므로, 그 요청 직전에 동의를 다시 확인한다.
+                try {
+                    consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)
+                } catch (e: ConsentRevokedException) {
+                    return blocked(packet, traceContext, consentStage = e.stage, generated = generated.size)
                 }
+                completeActionSelector.select(
+                    speechCandidates = survivors,
+                    packet = packet,
+                    provisionalConfidence = provisionalConfidence,
+                    contextVersion = contextVersion,
+                    seed = seed,
+                    triggerMessageRef = triggerMessageRef,
+                    offerReaction = true,
+                )
+            } else {
+                // 실질적 발화 후보도 없고 fallback도 취소라면 외부 평가 없이 침묵한다.
+                CompleteActionSelection.Ignore
+            }
+
+        // 6) 모든 잠정 SPEAK는 실제 SEND 문구·REACT·IGNORE를 함께 비교한다. 평가 실패도 IGNORE로 닫힌다.
+        return when (completeSelection) {
+            is CompleteActionSelection.Send ->
+                speak(packet, traceContext, directive, completeSelection.candidate, generated.size, criticReasons)
+            is CompleteActionSelection.React ->
+                reactionOnly(
+                    packet,
+                    traceContext,
+                    directive,
+                    generated.size,
+                    criticReasons,
+                    blockedStage = "COMPLETE_ACTION_SELECTION",
+                    blockedReason = "VALUE_SELECTED_REACTION",
+                )
+            CompleteActionSelection.Ignore ->
+                cancel(
+                    packet,
+                    traceContext,
+                    directive,
+                    generated.size,
+                    criticReasons,
+                    blockedStage = "COMPLETE_ACTION_SELECTION",
+                    blockedReason = "VALUE_SELECTED_IGNORE",
+                )
         }
     }
 
@@ -174,6 +189,7 @@ class NexaSpeechPipelineService(
         packet: SpeechScenePacket,
         traceContext: SpeechTraceContext,
         consentStage: ProcessingStage,
+        generated: Int = 0,
     ): PipelineResult {
         val log =
             decisionFor(
@@ -182,7 +198,7 @@ class NexaSpeechPipelineService(
                 SpeechDecisionOutcome.BLOCKED,
                 highRisk = false,
                 consentBlocked = true,
-                generated = 0,
+                generated = generated,
                 criticReasons = emptySet(),
                 blockedStage = consentStage.name,
                 blockedReason = "CONSENT_REVOKED",
@@ -314,13 +330,15 @@ class NexaSpeechPipelineService(
         )
 
     companion object {
-        /** 비밀 유출과 전송 형식만 검사하는 운영 후보 선택기를 만든다. 말투와 대화 품질은 생성 모델이 문맥으로 판단한다. */
+        /** 비밀 유출·전송 형식·요청 행위 수행 여부를 검사한다. 말투 품질은 생성·완전 행동 평가기가 판단한다. */
         fun securityCriticSelector(): CandidateSelector =
             CandidateSelector(
                 critics =
                     listOf(
                         SecretDisclosureCritic(),
                         BurstShapeCritic(),
+                        com.discordassistant.central.speech.domain.service.critic
+                            .IntentFulfillmentCritic(),
                     ),
             )
     }

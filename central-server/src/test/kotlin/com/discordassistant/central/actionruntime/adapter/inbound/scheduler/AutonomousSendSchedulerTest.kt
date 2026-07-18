@@ -4,6 +4,7 @@ import com.discordassistant.central.actionruntime.adapter.outbound.multiresponse
 import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.BackpressureGate
+import com.discordassistant.central.actionruntime.application.execution.ReactionExecutionService
 import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentResolver
 import com.discordassistant.central.actionruntime.application.reevaluate.StaleActionReevaluator
@@ -49,7 +50,7 @@ class AutonomousSendSchedulerTest {
                 decisionId = "dec-1",
                 sampledActionIndex = 0,
                 type = ScheduledActionType.SPEAK,
-                target = ActionTarget(guildPseudonym = "g1", channelId = "123", threadId = "t1"),
+                target = ActionTarget(guildPseudonym = "g1", channelId = "123", threadId = "t1", routingChannelId = "123"),
                 executeAfter = clock.instant().minusSeconds(1), // due
                 contextVersion = 1,
                 originRolloutMode = originRolloutMode,
@@ -92,8 +93,9 @@ class AutonomousSendSchedulerTest {
             AutonomousSendScheduler(
                 poller(),
                 service,
+                ReactionExecutionService(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit(), clock),
                 burstAdapter,
-                SpeechContentResolver { "단일 메시지" },
+                SpeechContentResolver { SpeechBurstContentCodec.encode(listOf("단일 메시지")) },
                 mock(ShadowStatusService::class.java),
                 canarySignals,
             )
@@ -118,8 +120,9 @@ class AutonomousSendSchedulerTest {
             AutonomousSendScheduler(
                 poller(),
                 service,
+                ReactionExecutionService(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit(), clock),
                 burstAdapter,
-                SpeechContentResolver { "단일 메시지" },
+                SpeechContentResolver { SpeechBurstContentCodec.encode(listOf("단일 메시지")) },
                 mock(ShadowStatusService::class.java),
                 canarySignals,
             )
@@ -141,8 +144,9 @@ class AutonomousSendSchedulerTest {
             AutonomousSendScheduler(
                 poller(),
                 service,
+                ReactionExecutionService(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit(), clock),
                 burstAdapter,
-                SpeechContentResolver { "단일 메시지" },
+                SpeechContentResolver { SpeechBurstContentCodec.encode(listOf("단일 메시지")) },
                 mock(ShadowStatusService::class.java),
                 canarySignals,
             )
@@ -163,6 +167,7 @@ class AutonomousSendSchedulerTest {
             AutonomousSendScheduler(
                 poller(),
                 service,
+                ReactionExecutionService(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit(), clock),
                 burstAdapter,
                 SpeechContentResolver { stored },
                 mock(ShadowStatusService::class.java),
@@ -173,5 +178,46 @@ class AutonomousSendSchedulerTest {
 
         assertThat(executor.sentBubbleIndexes).containsExactly(0, 1, 2)
         assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.COMPLETED)
+    }
+
+    @Test
+    fun `REACT 예약은 대상 메시지에 reaction을 실행하고 COMPLETED로 종결한다`() {
+        val action =
+            ScheduledSocialAction.create(
+                decisionId = "dec-react",
+                sampledActionIndex = 0,
+                type = ScheduledActionType.REACT,
+                target =
+                    ActionTarget(
+                        guildPseudonym = "g1",
+                        channelId = "123",
+                        threadId = "t1",
+                        targetMessageId = "456",
+                        routingChannelId = "123",
+                    ),
+                executeAfter = clock.instant().minusSeconds(1),
+                contextVersion = 1,
+                originRolloutMode = ShadowMode.LIVE,
+                reactionCode = "unamused",
+            )
+        scheduler.schedule(action)
+        val executor = RecordingDiscordExecutor()
+        val speech = executionService(executor, ActionExecutionModePort.REQUESTED_MODE)
+        val orchestrator =
+            AutonomousSendScheduler(
+                poller(),
+                speech,
+                ReactionExecutionService(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit(), clock),
+                burstAdapter,
+                SpeechContentResolver { null },
+                mock(ShadowStatusService::class.java),
+                canarySignals,
+            )
+
+        orchestrator.tick()
+
+        assertThat(executor.reactCalls).isEqualTo(1)
+        assertThat(scheduler.find(action.identity)!!.status).isEqualTo(ActionStatus.COMPLETED)
+        assertThat(executor.sentBubbleIndexes).isEmpty()
     }
 }

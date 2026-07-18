@@ -39,13 +39,19 @@ class CandidateSelector(
         packet: SpeechScenePacket,
         seed: Long,
     ): SelectionResult {
-        val survivors = candidates.filter { survives(it, packet) }
+        val survivors = survivors(candidates, packet)
         if (survivors.isEmpty()) return SelectionResult.Silence
 
         val weights = survivors.map { softmaxWeight(score(it)) }
         val picked = sample(survivors, weights, Random(seed))
         return SelectionResult.Selected(picked)
     }
+
+    /** 비평을 모두 통과해 완전 행동 평가에 올릴 수 있는 실제 SEND 후보만 돌려준다. */
+    fun survivors(
+        candidates: List<SpeechCandidate>,
+        packet: SpeechScenePacket,
+    ): List<SpeechCandidate> = candidates.filter { survives(it, packet) }
 
     /** 모든 비평가가 이 후보를 통과시키는가(하나라도 탈락이면 후보 풀에서 제외). */
     private fun survives(

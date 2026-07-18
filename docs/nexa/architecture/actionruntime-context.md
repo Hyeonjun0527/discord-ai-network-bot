@@ -19,6 +19,9 @@ participation이 고른 행동을 **언제·어떻게 실제로 수행할지**�
 | 취소(cancel) | participation의 CANCEL 또는 재평가 실패 시 예약 폐기 |
 | 재시도(retry) | 전송 실패의 백오프 재시도(상한 있음) |
 | 실행 감사(execution audit) | 각 행동의 상태 전이 기록(원문 없이 correlation ID) |
+| WAIT wake-up | WAIT 완료와 child judge 요청을 transactional outbox로 원자 연결 |
+| 결과 관찰 | 실제 SEND/REACT 성공만 다음 사람 반응 귀속 대상으로 전달 |
+| 실행 quota | 각 Discord SEND bubble/REACT 호출 직전 channel/global permit 소비 |
 
 ## 비소유 (Does NOT own)
 
@@ -57,3 +60,6 @@ participation이 고른 행동을 **언제·어떻게 실제로 수행할지**�
 2. 전송 직전 재평가에서 무효면 전송하지 않고 CANCELLED로 종료한다(흘러간 대화에 늦게 끼어들기 방지).
 3. 모든 상태 전이는 실행 감사에 기록된다.
 4. 재시도는 상한과 백오프를 가지며 무한 재시도하지 않는다(Fail Fast 후 FAILED 종료).
+5. WAIT는 TYPING/SENDING으로 전이하지 않고 최신 context version으로 새 판단을 만든다.
+6. 다중 버블 child는 각각 재평가되며, 중간 사람 반응으로 context가 바뀌면 잔여 child를 취소한다.
+7. raw Discord routing/target ID는 평문 영속하지 않으며, 재시작 복구가 필요한 필드는 field encryption을 강제한다.

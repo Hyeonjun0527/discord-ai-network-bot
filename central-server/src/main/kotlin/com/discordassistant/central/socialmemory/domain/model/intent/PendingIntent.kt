@@ -35,13 +35,27 @@ data class PendingIntent(
     val source: MemorySource,
     /** 이 의도가 만료되는 시각(미완 의도의 시간 유효성·만료, T012). null 이면 만료 미설정. */
     val expiresAt: Instant?,
+    /** 추출된 약속이 실제 약속일 가능성. 운영 로그로 보정되기 전에는 정책 신호일 뿐 확률로 간주하지 않는다. */
+    val confidence: Double = 1.0,
     /** 생애 상태(ACTIVE=미완, SUPERSEDED=해결됨, EXPIRED 등). 물리 삭제 대신 상태 전이. */
     val status: MemoryStatus = MemoryStatus.ACTIVE,
+    /** 이 의도가 귀속된 canonical 대화 focus. null은 기존 데이터 호환용이다. */
+    val focusThreadKey: String? = null,
+    /** 수행 완료 시각. ACTIVE이면 null이다. */
+    val completedAt: Instant? = null,
+    /** 완료를 증명한 실제 실행 action ID. 판단 모델의 선언만으로는 채울 수 없다. */
+    val completedByActionId: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "PendingIntent id 는 비어 있을 수 없다" }
         require(topic.isNotBlank()) { "topic 은 비어 있을 수 없다" }
         require(targetPseudonym == null || targetPseudonym.isNotBlank()) { "targetPseudonym 은 빈 문자열일 수 없다" }
+        require(focusThreadKey == null || focusThreadKey.isNotBlank()) { "focusThreadKey 는 빈 문자열일 수 없다" }
+        require(confidence in 0.0..1.0) { "confidence 는 0.0 이상 1.0 이하여야 한다" }
+        require(completedByActionId == null || completedByActionId.isNotBlank()) { "completedByActionId 는 빈 문자열일 수 없다" }
+        require((status == MemoryStatus.COMPLETED) == (completedAt != null && completedByActionId != null)) {
+            "COMPLETED 상태, completedAt, completedByActionId는 함께 있어야 한다"
+        }
     }
 
     /** [now] 기준 만료됐는가. */
@@ -49,6 +63,11 @@ data class PendingIntent(
 
     /** [now] 기준 아직 처리 대상으로 살아 있는가(ACTIVE 이고 만료 전). */
     fun isActiveAt(now: Instant): Boolean = status.isRetrievable && !isExpiredAt(now)
+
+    fun complete(
+        at: Instant,
+        actionId: String,
+    ): PendingIntent = copy(status = MemoryStatus.COMPLETED, completedAt = at, completedByActionId = actionId)
 }
 
 /** 하기로 한 사회적 행위의 닫힌 집합(NEXA-P07-T006). 자유 텍스트 사고 사슬 대신 구조화 act. */
@@ -67,6 +86,15 @@ enum class SocialAct {
 
     /** 사과/정정하기로 함. */
     APOLOGIZE,
+
+    /** 약속한 이야기를 실제로 수행. */
+    TELL_STORY,
+
+    /** 약속한 설명을 실제로 수행. */
+    EXPLAIN,
+
+    /** 약속한 답변을 실제로 수행. */
+    ANSWER,
 }
 
 /** 의도 발동 조건(닫힌 집합). */

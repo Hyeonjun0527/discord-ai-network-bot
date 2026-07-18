@@ -144,6 +144,10 @@ central:
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
   nexa:
+    execution-permit:
+      # NEXA 실행 permit은 기본 Redis Lua 원자 경로다. 로컬 단일 인스턴스/테스트에서만 명시적으로 false를 준다.
+      # Redis 장애는 reserve=false로 닫혀 CANARY/LIVE의 채널/전역 상한이 인스턴스별로 갈라지지 않는다.
+      redis-enabled: ${CENTRAL_NEXA_EXECUTION_PERMIT_REDIS_ENABLED:true}
     judge:
       # real-send(CANARY/LIVE) 채널의 참여 여부는 raw scene + few-shot single judge가 최종 판단한다.
       # shadow는 CENTRAL_NEXA_JUDGE_MODE=shadow 로 명시한 SHADOW_PREDICT 관찰용이다. CANARY/LIVE에서 shadow/off는
@@ -151,13 +155,20 @@ central:
       mode: ${CENTRAL_NEXA_JUDGE_MODE:final}
     autonomous-send:
       # 니아 자율 전송(예약된 SPEAK 를 실제 Discord 로 보냄) 실행 파이프라인 활성화 스위치.
-      # 기본 true(켜짐). 파이프라인(poller/executor/스케줄러) 빈이 생성돼 니아가 자율 발화할 수 있다. 단 실제 전송은
+      # 기본 false(꺼짐). 키·Cloud LLM·Redis 전제조건을 갖춘 배포만 명시적으로 켠다. 켜면
+      # 파이프라인(poller/executor/스케줄러) 빈이 생성돼 니아가 자율 발화할 수 있다. 단 실제 전송은
       # 채널별 ShadowMode 가 실행 직전 한 번 더 게이팅한다: OFF/OBSERVE_ONLY/SHADOW_PREDICT=전송 0(기본), CANARY/LIVE
       # 채널만 실제 전송("니아 채널 자동 만들기"가 LIVE 설정). 즉 전역은 켜져 있어도 관리자가 LIVE 로 명시한 채널만
       # 발화한다. 비상 정지(kill-switch)는 env NEXA_AUTONOMOUS_SEND_ENABLED=false.
-      enabled: ${NEXA_AUTONOMOUS_SEND_ENABLED:true}
+      enabled: ${NEXA_AUTONOMOUS_SEND_ENABLED:false}
       # due 예약을 확인하는 poll 주기(ms). 켜졌을 때만 유효.
       poll-interval-ms: ${NEXA_AUTONOMOUS_SEND_POLL_INTERVAL_MS:2000}
+    closed-loop-retention:
+      # WAIT outbox와 행동-결과 관측 행은 원문이 아니어도 무한 보존하지 않는다. 매일 UTC 03:55에 30일 초과분을
+      # 자식 outcome -> interaction 순서와 만료 WAIT 순서로 정리한다. 기능을 꺼도 과거 행 정리를 위해 기본 활성이다.
+      enabled: ${NEXA_CLOSED_LOOP_RETENTION_ENABLED:true}
+      days: ${NEXA_CLOSED_LOOP_RETENTION_DAYS:30}
+      cron: ${NEXA_CLOSED_LOOP_RETENTION_CRON:0 55 3 * * *}
     canary-halt:
       # Canary 자동 중단 SAFETY NET. 자율 전송(위 autonomous-send.enabled)이 켜졌을 때만 모니터 빈이 생성돼,
       # 길드별 최근 1시간 신호가 한도를 넘으면 스스로 SHADOW_PREDICT/OFF 로 강등한다(+pending 취소·운영자 알림).

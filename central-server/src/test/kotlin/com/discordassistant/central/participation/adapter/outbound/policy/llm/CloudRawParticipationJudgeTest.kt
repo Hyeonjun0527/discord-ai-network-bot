@@ -40,6 +40,9 @@ class CloudRawParticipationJudgeTest {
             // 이름 호명은 regex 매칭이 아니라 judge 의 의미 이해로 잡는다: 표기 무관 호명 규칙 + 로마자 few-shot 이 프롬프트에 실린다.
             .contains("호명 판정")
             .contains("nia ya")
+            .contains("REPEATED_EMPTY_NAME_CALL")
+            .contains("왜 자꾸 불러 ㅋㅋ")
+            .contains("말투는 장면이 정한다")
             .contains("3인칭으로 언급만 하는 것")
     }
 

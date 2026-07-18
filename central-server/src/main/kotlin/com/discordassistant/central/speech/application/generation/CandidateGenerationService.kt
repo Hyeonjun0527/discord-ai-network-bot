@@ -13,7 +13,7 @@ import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 /**
  * 발화 후보 생성 유스케이스(NEXA-P14-T011, application).
  *
- * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 현재 운영 계약은 한 번의 모델 호출에서 후보 2개까지 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
+ * 한 잠정 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
  * 프롬프트로 조립하고([assembleRequest]) [SpeechGenerationPort] 로 생성한다. budget(T015)이 후보 수·token 상한을,
  * ReasoningModeSelector(T013)가 추론 모드를 정한다.
  *
@@ -100,7 +100,8 @@ class CandidateGenerationService(
             packet.speechIntent?.let { intent ->
                 appendLine("[participation 결정]")
                 appendLine(intent)
-                appendLine("SPEAK 여부는 이미 확정됐다. 여기서는 실제 문구만 만들고 WAIT/REACT/IGNORE 로 다시 뒤집지 않는다.")
+                appendLine("SPEAK는 잠정 판단이다. 여기서는 비교할 실제 발화 후보만 만들고 행동 선택은 뒤 단계에 맡긴다.")
+                appendLine("speechIntent가 설명·이야기·사과·답변 같은 행위를 요구하면 지금 그 행위를 수행한다. 준비하거나 나중에 하겠다는 예고로 대신하지 않는다.")
             }
             appendLine(socialActCompiler.compile(packet.socialAct))
             appendLine(burstCompiler.compile(packet.burstShape))
@@ -121,7 +122,7 @@ class CandidateGenerationService(
                 "내용 완결: 이야기·농담·재미있는 말을 요청받으면 '준비해볼게', '말해줄게', '생각해볼게' 같은 예고로 " +
                     "끝내지 말고 이번 답변의 bubble 안에서 실제 내용을 바로 끝까지 들려준다.",
             )
-            appendLine("각 bubble 은 Discord 채팅 한마디처럼 쓰고, ASCII 마침표(.)로 끝내지 않는다.")
+            appendLine("각 bubble 은 Discord 채팅처럼 자연스럽게 쓰고, 행위 수행에 필요한 내용을 생략하지 않는다. ASCII 마침표(.)로 끝내지 않는다.")
             appendLine()
             appendLine(outputFormatInstruction(candidateCount))
         }.trim()

@@ -145,6 +145,7 @@ data class SingleJudgeSceneSnapshot(
     val runtimeGuardState: JudgeRuntimeGuardState = JudgeRuntimeGuardState.EMPTY,
     val relationshipState: JudgeRelationshipSceneState = JudgeRelationshipSceneState.EMPTY,
     val memoryState: JudgeMemorySceneState = JudgeMemorySceneState.EMPTY,
+    val socialBeliefState: JudgeSocialBeliefState = JudgeSocialBeliefState.EMPTY,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }
@@ -154,6 +155,53 @@ data class SingleJudgeSceneSnapshot(
         }
     }
 }
+
+data class JudgeSocialBeliefState(
+    val commonGround: List<JudgeCommonGroundState>,
+    val intentHypotheses: List<JudgeIntentHypothesisState>,
+    val recentNiaActions: List<JudgeRecentNiaActionState>,
+    val recentOutcomes: List<JudgeRecentOutcomeState>,
+) {
+    init {
+        require(commonGround.size <= 20) { "judge 공통 기반은 최대 20개다" }
+        require(intentHypotheses.size <= 12) { "judge 의도 가설은 최대 12개다" }
+        require(recentNiaActions.size <= 12) { "judge 최근 행동은 최대 12개다" }
+        require(recentOutcomes.size <= 12) { "judge 최근 결과는 최대 12개다" }
+    }
+
+    companion object {
+        val EMPTY = JudgeSocialBeliefState(emptyList(), emptyList(), emptyList(), emptyList())
+    }
+}
+
+data class JudgeCommonGroundState(
+    val code: String,
+    val confidence: Double,
+    val evidenceRefs: Set<String>,
+    val status: String,
+)
+
+data class JudgeIntentHypothesisState(
+    val participantRef: String,
+    val code: String,
+    val probability: Double,
+    val evidenceRefs: Set<String>,
+    val status: String,
+)
+
+data class JudgeRecentNiaActionState(
+    val actionId: String,
+    val actionKind: String,
+    val intentSummary: String?,
+    val targetMessageRef: String?,
+    val contextVersion: Long,
+)
+
+data class JudgeRecentOutcomeState(
+    val actionId: String,
+    val code: String,
+    val evidenceRef: String,
+)
 
 data class JudgeRelationshipSceneState(
     val familiarity: Double?,
@@ -359,6 +407,7 @@ data class SingleJudgeDecision(
     val speechIntent: JudgeSpeechIntent?,
     val toneAxes: JudgeToneAxes,
     val reasonCode: JudgeReasonCode,
+    val beliefDelta: JudgeBeliefDelta = JudgeBeliefDelta.EMPTY,
 ) {
     init {
         require(confidence in 0.0..1.0) { "confidence 는 [0,1] 범위여야 한다: $confidence" }
@@ -374,6 +423,85 @@ data class SingleJudgeDecision(
             -> Unit
         }
     }
+}
+
+/** judge가 새 관찰 근거로 제안하는 수정 가능한 믿음 상태 갱신이다. */
+data class JudgeBeliefDelta(
+    val commonGround: List<JudgeCommonGroundUpdate> = emptyList(),
+    val intentHypotheses: List<JudgeIntentHypothesisUpdate> = emptyList(),
+    val commitments: List<JudgeCommitmentUpdate> = emptyList(),
+) {
+    init {
+        require(commonGround.size <= MAX_UPDATES) { "공통 기반 갱신은 최대 $MAX_UPDATES 개다" }
+        require(intentHypotheses.size <= MAX_UPDATES) { "의도 가설 갱신은 최대 $MAX_UPDATES 개다" }
+        require(commitments.size <= MAX_UPDATES) { "약속 갱신은 최대 $MAX_UPDATES 개다" }
+    }
+
+    companion object {
+        val EMPTY = JudgeBeliefDelta()
+        const val MAX_UPDATES: Int = 8
+    }
+}
+
+data class JudgeCommitmentUpdate(
+    val commitmentRef: String,
+    val topic: String,
+    val socialAct: String,
+    val evidenceRefs: Set<String>,
+    val confidence: Double,
+    val status: JudgeCommitmentStatus,
+) {
+    init {
+        require(commitmentRef.isStableRef()) { "commitmentRef 형식이 잘못됐다: $commitmentRef" }
+        require(topic.isNotBlank() && topic.length <= 256) { "약속 topic이 비어 있거나 너무 길다" }
+        require(socialAct in ALLOWED_SOCIAL_ACTS) { "지원하지 않는 약속 socialAct다: $socialAct" }
+        require(evidenceRefs.isNotEmpty() && evidenceRefs.all(String::isStableRef)) { "약속에는 근거 ref가 필요하다" }
+        require(confidence in 0.0..1.0) { "약속 confidence는 [0,1]이어야 한다" }
+    }
+
+    companion object {
+        val ALLOWED_SOCIAL_ACTS = setOf("REPLY", "FIND_INFORMATION", "FOLLOW_UP", "APOLOGIZE", "TELL_STORY", "EXPLAIN", "ANSWER")
+    }
+}
+
+enum class JudgeCommitmentStatus {
+    ACTIVE,
+    COMPLETED,
+    REJECTED,
+}
+
+data class JudgeCommonGroundUpdate(
+    val code: String,
+    val confidence: Double,
+    val evidenceRefs: Set<String>,
+    val status: JudgeBeliefStatus = JudgeBeliefStatus.ACTIVE,
+) {
+    init {
+        require(code.matches(Regex("[a-z0-9][a-z0-9_.-]{0,159}"))) { "공통 기반 code 형식이 잘못됐다: $code" }
+        require(confidence in 0.0..1.0) { "공통 기반 confidence 는 [0,1]이어야 한다" }
+        require(evidenceRefs.isNotEmpty() && evidenceRefs.all(String::isStableRef)) { "공통 기반에는 근거 ref가 필요하다" }
+    }
+}
+
+data class JudgeIntentHypothesisUpdate(
+    val participantRef: String,
+    val code: String,
+    val probability: Double,
+    val evidenceRefs: Set<String>,
+    val status: JudgeBeliefStatus = JudgeBeliefStatus.ACTIVE,
+) {
+    init {
+        require(participantRef.isStableRef()) { "participantRef 형식이 잘못됐다: $participantRef" }
+        require(code.matches(Regex("[a-z0-9][a-z0-9_.-]{0,159}"))) { "의도 가설 code 형식이 잘못됐다: $code" }
+        require(probability in 0.0..1.0) { "의도 가설 probability 는 [0,1]이어야 한다" }
+        require(evidenceRefs.isNotEmpty() && evidenceRefs.all(String::isStableRef)) { "의도 가설에는 근거 ref가 필요하다" }
+    }
+}
+
+enum class JudgeBeliefStatus {
+    ACTIVE,
+    SUPERSEDED,
+    REJECTED,
 }
 
 data class JudgeDecisionDelay(

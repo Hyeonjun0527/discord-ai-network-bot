@@ -1,8 +1,13 @@
 package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionLimits
+import com.discordassistant.central.actionruntime.application.port.out.WaitReevaluationCommand
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.conversation.application.port.out.RawContextStorePort
+import com.discordassistant.central.conversation.application.scene.ConversationObservation
+import com.discordassistant.central.conversation.application.scene.ConversationSceneIngress
+import com.discordassistant.central.conversation.application.scene.InMemoryConversationSceneIngress
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRetentionPolicy
@@ -23,11 +28,16 @@ import com.discordassistant.central.participation.application.feature.FeatureCat
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.judge.JudgeCommonGroundState
 import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
 import com.discordassistant.central.participation.application.judge.JudgeFewShotBadAlternativePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotExamplePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotRawMessagePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotSetPayload
+import com.discordassistant.central.participation.application.judge.JudgeIntentHypothesisState
+import com.discordassistant.central.participation.application.judge.JudgeRecentNiaActionState
+import com.discordassistant.central.participation.application.judge.JudgeRecentOutcomeState
+import com.discordassistant.central.participation.application.judge.JudgeSocialBeliefState
 import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
 import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
@@ -66,6 +76,27 @@ import com.discordassistant.central.participation.domain.service.ChannelAttentio
 import com.discordassistant.central.participation.domain.service.CoreInterventionRules
 import com.discordassistant.central.quota.application.RateLimitStore
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.socialmemory.application.port.out.PendingIntentStore
+import com.discordassistant.central.socialmemory.domain.model.VisibilityScope
+import com.discordassistant.central.socialmemory.domain.model.intent.IntentActivation
+import com.discordassistant.central.socialmemory.domain.model.intent.IntentUrgency
+import com.discordassistant.central.socialmemory.domain.model.intent.PendingIntent
+import com.discordassistant.central.socialmemory.domain.model.intent.SocialAct
+import com.discordassistant.central.socialmemory.domain.model.source.MemorySource
+import com.discordassistant.central.socialpolicy.application.port.out.InteractionOutcomePort
+import com.discordassistant.central.socialpolicy.application.port.out.SceneBeliefStatePort
+import com.discordassistant.central.socialpolicy.application.port.out.SceneObservation
+import com.discordassistant.central.socialpolicy.domain.model.BeliefStatus
+import com.discordassistant.central.socialpolicy.domain.model.CommonGroundBelief
+import com.discordassistant.central.socialpolicy.domain.model.IntentHypothesisBelief
+import com.discordassistant.central.socialpolicy.domain.model.InteractionEvidenceRef
+import com.discordassistant.central.socialpolicy.domain.model.ObservedInteractionOutcome
+import com.discordassistant.central.socialpolicy.domain.model.ObservedOutcomeCode
+import com.discordassistant.central.socialpolicy.domain.model.RecentInteractionOutcomeBelief
+import com.discordassistant.central.socialpolicy.domain.model.RecentNiaActionBelief
+import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefDelta
+import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefState
+import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
@@ -77,6 +108,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.security.MessageDigest
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
@@ -84,7 +116,7 @@ import java.time.Instant
  * NEXA participation **자발 발화 wiring**(NEXA participation-activation-plan 단계 1, platform/discord 어댑터).
  *
  * "AI 채팅 채널"(NEXA participation flag 가 활성인 (guild, channel))에서 받은 메시지에 대해, 니아가 **스스로**
- * 발화/리액션/침묵을 판단하고 SPEAK 면 단일 보안 seam [NexaSpeechEmitService.emit] 를 호출한다. 기존 채널 무조건
+ * 발화/리액션/침묵을 판단하고 잠정 SPEAK 면 단일 보안 seam [NexaSpeechEmitService.emit] 를 호출한다. 기존 채널 무조건
  * 답변(autoRespond)과 별개의 participation 경로다. participation flag가 비활성일 때만 legacy autoRespond가 응답을 소유한다.
  *
  * **안전(단계 1 핵심)**:
@@ -95,9 +127,8 @@ import java.time.Instant
  *     ([com.discordassistant.central.actionruntime.application.ShadowOutboundDispatcher])가 ShadowMode 로 hard
  *     block 한다 — SHADOW_PREDICT 는 `allowsRealSend=false` 라 전송 port 가 **호출되지 않는다**. 즉 wiring 을 켜고
  *     SHADOW_PREDICT 로 두면 평가·기록은 되지만 사용자에게 메시지가 나가지 않는다. CANARY/LIVE 승격은 별도 단계.
- *  3. **rate limit 안전망(토큰 폭주 방지)**: SPEAK 확정 후 emit(GLM 발화 생성) 호출 직전에 채널별/전역 **이중**
- *     분당 빈도 게이트를 둔다. 둘 중 하나라도 거부면 emit 를 **호출하지 않는다**(GLM 토큰 0). LIVE 로 실제 전송이
- *     일어나도 이 게이트가 과발화·토큰 폭주를 hard cap 으로 막는다.
+ *  3. **실행 permit 안전망**: 각 실제 Discord SEND bubble/REACT 호출 직전에 채널별/전역 원자적 permit을 소비한다.
+ *     후보 생성·예약과 실행 quota를 분리해 실행되지 않은 후보에는 실행량을 차감하지 않고, 다중 인스턴스에서도 hard cap을 지킨다.
  *  4. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
  *     경로가 ConsentGate(2단계 동의)·비밀 유출/전송 형식 검증·LIVE 모델 검증을 **강제**한다. 이
  *     브리지는 emit 를 호출만 하며 **우회 경로를 만들지 않는다**.
@@ -114,8 +145,8 @@ class NexaParticipationEmitBridge(
     // baseline 정책을 명시 선택한다(BaselineParticipationPolicyConfig.PARTICIPATION_EVAL_POLICY_BEAN).
     @param:Qualifier("participationEvalPolicy") private val policy: ParticipationPolicyPort,
     private val emit: NexaSpeechEmitService,
-    // 자발 발화 빈도 안전망(토큰 폭주 방지) — emit 직전 채널별/전역 이중 게이트. autoRespond 가 쓰는 같은 store(#242).
-    private val rateLimitStore: RateLimitStore,
+    // 이전 생성 전 rate-limit 생성자 계약과의 호환용 의존성. 실제 SEND/REACT 제한은 emit의 ExecutionPermitPort가 소유한다.
+    @Suppress("UNUSED_PARAMETER") rateLimitStore: RateLimitStore,
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
     @param:Value("\${central.nexa.participation.speech.raw-context.max-chars:12000}")
@@ -129,6 +160,11 @@ class NexaParticipationEmitBridge(
     private val fewShotService: NiaFewShotService? = null,
     private val actionRouter: ParticipationActionRouter? = null,
     private val turnGenerations: NiaTurnGenerationTracker = NiaTurnGenerationTracker(),
+    private val sceneBeliefState: SceneBeliefStatePort? = null,
+    private val interactionOutcomes: InteractionOutcomePort? = null,
+    private val pendingIntents: PendingIntentStore? = null,
+    private val conversationSceneIngress: ConversationSceneIngress = InMemoryConversationSceneIngress(),
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
     private val judgeMode = NexaJudgeMode.parse(judgeModeName)
@@ -149,6 +185,7 @@ class NexaParticipationEmitBridge(
      */
     private val attentionStates =
         java.util.concurrent.ConcurrentHashMap<String, ChannelAttentionGate.ChannelAttentionState>()
+    private val lastHumanSignals = java.util.concurrent.ConcurrentHashMap<String, ParticipationMessageSignal>()
 
     /**
      * [signal] (raw Discord 메시지 신호)에 대해 NEXA participation 평가를 돌리고, 정책이 낸 분포가 SPEAK 로 접히면
@@ -183,7 +220,7 @@ class NexaParticipationEmitBridge(
                 ),
             )
         }
-        if (signal.isParticipationCommandLike()) {
+        if (!signal.reevaluationWake && signal.isParticipationCommandLike()) {
             return turnOutcome(
                 mode,
                 recordTrace(
@@ -193,13 +230,13 @@ class NexaParticipationEmitBridge(
                 ),
             )
         }
-        if (!captureRawContext(signal)) {
+        if (!signal.reevaluationWake && !captureRawContext(signal)) {
             return turnOutcome(
                 mode,
                 recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed),
             )
         }
-        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+        if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return turnOutcome(
                 mode,
                 recordTrace(
@@ -209,18 +246,24 @@ class NexaParticipationEmitBridge(
                 ),
             )
         }
+        val effectiveSignal = synchronizeScene(signal)
+        if (effectiveSignal == null) {
+            log.warn("NEXA 장면 projection 갱신 실패(channel={}) — 이번 턴 fail-closed", signal.channelId)
+            return turnOutcome(mode, recordTrace(signal, mode, ParticipationEmitOutcome.Failed))
+        }
+        if (!effectiveSignal.reevaluationWake) rememberLastHumanSignal(effectiveSignal)
         if (mode.allowsRealSend && judgeMode != NexaJudgeMode.FINAL) {
             // Rollout guard, not social-policy logic: a non-final judge mode may collect comparison data in shadow,
             // but it must never use core/baseline or legacy behavior to emit in CANARY/LIVE.
             log.error(
                 "NEXA participation real-send lane requires final judge mode(channel={}, mode={}); fail-closing this turn",
-                signal.channelId,
+                effectiveSignal.channelId,
                 judgeMode.wireName,
             )
             return turnOutcome(
                 mode,
                 recordTrace(
-                    signal = signal,
+                    signal = effectiveSignal,
                     mode = mode,
                     outcome = ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE),
                 ),
@@ -228,18 +271,210 @@ class NexaParticipationEmitBridge(
         }
         val outcome =
             try {
-                evaluateAndEmit(signal, originRolloutMode = mode)
+                evaluateAndEmit(effectiveSignal, originRolloutMode = mode)
             } catch (e: Exception) {
                 // 활성 participation 채널은 judge/안전 경계를 우회하지 않는다. 실패는 로그 후 비발화로 fail-closed한다.
                 log.warn(
                     "NIA_TURN_FAILED trace={} stage=EVALUATE_AND_EMIT reason={}",
-                    diagnosticTraceOf(signal),
+                    diagnosticTraceOf(effectiveSignal),
                     e.message,
                 )
                 ParticipationEmitOutcome.Failed
             }
-        return turnOutcome(mode, recordTrace(signal = signal, mode = mode, outcome = outcome))
+        return turnOutcome(mode, recordTrace(signal = effectiveSignal, mode = mode, outcome = outcome))
     }
+
+    /** WAIT outbox가 마지막 사람 장면을 중복 저장하지 않고 최신 context version으로 다시 판단한다. */
+    fun onWaitReevaluation(command: WaitReevaluationCommand): Boolean {
+        if (!Instant.now(clock).isBefore(command.expiresAt) || command.wakeAttempt > MAX_WAIT_REEVALUATIONS) return true
+        val last = command.routingChannelId?.let(lastHumanSignals::get) ?: restoreWaitSignal(command)
+        if (last == null) {
+            log.warn("NEXA WAIT 장면 복원 실패(child={}) — 만료 전 다음 tick에서 재시도", command.childDecisionId)
+            return false
+        }
+        if (guildPseudonym(last.guildId) != command.guildPseudonym) return false
+        val now = clock.millis()
+        val signal =
+            last.copy(
+                pendingActionIds = (last.pendingActionIds + command.waitActionIdentity).distinct(),
+                silenceMillis = (now - last.tsMs).coerceAtLeast(0),
+                burstIncomplete = false,
+                contextVersion = command.observedContextVersion,
+                sceneSeq = maxOf(last.sceneSeq, command.observedContextVersion),
+                seed = command.childDecisionId.hashCode().toLong() and Long.MAX_VALUE,
+                turnGeneration = last.turnGeneration,
+                tsMs = now,
+                reevaluationWake = true,
+                decisionIdOverride = command.childDecisionId,
+                waitAttempt = command.wakeAttempt,
+                waitExpiresAt = command.expiresAt,
+            )
+        return onMessageTurn(signal).outcome !== ParticipationEmitOutcome.Failed
+    }
+
+    private fun synchronizeScene(signal: ParticipationMessageSignal): ParticipationMessageSignal? {
+        val conversationSnapshot =
+            if (signal.reevaluationWake) {
+                conversationSceneIngress.current(signal.channelId)
+            } else {
+                conversationSceneIngress.observe(
+                    ConversationObservation(
+                        guildId = signal.guildId,
+                        channelId = signal.channelId,
+                        observationRef = "discord_message:${messagePseudonym(signal.guildId, signal.messageId)}",
+                        observedAt = recordedAtOf(signal),
+                    ),
+                )
+            } ?: return null
+        val versionedSignal =
+            signal.copy(
+                sceneSeq = conversationSnapshot.sceneSeq,
+                contextVersion = conversationSnapshot.contextVersion,
+            )
+        val store = sceneBeliefState ?: return versionedSignal
+        val guild = guildPseudonym(versionedSignal.guildId)
+        val focusKey = focusThreadKey(versionedSignal, guild)
+        val observedState =
+            if (versionedSignal.reevaluationWake) {
+                store.find(focusKey)
+            } else {
+                store.observe(
+                    SceneObservation(
+                        guildPseudonym = guild,
+                        channelId = channelPseudonym(versionedSignal.guildId, versionedSignal.channelId),
+                        focusThreadKey = focusKey,
+                        sceneSeq = conversationSnapshot.sceneSeq,
+                        contextVersion = conversationSnapshot.contextVersion,
+                        evidenceRef = "raw_context_message:${messagePseudonym(versionedSignal.guildId, versionedSignal.messageId)}",
+                        observedAt = recordedAtOf(versionedSignal),
+                    ),
+                )
+            } ?: return null
+        val state =
+            if (!versionedSignal.reevaluationWake) {
+                observePriorActionOutcome(versionedSignal, focusKey)?.let { outcome ->
+                    store.recordOutcome(
+                        focusKey,
+                        RecentInteractionOutcomeBelief(
+                            actionId = outcome.actionId,
+                            code = outcome.code.name.lowercase(),
+                            evidenceRef = outcome.evidenceRef,
+                            occurredAt = outcome.observedAt,
+                        ),
+                    )
+                } ?: observedState
+            } else {
+                observedState
+            }
+        val openCommitment = pendingIntents?.findActive(focusKey, Instant.now(clock))?.isNotEmpty()
+        return versionedSignal.copy(
+            sceneSeq = conversationSnapshot.sceneSeq,
+            contextVersion = conversationSnapshot.contextVersion,
+            socialBeliefState = state.toJudgeState(),
+            memoryObservation =
+                openCommitment?.let { isActive ->
+                    versionedSignal.memoryObservation?.copy(pendingIntentActive = isActive)
+                        ?: MemoryObservation(false, 0.0, 0.0, isActive)
+                } ?: versionedSignal.memoryObservation,
+        )
+    }
+
+    private fun observePriorActionOutcome(
+        signal: ParticipationMessageSignal,
+        focusKey: String,
+    ): ObservedInteractionOutcome? =
+        interactionOutcomes?.observeLatest(
+            focusThreadKey = focusKey,
+            code = explicitOutcomeCode(signal.rawText),
+            evidenceRef = "raw_context_message:${messagePseudonym(signal.guildId, signal.messageId)}",
+            replyToMessageRef = signal.replyToMessageId?.toString()?.let(InteractionEvidenceRef::discordMessage),
+            explicitActionId = signal.pendingActionIds.singleOrNull(),
+            observedAt = recordedAtOf(signal),
+        )
+
+    private fun explicitOutcomeCode(rawText: String): ObservedOutcomeCode {
+        val normalized = rawText.lowercase()
+        return when {
+            listOf("같은 말", "또 똑같", "반복").any(normalized::contains) -> ObservedOutcomeCode.REPETITION_COMPLAINT
+            listOf("한다며", "해준다며", "준비한다며", "약속").any(normalized::contains) -> ObservedOutcomeCode.PROMISE_COMPLAINT
+            listOf("고마워", "좋아", "맞아", "ㅋㅋ").any(normalized::contains) -> ObservedOutcomeCode.POSITIVE_FEEDBACK
+            listOf("아니", "틀렸", "왜 그래", "그만").any(normalized::contains) -> ObservedOutcomeCode.NEGATIVE_FEEDBACK
+            else -> ObservedOutcomeCode.HUMAN_FOLLOW_UP
+        }
+    }
+
+    private fun rememberLastHumanSignal(signal: ParticipationMessageSignal) {
+        lastHumanSignals[signal.channelId.toString()] = signal
+        if (lastHumanSignals.size > MAX_CACHED_CHANNEL_SIGNALS) {
+            lastHumanSignals.keys.firstOrNull()?.let(lastHumanSignals::remove)
+        }
+    }
+
+    private fun restoreWaitSignal(command: WaitReevaluationCommand): ParticipationMessageSignal? {
+        val guildId = command.routingGuildId?.toLongOrNull() ?: return null
+        val userId = command.routingUserId?.toLongOrNull() ?: return null
+        val channelId = command.routingChannelId?.toLongOrNull() ?: return null
+        if (guildPseudonym(guildId) != command.guildPseudonym || channelPseudonym(guildId, channelId) != command.channelId) return null
+        val now = clock.millis()
+        val state = sceneBeliefState?.find(command.threadId) ?: return null
+        return ParticipationMessageSignal(
+            guildId = guildId,
+            channelId = channelId,
+            messageId = command.targetMessageId?.toLongOrNull() ?: 0,
+            userId = userId,
+            threadId = channelId.takeIf { command.threadId.contains(FOCUS_THREAD_MARKER) },
+            sourceType = ParticipationMessageSourceType.HUMAN,
+            mentioned = false,
+            recentTurns = emptyList(),
+            speakerLabel = "user_${userId % 100000}",
+            pendingActionIds = listOf(command.waitActionIdentity),
+            silenceMillis = 0,
+            tsMs = now,
+            sceneSeq = state.sceneSeq,
+            contextVersion = state.contextVersion,
+            seed = command.childDecisionId.hashCode().toLong() and Long.MAX_VALUE,
+            turnGeneration = command.targetMessageId?.toLongOrNull() ?: return null,
+            reevaluationWake = true,
+            decisionIdOverride = command.childDecisionId,
+            socialBeliefState = state.toJudgeState(),
+        )
+    }
+
+    private fun SceneBeliefState.toJudgeState(): JudgeSocialBeliefState =
+        JudgeSocialBeliefState(
+            commonGround =
+                commonGround.map {
+                    JudgeCommonGroundState(it.code, it.confidence, it.evidenceRefs, it.status.name)
+                },
+            intentHypotheses =
+                intentHypotheses.map {
+                    JudgeIntentHypothesisState(
+                        it.participantPseudonym,
+                        it.code,
+                        it.probability,
+                        it.evidenceRefs,
+                        it.status.name,
+                    )
+                },
+            recentNiaActions =
+                recentNiaActions.map {
+                    JudgeRecentNiaActionState(
+                        it.actionId,
+                        it.actionKind,
+                        it.intentSummary,
+                        it.targetMessageRef,
+                        it.contextVersion,
+                    )
+                },
+            recentOutcomes =
+                recentOutcomes.map {
+                    JudgeRecentOutcomeState(
+                        actionId = it.actionId,
+                        code = it.code,
+                        evidenceRef = it.evidenceRef,
+                    )
+                },
+        )
 
     /** Construct an outcome for a failure before a [ParticipationMessageSignal] could be built. */
     fun failedMessageTurn(
@@ -290,6 +525,9 @@ class NexaParticipationEmitBridge(
                     messageId = signal.messageId,
                     reason = RawContextUnavailableReason.REDACTED,
                 )
+            val evidenceRef = "raw_context_message:${messagePseudonym(signal.guildId, signal.messageId)}"
+            pendingIntents?.invalidateBySource(evidenceRef)
+            interactionOutcomes?.invalidateByEvidence(evidenceRef)
             ParticipationRawContextMutationOutcome.Redacted(if (result.removed) 1 else 0)
         }
 
@@ -418,7 +656,7 @@ class NexaParticipationEmitBridge(
     ): ParticipationEmitOutcome {
         val guildPseudonym = guildPseudonym(signal.guildId)
         val userPseudonym = userPseudonym(signal.guildId, signal.userId)
-        val channelKey = signal.channelId.toString()
+        val channelKey = channelPseudonym(signal.guildId, signal.channelId)
         val sceneBuild = buildPolicyScene(signal, guildPseudonym, channelKey)
         val request =
             PolicyDecisionRequest(
@@ -509,7 +747,7 @@ class NexaParticipationEmitBridge(
 
         val response = policy.decide(request)
 
-        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+        if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE)
         }
 
@@ -585,6 +823,7 @@ class NexaParticipationEmitBridge(
                     .toSet(),
             relationshipObservation = signal.relationshipObservation,
             memoryObservation = signal.memoryObservation,
+            socialBeliefState = signal.socialBeliefState,
         )
 
     private fun recordShadowJudge(
@@ -645,7 +884,7 @@ class NexaParticipationEmitBridge(
                 return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
             }
 
-        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+        if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             logSingleJudgeDecision(
                 signal = signal,
                 guildPseudonym = guildPseudonym,
@@ -658,6 +897,11 @@ class NexaParticipationEmitBridge(
                 shadowBaselineAction = null,
             )
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE)
+        }
+
+        if (!applyJudgeBeliefDelta(signal, decision)) {
+            log.warn("NEXA judge 믿음 갱신 중 장면 버전 충돌(sceneSeq={}) — stale 결정 실행 안 함", signal.sceneSeq)
+            return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
         }
 
         if (decision.action == SocialActionKind.SPEAK) {
@@ -688,8 +932,107 @@ class NexaParticipationEmitBridge(
             featureVector = sceneBuild.featureVector,
             shadowBaselineAction = null,
         )
-        routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision, originRolloutMode)
+        val routed = routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision, originRolloutMode)
+        if (decision.action == SocialActionKind.IGNORE || routed) {
+            recordSceneAction(signal, decision.action, decision.speechIntent?.intentSummary)
+        }
         return ParticipationEmitOutcome.NotSpeaking(decision.action)
+    }
+
+    private fun applyJudgeBeliefDelta(
+        signal: ParticipationMessageSignal,
+        decision: SingleJudgeDecision,
+    ): Boolean {
+        val store = sceneBeliefState ?: return true
+        val delta =
+            SceneBeliefDelta(
+                commonGround =
+                    decision.beliefDelta.commonGround.map {
+                        CommonGroundBelief(
+                            code = it.code,
+                            confidence = it.confidence,
+                            evidenceRefs = it.evidenceRefs,
+                            status = BeliefStatus.valueOf(it.status.name),
+                        )
+                    },
+                intentHypotheses =
+                    decision.beliefDelta.intentHypotheses.map {
+                        IntentHypothesisBelief(
+                            participantPseudonym = it.participantRef,
+                            code = it.code,
+                            probability = it.probability,
+                            evidenceRefs = it.evidenceRefs,
+                            status = BeliefStatus.valueOf(it.status.name),
+                        )
+                    },
+            )
+        val applied =
+            store.applyDelta(
+                focusThreadKey = focusThreadKey(signal, guildPseudonym(signal.guildId)),
+                expectedContextVersion = signal.contextVersion,
+                delta = delta,
+            ) != null
+        if (applied) applyCommitmentUpdates(signal, decision)
+        return applied
+    }
+
+    private fun applyCommitmentUpdates(
+        signal: ParticipationMessageSignal,
+        decision: SingleJudgeDecision,
+    ) {
+        val store = pendingIntents ?: return
+        val guild = guildPseudonym(signal.guildId)
+        val focus = focusThreadKey(signal, guild)
+        val availableEvidence = signal.evidenceRefs(guild)
+        decision.beliefDelta.commitments
+            .filter { it.confidence >= MIN_COMMITMENT_CONFIDENCE && availableEvidence.containsAll(it.evidenceRefs) }
+            .forEach { update ->
+                val id = commitmentId(focus, update.commitmentRef)
+                when (update.status) {
+                    com.discordassistant.central.participation.application.judge.JudgeCommitmentStatus.ACTIVE ->
+                        store.save(
+                            PendingIntent(
+                                id = id,
+                                visibility = VisibilityScope.Channel(guild, channelPseudonym(signal.guildId, signal.channelId)),
+                                topic = update.topic,
+                                targetPseudonym = userPseudonym(signal.guildId, signal.userId),
+                                socialAct = SocialAct.valueOf(update.socialAct),
+                                activation = IntentActivation.IMMEDIATE,
+                                urgency = IntentUrgency.NORMAL,
+                                source = MemorySource(update.evidenceRefs, 1, true, recordedAtOf(signal)),
+                                expiresAt = recordedAtOf(signal).plus(COMMITMENT_TTL),
+                                confidence = update.confidence,
+                                focusThreadKey = focus,
+                            ),
+                        )
+                    // 판단 모델은 완료를 주장할 수 있지만, 실제 SEND 실행 증거만 약속을 닫는다.
+                    com.discordassistant.central.participation.application.judge.JudgeCommitmentStatus.COMPLETED -> Unit
+                    com.discordassistant.central.participation.application.judge.JudgeCommitmentStatus.REJECTED -> store.invalidate(id)
+                }
+            }
+    }
+
+    private fun commitmentId(
+        focusThreadKey: String,
+        commitmentRef: String,
+    ): String = sha256Hex("$focusThreadKey:$commitmentRef")
+
+    private fun recordSceneAction(
+        signal: ParticipationMessageSignal,
+        action: SocialActionKind,
+        intentSummary: String?,
+    ) {
+        sceneBeliefState?.recordAction(
+            focusThreadKey(signal, guildPseudonym(signal.guildId)),
+            RecentNiaActionBelief(
+                actionId = correlationIdOf(signal),
+                actionKind = action.name.lowercase(),
+                intentSummary = intentSummary?.take(RecentNiaActionBelief.MAX_INTENT_CHARS),
+                targetMessageRef = "raw_context_message:${messagePseudonym(signal.guildId, signal.messageId)}",
+                contextVersion = signal.contextVersion,
+                occurredAt = recordedAtOf(signal),
+            ),
+        )
     }
 
     private fun singleJudgeRequest(
@@ -854,7 +1197,7 @@ class NexaParticipationEmitBridge(
         )
 
     /**
-     * SPEAK 확정(규칙 즉결 또는 정책 분포 argmax) 후 공통 발화 경로 — rate limit 안전망 → emit 입력 조립 → emit.
+     * 잠정 SPEAK(규칙 즉결 또는 정책 분포 argmax) 후 공통 경로 — emit 입력 조립 → 완전 행동 후보 평가 → 행동 예약.
      * [response] 는 규칙 즉결이면 [ruleForcedSpeakResponse], 정책 위임이면 정책이 낸 분포다.
      */
     private fun emitSpeak(
@@ -867,7 +1210,7 @@ class NexaParticipationEmitBridge(
         attribution: DecisionAttribution = response.defaultAttribution(),
         originRolloutMode: ShadowMode,
     ): ParticipationEmitOutcome {
-        if (!turnGenerations.isLatest(signal.channelId, signal.contextVersion)) {
+        if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SPEECH_GENERATION)
         }
         logPolicyDecision(
@@ -881,24 +1224,26 @@ class NexaParticipationEmitBridge(
             attribution = attribution,
         )
 
-        // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
-        //    채널별/전역 이중 게이트를 둔다. **둘 중 하나라도 거부면 emit 를 호출하지 않는다(GLM 토큰 0)**. LIVE 로
-        //    실제 전송이 일어나도 이 게이트가 분당 발화 수를 hard cap 으로 묶어 과발화·토큰 폭주를 막는다.
-        if (!withinRateLimit(channelKey)) {
-            return ParticipationEmitOutcome.RateLimited(channelKey)
-        }
-
-        // 4) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
+        // 3) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
         //    PolicyBackedConsentGate 형식(guild:user:channel)으로 맞춘다.
+        val openCommitment = pendingIntents?.findActive(focusThreadKey(signal, guildPseudonym), Instant.now(clock))?.firstOrNull()
+        val effectiveSpeechIntent =
+            (attribution.speechIntent ?: response.speechIntent(reasonCode = attribution.reasonCode)) +
+                if (openCommitment != null) {
+                    "; open_commitment=true; commitment_act=${openCommitment.socialAct.name}; " +
+                        "commitment_topic=${openCommitment.topic}; 미완료 약속을 실제 행위로 해결한다"
+                } else {
+                    ""
+                }
         val packet =
             SpeechScenePacket.of(
-                focusThreadKey = "discord:$guildPseudonym:$channelKey",
+                focusThreadKey = focusThreadKey(signal, guildPseudonym),
                 target = SpeechTarget.member(userPseudonym),
                 recentTurns = signal.recentTurns,
                 socialAct = response.selectedSpeechSocialAct(),
                 burstShape = response.toSpeechBurstShape(),
                 identity = NIA_IDENTITY,
-                speechIntent = attribution.speechIntent ?: response.speechIntent(reasonCode = attribution.reasonCode),
+                speechIntent = effectiveSpeechIntent,
                 rawContextSceneData = rawContextSceneDataForSpeech(signal),
             )
         val emitRequest =
@@ -942,15 +1287,43 @@ class NexaParticipationEmitBridge(
                     seed = signal.seed,
                     executeAfter = Instant.now(),
                     originRolloutMode = originRolloutMode,
+                    turnGeneration = signal.turnGeneration,
+                    budget =
+                        GenerationBudget.forDecision(
+                            uncertainty = response.uncertainty,
+                            hasOpenCommitment = packet.speechIntent?.contains("open_commitment=true") == true,
+                        ),
+                    executionLimits = ExecutionLimits(perChannel = perChannelPerMin, global = globalPerMin),
+                    fulfillsPendingIntentId = openCommitment?.id,
                 )
             }
         val result = emit.emit(emitRequest)
         if (result.superseded) {
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SCHEDULE)
         }
-        // 니아가 발화했으니 pingpong 앵커를 이 트리거 시각으로 갱신한다(다음 사람 응답이 핑퐁 창에 들면 즉시 wake).
-        // 니아 자기 메시지는 이 브리지로 안 오므로(봇 author early-return), 발화 시점을 여기서 앵커로 삼는다.
-        markNiaSpoke(channelKey, signal.tsMs)
+        if (
+            result.routeResult is com.discordassistant.central.actionruntime.application.RouteResult.Ignored &&
+            (
+                result.pipelineResult?.outcome ==
+                    com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome.SPEAK ||
+                    result.pipelineResult?.outcome ==
+                    com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome.REACTION_ONLY
+            )
+        ) {
+            recordSceneAction(signal, SocialActionKind.IGNORE, attribution.speechIntent)
+            return ParticipationEmitOutcome.SchedulingRejected(channelKey)
+        }
+        val actualAction =
+            when {
+                result.willSpeak -> SocialActionKind.SPEAK
+                result.willReact -> SocialActionKind.REACT
+                else -> SocialActionKind.IGNORE
+            }
+        recordSceneAction(signal, actualAction, attribution.speechIntent)
+        if (result.willSpeak) {
+            // 실제 발화 예약만 pingpong 앵커를 갱신한다. critic 차단·취소는 발화로 세지 않는다.
+            markNiaSpoke(channelKey, signal.tsMs)
+        }
         return ParticipationEmitOutcome.Emitted(result)
     }
 
@@ -1002,21 +1375,6 @@ class NexaParticipationEmitBridge(
         return outcome
     }
 
-    /**
-     * 자발 발화 빈도 이중 게이트(채널별 + 전역). **둘 다 통과해야** true. emit 호출 전에 평가하므로 거부면 GLM 토큰 0.
-     * 게이트 평가 자체가 실패(예외)해도 흡수해 발화를 막는다(fail-closed — 안전망이 오히려 폭주를 허용하지 않게).
-     */
-    private fun withinRateLimit(channelKey: String): Boolean =
-        try {
-            // 채널 한도 먼저, 통과하면 전역 한도. 둘 다 acquire 되어야 발화한다.
-            rateLimitStore.tryAcquire("nexa-speech:ch:$channelKey", perChannelPerMin, RATE_WINDOW_SECONDS) &&
-                rateLimitStore.tryAcquire("nexa-speech:global", globalPerMin, RATE_WINDOW_SECONDS)
-        } catch (e: Exception) {
-            // rate limit 체크 실패는 발화를 허용하지 않는다(토큰 폭주 안전망이 우선) — 흡수 후 로그.
-            log.warn("NEXA participation rate limit 체크 실패(channel={}) — 안전상 발화 skip: {}", channelKey, e.message)
-            false
-        }
-
     /** raw guildId → 저장 키 가명(MEMORY purpose, 길드 스코프). ShadowMode store/flag 와 같은 가명 공간. */
     private fun guildPseudonym(guildId: Long): String =
         ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = guildId)
@@ -1037,7 +1395,8 @@ class NexaParticipationEmitBridge(
         messageId: Long,
     ): String = ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = messageId)
 
-    private fun correlationIdOf(signal: ParticipationMessageSignal): String = "participation:${signal.channelId}:${signal.sceneSeq}"
+    private fun correlationIdOf(signal: ParticipationMessageSignal): String =
+        signal.decisionIdOverride ?: "participation:${channelPseudonym(signal.guildId, signal.channelId)}:${signal.sceneSeq}"
 
     private fun diagnosticTraceOf(signal: ParticipationMessageSignal): String = sha256Hex(correlationIdOf(signal)).take(12)
 
@@ -1065,7 +1424,7 @@ class NexaParticipationEmitBridge(
             append("reason_code=$reasonCode; ")
             append("social_act=${selectedSpeechSocialAct().wireName}; ")
             append("fragments=${burstProfile.mostLikelyFragmentCount}; ")
-            append("speech는 말할지 여부를 다시 판단하지 않고 이 방향의 실제 문구만 만든다.")
+            append("speech는 이 방향을 수행하는 실제 문구 후보를 만들고, 침묵·리액션과 결과를 비교해 최종 행동을 고른다.")
         }
 
     private fun logRuleDecision(
@@ -1196,33 +1555,42 @@ class NexaParticipationEmitBridge(
         channelKey: String,
         decision: SingleJudgeDecision,
         originRolloutMode: ShadowMode,
-    ) {
+    ): Boolean {
         val socialAction = decision.toSocialAction(signal)
-        if (socialAction.kind != SocialActionKind.REACT && socialAction.kind != SocialActionKind.CANCEL_PENDING) return
+        if (
+            socialAction.kind != SocialActionKind.WAIT &&
+            socialAction.kind != SocialActionKind.REACT &&
+            socialAction.kind != SocialActionKind.CANCEL_PENDING
+        ) {
+            return false
+        }
         val router = actionRouter
         if (router == null) {
             log.warn("NEXA final judge {} 라우터 없음(sceneSeq={}) — speech 없이 종료", socialAction.kind, signal.sceneSeq)
-            return
+            return false
         }
-        runCatching {
+        return runCatching {
             router.route(
                 decisionId = correlationIdOf(signal),
                 sampledActionIndex = 0,
                 action = socialAction,
                 target = actionTarget(signal, guildPseudonym, channelKey),
                 executeAfter = Instant.now().plusMillis(decision.delay.millis),
-                contextVersion = signal.contextVersion,
+                contextVersion = signal.turnGeneration,
                 originRolloutMode = originRolloutMode,
+                waitAttempt = signal.waitAttempt,
+                waitExpiresAt = signal.waitExpiresAt,
+                executionLimits = ExecutionLimits(perChannel = perChannelPerMin, global = globalPerMin),
             )
         }.onFailure { error ->
             log.warn("NEXA final judge {} 라우팅 실패(sceneSeq={}) — {}", socialAction.kind, signal.sceneSeq, error::class.simpleName)
-        }
+        }.isSuccess
     }
 
     private fun SingleJudgeDecision.toSocialAction(signal: ParticipationMessageSignal): SocialAction =
         when (action) {
             SocialActionKind.IGNORE -> SocialAction.Ignore
-            SocialActionKind.WAIT -> SocialAction.Wait(delay.toActionDelay())
+            SocialActionKind.WAIT -> SocialAction.Wait(delay.toActionDelay(), delay.wakeUpHint)
             SocialActionKind.REACT ->
                 SocialAction.React(
                     reactionCodes = listOf(ReactionCode(reactionCandidate?.reactionCode ?: DEFAULT_REACTION_CODE)),
@@ -1256,14 +1624,19 @@ class NexaParticipationEmitBridge(
             modelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
         )
 
-    private fun JudgeSpeechIntent.toBurstProfile(): BurstProfile =
-        BurstProfile(
+    private fun JudgeSpeechIntent.toBurstProfile(): BurstProfile {
+        val intent = "$intentSummary $sceneDirection ${actHint.orEmpty()}".lowercase()
+        val needsCompletedContent =
+            listOf("이야기", "얘기", "썰", "설명", "답변", "대답", "사과", "story", "explain", "answer", "apolog")
+                .any(intent::contains)
+        return BurstProfile(
             fragmentCountWeights = mapOf(bubbleCount to 1.0),
-            maxFragmentLength = SPEECH_BUBBLE_MAX_CHARS,
+            maxFragmentLength = if (needsCompletedContent) 1_800 else SPEECH_BUBBLE_MAX_CHARS,
             gapLowerBound = Duration.ZERO,
             gapUpperBound = Duration.ZERO,
             reactionOnlyProbability = 0.0,
         )
+    }
 
     private fun SingleJudgeDecision.toSingleJudgeAttribution(
         request: SingleJudgeDecisionRequest,
@@ -1290,7 +1663,7 @@ class NexaParticipationEmitBridge(
             append("scene_direction=$sceneDirection; ")
             append("bubble_count=$bubbleCount; ")
             actHint?.let { append("act_hint=$it; ") }
-            append("speech는 말할지 여부를 다시 판단하지 않고 이 방향의 실제 문구만 만든다.")
+            append("speech는 이 방향을 수행하는 실제 문구 후보를 만들고, 침묵·리액션과 결과를 비교해 최종 행동을 고른다.")
         }
 
     private fun actionTarget(
@@ -1301,9 +1674,21 @@ class NexaParticipationEmitBridge(
         ActionTarget(
             guildPseudonym = guildPseudonym,
             channelId = channelKey,
-            threadId = "discord:$guildPseudonym:$channelKey",
-            replyToMessageId = signal.messageId.toString(),
+            threadId = focusThreadKey(signal, guildPseudonym),
+            subjectPseudonym = PolicyBackedConsentGate.pseudonymOf(signal.guildId, signal.userId, signal.channelId),
+            targetMessageId = signal.messageId.toString(),
+            routingGuildId = signal.guildId.toString(),
+            routingChannelId = signal.channelId.toString(),
+            routingUserId = signal.userId.toString(),
+            sceneContextVersion = signal.contextVersion,
         )
+
+    private fun focusThreadKey(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+    ): String =
+        signal.threadId?.let { "discord:$guildPseudonym:thread:${channelPseudonym(signal.guildId, it)}" }
+            ?: "discord:$guildPseudonym:channel:${channelPseudonym(signal.guildId, signal.channelId)}"
 
     private fun appendDecisionLog(record: DecisionLogRecord) {
         val sink = decisionLog ?: return
@@ -1463,17 +1848,19 @@ class NexaParticipationEmitBridge(
         /** participation 정책 요청 스키마 버전(baseline 정책이 지원하는 schema 1). */
         private const val SCHEMA_VERSION: Int = 1
 
-        /** rate limit 고정 윈도우(초) — 분당 한도. */
-        private const val RATE_WINDOW_SECONDS: Long = 60
-
         /** core 규칙 즉결 SPEAK 분포의 추적용 모델 버전(어떤 경로로 나온 발화인지 식별). */
         private const val RULE_FORCED_MODEL_VERSION: String = "core-intervention-rules-1"
 
         private const val SINGLE_JUDGE_FINAL_MODEL_VERSION: String = "nia-single-judge-final-v1"
         private const val SINGLE_JUDGE_DECISION_SOURCE: String = "SINGLE_JUDGE"
+        private const val MAX_CACHED_CHANNEL_SIGNALS: Int = 1_000
+        private const val MAX_WAIT_REEVALUATIONS: Int = 3
+        private const val MIN_COMMITMENT_CONFIDENCE: Double = 0.55
+        private const val FOCUS_THREAD_MARKER: String = ":thread:"
         private const val BASELINE_DECISION_SOURCE: String = "BASELINE"
         private const val DEFAULT_REACTION_CODE: String = "ack"
         private const val SPEECH_BUBBLE_MAX_CHARS: Int = 280
+        private val COMMITMENT_TTL: Duration = Duration.ofDays(7)
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
         private const val DEFAULT_FEW_SHOT_VERSION: Int = 6
@@ -1838,6 +2225,8 @@ data class ParticipationMessageSignal(
     val relationshipObservation: RelationshipObservation? = null,
     /** socialmemory 읽기 포트가 채운 기억 요약. null이면 unavailable, relevantPresent=false이면 관련 기억 없음 evidence. */
     val memoryObservation: MemoryObservation? = null,
+    /** 이전 턴에서 이어지고 새 근거로 수정 가능한 공통 기반·의도 가설·최근 니아 행동. */
+    val socialBeliefState: JudgeSocialBeliefState = JudgeSocialBeliefState.EMPTY,
     /**
      * 트리거 이벤트 절대 시각(ms) — [ChannelAttentionGate] 타이밍 결정(pingpong·min_gap debounce·dynamic_idle) 주입값.
      * Date.now 금지(결정론) — 호출자가 JDA `timeCreated` 등에서 도출해 넘긴다. 미관측이면 0.
@@ -1849,6 +2238,16 @@ data class ParticipationMessageSignal(
     val contextVersion: Long,
     /** 결정론 seed(안전 override·후보 선택 재현 키). */
     val seed: Long,
+    /** Discord 수신 즉시 관찰한 채널 세대. 영속 scene contextVersion과 분리해 장기 judge 결과를 폐기한다. */
+    val turnGeneration: Long = contextVersion,
+    /** WAIT outbox가 만든 재평가이면 raw context를 다시 append하지 않는다. */
+    val reevaluationWake: Boolean = false,
+    /** outbox 재전달에서도 같은 결정 identity를 쓰기 위한 override. */
+    val decisionIdOverride: String? = null,
+    /** WAIT child가 계승한 누적 wake 횟수. */
+    val waitAttempt: Int = 0,
+    /** 최초 WAIT가 정한 폐루프 만료 시각. */
+    val waitExpiresAt: Instant? = null,
 ) {
     init {
         silenceMillis?.let { require(it >= 0) { "silenceMillis 는 음수일 수 없다: $it" } }
@@ -1861,6 +2260,8 @@ data class ParticipationMessageSignal(
         require(previousIgnoredRequestCount >= 0) {
             "previousIgnoredRequestCount 는 음수일 수 없다: $previousIgnoredRequestCount"
         }
+        require(decisionIdOverride == null || decisionIdOverride.isNotBlank()) { "decisionIdOverride 는 빈 문자열일 수 없다" }
+        require(waitAttempt >= 0) { "waitAttempt 는 음수일 수 없다" }
         require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
         require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
     }
@@ -1970,11 +2371,8 @@ sealed interface ParticipationEmitOutcome {
         val reasonCode: String,
     ) : ParticipationEmitOutcome
 
-    /**
-     * SPEAK 였지만 빈도 안전망(채널별/전역 분당 한도)에 막혀 emit 미호출 — GLM 토큰 0. 과발화·토큰 폭주 방지.
-     * [channelKey] 는 거부된 채널(관찰·테스트).
-     */
-    data class RateLimited(
+    /** 후보 평가 뒤 actionruntime 예약이 중복 identity 등으로 거절됐다. 실행 quota 결과는 비동기 실행 감사에 남는다. */
+    data class SchedulingRejected(
         val channelKey: String,
     ) : ParticipationEmitOutcome
 
@@ -2023,7 +2421,7 @@ private val ParticipationEmitOutcome.traceOutcome: String
             is ParticipationEmitOutcome.NotSpeaking -> "NOT_SPEAKING"
             is ParticipationEmitOutcome.RuleSilent -> "RULE_SILENT"
             is ParticipationEmitOutcome.RuleWait -> "RULE_WAIT"
-            is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
+            is ParticipationEmitOutcome.SchedulingRejected -> "SCHEDULING_REJECTED"
             is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
             is ParticipationEmitOutcome.Superseded -> "SUPERSEDED"
             is ParticipationEmitOutcome.Emitted -> "EMITTED"
@@ -2035,7 +2433,7 @@ private val ParticipationEmitOutcome.traceReasonCode: String?
         when (this) {
             is ParticipationEmitOutcome.RuleSilent -> reasonCode
             is ParticipationEmitOutcome.RuleWait -> reasonCode
-            is ParticipationEmitOutcome.RateLimited -> "RATE_LIMITED"
+            is ParticipationEmitOutcome.SchedulingRejected -> "SCHEDULING_REJECTED"
             is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
             is ParticipationEmitOutcome.Superseded -> stage.reasonCode
             else -> null

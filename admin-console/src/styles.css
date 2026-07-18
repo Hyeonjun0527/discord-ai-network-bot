@@ -358,6 +358,14 @@ h1 {
   font-weight: 800;
 }
 
+.panel-description {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: #637084;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .guild-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -445,6 +453,133 @@ th {
   color: #637084;
   font-size: 12px;
   font-weight: 800;
+}
+
+.fewshot-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.55fr) minmax(0, 1.45fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.fewshot-example-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border-right: 1px solid #e3e8df;
+  padding-right: 16px;
+}
+
+.example-list-toolbar,
+.example-editor-toolbar,
+.conversation-editor-title,
+.publish-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fewshot-example-list > button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #d8dfd5;
+  border-radius: 8px;
+  padding: 10px;
+  color: #263446;
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+}
+
+.fewshot-example-list > button.selected {
+  border-color: #0c9173;
+  background: #f2fbf7;
+}
+
+.fewshot-example-list > button span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.fewshot-example-list > button strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fewshot-example-list small,
+.example-editor-toolbar span,
+.conversation-editor-title span,
+.publish-bar span {
+  color: #637084;
+  font-size: 12px;
+}
+
+.example-number {
+  color: #0c9173;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.fewshot-example-editor {
+  min-width: 0;
+}
+
+.example-editor-toolbar {
+  margin-bottom: 16px;
+}
+
+.example-editor-toolbar > div:first-child,
+.conversation-editor-title > div,
+.publish-bar > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.conversation-editor {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  border: 1px solid #d8dfd5;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f7f9f6;
+}
+
+.conversation-editor-title {
+  margin-bottom: 4px;
+}
+
+.fewshot-message-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 38px;
+  gap: 8px;
+}
+
+.fewshot-message-row select,
+.fewshot-message-row input {
+  width: 100%;
+  border: 1px solid #ccd6cc;
+  border-radius: 7px;
+  padding: 10px;
+  color: #263446;
+  background: #fff;
+}
+
+.icon-action {
+  min-width: 38px;
+  padding: 8px;
+}
+
+.publish-bar {
+  margin-top: 20px;
+  border-top: 1px solid #e3e8df;
+  padding-top: 16px;
 }
 
 .version-summary,
@@ -541,9 +676,28 @@ th {
   .metric-grid,
   .split-grid,
   .fewshot-grid,
+  .fewshot-editor-grid,
   .form-grid,
   .form-grid.wide {
     grid-template-columns: 1fr;
+  }
+
+  .fewshot-example-list {
+    border-right: 0;
+    border-bottom: 1px solid #e3e8df;
+    padding-right: 0;
+    padding-bottom: 16px;
+  }
+
+  .publish-bar,
+  .conversation-editor-title,
+  .example-editor-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fewshot-message-row {
+    grid-template-columns: 100px minmax(0, 1fr) 38px;
   }
 
   .workspace-header {

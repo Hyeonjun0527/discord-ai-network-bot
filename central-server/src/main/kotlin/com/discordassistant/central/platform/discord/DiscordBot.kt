@@ -1985,7 +1985,6 @@ class DiscordBot(
                         requestedModel = event.getOption("model")?.asString,
                         requestedResponseMode = event.getOption("mode")?.asString,
                         webSearch = event.getOption("web")?.asBoolean ?: false,
-                        requestedThinking = event.getOption("thinking")?.asString,
                     )
                 "imagine" -> commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty())
                 "my-usage" -> commands.myUsage(ctx)

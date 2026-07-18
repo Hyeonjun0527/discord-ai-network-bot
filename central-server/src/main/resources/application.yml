@@ -97,22 +97,20 @@ central:
     channel-daily-limit: ${CENTRAL_IDEMPOTENCY_CHANNEL_DAILY_LIMIT:50}
     channel-window-millis: ${CENTRAL_IDEMPOTENCY_CHANNEL_WINDOW_MILLIS:86400000}
   cloud:
-    # 무료질문(glm-*)을 중앙 서버가 관리자 키 1개로 직접 처리하는 클라우드 백엔드(ADR 0006).
-    # 비우면 비활성 — /질문 은 기존대로 에이전트(provider-agent) 경유 glm-* 폴백으로 동작한다(하위호환).
-    zai-api-key: ${ZAI_API_KEY:}
-    zai-base-url: ${ZAI_BASE_URL:https://api.z.ai/api/paas/v4}
-    timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
-    # 텍스트 LLM 1회 시도 타임아웃(초). thinking 은 무조건 disabled(로컬 실측 <2.5초). 단 원격 운영 서버→z.ai
-    # 네트워크 지연이 로컬보다 커 3~4초로는 부족 → 20초로 여유를 둔다(느린 연결도 담김). 값을 바꾸려면 ADR 0006 갱신.
-    llm-timeout-seconds: ${ZAI_LLM_TIMEOUT_SECONDS:20}
-    llm-max-retries: ${ZAI_LLM_MAX_RETRIES:2}
-    # /질문·ai채팅 무료 클라우드 폴백 모델. 기본값은 Air, env 로 즉시 rollback 가능.
-    free-model: ${ZAI_FREE_MODEL:glm-4.5-air}
+    # 무료질문과 니아 판단·발화를 중앙 서버가 관리자 키로 직접 처리하는 OpenAI 백엔드.
+    # 비우면 중앙 클라우드 경로가 비활성화되며 Z.AI로 폴백하지 않는다.
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    timeout-seconds: ${OPENAI_TIMEOUT_SECONDS:120}
+    llm-timeout-seconds: ${OPENAI_LLM_TIMEOUT_SECONDS:20}
+    llm-max-retries: ${OPENAI_LLM_MAX_RETRIES:2}
+    # 모든 Luna 호출은 OpenAiCloudLlm에서 reasoning effort none으로 고정한다.
+    free-model: ${OPENAI_FREE_MODEL:gpt-5.6-luna}
     # 짧은 니아 호명(예: "니아야?") 전용 즉답 모델. 실제 AI 호출이며, env 로 즉시 rollback 가능.
-    fast-model: ${ZAI_FAST_MODEL:glm-4.5-air}
+    fast-model: ${OPENAI_FAST_MODEL:gpt-5.6-luna}
     # 이미지 픽셀까지 중앙 서버가 직접 만드는 클라우드 SD(ADR 0006 단계4 — 완전 앱리스 이미지).
-    # 키가 있으면 에이전트(provider-agent) 풀이 비어도 /그림 이 동작한다. 비우면 기존 에이전트(ComfyUI/
-    # 에이전트 클라우드SD) 경로로 폴백한다(하위호환). fail-closed — central 픽셀 생성은 zai-api-key 심사가 활성일 때만.
+    # 키가 있으면 에이전트(provider-agent) 풀이 비어도 /그림 이 동작한다. 비워도 에이전트 이미지 백엔드를
+    # 사용할 수 있지만, 프롬프트 심사·번역을 위한 OpenAI는 반드시 활성이어야 한다(fail-closed).
     # Stability 우선, 없으면 RunPod. 모델은 코드 enum(StabilityModel) 이 SSOT — env 주입 없음.
     stability-api-key: ${STABILITY_API_KEY:}
     stability-base-url: ${STABILITY_BASE_URL:https://api.stability.ai}
@@ -122,13 +120,12 @@ central:
     runpod-base-url: ${RUNPOD_BASE_URL:https://api.runpod.ai/v2}
   speech:
     # NEXA 발화 생성(SPEAK 이후 문장 생성, ADR 0006 anti-corruption) 모델·budget 외부화(P14-T003).
-    # endpoint/api-key 는 위 cloud.zai-* 가 SSOT — speech 는 모델 라벨·호출 budget 만 외부화한다.
+    # endpoint/api-key 는 위 cloud.openai-* 가 SSOT — speech 는 모델 라벨·호출 budget 만 외부화한다.
     # 모델 업데이트·rollback 은 코드 수정 없이 이 값(또는 환경변수)만 바꾸면 된다.
-    model: ${NEXA_SPEECH_MODEL:glm-4.5-air}
+    model: ${NEXA_SPEECH_MODEL:gpt-5.6-luna}
     timeout-seconds: ${NEXA_SPEECH_TIMEOUT_SECONDS:8}
     max-retries: ${NEXA_SPEECH_MAX_RETRIES:1}
-    # 발화 샘플링 randomness. 판단(judge)은 결정론(temperature 미전송)이지만 발화는 매번 표현이 달라야
-    # 사람답다 — 0 이면 같은 호명에 같은 문장을 되풀이한다. 0.9 기본, env 로 튜닝/rollback(ADR 0006).
+    # 기존 설정 호환값. Luna Responses 요청에는 temperature를 전송하지 않는다(ADR 0006).
     temperature: ${NEXA_SPEECH_TEMPERATURE:0.5}
   ai-network:
     enabled: ${AI_NETWORK_ENABLED:true}
@@ -181,9 +178,8 @@ central:
       interval-ms: ${NEXA_CANARY_HALT_INTERVAL_MS:60000}
     participation:
       judge:
-        # 니아 participation 판단(SPEAK/WAIT/REACT/IGNORE) LLM 모델. 모든 GLM 경로(판단·발화·무료질문·관리도구)는
-        # glm-4.5-air 로 통일한다 — 속도 최우선(glm-5.1 은 즉답 지원 부족·비용 높음), env 로 즉시 rollback 가능(ADR 0006).
-        model: ${NEXA_PARTICIPATION_JUDGE_MODEL:glm-4.5-air}
+        # 니아 participation 판단 모델. 발화와 같은 Luna none 경로를 사용한다.
+        model: ${NEXA_PARTICIPATION_JUDGE_MODEL:gpt-5.6-luna}
 
 # Bugsink 오류 수집. Bugsink는 Sentry SDK 호환이므로 Sentry Java SDK를 사용한다.
 # DSN 미설정(기본)이면 완전 no-op. BUGSINK_DSN 또는 SENTRY_DSN 주입 시 활성.

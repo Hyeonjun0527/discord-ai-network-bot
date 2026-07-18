@@ -13,6 +13,9 @@ import com.discordassistant.central.globalpromptset.application.GlobalPromptSetS
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.multiresponse.application.MultiResponseService
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotSpeechPromptRenderer
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.Replies
 import com.discordassistant.central.platform.discord.Reply
@@ -22,9 +25,7 @@ import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.RemoteCancelledException
 import com.discordassistant.central.routing.application.CloudThinking
-import com.discordassistant.central.routing.application.CloudThinkingOption
 import com.discordassistant.central.routing.application.RequestOrchestrator
-import com.discordassistant.central.routing.application.ThinkingRouter
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
@@ -52,26 +53,25 @@ class AskCommandHandler(
     private val knowledgeSearch: KnowledgeSearchService,
     private val multiResponse: MultiResponseService,
     private val niaAffinity: NiaAffinityService,
-    // 이미지 안전 심사·번역을 central 이 직접 z.ai(GLM)로 처리하는 백엔드(ADR 0006 단계2). 키 있으면 isEnabled().
+    // 이미지 안전 심사·번역을 central 이 직접 OpenAI로 처리하는 백엔드. 키가 있으면 활성화된다.
     private val cloudLlm: com.discordassistant.central.routing.application.CloudLlm,
     // 이미지 픽셀까지 central 이 직접 만드는 클라우드 SD 백엔드(ADR 0006 단계4 — 완전 앱리스). 키 있으면 isEnabled().
     private val cloudImageBackend: com.discordassistant.central.routing.application.CloudImageBackend,
-    // 무료 클라우드 폴백(로컬 프로바이더 부재 시 GLM Air)의 인당 rate limit — 무료 자원 남용 방지.
+    // 무료 클라우드 폴백(로컬 프로바이더 부재 시 Luna)의 인당 rate limit — 무료 자원 남용 방지.
     private val freeCloudRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
     // /질문 전용 단기 멀티턴 대화 기억(채널+유저·인메모리·TTL). "방금 뭐라고 했지?" 맥락을 클라우드 직결에 제공.
     private val askMemory: com.discordassistant.central.routing.application.AskConversationMemory,
-    // 어드민(프로젝트 운영자) 전용 모델/thinking 강제 지정 게이트(=central.dashboard.admin-user-ids). 비어드민은 무시.
-    private val projectAdmins: com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins,
-    @param:Value("\${central.cloud.free-model:glm-4.5-air}") private val freeCloudModel: String = DEFAULT_FREE_CLOUD_MODEL,
-    @param:Value("\${central.cloud.fast-model:glm-4.5-air}") private val fastCloudModel: String = DEFAULT_FAST_CLOUD_MODEL,
+    @param:Value("\${central.cloud.free-model:gpt-5.6-luna}") private val freeCloudModel: String = DEFAULT_FREE_CLOUD_MODEL,
+    @param:Value("\${central.cloud.fast-model:gpt-5.6-luna}") private val fastCloudModel: String = DEFAULT_FAST_CLOUD_MODEL,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
+    private val niaFewShotService: NiaFewShotService? = null,
 ) {
     companion object {
-        // /질문·ai채팅 무료 클라우드 기본 모델(z.ai/GLM Air). env 설정이 비어 있으면 이 모델로 답한다.
-        const val DEFAULT_FREE_CLOUD_MODEL = "glm-4.5-air"
-        const val DEFAULT_FAST_CLOUD_MODEL = "glm-4.5-air"
+        // /질문·ai채팅 무료 클라우드 기본 모델. 모든 OpenAI 호출은 reasoning none으로 고정한다.
+        const val DEFAULT_FREE_CLOUD_MODEL = "gpt-5.6-luna"
+        const val DEFAULT_FAST_CLOUD_MODEL = "gpt-5.6-luna"
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
@@ -92,7 +92,7 @@ class AskCommandHandler(
                 ?.ifBlank { null }
                 ?: fallbackModel
 
-        // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 클라우드 백엔드) ──
+        // ── 이미지 정책(central 소유; OpenAI가 심사·번역하고 에이전트는 정제된 프롬프트만 실행) ──
         // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
         // '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
         private val IMAGE_TRANSLATOR_SYSTEM_PROMPT =
@@ -123,12 +123,6 @@ class AskCommandHandler(
             "worst quality, low quality, score_1, score_2, score_3, artist name, nsfw, nude, naked, explicit, " +
                 "porn, sex, fetish, nipples, genitals, loli, shota, child, teen, underage, minor, schoolgirl, " +
                 "sexualized minor, real person, celebrity, deepfake, non-consensual"
-        private val IMAGE_POLICY: Map<String, Any?> =
-            mapOf(
-                "translatorSystemPrompt" to IMAGE_TRANSLATOR_SYSTEM_PROMPT,
-                "safetySystemPrompt" to IMAGE_SAFETY_SYSTEM_PROMPT,
-                "forcedNegative" to IMAGE_FORCED_NEGATIVE,
-            )
     }
 
     // 진행 중 이미지 요청 id → 세션(취소 버튼이 이 맵으로 해당 세션을 찾아 cancelImage 호출).
@@ -143,7 +137,6 @@ class AskCommandHandler(
         requestedModel: String? = null,
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
-        requestedThinking: String? = null,
         // 니아 사회기억/감정 톤 힌트(채널AI 발화 경로에서만 주입). 기본 "" 면 평소 니아 그대로(무영향·하위호환).
         // 정체성·답변 길이·이름 불변(I11) — 반응 온도만 약하게 얹는다(일반 텍스트 응답 system prompt 한정).
         toneDirective: String = "",
@@ -156,12 +149,6 @@ class AskCommandHandler(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, guards.lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        // 어드민 전용 override: 프로젝트 운영자(admin-user-ids)만 thinking 을 강제 지정할 수 있다.
-        // 비어드민이 thinking 옵션을 줘도 무시되고 규칙 기반 라우터가 자동 결정한다(게이트 = ProjectAdmins 재사용).
-        // (model 옵션은 기존대로 채널/서버 모델 정책으로 검증·반영된다 — 동작 보존. 어드민이 cloud 모델을 고르면
-        //  아래 클라우드 경로에서 그 모델로 직결되어 "모델 강제"가 자연스럽게 적용된다.)
-        val isProjectAdmin = projectAdmins.isProjectAdmin(ctx.userId)
-        val adminThinkingOverride = if (isProjectAdmin) CloudThinkingOption.parse(requestedThinking) else null
         val guildDefaultModel = policy.guildDefaultModel(ctx.guildId) // 1회 조회 후 재사용(중복 SELECT 제거)
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, guildDefaultModel)
         val modelChoice =
@@ -215,16 +202,16 @@ class AskCommandHandler(
             // 같은 결과를 내므로 우회가 되지 않는다(오케스트레이터가 모델과 무관하게 정책을 재적용).
         }
 
-        // 무료 클라우드 z.ai — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
+        // 무료 클라우드 OpenAI — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
         freeCloudRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
-        // 선택 모델이 클라우드(glm-*)면 그 모델로 직결(어드민이 cloud 모델 지정 시 강제 적용), 아니면 기본 무료 클라우드 모델.
+        // 선택 모델이 클라우드 모델이면 그 모델로 직결하고, 아니면 기본 무료 클라우드 모델을 쓴다.
         val configuredFreeCloudModel = resolveFreeCloudModel(freeCloudModel)
         val cloudModel =
             selectedModel?.trim()?.takeIf { isCloudModel(it) }
                 ?: if (fastResponse) resolveFastCloudModel(fastCloudModel, configuredFreeCloudModel) else configuredFreeCloudModel
-        // thinking 속도 라우팅: 어드민 override 가 있으면 그 값, 없으면 규칙 기반 라우터(기본 disabled).
-        val thinking = adminThinkingOverride ?: if (fastResponse) CloudThinking.DISABLED else ThinkingRouter.route(prompt)
-        // 멀티턴 단기 기억(채널+유저)을 z.ai messages 앞에 붙인다("방금 뭐라고 했지?" 맥락).
+        // Luna는 모든 경로에서 reasoning effort none으로 고정한다.
+        val thinking = CloudThinking.DISABLED
+        // 멀티턴 단기 기억(채널+유저)을 OpenAI input 앞에 붙인다("방금 뭐라고 했지?" 맥락).
         val history = askMemory.history(ctx.channelId, ctx.userId) + ambientHistory
         val cloud =
             runOrchestrator(
@@ -255,7 +242,7 @@ class AskCommandHandler(
 
     /**
      * 길드 풀에 로컬(비-클라우드) 프로바이더가 있는지 — /질문 의 로컬 우선 판단(없으면 무료 클라우드 기본).
-     * "클라우드 전용"은 광고 모델이 있고 그게 전부 클라우드(glm-*)인 경우만. 모델 미광고(빈 목록)·
+     * "클라우드 전용"은 광고 모델이 있고 그게 전부 클라우드 모델인 경우만. 모델 미광고(빈 목록)·
      * 비-클라우드 모델 보유 프로바이더는 로컬로 본다.
      */
     private fun hasLocalProvider(guildId: Long): Boolean =
@@ -294,7 +281,7 @@ class AskCommandHandler(
                 ),
                 // 클라우드 폴백(2차)은 dedup=false — 1차에서 이미 멱등성 통과했고, 같은 프롬프트라 중복으로 막히면 폴백이 영구 실패한다.
                 dedup = dedup,
-                // 멀티턴 기억·thinking 은 클라우드 직결(glm-*) 경로에서만 적용된다(로컬 경로는 빈 리스트/null).
+                // 멀티턴 기억은 클라우드 직결 경로에서만 적용된다(로컬 경로는 빈 리스트/null).
                 history = history,
                 thinking = thinking,
             )
@@ -310,13 +297,16 @@ class AskCommandHandler(
         return result
     }
 
-    /** 클라우드(무료 z.ai/GLM) 모델인지. 출처 아이콘(☁️/🖥️)·폴백 재시도 판단에 쓴다. */
-    private fun isCloudModel(model: String?): Boolean = model?.trim()?.lowercase()?.startsWith("glm") == true
+    /** 중앙 클라우드에서 직접 처리하는 모델인지. 출처 아이콘과 폴백 판단에 쓴다. */
+    private fun isCloudModel(model: String?): Boolean {
+        val normalized = model?.trim()?.lowercase() ?: return false
+        return normalized.startsWith("gpt-")
+    }
 
     /**
      * /그림(imagine) — 기본은 **무료 클라우드 Stable Diffusion**(관리자 유료 SD API 키 1개로 전원 무료, ☁️).
      * 서버가 **로컬 ComfyUI 를 따로 연결**해 두면 그 서버만 로컬로 처리(🖥️). 텍스트 /질문 의 클라우드 기본과 동일 패턴.
-     * 한국어 프롬프트는 에이전트 백엔드에서 영어 자연어 번역(IMAGE_POLICY 적용·성인/SFW 가드) 후 생성.
+     * 한국어 프롬프트는 중앙 OpenAI 경로에서 안전 심사와 영어 변환을 마친 뒤 이미지 백엔드로 보낸다.
      * onStart(requestId): 취소 버튼 부착·취소 매핑 등록용. onProgress: 진행률 라이브 편집용.
      */
     fun imagine(
@@ -353,25 +343,21 @@ class AskCommandHandler(
         val sourceIcon = if (usedCloud) "☁️" else "🖥️"
         val session = pool.minByOrNull { it.activeRequests } ?: pool.first()
 
-        // 캡션은 항상 사용자가 입력한 원문 prompt 로 표기한다(동작보존). 픽셀 생성에 보내는 프롬프트만
-        // central 심사/번역 여부에 따라 달라진다.
-        if (cloudLlm.isEnabled()) {
-            // central 안전 심사(fail-closed) — 심사 자체가 실패하면 안전하지 않은 이미지가 새지 않게 차단한다.
-            val review =
-                reviewOrBlock(prompt) ?: return Replies.warn("이미지 안전 심사를 완료하지 못해 만들 수 없어요.")
-            if (!review.allowed) {
-                return Replies.warn("안전 정책상 만들 수 없어요${review.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}")
-            }
-            // 픽셀 생성만 에이전트로 위임: 정제된 영어 프롬프트 + forcedNegative + preTranslated=true.
-            // 구버전 에이전트는 preTranslated 를 모르고 자기 GLM 으로 영→영 재번역·이중 재심사하나(무해) 하위호환.
-            // 단계3에서 에이전트가 preTranslated 를 인식해 심사/번역을 스킵하도록 바꾼다.
-            val centralPolicy: Map<String, Any?> =
-                mapOf("forcedNegative" to IMAGE_FORCED_NEGATIVE, "preTranslated" to true)
-            return runImage(session, translateOrFallback(prompt), sourceIcon, prompt, centralPolicy, onStart, onProgress)
+        if (!cloudLlm.isEnabled()) {
+            return Replies.warn("이미지 안전 심사 서비스를 사용할 수 없어 지금은 만들 수 없어요.")
         }
 
-        // central 키 없음 → 기존 동작 그대로: 시스템 프롬프트 포함 IMAGE_POLICY 로 에이전트가 심사/번역(하위호환·롤백 안전).
-        return runImage(session, prompt, sourceIcon, prompt, IMAGE_POLICY, onStart, onProgress)
+        // 캡션은 항상 사용자가 입력한 원문 prompt 로 표기한다(동작보존). 픽셀 생성에 보내는 프롬프트만
+        // central 심사/번역 여부에 따라 달라진다.
+        // central 안전 심사(fail-closed) — 심사 자체가 실패하면 안전하지 않은 이미지가 새지 않게 차단한다.
+        val review = reviewOrBlock(prompt) ?: return Replies.warn("이미지 안전 심사를 완료하지 못해 만들 수 없어요.")
+        if (!review.allowed) {
+            return Replies.warn("안전 정책상 만들 수 없어요${review.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}")
+        }
+        // 픽셀 생성만 에이전트로 위임: 정제된 영어 프롬프트 + forcedNegative + preTranslated=true.
+        val centralPolicy: Map<String, Any?> =
+            mapOf("forcedNegative" to IMAGE_FORCED_NEGATIVE, "preTranslated" to true)
+        return runImage(session, translateOrFallback(prompt), sourceIcon, prompt, centralPolicy, onStart, onProgress)
     }
 
     /**
@@ -614,7 +600,7 @@ class AskCommandHandler(
         // 경로②③: 채널 AI 커스텀이 없을 때도 NEXA 가드레일은 항상 주입한다. 채널 프로필이 있으면 그 정체성을,
         //   없으면 길드 전역 프롬프트셋(기본 지정된 셋, 없으면 NEXA 기본 정체성 니아)을 쓴다.
         val behaviorPrompt =
-            channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) }
+            channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it, ctx) }
                 ?: resolveGuildDefaultPersona(ctx).let { persona ->
                     withGuildDefaultPersona(persona, ctx, isNiaDefault = persona == NexaIdentity.NIA_DEFAULT_PERSONA)
                 }
@@ -674,14 +660,17 @@ class AskCommandHandler(
         }
     }
 
-    private fun String.withChannelAiBehavior(profile: ChannelAiProfile): String =
+    private fun String.withChannelAiBehavior(
+        profile: ChannelAiProfile,
+        ctx: CommandContext,
+    ): String =
         if (profile.displayName.trim() == NexaIdentity.NIA_NAME) {
-            withNiaChannelAiBehavior()
+            withNiaChannelAiBehavior(ctx)
         } else {
             withCustomChannelAiBehavior(profile)
         }
 
-    private fun String.withNiaChannelAiBehavior(): String =
+    private fun String.withNiaChannelAiBehavior(ctx: CommandContext): String =
         buildString {
             appendLine("[우선순위 1: 안전]")
             appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
@@ -691,6 +680,10 @@ class AskCommandHandler(
             appendLine()
             appendLine("[니아 말투 원칙]")
             appendLine(NexaIdentity.NIA_FEWSHOT)
+            managedNiaFewShot(ctx)?.let {
+                appendLine()
+                appendLine(it)
+            }
             appendLine()
             appendLine("지금 Discord 대화에 니아가 바로 붙여 말할 한마디만 출력하세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 마세요.")
             appendLine()
@@ -745,6 +738,10 @@ class AskCommandHandler(
                 appendLine()
                 appendLine("[니아 말투 원칙]")
                 appendLine(NexaIdentity.NIA_FEWSHOT)
+                managedNiaFewShot(ctx)?.let {
+                    appendLine()
+                    appendLine(it)
+                }
                 appendLine()
                 appendLine(
                     "당신은 위 정체성의 「니아」 본인입니다. 답변 처음부터 끝까지 니아로서 1인칭·일관된 말투와 성격을 유지하세요. " +
@@ -759,6 +756,17 @@ class AskCommandHandler(
             appendLine("[사용자 질문]")
             append(this@withGuildDefaultPersona)
         }
+
+    private fun managedNiaFewShot(ctx: CommandContext): String? =
+        runCatching {
+            val active =
+                niaFewShotService
+                    ?.activeFor(NiaFewShotLookupScope(guildId = ctx.guildId, channelId = ctx.channelId))
+                    ?.active
+            NiaFewShotSpeechPromptRenderer.render(active)
+        }.onFailure {
+            log.warn("니아 few-shot 조회 실패(guild={}, channel={}): {}", ctx.guildId, ctx.channelId, it.message)
+        }.getOrNull()
 
     /**
      * 요청자와 니아의 관계 단계를 한 줄로. affinity 조회 실패가 /ask 를 절대 깨지 않도록 runCatching 으로 감싸고,

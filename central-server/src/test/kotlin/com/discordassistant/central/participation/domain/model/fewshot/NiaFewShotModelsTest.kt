@@ -53,9 +53,19 @@ class NiaFewShotModelsTest {
             .hasMessageContaining("expectedAction")
     }
 
+    @Test
+    fun `expected replies are accepted only for speak examples`() {
+        assertThat(example(expectedReplies = listOf("응 무슨 일인데")).expectedReplies).containsExactly("응 무슨 일인데")
+        assertThatThrownBy {
+            example(expectedAction = NiaFewShotAction.IGNORE, expectedReplies = listOf("끼어들기"))
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("SPEAK")
+    }
+
     private fun example(
         expectedAction: NiaFewShotAction = NiaFewShotAction.SPEAK,
         evidenceRefs: Set<String> = setOf("m1"),
+        expectedReplies: List<String> = emptyList(),
         badAlternative: NiaFewShotBadAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "waiting ignores a direct ask"),
     ): NiaFewShotExample =
         NiaFewShotExample(
@@ -70,6 +80,7 @@ class NiaFewShotModelsTest {
                     ),
                 ),
             expectedAction = expectedAction,
+            expectedReplies = expectedReplies,
             reason = "The user is explicitly asking Nia for a response, so the judge should speak.",
             evidenceRefs = evidenceRefs,
             badAlternative = badAlternative,

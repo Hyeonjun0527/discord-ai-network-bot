@@ -55,21 +55,19 @@ async def test_cloud_resolution_uses_default(monkeypatch):
     assert await agent._resolution() == (1024, 1024)
 
 
-def test_cloud_image_still_gated_by_glm_safety():
-    # 클라우드 백엔드라도 provider-local GLM 안전심사가 없으면 이미지 capability 를 광고하지 않는다.
+def test_cloud_image_advertises_when_backend_is_ready():
+    # 프롬프트 안전심사는 central이 담당하므로 이미지 백엔드 준비 상태만 광고 게이트다.
     agent = ProviderAgent(
         AgentConfig(token="T", image_backend="stability", stability_api_key="sk"), ollama=object()
     )
     agent._image_ready = True
-    assert agent._image_for(100) is False  # GLM(안전심사) 없으면 차단
-    agent._glm = object()  # type: ignore[assignment]
     assert agent._image_for(100) is True
 
 
 def _isolate_config(monkeypatch):
     monkeypatch.setattr(cfgmod, "_load_dotenv", lambda: None)  # 실제 .env 간섭 차단
     monkeypatch.setattr("provider_agent.config_file.load_config", lambda: {})
-    for k in ("STABILITY_API_KEY", "RUNPOD_API_KEY", "RUNPOD_ENDPOINT_ID", "IMAGE_BACKEND", "ZAI_API_KEY"):
+    for k in ("STABILITY_API_KEY", "RUNPOD_API_KEY", "RUNPOD_ENDPOINT_ID", "IMAGE_BACKEND"):
         monkeypatch.delenv(k, raising=False)
 
 

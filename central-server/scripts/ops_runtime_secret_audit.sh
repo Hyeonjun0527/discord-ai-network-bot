@@ -45,7 +45,7 @@ app_secret_files=(
   "RELAY_PUBLIC_URL_FILE:/run/secrets/central.relay.public-url"
   "CENTRAL_DURABLE_SECRET_FILE:/run/secrets/central.durable.secret"
   "NEXA_FIELD_ENC_KEY_FILE:/run/secrets/nexa.field-enc-key"
-  "ZAI_API_KEY_FILE:/run/secrets/central.cloud.zai-api-key"
+  "OPENAI_API_KEY_FILE:/run/secrets/central.cloud.openai-api-key"
   "CONNECT_DISCORD_CLIENT_ID_FILE:/run/secrets/central.connect.discord-client-id"
   "CONNECT_DISCORD_CLIENT_SECRET_FILE:/run/secrets/central.connect.discord-client-secret"
   "CENTRAL_OAUTH_ENABLED_FILE:/run/secrets/central.oauth.enabled"
@@ -62,7 +62,7 @@ app_raw_secrets=(
   RELAY_PUBLIC_URL
   CENTRAL_DURABLE_SECRET
   NEXA_FIELD_ENC_KEY
-  ZAI_API_KEY
+  OPENAI_API_KEY
   CONNECT_DISCORD_CLIENT_ID
   CONNECT_DISCORD_CLIENT_SECRET
   CENTRAL_OAUTH_ENABLED

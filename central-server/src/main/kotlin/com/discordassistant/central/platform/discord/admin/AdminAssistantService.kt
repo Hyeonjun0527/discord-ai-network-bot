@@ -111,8 +111,7 @@ class AdminAssistantService(
     }
 
     companion object {
-        /** 관리 비서 tool calling 모델. 모든 GLM 경로는 glm-4.5-air 로 통일한다(속도·비용, ADR 0006). */
-        const val ADMIN_TOOL_MODEL = "glm-4.5-air"
+        const val ADMIN_TOOL_MODEL = "gpt-5.6-luna"
     }
 }
 

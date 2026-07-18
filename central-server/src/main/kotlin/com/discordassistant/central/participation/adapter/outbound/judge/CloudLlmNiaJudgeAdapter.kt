@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @Component
 class CloudLlmNiaJudgeAdapter(
     private val cloudLlm: CloudLlm,
-    @param:Value("\${central.nexa.participation.judge.model:glm-4.5-air}")
+    @param:Value("\${central.nexa.participation.judge.model:gpt-5.6-luna}")
     private val model: String = DEFAULT_MODEL,
 ) : NiaJudgeLlmPort {
     private val callExecutor = newCallExecutor()
@@ -59,12 +59,7 @@ class CloudLlmNiaJudgeAdapter(
                             prompt = request.prompt,
                             model = model,
                             history = emptyList(),
-                            thinking =
-                                if (request.metadata[REASONING_MODE_METADATA] == REASONING_MODE_DELIBERATE) {
-                                    CloudThinking.ENABLED
-                                } else {
-                                    CloudThinking.DISABLED
-                                },
+                            thinking = CloudThinking.DISABLED,
                         )
                     },
                 )
@@ -93,12 +88,10 @@ class CloudLlmNiaJudgeAdapter(
     }
 
     companion object {
-        const val DEFAULT_MODEL: String = "glm-4.5-air"
+        const val DEFAULT_MODEL: String = "gpt-5.6-luna"
         const val FINISH_REASON_COMPLETED: String = "completed"
         private const val CALL_THREADS: Int = 8
         private const val CALL_QUEUE_CAPACITY: Int = 16
-        private const val REASONING_MODE_METADATA: String = "reasoning_mode"
-        private const val REASONING_MODE_DELIBERATE: String = "deliberate"
         private val THREAD_SEQUENCE = AtomicInteger()
 
         private fun newCallExecutor(): ThreadPoolExecutor =

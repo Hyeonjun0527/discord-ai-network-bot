@@ -119,7 +119,7 @@ jobs:
           RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
           CENTRAL_DURABLE_SECRET: ${{ secrets.CENTRAL_DURABLE_SECRET }}
           NEXA_FIELD_ENC_KEY: ${{ secrets.NEXA_FIELD_ENC_KEY }}
-          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONNECT_DISCORD_CLIENT_ID: ${{ secrets.CONNECT_DISCORD_CLIENT_ID }}
           CONNECT_DISCORD_CLIENT_SECRET: ${{ secrets.CONNECT_DISCORD_CLIENT_SECRET }}
           CENTRAL_OAUTH_ENABLED: ${{ secrets.CENTRAL_OAUTH_ENABLED }}
@@ -166,7 +166,7 @@ jobs:
 
           required_production_values=(
             CENTRAL_DB_PASSWORD DISCORD_BOT_TOKEN CENTRAL_DURABLE_SECRET
-            NEXA_FIELD_ENC_KEY ZAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
+            NEXA_FIELD_ENC_KEY OPENAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
             DISCORD_ENABLED RELAY_PUBLIC_URL CONNECT_DISCORD_CLIENT_ID
             CENTRAL_OAUTH_ENABLED CENTRAL_DASHBOARD_ADMIN_USER_IDS
           )
@@ -196,7 +196,7 @@ jobs:
               "RELAY_PUBLIC_URL": "central.relay.public-url",
               "CENTRAL_DURABLE_SECRET": "central.durable.secret",
               "NEXA_FIELD_ENC_KEY": "nexa.field-enc-key",
-              "ZAI_API_KEY": "central.cloud.zai-api-key",
+              "OPENAI_API_KEY": "central.cloud.openai-api-key",
               "CONNECT_DISCORD_CLIENT_ID": "central.connect.discord-client-id",
               "CONNECT_DISCORD_CLIENT_SECRET": "central.connect.discord-client-secret",
               "CENTRAL_OAUTH_ENABLED": "central.oauth.enabled",
@@ -230,7 +230,7 @@ jobs:
 
           high_entropy_secrets=(
             CENTRAL_DB_PASSWORD DISCORD_BOT_TOKEN CENTRAL_DURABLE_SECRET
-            NEXA_FIELD_ENC_KEY ZAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
+            NEXA_FIELD_ENC_KEY OPENAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
           )
           rendered_content="$(cat "$rendered_compose")"
           for key in "${high_entropy_secrets[@]}"; do
@@ -246,7 +246,7 @@ jobs:
           rm -f "$candidate_compose" "$rendered_compose" "$rendered_json"
           compose=(docker compose --env-file /dev/null -f compose.yml)
 
-          echo "▶ 운영 GLM 모델 free=glm-4.5-air fast=glm-4.5-air speech=glm-4.5-air"
+          echo "▶ 운영 OpenAI 모델 free=gpt-5.6-luna fast=gpt-5.6-luna speech=gpt-5.6-luna reasoning=none"
           # 웹검색(SearXNG) 설정 — JSON 포맷 활성 + 안정적 시크릿(최초 1회만 생성, 이후 유지).
           # 컨테이너(다른 uid)가 읽어야 하므로 settings 파일은 읽기 가능 권한으로 둔다.
           mkdir -p searxng

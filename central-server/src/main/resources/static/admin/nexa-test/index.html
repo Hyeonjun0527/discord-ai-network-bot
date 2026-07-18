@@ -88,7 +88,7 @@
       <span class="shadow-badge">● SHADOW</span>
       <span class="desc">
         이 페이지는 <strong>실제 Discord 전송을 하지 않습니다</strong>. shadow 모드는 순수 함수(GLM 호출 0),
-        <strong>실제 발화 모드</strong>는 SPEAK 결정에서만 실제 GLM(z.ai)으로 <strong>문장을 생성</strong>하지만
+        <strong>실제 발화 모드</strong>는 SPEAK 결정에서만 Luna(OpenAI)로 <strong>문장을 생성</strong>하지만
         <strong>전송은 0</strong>(생성까지만)입니다. 입력은 가명·합성 시나리오만 사용하세요.
       </span>
     </div>
@@ -190,7 +190,7 @@
       document.getElementById('modeShadowBtn').classList.toggle('on', mode === 'shadow');
       document.getElementById('modeLiveBtn').classList.toggle('on', mode === 'live');
       document.getElementById('modeHint').textContent = mode === 'live'
-        ? 'SPEAK 결정에서만 실제 GLM(z.ai)으로 문장을 생성합니다(전송 0). 이전 turn·기억이 컨텍스트로 주입됩니다.'
+        ? 'SPEAK 결정에서만 Luna(OpenAI)로 문장을 생성합니다(전송 0). 이전 turn·기억이 컨텍스트로 주입됩니다.'
         : '행동 판단만 재생합니다(GLM 호출 0).';
       // 결과 영역 토글.
       const liveOn = mode === 'live';

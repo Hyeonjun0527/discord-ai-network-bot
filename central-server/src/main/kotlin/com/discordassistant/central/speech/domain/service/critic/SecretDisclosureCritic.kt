@@ -55,6 +55,7 @@ class SecretDisclosureCritic : SpeechCritic {
                 "NEXA_FIELD_ENC_KEY",
                 "GLM_API_KEY",
                 "ZAI_API_KEY",
+                "OPENAI_API_KEY",
                 "DISCORD_BOT_TOKEN",
                 "CENTRAL_DASHBOARD_ADMIN",
                 "DURABLE_TOKEN",

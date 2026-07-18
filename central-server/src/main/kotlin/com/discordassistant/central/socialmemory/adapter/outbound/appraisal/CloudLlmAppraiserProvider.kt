@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component
 /**
  * Social Appraiser 의 GLM 호출 어댑터 — core `GlmAppraiserProvider`(B5) 이식의 NEXA wiring.
  *
- * 도메인([SocialAppraiser])이 만든 프롬프트를 NEXA [CloudLlm](z.ai GLM)로 실호출하고, 응답을 등급
+ * 도메인([SocialAppraiser])이 만든 프롬프트를 NEXA [CloudLlm](OpenAI Luna)로 실호출하고, 응답을 등급
  * [Appraisal] 로 파싱한다. 실패·비활성은 보수 폴백([Appraisal.conservativeDefault])으로 표면화한다
  * (과민반응보다 무반응이 안전 — 부록 C). I2(등급만)·I3(기분 미입력)는 도메인이 보장한다.
  *
@@ -43,7 +43,6 @@ class CloudLlmAppraiserProvider(
     }
 
     companion object {
-        /** judge/speech 와 같은 빠른 등급 판정 모델(core: glm-4.5-air). */
-        const val APPRAISER_MODEL: String = "glm-4.5-air"
+        const val APPRAISER_MODEL: String = "gpt-5.6-luna"
     }
 }

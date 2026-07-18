@@ -201,7 +201,7 @@ class ImagineCentralReviewTest
         }
 
         @Test
-        fun `키 없으면 기존 IMAGE_POLICY 경로(시스템 프롬프트 포함, 에이전트가 심사)`() {
+        fun `OpenAI 키가 없으면 provider로 보내지 않고 fail closed 한다`() {
             cloudLlm.enabled = false
             cloudLlm.lastReviewedPrompt = null // 공유 fake — 이전 테스트 기록 초기화
             cloudLlm.lastTranslatedPrompt = null
@@ -209,16 +209,11 @@ class ImagineCentralReviewTest
             try {
                 val ctx = CommandContext(guildId = 7005, channelId = 200, userId = 1, roleIds = setOf(1L), isAdmin = true)
                 val r = commands.imagine(ctx, "고양이")
-                // 원문 그대로 전송, central 심사/번역 호출 안 함
-                assertEquals("고양이", conn.lastInfer!!.prompt)
+                assertNull(conn.lastInfer)
                 assertNull(cloudLlm.lastReviewedPrompt)
                 assertNull(cloudLlm.lastTranslatedPrompt)
-                // 기존 IMAGE_POLICY: 시스템 프롬프트 포함, preTranslated 없음
-                val policy = conn.lastInfer!!.imagePolicy!!
-                assertTrue(policy.containsKey("safetySystemPrompt"))
-                assertTrue(policy.containsKey("translatorSystemPrompt"))
-                assertNull(policy["preTranslated"])
-                assertTrue(r.imagePng != null)
+                assertNull(r.imagePng)
+                assertTrue(r.content.contains("안전 심사"))
             } finally {
                 registry.unregister(session)
             }

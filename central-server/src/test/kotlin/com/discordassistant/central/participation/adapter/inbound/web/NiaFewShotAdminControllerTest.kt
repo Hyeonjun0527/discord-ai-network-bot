@@ -119,7 +119,7 @@ class NiaFewShotAdminControllerTest {
     }
 
     @Test
-    fun `publish is blocked when deterministic eval fails`() {
+    fun `small curated draft can pass eval and publish`() {
         val created =
             mockMvc
                 .perform(
@@ -137,14 +137,14 @@ class NiaFewShotAdminControllerTest {
                 post("/api/admin/nia/few-shot/sets/$setId/drafts/1/eval")
                     .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false)),
             ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.status").value("FAIL"))
-            .andExpect(jsonPath("$.readyForPublish").value(false))
+            .andExpect(jsonPath("$.status").value("PASS"))
+            .andExpect(jsonPath("$.readyForPublish").value(true))
 
         mockMvc
             .perform(
                 post("/api/admin/nia/few-shot/sets/$setId/versions/1/publish")
                     .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false)),
-            ).andExpect(status().isBadRequest)
+            ).andExpect(status().isOk)
     }
 
     @Test

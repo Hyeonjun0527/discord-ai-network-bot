@@ -46,6 +46,7 @@ export type NiaFewShotExample = {
   title: string;
   rawMessages: NiaFewShotRawMessage[];
   expectedAction: string;
+  expectedReplies: string[];
   reason: string;
   evidenceRefs: string[];
   badAlternative: NiaFewShotBadAlternative;
@@ -261,6 +262,17 @@ export async function replaceFewShotDraft(
 ): Promise<NiaFewShotVersion> {
   return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}`, options, {
     method: "PUT",
+    body: { examples },
+  });
+}
+
+export async function createFewShotDraftForSet(
+  options: ApiOptions,
+  setId: number,
+  examples: NiaFewShotExample[],
+): Promise<NiaFewShotVersion> {
+  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts`, options, {
+    method: "POST",
     body: { examples },
   });
 }

@@ -10,12 +10,11 @@ import org.springframework.stereotype.Component
 import java.time.Clock
 
 /**
- * GLM 기반 기억 후보 추출 어댑터(NEXA-P07-T015). routing [CloudLlm] 포트로만 모델을 호출하고, socialmemory 에는
- * glm/Z.AI 타입을 노출하지 않는다(speech 와 동일 anti-corruption, ADR 0006·module-dag 금지 의존 #3).
+ * 클라우드 LLM 기반 기억 후보 추출 어댑터(NEXA-P07-T015). routing [CloudLlm] 포트로만 모델을 호출한다.
  *
  * **payload 최소화·timeout·schema validation(acceptance T015)**:
  * - payload 최소화: [MemoryCandidateSchema.buildPrompt] 가 원문이 아닌 scene 메타·구조화 cue·닫힌 스키마 지시만 보낸다.
- * - timeout: 외부 HTTP timeout 은 CloudLlm 구현(ZaiCloudLlm, `central.cloud.llm-timeout-seconds`)이 강제한다 — 어댑터는
+ * - timeout: 외부 HTTP timeout 은 CloudLlm 구현(OpenAiCloudLlm, `central.cloud.llm-timeout-seconds`)이 강제한다 — 어댑터는
  *   포트만 호출하므로 timeout 정책을 중복 구현하지 않는다(SSOT).
  * - schema validation: [MemoryCandidateSchema.parse] 가 닫힌 enum·비빈 필드를 만족하는 원소만 후보로 받는다.
  *
@@ -45,7 +44,6 @@ class CloudLlmMemoryCandidateExtractor(
     }
 
     companion object {
-        /** 추출에 쓰는 기본 모델(라우팅은 CloudLlm 구현이 z.ai 로 매핑). */
-        const val EXTRACTION_MODEL = "glm-5.1"
+        const val EXTRACTION_MODEL = "gpt-5.6-luna"
     }
 }

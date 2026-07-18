@@ -81,7 +81,7 @@ object SpeechCandidateResponseParser {
             trimmed
                 .trimEnd { it == '.' || it == '。' }
                 .trimEnd()
-        // "..." 같은 순수 말줄임표는 니아 페르소나가 의도한 침묵비트 버블이다(NexaIdentity NIA_CHAT_FEWSHOT 의
+        // "..." 같은 순수 말줄임표는 니아 페르소나가 의도한 침묵비트 버블이다(관리자 few-shot 의
         // `니아: ...`). 끝 마침표만 다듬다 통째로 비워지면 의도된 발화가 사라지므로 원문을 유지한다.
         return stripped.ifBlank { trimmed }
     }

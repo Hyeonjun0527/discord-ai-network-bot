@@ -24,20 +24,13 @@ data class CloudLlmResult(
     val usage: CloudLlmUsage = CloudLlmUsage(),
 )
 
-/**
- * 멀티턴 대화 한 turn. [role] 은 OpenAI 호환 `user`/`assistant`(시스템 프롬프트는 prompt 본문에 합쳐 보낸다).
- * /질문 의 채널+유저 단기 대화 기억(인메모리)을 z.ai messages 앞에 붙이는 데 쓴다.
- */
+/** 멀티턴 대화 한 turn. [role] 은 OpenAI Responses API의 `user`/`assistant` 역할이다. */
 data class CloudTurn(
     val role: String,
     val content: String,
 )
 
-/**
- * z.ai GLM thinking(추론) 속도 라우팅 파라미터(공식 형식 `{"thinking":{"type":"enabled"|"disabled"}}`).
- * [ENABLED] = 깊은 추론(느림·정확), [DISABLED] = 즉답(빠름). **null(미지정)이면 [DISABLED] 로 전송**한다 —
- * z.ai 서버 기본이 "생각 ON"(느림, 실측 7~8초)이라 미전송 시 3초 예산(ADR 0006)을 초과하기 때문(fast-or-fail).
- */
+/** 기존 호출자 호환용 추론 힌트. OpenAI 어댑터는 운영 정책에 따라 항상 reasoning effort `none`을 사용한다. */
 enum class CloudThinking(
     val wire: String,
 ) {
@@ -45,10 +38,7 @@ enum class CloudThinking(
     DISABLED("disabled"),
 }
 
-/**
- * GLM 이 OpenAI 호환 tool calling 으로 돌려준 함수 호출 1건(AI 관리 비서용). [name] 은 호출 함수명,
- * [argumentsJson] 은 GLM 이 만든 인자 JSON 문자열(파싱은 호출자/카탈로그가 담당), [id] 는 tool_call id(선택).
- */
+/** 클라우드 모델이 돌려준 함수 호출 1건(AI 관리 비서용). */
 data class CloudToolCall(
     val name: String,
     val argumentsJson: String,
@@ -56,7 +46,7 @@ data class CloudToolCall(
 )
 
 /**
- * tool calling 응답: GLM 이 도구를 호출했으면 [toolCalls] 가 비어있지 않고, 아니면 [text] 만 채워진 일반 답변.
+ * tool calling 응답: 모델이 도구를 호출했으면 [toolCalls]가 비어있지 않고, 아니면 [text]만 채워진 일반 답변.
  * 둘 다 비면 빈 응답이다(상위가 일반 처리). 순수 파서로 만들어 테스트 가능하게 한다.
  */
 data class CloudToolResponse(
@@ -83,12 +73,7 @@ data class ImageReview(
     val category: String? = null,
 )
 
-/**
- * 무료질문(glm-*)을 **중앙 서버가 관리자 키 1개로 직접** 처리하는 백엔드 포트(ADR 0006).
- * 유저가 앱(provider-agent)을 설치하지 않아도 /질문 을 쓸 수 있게, 풀 라우팅 대신 central 이
- * 직접 클라우드(z.ai)에 추론을 요청한다. 외부 HTTP 는 **중앙 서버**에서만 일어나며(에이전트
- * 임의 URL 호출 금지 원칙 유지·강화), WebSearchAugmenter 의 선례와 같은 형태로 정의한다.
- */
+/** 중앙 서버가 관리자 키로 직접 처리하는 클라우드 LLM 포트. */
 interface CloudLlm {
     fun isEnabled(): Boolean
 
@@ -98,10 +83,8 @@ interface CloudLlm {
     ): CloudLlmResult
 
     /**
-     * 멀티턴 대화 기억(/질문 채널+유저 단기 컨텍스트)과 thinking 속도 라우팅을 지원하는 확장 호출.
-     * [history] 는 messages 앞에 시간순으로 붙고(이번 [prompt] 는 마지막 user turn), [thinking] 은 z.ai
-     * GLM thinking 파라미터(null 이면 미전송 → 서버 기본). 기본 구현은 history/thinking 을 무시하고 단순
-     * [generate] 로 위임하므로 기존 구현(테스트 스텁·speech·socialmemory)은 무변경으로 호환된다 — z.ai 구현만 override.
+     * 멀티턴 대화 기억과 추론 힌트를 지원하는 확장 호출. OpenAI 운영 어댑터는 [thinking] 값과 무관하게
+     * reasoning effort `none`을 강제한다.
      */
     fun generate(
         prompt: String,
@@ -111,10 +94,7 @@ interface CloudLlm {
     ): CloudLlmResult = generate(prompt, model)
 
     /**
-     * 발화(speech) 생성 전용 — 샘플링 randomness([temperature])를 명시해 **같은 프롬프트라도 매번 다른 문장**이
-     * 나오게 한다(사람은 결코 같은 말을 글자까지 똑같이 반복하지 않는다). 판단(judge)은 일관성을 위해 이 경로를
-     * 쓰지 않고 결정론적으로 둔다. 기본 구현은 [temperature] 를 무시하고 [generate] 로 위임하므로 기존 구현·테스트
-     * 스텁은 무변경 호환된다 — z.ai 구현만 override 해 temperature 를 전송한다.
+     * 발화 생성 전용 호환 경로. reasoning effort `none` 모델에서는 지원하지 않는 샘플링 파라미터를 보내지 않는다.
      */
     fun generateSampled(
         prompt: String,
@@ -124,7 +104,7 @@ interface CloudLlm {
 
     /**
      * OpenAI 호환 tool calling 1회(AI 관리 비서). [systemPrompt]+[userPrompt] 로 대화를 만들고 [toolsJson]
-     * (OpenAI function schema 배열의 JSON 문자열)을 `tools`+`tool_choice:"auto"` 로 보낸다. GLM 이 도구를
+     * (OpenAI function schema 배열의 JSON 문자열)을 `tools`+`tool_choice:"auto"` 로 보낸다. 모델이 도구를
      * 호출하면 [CloudToolResponse.toolCalls], 아니면 [CloudToolResponse.text] 가 채워진다. 실패 시 [CloudLlmException].
      */
     fun generateWithTools(
@@ -180,11 +160,7 @@ object NoCloudLlm : CloudLlm {
     ): String = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
 }
 
-/**
- * 순수 함수 파서(테스트 가능, 외부 서비스 불필요). z.ai 는 OpenAI 호환이라 chat/completions
- * 응답의 `choices[0].message.content` 를 답변으로, `usage` 를 사용량으로 추출한다.
- * 비정상/빈 응답이면 [CloudLlmException].
- */
+/** OpenAI Responses API 응답을 파싱하는 순수 함수 모음. */
 object CloudLlmResponseParser {
     fun parse(
         body: String,
@@ -198,34 +174,24 @@ object CloudLlmResponseParser {
             }
         val error = root.get("error")
         if (error != null && !error.isNull) {
-            // z.ai 업스트림 에러(모델 없음·인증·잔액 등)의 사유를 운영자가 바로 진단할 수 있게 노출한다
+            // 업스트림 에러(모델 없음·인증·잔액 등)의 사유를 운영자가 바로 진단할 수 있게 노출한다
             // (이 봇은 서버 관리자가 운영하므로 "model not found" 같은 실제 사유가 보여야 한다).
             val reason = errorReasonOf(error)
             throw CloudLlmException(if (reason != null) "클라우드 AI 오류: $reason" else USER_ERROR_MESSAGE)
         }
-        val message =
-            root
-                .get("choices")
-                ?.takeIf { it.isArray && it.size() > 0 }
-                ?.get(0)
-                ?.get("message")
         val content =
-            message
-                ?.get("content")
-                ?.takeIf { it.isTextual }
-                ?.asText()
-                ?.takeIf { it.isNotBlank() }
+            outputTexts(root).joinToString("\n").trim().takeIf { it.isNotBlank() }
                 ?: throw CloudLlmException("클라우드 AI 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답).")
         val usageNode = root.get("usage")
         val usage =
             CloudLlmUsage(
-                promptTokens = usageNode?.get("prompt_tokens")?.asInt(0) ?: 0,
-                completionTokens = usageNode?.get("completion_tokens")?.asInt(0) ?: 0,
+                promptTokens = usageNode?.get("input_tokens")?.asInt(0) ?: 0,
+                completionTokens = usageNode?.get("output_tokens")?.asInt(0) ?: 0,
             )
-        return CloudLlmResult(content.trim(), usage)
+        return CloudLlmResult(content, usage)
     }
 
-    /** z.ai/OpenAI 호환 `error` 노드에서 code·message 를 한 줄로 요약(운영자 진단용 — 개행 제거·길이 캡). */
+    /** OpenAI `error` 노드에서 code·message 를 한 줄로 요약(운영자 진단용 — 개행 제거·길이 캡). */
     fun errorReasonOf(errorNode: com.fasterxml.jackson.databind.JsonNode): String? {
         val code = errorNode.get("code")?.asText()?.takeIf { it.isNotBlank() }
         val message = errorNode.get("message")?.asText()?.takeIf { it.isNotBlank() }
@@ -250,7 +216,7 @@ object CloudLlmResponseParser {
             402 -> "잔액 부족"
             404 -> "모델 없음·모델명 확인"
             429 -> "요청 한도 초과"
-            in 500..599 -> "z.ai 서버 오류"
+            in 500..599 -> "OpenAI 서버 오류"
             else -> "HTTP $status"
         }
 
@@ -258,7 +224,7 @@ object CloudLlmResponseParser {
     const val USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
 
     /**
-     * tool calling 응답(chat/completions)에서 `message.tool_calls[]`(OpenAI 호환)와 일반 `content` 를 추출한다.
+     * Responses API의 `output[]`에서 `function_call`과 일반 `output_text`를 추출한다.
      * 도구 호출이 있으면 [CloudToolResponse.toolCalls], 없으면 일반 답변 [CloudToolResponse.text]. error/빈 응답은
      * [CloudLlmException]. content 가 비어도 tool_calls 가 있으면 정상(도구만 호출하는 케이스)으로 본다.
      */
@@ -276,38 +242,26 @@ object CloudLlmResponseParser {
         if (error != null && !error.isNull) {
             throw CloudLlmException(USER_ERROR_MESSAGE)
         }
-        val message =
-            root
-                .get("choices")
-                ?.takeIf { it.isArray && it.size() > 0 }
-                ?.get(0)
-                ?.get("message")
-                ?: throw CloudLlmException("클라우드 AI 응답에 메시지가 없습니다.")
         val toolCalls =
-            message
-                .get("tool_calls")
+            root
+                .get("output")
                 ?.takeIf { it.isArray }
-                ?.mapNotNull { call ->
-                    val fn = call.get("function") ?: return@mapNotNull null
+                ?.mapNotNull { item ->
+                    if (item.get("type")?.asText() != "function_call") return@mapNotNull null
                     val name =
-                        fn
+                        item
                             .get("name")
                             ?.takeIf { it.isTextual }
                             ?.asText()
                             ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                    // arguments 는 OpenAI 규격상 JSON 문자열. 비정상이면 빈 객체로 안전 폴백(상위 인자 파싱이 거른다).
                     val args =
-                        fn.get("arguments")?.let { if (it.isTextual) it.asText() else it.toString() }?.takeIf { it.isNotBlank() } ?: "{}"
-                    val id = call.get("id")?.takeIf { it.isTextual }?.asText()
+                        item.get("arguments")?.let { if (it.isTextual) it.asText() else it.toString() }?.takeIf { it.isNotBlank() } ?: "{}"
+                    val id =
+                        item.get("call_id")?.takeIf { it.isTextual }?.asText()
+                            ?: item.get("id")?.takeIf { it.isTextual }?.asText()
                     CloudToolCall(name = name, argumentsJson = args, id = id)
                 }.orEmpty()
-        val content =
-            message
-                .get("content")
-                ?.takeIf { it.isTextual }
-                ?.asText()
-                ?.takeIf { it.isNotBlank() }
-                ?.trim()
+        val content = outputTexts(root).joinToString("\n").trim().takeIf { it.isNotBlank() }
         if (toolCalls.isEmpty() && content == null) {
             throw CloudLlmException("클라우드 AI 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답).")
         }
@@ -317,22 +271,34 @@ object CloudLlmResponseParser {
             toolCalls = toolCalls,
             usage =
                 CloudLlmUsage(
-                    promptTokens = usageNode?.get("prompt_tokens")?.asInt(0) ?: 0,
-                    completionTokens = usageNode?.get("completion_tokens")?.asInt(0) ?: 0,
+                    promptTokens = usageNode?.get("input_tokens")?.asInt(0) ?: 0,
+                    completionTokens = usageNode?.get("output_tokens")?.asInt(0) ?: 0,
                 ),
         )
     }
 
+    private fun outputTexts(root: com.fasterxml.jackson.databind.JsonNode): List<String> =
+        root
+            .get("output")
+            ?.takeIf { it.isArray }
+            ?.flatMap { item ->
+                item
+                    .get("content")
+                    ?.takeIf { it.isArray }
+                    ?.mapNotNull { content ->
+                        content.get("text")?.takeIf { it.isTextual && it.asText().isNotBlank() }?.asText()
+                    }.orEmpty()
+            }.orEmpty()
+
     /**
-     * 이미지 안전 심사 응답(chat/completions)에서 GLM 이 돌려준 JSON 심사 결과를 추출한다(provider-agent
-     * glm.py `parse_image_prompt_review` 포팅). 코드펜스가 섞여도 첫 JSON object 만 허용하고,
+     * 이미지 안전 심사 응답에서 모델이 돌려준 JSON 결과를 추출한다. 코드펜스가 섞여도 첫 JSON object만 허용하고,
      * `allowed`(boolean)가 없으면 fail-closed 예외 — 스키마가 조금이라도 깨지면 차단한다.
      */
     fun parseImageReview(
         body: String,
         mapper: ObjectMapper,
     ): ImageReview {
-        // chat/completions 봉투에서 content 추출(error·빈 응답은 parse 가 일반화 예외로 던짐).
+        // Responses 봉투에서 content 추출(error·빈 응답은 parse 가 일반화 예외로 던짐).
         val content = parse(body, mapper).text
         val json =
             try {
@@ -364,7 +330,7 @@ object CloudLlmResponseParser {
         return ImageReview(allowed = allowed, reason = reason, category = category)
     }
 
-    /** 코드펜스(```json … ```)를 벗기고 첫 `{ … }` object 만 남긴다(glm.py `_extract_json_object` 포팅). */
+    /** 코드펜스(```json … ```)를 벗기고 첫 `{ … }` object만 남긴다. */
     private fun extractFirstJsonObject(text: String): String {
         var cleaned = text.trim()
         if (cleaned.startsWith("```")) {
@@ -383,48 +349,39 @@ object CloudLlmResponseParser {
     }
 }
 
-/**
- * z.ai(GLM, OpenAI 호환) 구현. `central.cloud.zai-api-key` 미설정이면 비활성(isEnabled=false →
- * 라우팅이 기존 에이전트 경로로 폴백). 키가 있으면 `POST {base}/chat/completions` 로 직접 호출한다.
- * WebSearchAugmenter 의 SearxngWebSearch 와 **동일한 HTTP 클라이언트(java.net.http)** · @Value 키
- * 주입 · @Component 배치를 따른다.
- */
+/** OpenAI Responses API 구현. 모든 호출은 운영 정책에 따라 Luna와 reasoning effort `none`을 사용한다. */
 @Component
-class ZaiCloudLlm(
-    @param:Value("\${central.cloud.zai-api-key:}") private val apiKey: String,
-    @param:Value("\${central.cloud.zai-base-url:https://api.z.ai/api/paas/v4}") private val baseUrl: String,
+class OpenAiCloudLlm(
+    @param:Value("\${central.cloud.openai-api-key:}") private val apiKey: String,
+    @param:Value("\${central.cloud.openai-base-url:https://api.openai.com/v1}") private val baseUrl: String,
     @param:Value("\${central.cloud.llm-timeout-seconds:20}") private val timeoutSeconds: Long,
     @param:Value("\${central.cloud.llm-max-retries:2}") private val maxRetries: Int = 2,
 ) : CloudLlm {
-    private val log = LoggerFactory.getLogger(ZaiCloudLlm::class.java)
+    private val log = LoggerFactory.getLogger(OpenAiCloudLlm::class.java)
     private val mapper = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
-    private val requestTimeout: Duration = Duration.ofSeconds(timeoutSeconds.coerceAtLeast(1))
-    private val requestMaxAttempts: Int = 1 + maxRetries.coerceAtLeast(0)
+    private val requestTimeout = Duration.ofSeconds(timeoutSeconds.coerceAtLeast(1))
+    private val requestMaxAttempts = 1 + maxRetries.coerceAtLeast(0)
 
     override fun isEnabled() = apiKey.isNotBlank()
 
     override fun generate(
         prompt: String,
         model: String,
-    ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model), mapper)
+    ): CloudLlmResult = parse(postResponses(listOf("user" to prompt), model))
 
     override fun generateSampled(
         prompt: String,
         model: String,
         temperature: Double,
-    ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model, temperature = temperature), mapper)
+    ): CloudLlmResult = generate(prompt, model)
 
     override fun generate(
         prompt: String,
         model: String,
         history: List<CloudTurn>,
         thinking: CloudThinking?,
-    ): CloudLlmResult {
-        // 멀티턴: 히스토리(시간순)를 먼저, 이번 질문을 마지막 user turn 으로. thinking 은 z.ai GLM 형식으로 전달.
-        val messages = history.map { it.role to it.content } + ("user" to prompt)
-        return CloudLlmResponseParser.parse(postChat(messages, model, thinking = thinking), mapper)
-    }
+    ): CloudLlmResult = parse(postResponses(history.map { it.role to it.content } + ("user" to prompt), model))
 
     override fun generateWithTools(
         systemPrompt: String,
@@ -433,7 +390,7 @@ class ZaiCloudLlm(
         model: String,
     ): CloudToolResponse =
         CloudLlmResponseParser.parseToolResponse(
-            postChat(listOf("system" to systemPrompt, "user" to userPrompt), model, toolsJson = toolsJson),
+            postResponses(listOf("user" to userPrompt), model, instructions = systemPrompt, toolsJson = toolsJson),
             mapper,
         )
 
@@ -442,74 +399,56 @@ class ZaiCloudLlm(
         systemPrompt: String,
     ): ImageReview =
         CloudLlmResponseParser.parseImageReview(
-            postChat(listOf("system" to systemPrompt, "user" to prompt), DEFAULT_MODEL),
+            postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt),
             mapper,
         )
 
     override fun translateImagePrompt(
         prompt: String,
         systemPrompt: String,
-    ): String =
-        CloudLlmResponseParser
-            .parse(
-                postChat(listOf("system" to systemPrompt, "user" to prompt), DEFAULT_MODEL),
-                mapper,
-            ).text
+    ): String = parse(postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt)).text
 
-    /**
-     * chat/completions 한 번 호출 → 원시 응답 body. 연결/HTTP 오류는 일반화 [CloudLlmException].
-     * [thinking] 이 주어지면 z.ai GLM thinking 속도 라우팅 파라미터를 함께 보낸다.
-     * [toolsJson] 이 주어지면 OpenAI 호환 `tools` 배열 + `tool_choice:"auto"` 를 함께 보낸다(AI 관리 비서).
-     */
-    private fun postChat(
+    private fun parse(body: String): CloudLlmResult = CloudLlmResponseParser.parse(body, mapper)
+
+    private fun postResponses(
         messages: List<Pair<String, String>>,
         model: String,
-        thinking: CloudThinking? = null,
+        instructions: String? = null,
         toolsJson: String? = null,
-        temperature: Double? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val startedAt = System.nanoTime()
-        val base = baseUrl.trimEnd('/')
         val payload =
-            mapper
-                .createObjectNode()
-                .put("model", model.ifBlank { DEFAULT_MODEL })
-                .apply {
-                    val arr = putArray("messages")
-                    messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
-                    // thinking 은 **무조건 disabled**(운영 결정, ADR 0006). z.ai 는 thinking ON 이면 7~8초 걸려
-                    // 4초 fast-or-fail 예산을 초과한다(disabled 는 실측 <2초). 즉답 채팅 봇에는 추론 지연이 해가
-                    // 되므로 어떤 호출이 ENABLED 를 넘겨도 켜지 않는다([thinking] 파라미터는 무시된다).
-                    putObject("thinking").put("type", CloudThinking.DISABLED.wire)
-                    // 발화 생성만 temperature 를 실어 같은 프롬프트라도 매번 다른 문장이 나오게 한다(반복 방지).
-                    // 판단(judge)/tool calling 등은 temperature=null 이라 z.ai 기본(결정론에 가까움)으로 일관 유지.
-                    if (temperature != null) put("temperature", temperature)
-                    if (!toolsJson.isNullOrBlank()) {
-                        // tools 는 OpenAI function schema 배열(카탈로그 SSOT 가 만든 JSON). 파싱 실패는 호출자 책임이 아니라
-                        // 카탈로그 버그이므로 여기서 던져 빠르게 드러낸다(fail fast). tool_choice=auto 로 호출 여부는 GLM 이 결정.
-                        set<com.fasterxml.jackson.databind.JsonNode>("tools", mapper.readTree(toolsJson))
-                        put("tool_choice", "auto")
-                    }
+            mapper.createObjectNode().apply {
+                put("model", model.ifBlank { DEFAULT_MODEL })
+                put("store", false)
+                putObject("reasoning").put("effort", REASONING_EFFORT)
+                instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+                val input = putArray("input")
+                messages.forEach { (role, content) -> input.addObject().put("role", role).put("content", content) }
+                if (!toolsJson.isNullOrBlank()) {
+                    set<com.fasterxml.jackson.databind.JsonNode>("tools", toResponsesTools(toolsJson))
+                    put("tool_choice", "auto")
                 }
+            }
         val requestBody = mapper.writeValueAsString(payload)
         var lastTimeout: HttpTimeoutException? = null
         for (attempt in 1..requestMaxAttempts) {
-            val req =
+            val request =
                 HttpRequest
-                    .newBuilder(URI.create("$base/chat/completions"))
+                    .newBuilder(URI.create("${baseUrl.trimEnd('/')}/responses"))
                     .timeout(requestTimeout)
                     .header("Authorization", "Bearer $apiKey")
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build()
-            val resp =
+            val response =
                 try {
-                    http.send(req, HttpResponse.BodyHandlers.ofString())
+                    http.send(request, HttpResponse.BodyHandlers.ofString())
                 } catch (e: HttpTimeoutException) {
                     lastTimeout = e
                     log.warn(
-                        "클라우드 LLM 호출 timeout model={} attempt={}/{} timeoutSeconds={} elapsedMs={}",
+                        "OpenAI 호출 timeout model={} attempt={}/{} timeoutSeconds={} elapsedMs={}",
                         model.ifBlank { DEFAULT_MODEL },
                         attempt,
                         requestMaxAttempts,
@@ -518,13 +457,12 @@ class ZaiCloudLlm(
                     )
                     if (attempt < requestMaxAttempts) continue
                     throw CloudLlmException(
-                        "클라우드 AI 시간 초과(${requestTimeout.seconds}초·${requestMaxAttempts}회) — z.ai 응답이 느려요",
+                        "클라우드 AI 시간 초과(${requestTimeout.seconds}초·${requestMaxAttempts}회)",
                         e,
                     )
                 } catch (e: Exception) {
-                    // 연결 실패 상세는 로그로만, 사용자에겐 일반화 메시지.
                     log.warn(
-                        "클라우드 LLM 호출 실패 model={} attempt={}/{} timeoutSeconds={} elapsedMs={} error={}",
+                        "OpenAI 호출 실패 model={} attempt={}/{} timeoutSeconds={} elapsedMs={} error={}",
                         model.ifBlank { DEFAULT_MODEL },
                         attempt,
                         requestMaxAttempts,
@@ -534,29 +472,50 @@ class ZaiCloudLlm(
                     )
                     throw CloudLlmException("클라우드 AI 연결 실패(${e.javaClass.simpleName})", e)
                 }
-            if (resp.statusCode() !in 200..299) {
-                // 업스트림 status·body 는 정보 노출 소지가 있어 로그로만 남긴다(예외 원칙).
+            if (response.statusCode() !in 200..299) {
                 log.warn(
-                    "클라우드 LLM HTTP {} model={} attempt={}/{} elapsedMs={}: {}",
-                    resp.statusCode(),
+                    "OpenAI HTTP {} model={} attempt={}/{} elapsedMs={}: {}",
+                    response.statusCode(),
                     model.ifBlank { DEFAULT_MODEL },
                     attempt,
                     requestMaxAttempts,
                     elapsedMs(startedAt),
-                    resp.body().take(500),
+                    response.body().take(500),
                 )
-                val reason = CloudLlmResponseParser.upstreamErrorReason(resp.body(), mapper)
-                val category = CloudLlmResponseParser.statusCategory(resp.statusCode())
+                val reason = CloudLlmResponseParser.upstreamErrorReason(response.body(), mapper)
+                val category = CloudLlmResponseParser.statusCategory(response.statusCode())
                 throw CloudLlmException("클라우드 AI 오류($category)" + (reason?.let { ": $it" } ?: ""))
             }
-            return resp.body()
+            return response.body()
         }
         throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, lastTimeout)
+    }
+
+    private fun toResponsesTools(toolsJson: String): com.fasterxml.jackson.databind.JsonNode {
+        val source = mapper.readTree(toolsJson)
+        require(source.isArray) { "toolsJson 은 배열이어야 한다" }
+        return mapper.createArrayNode().apply {
+            source.forEach { tool ->
+                val function = tool.get("function")
+                if (function == null) {
+                    add(tool)
+                } else {
+                    addObject().apply {
+                        put("type", "function")
+                        put("name", function.path("name").asText())
+                        function.get("description")?.let { set<com.fasterxml.jackson.databind.JsonNode>("description", it) }
+                        function.get("parameters")?.let { set<com.fasterxml.jackson.databind.JsonNode>("parameters", it) }
+                        put("strict", false)
+                    }
+                }
+            }
+        }
     }
 
     private fun elapsedMs(startedAt: Long): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
 
     companion object {
-        const val DEFAULT_MODEL = "glm-4.5-air"
+        const val DEFAULT_MODEL = "gpt-5.6-luna"
+        const val REASONING_EFFORT = "none"
     }
 }

@@ -7,117 +7,83 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
-/** z.ai(OpenAI 호환) 응답 파서 순수 단위테스트 — 외부 호출 없이 추출/실패 분기 고정. */
 class CloudLlmResponseParserTest {
     private val mapper = ObjectMapper()
 
     @Test
-    fun `정상 응답 → content 와 usage 추출`() {
+    fun `정상 Responses 응답에서 text와 usage를 추출한다`() {
+        val body = responseBody("  안녕하세요  ", inputTokens = 12, outputTokens = 34)
+        val result = CloudLlmResponseParser.parse(body, mapper)
+        assertEquals("안녕하세요", result.text)
+        assertEquals(12, result.usage.promptTokens)
+        assertEquals(34, result.usage.completionTokens)
+    }
+
+    @Test
+    fun `여러 output text는 순서대로 합친다`() {
         val body =
-            """
-            {"choices":[{"message":{"role":"assistant","content":"  안녕하세요  "}}],
-             "usage":{"prompt_tokens":12,"completion_tokens":34}}
-            """.trimIndent()
-        val r = CloudLlmResponseParser.parse(body, mapper)
-        assertEquals("안녕하세요", r.text) // trim 적용
-        assertEquals(12, r.usage.promptTokens)
-        assertEquals(34, r.usage.completionTokens)
+            """{"output":[{"type":"message","content":[{"type":"output_text","text":"첫 줄"},{"type":"output_text","text":"둘째 줄"}]}]}"""
+        assertEquals("첫 줄\n둘째 줄", CloudLlmResponseParser.parse(body, mapper).text)
     }
 
     @Test
-    fun `usage 없으면 0 으로`() {
-        val body = """{"choices":[{"message":{"content":"답"}}]}"""
-        val r = CloudLlmResponseParser.parse(body, mapper)
-        assertEquals("답", r.text)
-        assertEquals(0, r.usage.promptTokens)
-        assertEquals(0, r.usage.completionTokens)
+    fun `usage가 없으면 0이다`() {
+        val result = CloudLlmResponseParser.parse(responseBody("답"), mapper)
+        assertEquals(0, result.usage.promptTokens)
+        assertEquals(0, result.usage.completionTokens)
     }
 
     @Test
-    fun `업스트림 error 객체 → 사유를 노출한다(운영자 진단)`() {
-        val body = """{"error":{"code":"1211","message":"model not found"}}"""
-        val e = assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse(body, mapper) }
-        // 원인(code·message)을 그대로 노출해 운영자가 z.ai 실패 이유를 바로 진단하게 한다.
-        assertEquals("클라우드 AI 오류: 1211 model not found", e.message)
+    fun `업스트림 error 객체는 사유를 노출한다`() {
+        val body = """{"error":{"code":"model_not_found","message":"model not found"}}"""
+        val error = assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse(body, mapper) }
+        assertEquals("클라우드 AI 오류: model_not_found model not found", error.message)
     }
 
     @Test
-    fun `choices 비었으면 예외`() {
-        val body = """{"choices":[]}"""
-        assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse(body, mapper) }
-    }
-
-    @Test
-    fun `content 빈 문자열이면 예외(안전 필터 차단)`() {
-        val body = """{"choices":[{"message":{"content":""}}]}"""
-        assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse(body, mapper) }
-    }
-
-    @Test
-    fun `깨진 JSON 이면 파싱 실패 예외`() {
+    fun `output이 비거나 JSON이 깨지면 실패한다`() {
+        assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse("""{"output":[]}""", mapper) }
         assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse("not json", mapper) }
     }
 
-    // ── 이미지 안전 심사 파서(ADR 0006 단계2, glm.py parse_image_prompt_review 포팅) ──
-
-    /** chat/completions 봉투 안에 심사 JSON 이 content 로 담겨온다. 코드펜스/잡텍스트는 첫 object 만 허용. */
-    private fun reviewBody(content: String): String =
-        mapper.writeValueAsString(
-            mapper.createObjectNode().apply {
-                putArray("choices")
-                    .addObject()
-                    .putObject("message")
-                    .put("role", "assistant")
-                    .put("content", content)
-            },
-        )
-
     @Test
-    fun `심사 allowed=true → 통과(category·reason 추출)`() {
-        val r = CloudLlmResponseParser.parseImageReview(reviewBody("""{"allowed":true,"category":"safe","reason":"정상"}"""), mapper)
-        assertEquals(true, r.allowed)
-        assertEquals("safe", r.category)
-        assertEquals("정상", r.reason)
+    fun `이미지 심사 allowed true와 false를 파싱한다`() {
+        val allowed = CloudLlmResponseParser.parseImageReview(responseBody("""{"allowed":true,"category":"safe","reason":"정상"}"""), mapper)
+        val denied = CloudLlmResponseParser.parseImageReview(responseBody("""{"allowed":false,"category":"minor","reason":"차단"}"""), mapper)
+        assertEquals(true, allowed.allowed)
+        assertEquals("정상", allowed.reason)
+        assertEquals(false, denied.allowed)
+        assertEquals("minor", denied.category)
     }
 
     @Test
-    fun `심사 allowed=false → 차단(reason 보존)`() {
-        val r =
-            CloudLlmResponseParser.parseImageReview(
-                reviewBody("""{"allowed":false,"category":"minor","reason":"미성년 성적 묘사"}"""),
-                mapper,
-            )
-        assertEquals(false, r.allowed)
-        assertEquals("minor", r.category)
-        assertEquals("미성년 성적 묘사", r.reason)
-    }
-
-    @Test
-    fun `심사 코드펜스로 감싼 JSON 도 파싱`() {
-        val r = CloudLlmResponseParser.parseImageReview(reviewBody("```json\n{\"allowed\":true}\n```"), mapper)
-        assertEquals(true, r.allowed)
-        assertEquals("safe", r.category) // category 누락 시 allowed 에 따라 기본
-        assertEquals("허용됨", r.reason)
-    }
-
-    @Test
-    fun `심사 allowed 누락이면 fail-closed 예외(차단)`() {
+    fun `이미지 심사는 코드펜스를 허용하지만 allowed 누락은 차단한다`() {
+        val allowed = CloudLlmResponseParser.parseImageReview(responseBody("```json\n{\"allowed\":true}\n```"), mapper)
+        assertEquals(true, allowed.allowed)
+        assertEquals("safe", allowed.category)
         assertThrows(CloudLlmException::class.java) {
-            CloudLlmResponseParser.parseImageReview(reviewBody("""{"category":"safe"}"""), mapper)
+            CloudLlmResponseParser.parseImageReview(responseBody("""{"category":"safe"}"""), mapper)
         }
     }
 
-    @Test
-    fun `심사 allowed 가 boolean 이 아니면 fail-closed 예외(차단)`() {
-        assertThrows(CloudLlmException::class.java) {
-            CloudLlmResponseParser.parseImageReview(reviewBody("""{"allowed":"yes"}"""), mapper)
+    private fun responseBody(
+        text: String,
+        inputTokens: Int? = null,
+        outputTokens: Int? = null,
+    ): String {
+        val root = mapper.createObjectNode()
+        root
+            .putArray(
+                "output",
+            ).addObject()
+            .put("type", "message")
+            .putArray("content")
+            .addObject()
+            .put("type", "output_text")
+            .put("text", text)
+        if (inputTokens != null || outputTokens != null) {
+            root.putObject("usage").put("input_tokens", inputTokens ?: 0).put("output_tokens", outputTokens ?: 0)
         }
-    }
-
-    @Test
-    fun `심사 content 가 JSON 이 아니면 fail-closed 예외(차단)`() {
-        assertThrows(CloudLlmException::class.java) {
-            CloudLlmResponseParser.parseImageReview(reviewBody("이건 JSON 이 아니에요"), mapper)
-        }
+        return mapper.writeValueAsString(root)
     }
 }

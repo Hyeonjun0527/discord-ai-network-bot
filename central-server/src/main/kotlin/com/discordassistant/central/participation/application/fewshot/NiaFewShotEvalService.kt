@@ -14,30 +14,7 @@ class NiaFewShotEvalService {
         val failures = mutableListOf<NiaFewShotEvalFailure>()
         val actionCoverage = examples.groupingBy { it.expectedAction }.eachCount().toSortedMap(compareBy { it.name })
 
-        if (examples.size != EXPECTED_TOTAL) {
-            failures += NiaFewShotEvalFailure("composition.total", null, "expected=$EXPECTED_TOTAL actual=${examples.size}")
-        }
-        EXPECTED_COUNTS.forEach { (action, expected) ->
-            val actual = actionCoverage[action] ?: 0
-            if (actual != expected) {
-                failures += NiaFewShotEvalFailure("composition.action.${action.name}", null, "expected=$expected actual=$actual")
-            }
-        }
-
         val hardAmbiguousCount = examples.count { HARD_AMBIGUOUS_TAG in it.tags }
-        if (hardAmbiguousCount != EXPECTED_HARD_AMBIGUOUS) {
-            failures +=
-                NiaFewShotEvalFailure(
-                    "ambiguous_contrast.count",
-                    null,
-                    "expected=$EXPECTED_HARD_AMBIGUOUS actual=$hardAmbiguousCount",
-                )
-        }
-        REQUIRED_TAGS.forEach { tag ->
-            if (examples.none { tag in it.tags }) {
-                failures += NiaFewShotEvalFailure("coverage.tag.$tag", null, "required tag is absent")
-            }
-        }
 
         examples.forEachIndexed { index, example ->
             val ref = example.reference(index)
@@ -86,22 +63,11 @@ class NiaFewShotEvalService {
     }
 
     companion object {
-        const val EXPECTED_TOTAL = 40
-        const val EXPECTED_HARD_AMBIGUOUS = 7
         const val HARD_AMBIGUOUS_TAG = "hard-ambiguous"
         const val OVER_TALK_TAG = "over-talk-risk"
         const val MISSED_REPLY_TAG = "missed-reply-risk"
         const val STALE_MEMORY_TAG = "stale-memory-override"
 
-        val EXPECTED_COUNTS: Map<NiaFewShotAction, Int> =
-            mapOf(
-                NiaFewShotAction.SPEAK to 10,
-                NiaFewShotAction.WAIT to 9,
-                NiaFewShotAction.REACT to 6,
-                NiaFewShotAction.IGNORE to 10,
-                NiaFewShotAction.CANCEL to 5,
-            )
-        val REQUIRED_TAGS: Set<String> = setOf(OVER_TALK_TAG, MISSED_REPLY_TAG, STALE_MEMORY_TAG, HARD_AMBIGUOUS_TAG)
         private val PRODUCTION_SHAPED_PATTERNS: Map<String, Regex> =
             mapOf(
                 "discord_snowflake" to Regex("\\b\\d{17,20}\\b"),

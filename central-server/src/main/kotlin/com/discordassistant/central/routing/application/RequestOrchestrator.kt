@@ -92,9 +92,9 @@ class RequestOrchestrator(
      * @param dedup 멱등성 중복 차단 적용 여부. 기본 true(유저 요청). /질문 의 무료 클라우드 폴백처럼 같은
      *   프롬프트로 **내부 재시도**할 때는 false 로 호출한다 — 첫 시도에서 이미 중복 검사를 통과했으므로
      *   2차(폴백)를 "동일 요청 중복"으로 막으면 폴백이 영구 실패한다.
-     * @param history /질문 멀티턴 단기 기억(채널+유저). **클라우드 직결(glm-*) 경로에서만** z.ai messages
+     * @param history /질문 멀티턴 단기 기억(채널+유저). 클라우드 직결 경로에서만 Responses input 앞에 붙인다.
      *   앞에 붙는다(시간순). 로컬 에이전트 경로(sendInfer)는 영향 없음(빈 리스트 기본).
-     * @param thinking z.ai GLM thinking 속도 라우팅. 클라우드 직결 경로에서만 전달(null 이면 미전송 → 서버 기본).
+     * @param thinking 호출자 호환용 추론 힌트. OpenAI 어댑터는 값과 무관하게 reasoning none을 보낸다.
      */
     fun handle(
         input: AiRequestInput,
@@ -254,13 +254,12 @@ class RequestOrchestrator(
 
         // 2.7) 무료질문 클라우드 직결(ADR 0006): 정책(차단·일일한도·채널·부담) 검사를 **모두 통과한 뒤**에만
         //       분기하므로 차단 사용자·한도 초과·금지 채널은 클라우드 경로에서도 동일하게 거부된다(정책 우회 0).
-        //       클라우드 모델(glm-*) 요청이고 관리자 키가 연결돼 있으면, 풀 후보 선택/sendInfer 를 건너뛰고
-        //       central 이 직접 z.ai 로 추론한다(앱 미설치 유저도 무료질문 사용). 키가 없으면(isEnabled=false)
-        //       기존 동작 그대로 — 에이전트 경유 glm-* 폴백(하위호환·롤백 안전).
-        if (input.preferredModel?.lowercase()?.startsWith("glm") == true && cloudLlm.isEnabled()) {
+        //       클라우드 모델 요청이고 관리자 키가 연결돼 있으면 풀 후보 선택/sendInfer 를 건너뛰고 central 이 직접 추론한다.
+        val directCloudModel = input.preferredModel?.takeIf(::isDirectCloudModel)
+        if (directCloudModel != null && cloudLlm.isEnabled()) {
             return try {
-                // 멀티턴 기억(history)을 messages 앞에 붙이고, thinking 속도 라우팅을 전달한다(둘 다 클라우드 직결 전용).
-                val cloud = cloudLlm.generate(effectivePrompt, input.preferredModel, history, thinking)
+                // 멀티턴 기억과 호환용 thinking 힌트를 전달한다. OpenAI 어댑터는 reasoning none을 강제한다.
+                val cloud = cloudLlm.generate(effectivePrompt, directCloudModel, history, thinking)
                 recorder.recordSuccess(input.guildId, input.userId, CLOUD_PROVIDER_ID, requestId = routingRequestId)
                 OrchestrationResult(
                     RequestState.COMPLETED,
@@ -432,6 +431,11 @@ class RequestOrchestrator(
             }
         }
         return OrchestrationResult(RequestState.FAILED, failReason = noProviderActionableReason(lastReason))
+    }
+
+    private fun isDirectCloudModel(model: String?): Boolean {
+        val normalized = model?.trim()?.lowercase() ?: return false
+        return normalized.startsWith("gpt-")
     }
 
     /**

@@ -86,14 +86,14 @@ CommandService.ask
   -> guild default model + effective channel routing policy
   -> model-choice resolution from available provider models
   -> local-first attempt when a local provider exists and selected model is not cloud
-  -> free cloud fallback through central.cloud.free-model, default glm-4.5-air, when needed
+  -> free cloud fallback through central.cloud.free-model, default gpt-5.6-luna, when needed
   -> runOrchestrator(ctx, prompt, model, responseMode, webSearch, maxCandidates)
 ```
 
 Evidence:
 
 - `AskCommandHandler.ask` enforces `ask:{guildId}:{userId}` cooldown for non-admin users, reads guild default model, resolves effective channel routing policy and model choice, and returns a user-facing warning when policy requires an available model but none is selectable (`central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt:117-147`).
-- The current policy is local-first only when a non-cloud selected model and a local provider are present; otherwise it uses or falls back to `central.cloud.free-model` (`ZAI_FREE_MODEL`, default `glm-4.5-air`) after `FreeAskRateLimiter` passes (`AskCommandHandler.kt:149-175`, `AskCommandHandler.kt:178-184`).
+- The current policy is local-first only when a non-cloud selected model and a local provider are present; otherwise it uses or falls back to `central.cloud.free-model` (`OPENAI_FREE_MODEL`, default `gpt-5.6-luna`) after `FreeAskRateLimiter` passes.
 - `runOrchestrator` creates the execution prompt, starts optional multi-response runtime observation, and sends `AiRequestInput` to the routing orchestrator. Burden weighting uses the original user prompt length, not the injected system prompt length (`AskCommandHandler.kt:186-227`).
 - Routing admission is evaluated once at request start. A channel allow-list change during provider/cloud execution does not retroactively cancel that already-admitted request; it changes the outcome of subsequent requests.
 - Channel allow-list ownership is guild-level. Provider contribution policy does not narrow channel scope; it only affects provider eligibility through model/burden/capability limits after the guild-level admission gate passes.

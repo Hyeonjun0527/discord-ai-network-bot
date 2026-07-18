@@ -62,15 +62,16 @@ services:
       CENTRAL_SEARCH_URL: ${CENTRAL_SEARCH_URL:-http://searxng:8080}
       CENTRAL_SEARCH_MAX_RESULTS: ${CENTRAL_SEARCH_MAX_RESULTS:-5}
       CENTRAL_SEARCH_FETCH_CONTENT: ${CENTRAL_SEARCH_FETCH_CONTENT:-true}
-      # z.ai(GLM) 클라우드 키 — GitHub Environment Secret → Docker secret → Spring configtree.
-      ZAI_API_KEY_FILE: /run/secrets/central.cloud.zai-api-key
+      # OpenAI 클라우드 키 — GitHub Environment Secret → Docker secret → Spring configtree.
+      OPENAI_API_KEY_FILE: /run/secrets/central.cloud.openai-api-key
       # 빠른 채팅/무료질문/니아 speech 기본 모델.
-      ZAI_FREE_MODEL: ${ZAI_FREE_MODEL:-glm-4.5-air}
-      ZAI_FAST_MODEL: ${ZAI_FAST_MODEL:-glm-4.5-air}
-      NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-glm-4.5-air}
+      OPENAI_FREE_MODEL: ${OPENAI_FREE_MODEL:-gpt-5.6-luna}
+      OPENAI_FAST_MODEL: ${OPENAI_FAST_MODEL:-gpt-5.6-luna}
+      NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-gpt-5.6-luna}
+      NEXA_PARTICIPATION_JUDGE_MODEL: ${NEXA_PARTICIPATION_JUDGE_MODEL:-gpt-5.6-luna}
       # 클라우드 이미지 생성(/그림)은 현재 운영 secret-file 계약에 Stability 키가 없어 비활성이다.
       # 필요하면 평문 env를 복구하지 말고 production Environment + configtree target을 함께 추가한다.
-      # 안전심사는 ZAI(GLM) 활성 전제(AskCommandHandler.imagine fail-closed).
+      # 안전심사는 OpenAI 활성 전제(AskCommandHandler.imagine fail-closed).
       # 웹 ‘토큰 받기’ Discord OAuth. client-id는 설정값, client-secret은 Docker secret으로 주입한다.
       CONNECT_DISCORD_CLIENT_ID_FILE: /run/secrets/central.connect.discord-client-id
       CONNECT_DISCORD_CLIENT_SECRET_FILE: /run/secrets/central.connect.discord-client-secret
@@ -99,8 +100,8 @@ services:
         target: central.durable.secret
       - source: NEXA_FIELD_ENC_KEY
         target: nexa.field-enc-key
-      - source: ZAI_API_KEY
-        target: central.cloud.zai-api-key
+      - source: OPENAI_API_KEY
+        target: central.cloud.openai-api-key
       - source: CONNECT_DISCORD_CLIENT_ID
         target: central.connect.discord-client-id
       - source: CONNECT_DISCORD_CLIENT_SECRET
@@ -150,8 +151,8 @@ secrets:
     environment: CENTRAL_DURABLE_SECRET
   NEXA_FIELD_ENC_KEY:
     environment: NEXA_FIELD_ENC_KEY
-  ZAI_API_KEY:
-    environment: ZAI_API_KEY
+  OPENAI_API_KEY:
+    environment: OPENAI_API_KEY
   CONNECT_DISCORD_CLIENT_ID:
     environment: CONNECT_DISCORD_CLIENT_ID
   CONNECT_DISCORD_CLIENT_SECRET:

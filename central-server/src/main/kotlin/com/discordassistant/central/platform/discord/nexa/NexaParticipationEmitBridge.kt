@@ -28,6 +28,7 @@ import com.discordassistant.central.participation.application.feature.FeatureCat
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotSpeechPromptRenderer
 import com.discordassistant.central.participation.application.judge.JudgeCommonGroundState
 import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
 import com.discordassistant.central.participation.application.judge.JudgeFewShotBadAlternativePayload
@@ -1106,6 +1107,15 @@ class NexaParticipationEmitBridge(
         return active.toJudgePayload(setId)
     }
 
+    private fun speechIdentity(signal: ParticipationMessageSignal): IdentityKernelSection {
+        val active =
+            fewShotService
+                ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
+                ?.active
+        val managedPrompt = NiaFewShotSpeechPromptRenderer.render(active) ?: return NIA_IDENTITY
+        return NIA_IDENTITY.copy(personaBlock = "${NIA_IDENTITY.personaBlock}\n\n$managedPrompt")
+    }
+
     private fun NiaFewShotVersion.toJudgePayload(setId: Long): JudgeFewShotSetPayload =
         JudgeFewShotSetPayload(
             setId = setId,
@@ -1134,6 +1144,7 @@ class NexaParticipationEmitBridge(
                     )
                 },
             expectedAction = expectedAction,
+            expectedReplies = expectedReplies,
             reason = reason,
             evidenceRefs = evidenceRefs,
             badAlternative = JudgeFewShotBadAlternativePayload(action = badAlternative.action, whyBad = badAlternative.whyBad),
@@ -1242,7 +1253,7 @@ class NexaParticipationEmitBridge(
                 recentTurns = signal.recentTurns,
                 socialAct = response.selectedSpeechSocialAct(),
                 burstShape = response.toSpeechBurstShape(),
-                identity = NIA_IDENTITY,
+                identity = speechIdentity(signal),
                 speechIntent = effectiveSpeechIntent,
                 rawContextSceneData = rawContextSceneDataForSpeech(signal),
             )

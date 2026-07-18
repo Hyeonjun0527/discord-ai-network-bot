@@ -1000,7 +1000,7 @@
       "condition": "Provider 실패/부재 후 fallback 허용",
       "to": "answer-message",
       "toState": "cloud_fallback_answer",
-      "system": "glm-4.5-air 답변을 Discord에 표시한다."
+      "system": "gpt-5.6-luna 답변을 Discord에 표시한다."
     },
     {
       "id": "pending-to-rejection",

@@ -14,7 +14,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-SKIP_DIRS = {".git", "node_modules", "build", ".gradle", "__pycache__", ".venv", "dist"}
+SKIP_DIRS = {".git", ".omx", "node_modules", "build", ".gradle", "__pycache__", ".venv", "dist"}
 
 
 def is_external(target: str) -> bool:

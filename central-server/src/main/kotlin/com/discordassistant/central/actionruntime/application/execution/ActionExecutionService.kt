@@ -1,10 +1,14 @@
 package com.discordassistant.central.actionruntime.application.execution
 
 import com.discordassistant.central.actionruntime.application.port.out.ActionAuditPort
+import com.discordassistant.central.actionruntime.application.port.out.ActionConsentPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
+import com.discordassistant.central.actionruntime.application.port.out.ActionOutcomeObservationPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionReevaluationPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.DiscordExecutorPort
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionLimits
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionPermitPort
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
 import com.discordassistant.central.actionruntime.application.port.out.ReevaluationTarget
 import com.discordassistant.central.actionruntime.domain.OutboundDecision
@@ -48,6 +52,9 @@ class ActionExecutionService(
     private val clock: Clock,
     private val modePort: ActionExecutionModePort = ActionExecutionModePort.REQUESTED_MODE,
     private val retryDecider: ActionRetryDecider = ActionRetryDecider(clock),
+    private val outcomeObserver: ActionOutcomeObservationPort = ActionOutcomeObservationPort.Noop,
+    private val consent: ActionConsentPort = ActionConsentPort.AllowForIsolatedTests,
+    private val executionPermit: ExecutionPermitPort = ExecutionPermitPort.AllowAll,
 ) {
     /**
      * [mode] 요청과 [action]이 예약될 때의 rollout 권한 중 더 좁은 모드에서 [plan]을 실행한다. shadow 차단이면 전송 없이
@@ -71,6 +78,11 @@ class ActionExecutionService(
             scheduler.cancel(action.identity)
             return ExecutionOutcome.Suppressed(currentMode)
         }
+        if (!consent.isAllowed(action.target)) {
+            record(action, ActionAuditPhase.CANCELLED, reason = REASON_CONSENT_REVOKED)
+            scheduler.cancel(action.identity)
+            return ExecutionOutcome.Cancelled(REASON_CONSENT_REVOKED)
+        }
 
         val target = action.toReevaluationTarget()
         if (!isStillValid(action, target)) {
@@ -80,7 +92,8 @@ class ActionExecutionService(
         }
 
         // typing 시작(P12) — 실패해도 전송 자체를 막지 않되, 대상 부재면 우아하게 종결(T018).
-        when (val typing = executor.startTyping(action.target.channelId)) {
+        val routingChannelId = action.target.discordChannelId() ?: return failGracefully(action, ActionFailureReason.INVALID_PAYLOAD)
+        when (val typing = executor.startTyping(routingChannelId)) {
             is ExecutionResult.Failed -> {
                 if (typing.reason == ActionFailureReason.TARGET_MISSING ||
                     typing.reason == ActionFailureReason.PERMISSION_DENIED
@@ -106,6 +119,17 @@ class ActionExecutionService(
         val target = action.toReevaluationTarget()
 
         for (bubble in plan.bubbles) {
+            // 하나의 예약 행동에서 복원한 모든 버블 직전에 live consent를 다시 읽는다.
+            if (!consent.isAllowed(action.target)) {
+                record(action, ActionAuditPhase.TYPING_STOPPED)
+                record(action, ActionAuditPhase.PARTIALLY_CANCELLED, reason = REASON_REVOKED_MID_BURST)
+                scheduler.cancel(action.identity)
+                return if (sentMessageIds.isEmpty()) {
+                    ExecutionOutcome.Cancelled(REASON_CONSENT_REVOKED)
+                } else {
+                    ExecutionOutcome.PartiallyCancelled(sentMessageIds, REASON_REVOKED_MID_BURST)
+                }
+            }
             // 첫 버블 뒤부터, 동의철회/kill-switch/채널mute purge 가 이 행동을 종결시켰는지 재확인한다(T014 즉시 무효화).
             // purge 는 별도 트랜잭션에서 상태를 CANCELLED 로 바꾸고 lease 를 지우므로, 남은 버블을 보내기 전에 현재
             // 상태를 읽어 종결됐으면 즉시 멈춘다(이미 보낸 버블은 보존, 추가 전송 0회 — 동의 철회 후 발화 누출 방지).
@@ -132,23 +156,36 @@ class ActionExecutionService(
                 return abortForBackpressure(action, sentMessageIds)
             }
 
+            val permitId = "${action.identity.value}:send:${bubble.index}"
+            if (!executionPermit.reserve(permitId, action.target.channelId, action.executionLimits())) {
+                return abortForExecutionQuota(action, sentMessageIds)
+            }
             when (val result = sendWithBackoff(action, plan, bubble.index, stalenessBaseline)) {
                 is ExecutionResult.Sent -> {
                     sentMessageIds += result.messageId
                     record(action, ActionAuditPhase.SENT, messageId = result.messageId)
+                    if (sentMessageIds.size == 1 && action.fulfillsPendingIntentId == null) {
+                        runCatching { outcomeObserver.recordExecuted(action, result.messageId, Instant.now(clock)) }
+                    }
                     // 첫 버블이 실제로 나간 즉시 TYPING→PARTIALLY_SENT 를 영속한다. 성공 버스트 도중 크래시하면
                     // 상태가 TYPING 으로 남아 recovery 가 "본문 미전송" 으로 오판·재예약해 같은 버블을 이중 전송하는
                     // T010 위반이 생긴다. 첫 전송 시점에 부분전송으로 표시하면 recovery 가 재전송 없이 종결한다.
                     if (sentMessageIds.size == 1) scheduler.markPartiallySent(action.identity)
                 }
-                is ExecutionResult.Failed -> return failPartialOrWhole(action, result.reason, sentMessageIds)
-                ExecutionResult.Ok -> Unit // sendBubble 은 Sent/Failed 만 — 방어적.
+                is ExecutionResult.Failed -> {
+                    executionPermit.release(permitId)
+                    return failPartialOrWhole(action, result.reason, sentMessageIds)
+                }
+                ExecutionResult.Ok -> executionPermit.release(permitId) // sendBubble 은 Sent/Failed 만 — 방어적.
             }
         }
 
         record(action, ActionAuditPhase.TYPING_STOPPED)
         record(action, ActionAuditPhase.COMPLETED)
         scheduler.complete(action.identity)
+        if (action.fulfillsPendingIntentId != null) {
+            runCatching { outcomeObserver.recordExecuted(action, sentMessageIds.lastOrNull(), Instant.now(clock)) }
+        }
         return ExecutionOutcome.Completed(sentMessageIds)
     }
 
@@ -162,7 +199,7 @@ class ActionExecutionService(
         val replyTo = if (bubbleIndex == 0) replyTargetFor(action) else null
         val first =
             executor.sendBubble(
-                channelId = action.target.channelId,
+                channelId = requireNotNull(action.target.discordChannelId()),
                 speechPlanRef = plan.bubbles[bubbleIndex].speechPlanRef,
                 bubbleIndex = bubbleIndex,
                 replyToMessageId = replyTo,
@@ -173,7 +210,7 @@ class ActionExecutionService(
         val staleness = Duration.between(stalenessBaseline, Instant.now(clock))
         if (!backpressure.acceptBackoff(staleness, first.retryAfter)) return first
         return executor.sendBubble(
-            channelId = action.target.channelId,
+            channelId = requireNotNull(action.target.discordChannelId()),
             speechPlanRef = plan.bubbles[bubbleIndex].speechPlanRef,
             bubbleIndex = bubbleIndex,
             replyToMessageId = replyTo,
@@ -210,6 +247,23 @@ class ActionExecutionService(
             record(action, ActionAuditPhase.PARTIALLY_CANCELLED, reason = REASON_TOO_STALE)
             scheduler.cancel(action.identity)
             ExecutionOutcome.PartiallyCancelled(sent, REASON_TOO_STALE)
+        }
+    }
+
+    private fun abortForExecutionQuota(
+        action: ScheduledSocialAction,
+        sent: List<String>,
+    ): ExecutionOutcome {
+        record(action, ActionAuditPhase.TYPING_STOPPED)
+        return if (sent.isEmpty()) {
+            record(action, ActionAuditPhase.CANCELLED, reason = REASON_EXECUTION_QUOTA)
+            scheduler.cancel(action.identity)
+            ExecutionOutcome.Cancelled(REASON_EXECUTION_QUOTA)
+        } else {
+            scheduler.markPartiallySent(action.identity)
+            record(action, ActionAuditPhase.PARTIALLY_CANCELLED, reason = REASON_EXECUTION_QUOTA)
+            scheduler.cancel(action.identity)
+            ExecutionOutcome.PartiallyCancelled(sent, REASON_EXECUTION_QUOTA)
         }
     }
 
@@ -251,7 +305,12 @@ class ActionExecutionService(
 
     /** reply 대상(원 메시지 ID) — 대화 초점 키인 threadId를 Discord snowflake로 오인하지 않는다. */
     private fun replyTargetFor(action: ScheduledSocialAction): String? =
-        if (action.type == ScheduledActionType.SPEAK) action.target.replyToMessageId else null
+        if (action.type == ScheduledActionType.SPEAK) {
+            action.target.targetMessageId?.takeIf { it.isNotBlank() }
+                ?: action.target.replyToMessageId
+        } else {
+            null
+        }
 
     private fun record(
         action: ScheduledSocialAction,
@@ -276,13 +335,21 @@ class ActionExecutionService(
             guildPseudonym = target.guildPseudonym,
             channelId = target.channelId,
             threadId = target.threadId,
+            routingChannelId = target.routingChannelId,
+            scheduledTurnGeneration = target.targetMessageId?.toLongOrNull(),
+            scheduledSceneContextVersion = target.sceneContextVersion,
         )
+
+    private fun ScheduledSocialAction.executionLimits(): ExecutionLimits =
+        ExecutionLimits(executionPerChannelLimit, executionGlobalLimit, executionWindowSeconds)
 
     companion object {
         const val REASON_CONTEXT_CHANGED: String = "context_changed_mid_burst"
         const val REASON_CONTEXT_CHANGED_BEFORE_SEND: String = "context_changed_before_send"
         const val REASON_TOO_STALE: String = "too_stale_backpressure"
         const val REASON_REVOKED_MID_BURST: String = "consent_revoked_mid_burst"
+        const val REASON_CONSENT_REVOKED: String = "consent_revoked_before_send"
+        const val REASON_EXECUTION_QUOTA: String = "execution_quota_exceeded"
     }
 }
 

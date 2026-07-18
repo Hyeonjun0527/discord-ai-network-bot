@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord.nexa
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
 import com.discordassistant.central.actionruntime.application.RouteResult
 import com.discordassistant.central.actionruntime.application.content.SpeechBurstContentCodec
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionLimits
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentWriter
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
@@ -11,6 +12,7 @@ import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.SafeDecision
 import com.discordassistant.central.participation.application.model.ShadowModelRegistry
 import com.discordassistant.central.participation.application.model.SignedArtifactManifest
+import com.discordassistant.central.participation.domain.model.action.ReactionCode
 import com.discordassistant.central.participation.domain.model.action.SocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
@@ -19,6 +21,7 @@ import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.requestlog.application.NexaCorrelation
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
+import com.discordassistant.central.socialpolicy.domain.model.InteractionEvidenceRef
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.PipelineResult
 import com.discordassistant.central.speech.application.generation.GenerationBudget
@@ -125,6 +128,9 @@ class NexaSpeechEmitService(
                         decisionId = request.provenance.correlationId,
                         correlationId = request.provenance.correlationId,
                     ),
+                provisionalConfidence = request.provenance.judgeConfidence ?: 0.0,
+                contextVersion = request.provenance.contextVersion,
+                triggerMessageRef = request.actionTarget.targetMessageId?.let(InteractionEvidenceRef::discordMessage),
             )
 
         val pipelineWillSpeak = pipelineResult.outcome == SpeechDecisionOutcome.SPEAK && pipelineResult.selected != null
@@ -139,21 +145,16 @@ class NexaSpeechEmitService(
 
         // 4) 전송 예약 — 파이프라인이 실제 SPEAK 로 통과했을 때만 SPEAK 예약. 그 외에는 IGNORE 라우팅(예약 없음).
         val action: SocialAction =
-            if (pipelineWillSpeak) {
-                SocialAction.Speak(SpeechRequestRef(correlationId = request.provenance.correlationId))
-            } else {
-                SocialAction.Ignore
+            when {
+                pipelineWillSpeak ->
+                    SocialAction.Speak(SpeechRequestRef(correlationId = request.provenance.correlationId))
+
+                pipelineResult.outcome == SpeechDecisionOutcome.REACTION_ONLY ->
+                    SocialAction.React(reactionCodes = listOf(ReactionCode("ack")))
+
+                else -> SocialAction.Ignore
             }
-        val routeResult: RouteResult =
-            actionRouter.route(
-                decisionId = request.provenance.correlationId,
-                sampledActionIndex = request.sampledActionIndex,
-                action = action,
-                target = request.actionTarget,
-                executeAfter = request.executeAfter,
-                contextVersion = request.provenance.contextVersion,
-                originRolloutMode = request.originRolloutMode,
-            )
+        val routeResult = routeCompleteAction(request, action)
         correlationRecorder.record(
             NexaCorrelation(
                 correlationId = request.provenance.correlationId,
@@ -180,9 +181,26 @@ class NexaSpeechEmitService(
     }
 
     private fun isLatestScene(request: NexaSpeechEmitRequest): Boolean {
-        val channelId = request.provenance.channelId.toLongOrNull() ?: return true
-        return turnGenerations.isLatest(channelId, request.provenance.contextVersion)
+        val channelId = (request.actionTarget.routingChannelId ?: request.actionTarget.channelId).toLongOrNull() ?: return true
+        return turnGenerations.isLatest(channelId, request.turnGeneration)
     }
+
+    /** 완전 행동 하나를 예약한다. 선택된 버블들은 본문 계획에 함께 저장되어 실행 중 매 버블 전에 최신 장면을 다시 본다. */
+    private fun routeCompleteAction(
+        request: NexaSpeechEmitRequest,
+        action: SocialAction,
+    ): RouteResult =
+        actionRouter.route(
+            decisionId = request.provenance.correlationId,
+            sampledActionIndex = request.sampledActionIndex,
+            action = action,
+            target = request.actionTarget,
+            executeAfter = request.executeAfter,
+            contextVersion = request.turnGeneration,
+            originRolloutMode = request.originRolloutMode,
+            executionLimits = request.executionLimits,
+            fulfillsPendingIntentId = request.fulfillsPendingIntentId,
+        )
 
     private fun recordSpeechNotInvoked(
         request: NexaSpeechEmitRequest,
@@ -224,12 +242,10 @@ class NexaSpeechEmitService(
     ) {
         val selected = pipelineResult.selected ?: return
         if (routeResult !is RouteResult.Scheduled || !routeResult.newlyScheduled) return
-        val bubbles = selected.bubbles.map { it.trim() }.filter { it.isNotEmpty() }
+        val bubbles = selected.bubbles.map(String::trim).filter(String::isNotEmpty)
         if (bubbles.isEmpty()) return
-        val body = SpeechBurstContentCodec.encode(bubbles)
-        val speechPlanRef =
-            ActionIdentity.of(request.provenance.correlationId, request.sampledActionIndex).value
-        runCatching { contentWriter.store(speechPlanRef, body) }
+        val speechPlanRef = ActionIdentity.of(request.provenance.correlationId, request.sampledActionIndex).value
+        runCatching { contentWriter.store(speechPlanRef, SpeechBurstContentCodec.encode(bubbles)) }
             .onFailure { log.warn("발화 본문 저장 실패(ref={}) — 전송 시 미해결로 우아하게 종결됨: {}", speechPlanRef, it.message) }
     }
 }
@@ -248,7 +264,7 @@ data class NexaSpeechEmitRequest(
     /** 발화 장면 패킷(생성·critic·고위험 평가 입력). */
     val packet: SpeechScenePacket,
     /**
-     * 동의 판정 가명 키(=`guildId:userId:channelId`, [PolicyBackedConsentGate.pseudonymOf]). 파이프라인의 동의
+     * 동의 판정용 비가역 token([PolicyBackedConsentGate.pseudonymOf]). 파이프라인의 동의
      * 게이트가 이 키로 **live** consent 를 조회한다(철회/OBSERVE_ONLY 면 외부 전송 0).
      */
     val consentSubjectPseudonym: String,
@@ -262,16 +278,26 @@ data class NexaSpeechEmitRequest(
     val executeAfter: Instant,
     /** 이 요청을 만든 participation 판단의 rollout 모드 — 이후 채널 승격이 전송 권한을 넓히지 못하게 한다. */
     val originRolloutMode: ShadowMode,
+    /** Discord 수신 즉시 관찰한 채널 세대. 생성 중 새 메시지가 오면 projection 저장과 독립적으로 결과를 폐기한다. */
+    val turnGeneration: Long = provenance.contextVersion,
     /** 장면 stale 여부(늦은 발화 금지 — 파이프라인이 비호출로 하강). */
     val stale: Boolean = false,
     /** 생성 예산(후보 수·token cap). */
     val budget: GenerationBudget = GenerationBudget.DEFAULT,
+    /** 후보 평가 뒤 최종 SEND·REACT에만 소비하는 실행 상한. */
+    val executionLimits: ExecutionLimits = ExecutionLimits(perChannel = 6, global = 30),
+    /** 실제 수행 후 닫을 열린 약속. 전체 SEND 버스트가 Discord에서 성공한 뒤에만 완료된다. */
+    val fulfillsPendingIntentId: String? = null,
     /**
      * LIVE 외부 모델 승격 검증 입력(H2). null 이면 LIVE 모델 승격이 관여하지 않는 발화(검증 생략). non-null 이면
      * 발화 전 [ShadowModelRegistry.selectForLiveVerified] 로 서명·hash 무결성을 강제한다(미서명/변조 거부).
      */
     val liveModel: LiveModelVerification? = null,
-)
+) {
+    init {
+        require(fulfillsPendingIntentId == null || fulfillsPendingIntentId.isNotBlank()) { "완료 약속 ID는 빈 문자열일 수 없다" }
+    }
+}
 
 /** LIVE 모델 승격 무결성 검증 입력(H2) — seam 이 [ShadowModelRegistry.selectForLiveVerified] 에 그대로 전달한다. */
 data class LiveModelVerification(
@@ -314,6 +340,9 @@ data class NexaSpeechEmitResult(
     /** 실제로 발화가 예약됐는가(파이프라인 SPEAK 통과 + SPEAK 예약). */
     val willSpeak: Boolean
         get() = pipelineResult?.willSpeak == true && routeResult is RouteResult.Scheduled
+
+    val willReact: Boolean
+        get() = pipelineResult?.outcome == SpeechDecisionOutcome.REACTION_ONLY && routeResult is RouteResult.Scheduled
 
     companion object {
         /** 안전 override 후 최종 행동이 SPEAK 가 아니어서 파이프라인·예약을 거치지 않은 결과(발화 없음). */

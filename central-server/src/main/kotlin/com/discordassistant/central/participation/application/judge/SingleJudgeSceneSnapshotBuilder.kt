@@ -63,6 +63,7 @@ object SingleJudgeSceneSnapshotBuilder {
                 runtimeGuardState = runtimeGuardState,
                 relationshipState = relationshipState,
                 memoryState = memoryState,
+                socialBeliefState = observation.socialBeliefState,
             )
         return SingleJudgeSceneBuildResult(
             sceneSnapshot = snapshot,
@@ -279,6 +280,7 @@ data class SingleJudgeSceneObservation(
     val knownHumanDisplayNames: Set<String> = emptySet(),
     val relationshipObservation: RelationshipObservation? = null,
     val memoryObservation: MemoryObservation? = null,
+    val socialBeliefState: JudgeSocialBeliefState = JudgeSocialBeliefState.EMPTY,
 ) {
     init {
         require(recentAgentBurstCount >= 0) { "recentAgentBurstCount 는 음수일 수 없다: $recentAgentBurstCount" }

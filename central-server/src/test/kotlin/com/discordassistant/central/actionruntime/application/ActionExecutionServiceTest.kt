@@ -3,7 +3,10 @@ package com.discordassistant.central.actionruntime.application
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.BackpressureGate
 import com.discordassistant.central.actionruntime.application.execution.ExecutionOutcome
+import com.discordassistant.central.actionruntime.application.port.out.ActionConsentPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionLimits
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionPermitPort
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionResult
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
@@ -35,7 +38,19 @@ class ActionExecutionServiceTest {
         audit: InMemoryActionAudit,
         backpressure: BackpressureGate = BackpressureGate(),
         modePort: ActionExecutionModePort = ActionExecutionModePort.REQUESTED_MODE,
-    ) = ActionExecutionService(executor, scheduler, reeval, audit, backpressure, clock, modePort)
+        consent: ActionConsentPort = ActionConsentPort.AllowForIsolatedTests,
+        executionPermit: ExecutionPermitPort = ExecutionPermitPort.AllowAll,
+    ) = ActionExecutionService(
+        executor,
+        scheduler,
+        reeval,
+        audit,
+        backpressure,
+        clock,
+        modePort,
+        consent = consent,
+        executionPermit = executionPermit,
+    )
 
     @Test
     fun `T017 — 모든 버블 전송 후 COMPLETED 이고 message ID 가 audit 에 연결된다`() {
@@ -62,6 +77,35 @@ class ActionExecutionServiceTest {
         val sent = audit.findByAction(action.identity.value).filter { it.phase == ActionAuditPhase.SENT }
         assertThat(sent.map { it.messageId }).containsExactlyElementsOf(executor.sentMessageIds)
         assertThat(audit.phasesOf(action.identity.value)).endsWith(ActionAuditPhase.COMPLETED)
+    }
+
+    @Test
+    fun `첫 버블 뒤 동의가 철회되면 남은 버블은 전송하지 않는다`() {
+        val executor = RecordingDiscordExecutor()
+        val scheduler = InMemoryActionScheduler(clock)
+        val audit = InMemoryActionAudit()
+        val action = typingSpeakAction()
+        scheduler.put(action)
+        var checks = 0
+        val consent = ActionConsentPort { ++checks <= 2 } // 실행 전 + 첫 버블까지만 허용
+
+        val outcome =
+            service(
+                executor,
+                scheduler,
+                ControllableReevaluation(),
+                audit,
+                consent = consent,
+            ).execute(
+                ShadowMode.LIVE,
+                action,
+                BurstPlan(listOf(Bubble(0, "a", Duration.ZERO), Bubble(1, "b", Duration.ZERO))),
+            )
+
+        assertThat(outcome).isInstanceOf(ExecutionOutcome.PartiallyCancelled::class.java)
+        assertThat(executor.sentBubbleIndexes).containsExactly(0)
+        assertThat((outcome as ExecutionOutcome.PartiallyCancelled).reason)
+            .isEqualTo(ActionExecutionService.REASON_REVOKED_MID_BURST)
     }
 
     @Test
@@ -320,5 +364,50 @@ class ActionExecutionServiceTest {
         assertThat(outcome).isInstanceOf(ExecutionOutcome.PartiallyCancelled::class.java)
         assertThat(advancing.sentBubbleIndexes).containsExactly(0) // 첫 버블만, 나머지 미전송.
         assertThat((outcome as ExecutionOutcome.PartiallyCancelled).reason).isEqualTo(ActionExecutionService.REASON_TOO_STALE)
+    }
+
+    @Test
+    fun `실행 quota는 예약이 아니라 각 Discord bubble 직전에 소비된다`() {
+        val executor = RecordingDiscordExecutor()
+        val scheduler = InMemoryActionScheduler(clock)
+        val audit = InMemoryActionAudit()
+        val action = typingSpeakAction()
+        scheduler.put(action)
+        val reserved = mutableListOf<String>()
+        val permit =
+            object : ExecutionPermitPort {
+                override fun reserve(
+                    actionId: String,
+                    channelKey: String,
+                    limits: ExecutionLimits,
+                ): Boolean {
+                    reserved += actionId
+                    return reserved.size == 1
+                }
+
+                override fun release(actionId: String): Boolean = true
+            }
+
+        val outcome =
+            service(
+                executor,
+                scheduler,
+                ControllableReevaluation(),
+                audit,
+                executionPermit = permit,
+            ).execute(
+                ShadowMode.LIVE,
+                action,
+                BurstPlan(listOf(Bubble(0, "a", Duration.ZERO), Bubble(1, "b", Duration.ZERO))),
+            )
+
+        assertThat(reserved).containsExactly("${action.identity.value}:send:0", "${action.identity.value}:send:1")
+        assertThat(executor.sentBubbleIndexes).containsExactly(0)
+        assertThat(outcome).isEqualTo(
+            ExecutionOutcome.PartiallyCancelled(
+                listOf("msg-0"),
+                ActionExecutionService.REASON_EXECUTION_QUOTA,
+            ),
+        )
     }
 }

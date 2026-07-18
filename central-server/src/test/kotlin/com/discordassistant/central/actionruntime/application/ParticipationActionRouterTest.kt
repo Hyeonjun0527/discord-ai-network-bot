@@ -19,7 +19,7 @@ import java.time.Instant
 /**
  * NEXA-P15-T006 participation 결정 → actionruntime 예약 라우팅 단위 테스트(fake scheduler).
  *
- * 핵심 acceptance: IGNORE/WAIT 는 예약 없음(전송·quota 무소모), REACT/SPEAK 는 각 경로로 예약.
+ * 핵심 acceptance: IGNORE는 예약하지 않고 WAIT/REACT/SPEAK는 각 실행 경로로 예약한다.
  */
 class ParticipationActionRouterTest {
     private val scheduler = FakeScheduler()
@@ -43,7 +43,7 @@ class ParticipationActionRouterTest {
     }
 
     @Test
-    fun `acceptance — WAIT 도 예약하지 않는다`() {
+    fun `acceptance — WAIT 는 재평가 행동으로 예약한다`() {
         val result =
             router.route(
                 decisionId = "d-1",
@@ -54,8 +54,8 @@ class ParticipationActionRouterTest {
                 contextVersion = 1,
                 originRolloutMode = ShadowMode.LIVE,
             )
-        assertThat(result).isInstanceOf(RouteResult.Ignored::class.java)
-        assertThat(scheduler.scheduled).isEmpty()
+        assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.WAIT, newlyScheduled = true))
+        assertThat(scheduler.scheduled.single().type).isEqualTo(ScheduledActionType.WAIT)
     }
 
     @Test
@@ -74,6 +74,7 @@ class ParticipationActionRouterTest {
         assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.REACT, newlyScheduled = true))
         assertThat(scheduler.scheduled).hasSize(1)
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.REACT)
+        assertThat(scheduler.scheduled.first().reactionCode).isEqualTo("thumbs_up")
         assertThat(scheduler.scheduled.first().originRolloutMode).isEqualTo(ShadowMode.CANARY)
     }
 

@@ -39,7 +39,7 @@ class ActionRuntimeChaosTest {
             decisionId = "dec-chaos",
             sampledActionIndex = 0,
             type = ScheduledActionType.SPEAK,
-            target = ActionTarget("guild-1", "chan-1", "thread-1"),
+            target = ActionTarget("guild-1", "chan-1", "thread-1", routingChannelId = "123"),
             executeAfter = due,
             contextVersion = contextVersion,
             originRolloutMode = ShadowMode.LIVE,

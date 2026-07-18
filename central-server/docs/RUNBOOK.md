@@ -58,6 +58,19 @@
   `PENDING:*`는 아직 실행 중, `FAILED:*`/`CANCELLED`는 예약 행의 종결 원인을 뜻한다.
 - 한 결정만 다시 보려면 출력된 12자리 `trace` 해시를 두 번째 인자로 넘긴다.
   (`./ops_nia_turn_trace.sh 1440 <trace>`). 상관관계 원문이나 Discord ID는 출력하지 않는다.
+- `docker compose ps redis`가 healthy인지 확인한다. Redis가 없거나 DOWN이면 분산 실행 permit이 fail-closed되어
+  Discord 전송이 차단된다. 운영 compose는 Redis health 이후에만 central-server를 시작한다.
+- `NEXA_FIELD_ENC_KEY`와 `ZAI_API_KEY`는 배포 workflow의 필수 secret이며, 자율 전송 ON 상태에서 둘 중 하나가
+  비어 있으면 readiness guard가 부팅을 실패시킨다. 값을 출력하지 말고 `./ops_runtime_secret_audit.sh`의
+  `runtime secret files present`만 확인한다.
+
+### 7) 폐루프 테이블 보존 정리
+- WAIT outbox와 행동-결과 관측 행은 기본 30일 보존 후 매일 UTC 03:55에 정리된다.
+- 설정은 `NEXA_CLOSED_LOOP_RETENTION_ENABLED`, `NEXA_CLOSED_LOOP_RETENTION_DAYS`,
+  `NEXA_CLOSED_LOOP_RETENTION_CRON`이다. 기능을 끄더라도 과거 행 정리를 위해 retention은 기본 ON이다.
+- 정리 실패는 다음 주기에 재시도하며 `WAIT 재평가 outbox 정리 실패` 또는 `NEXA 행동-결과 관측 정리 실패` 로그를 남긴다.
+- 운영에서 retention을 장기간 끄지 않는다. 보존 기간을 줄이기 전에는 해당 데이터가 사회적 결과 추적과 수습 학습에
+  쓰인다는 점을 확인한다.
 
 ## 롤백
 - 이전 이미지 태그로 되돌리기:

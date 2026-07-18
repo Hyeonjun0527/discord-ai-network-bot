@@ -34,5 +34,11 @@ value class ActionIdentity private constructor(
             require(sampledActionIndex >= 0) { "sampledActionIndex 는 음수일 수 없다: $sampledActionIndex" }
             return ActionIdentity("$decisionId#$sampledActionIndex")
         }
+
+        /** 이미 영속·전달된 안정 key를 복원한다. CANCEL_PENDING 같은 교차 결정 참조에서 사용한다. */
+        fun from(value: String): ActionIdentity {
+            require(value.matches(Regex(".{1,240}#[0-9]+"))) { "action identity 형식이 잘못됐다: $value" }
+            return ActionIdentity(value)
+        }
     }
 }

@@ -76,7 +76,7 @@ enum class ActionStatus {
                 // 예약됨 → claim 후 재평가, 또는 취소(취소 후보가 됨 T012~T014).
                 SCHEDULED to setOf(REEVALUATING, CANCELLED),
                 // 재평가 중 → 통과하면 typing, stale 면 취소, transient 면 재예약(SCHEDULED), 영구실패면 FAILED.
-                REEVALUATING to setOf(TYPING, SCHEDULED, CANCELLED, FAILED),
+                REEVALUATING to setOf(TYPING, SCHEDULED, COMPLETED, CANCELLED, FAILED),
                 // typing 중 → 전송 시작(부분/완전), 취소, 실패, 또는 transient 재예약.
                 TYPING to setOf(PARTIALLY_SENT, COMPLETED, SCHEDULED, CANCELLED, FAILED),
                 // 부분 전송 → 나머지 완료, 취소(잔여 버블 취소), 또는 영구 실패.

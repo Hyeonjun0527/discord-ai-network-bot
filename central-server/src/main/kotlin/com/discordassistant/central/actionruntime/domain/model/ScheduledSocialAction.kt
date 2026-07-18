@@ -49,12 +49,36 @@ data class ScheduledSocialAction(
     val failureReason: ActionFailureReason? = null,
     /** 허용 최대 시도 횟수(이 횟수에 도달하면 transient 라도 더 재시도하지 않음). */
     val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+    /** REACT 실행에 필요한 안정 reaction 코드. 다른 행동에서는 null. */
+    val reactionCode: String? = null,
+    /** WAIT 재평가 조건을 설명하는 최소 힌트. 원문 메시지는 담지 않는다. */
+    val wakeUpHint: String? = null,
+    /** WAIT 폐루프 전체에서 계승되는 재평가 횟수. 실행 transient attempt와 분리한다. */
+    val waitAttempt: Int = 0,
+    /** WAIT가 더는 유효하지 않은 절대 시각. WAIT가 아닌 행동에서는 null이다. */
+    val expiresAt: Instant? = null,
+    /** 실제 Discord 호출 직전 적용할 channel/global quota. 예약 시점이 아니라 실행 경계에서 소비한다. */
+    val executionPerChannelLimit: Int = DEFAULT_EXECUTION_PER_CHANNEL_LIMIT,
+    val executionGlobalLimit: Int = DEFAULT_EXECUTION_GLOBAL_LIMIT,
+    val executionWindowSeconds: Long = DEFAULT_EXECUTION_WINDOW_SECONDS,
+    /** 이 행동의 성공이 실제로 수행 완료시키는 열린 약속. 마지막 SEND child에만 설정한다. */
+    val fulfillsPendingIntentId: String? = null,
 ) {
     init {
         require(decisionId.isNotBlank()) { "decisionId 는 비어 있을 수 없다" }
         require(contextVersion >= 0) { "contextVersion 은 음수일 수 없다: $contextVersion" }
         require(attempt >= 0) { "attempt 는 음수일 수 없다: $attempt" }
         require(maxAttempts >= 1) { "maxAttempts 는 1 이상이어야 한다: $maxAttempts" }
+        require(waitAttempt >= 0) { "waitAttempt 는 음수일 수 없다" }
+        require(reactionCode == null || reactionCode.isNotBlank()) { "reactionCode 는 빈 문자열일 수 없다" }
+        require(wakeUpHint == null || wakeUpHint.isNotBlank()) { "wakeUpHint 는 빈 문자열일 수 없다" }
+        require(type != ScheduledActionType.REACT || reactionCode != null) { "REACT 예약에는 reactionCode 가 필요하다" }
+        require(type != ScheduledActionType.WAIT || expiresAt != null) { "WAIT 예약에는 expiresAt이 필요하다" }
+        require(executionPerChannelLimit > 0) { "채널 실행 상한은 양수여야 한다" }
+        require(executionGlobalLimit > 0) { "전역 실행 상한은 양수여야 한다" }
+        require(executionWindowSeconds > 0) { "실행 quota window는 양수여야 한다" }
+        require(fulfillsPendingIntentId == null || fulfillsPendingIntentId.isNotBlank()) { "완료 약속 ID는 빈 문자열일 수 없다" }
+        require(fulfillsPendingIntentId == null || type == ScheduledActionType.SPEAK) { "약속 수행 완료는 SPEAK 행동에만 연결할 수 있다" }
     }
 
     /** CONSIDERING → SCHEDULED: due index 에 예약한다. */
@@ -100,6 +124,8 @@ data class ScheduledSocialAction(
     /** 이 예약이 [now] 기준 due 인가(executeAfter 도래). scheduler 의 due index 조건과 일치. */
     fun isDue(now: Instant): Boolean = !now.isBefore(executeAfter)
 
+    fun isExpired(now: Instant): Boolean = expiresAt?.let { !now.isBefore(it) } ?: false
+
     /**
      * 예약 당시 [contextVersion] 과 [currentContextVersion] 이 다르면 **stale**(맥락이 바뀜 — 재평가 필요, T011).
      * 같으면 직전 판단을 그대로 써도 안전하다.
@@ -130,6 +156,14 @@ data class ScheduledSocialAction(
             contextVersion: Long,
             originRolloutMode: ShadowMode,
             maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+            reactionCode: String? = null,
+            wakeUpHint: String? = null,
+            waitAttempt: Int = 0,
+            expiresAt: Instant? = null,
+            executionPerChannelLimit: Int = DEFAULT_EXECUTION_PER_CHANNEL_LIMIT,
+            executionGlobalLimit: Int = DEFAULT_EXECUTION_GLOBAL_LIMIT,
+            executionWindowSeconds: Long = DEFAULT_EXECUTION_WINDOW_SECONDS,
+            fulfillsPendingIntentId: String? = null,
         ): ScheduledSocialAction =
             ScheduledSocialAction(
                 identity = ActionIdentity.of(decisionId, sampledActionIndex),
@@ -140,7 +174,21 @@ data class ScheduledSocialAction(
                 contextVersion = contextVersion,
                 originRolloutMode = originRolloutMode,
                 maxAttempts = maxAttempts,
+                reactionCode = reactionCode ?: if (type == ScheduledActionType.REACT) DEFAULT_REACTION_CODE else null,
+                wakeUpHint = wakeUpHint,
+                waitAttempt = waitAttempt,
+                expiresAt = expiresAt ?: if (type == ScheduledActionType.WAIT) executeAfter.plus(DEFAULT_WAIT_TTL) else null,
+                executionPerChannelLimit = executionPerChannelLimit,
+                executionGlobalLimit = executionGlobalLimit,
+                executionWindowSeconds = executionWindowSeconds,
+                fulfillsPendingIntentId = fulfillsPendingIntentId,
             )
+
+        private const val DEFAULT_REACTION_CODE: String = "ack"
+        const val DEFAULT_EXECUTION_PER_CHANNEL_LIMIT: Int = 6
+        const val DEFAULT_EXECUTION_GLOBAL_LIMIT: Int = 30
+        const val DEFAULT_EXECUTION_WINDOW_SECONDS: Long = 60
+        private val DEFAULT_WAIT_TTL = java.time.Duration.ofMinutes(2)
     }
 }
 

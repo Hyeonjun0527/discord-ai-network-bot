@@ -22,12 +22,24 @@ services:
       timeout: 3s
       retries: 12
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
   central-server:
     image: ${CENTRAL_IMAGE:?CENTRAL_IMAGE 필요(ghcr.io/owner/central-server:tag)}
     container_name: central-server # cloudflared 가 컨테이너명으로 라우팅(http://central-server:8085)
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
@@ -42,6 +54,10 @@ services:
       CENTRAL_DEV_ENABLED: "false"
       CENTRAL_DURABLE_SECRET_FILE: /run/secrets/central.durable.secret
       NEXA_FIELD_ENC_KEY_FILE: /run/secrets/nexa.field-enc-key
+      NEXA_AUTONOMOUS_SEND_ENABLED: "true"
+      CENTRAL_NEXA_EXECUTION_PERMIT_REDIS_ENABLED: "true"
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
       # 웹검색 백엔드(SearXNG, 같은 네트워크). 죽어도 web 검색은 graceful 폴백 → 봇 영향 없음.
       CENTRAL_SEARCH_URL: ${CENTRAL_SEARCH_URL:-http://searxng:8080}
       CENTRAL_SEARCH_MAX_RESULTS: ${CENTRAL_SEARCH_MAX_RESULTS:-5}

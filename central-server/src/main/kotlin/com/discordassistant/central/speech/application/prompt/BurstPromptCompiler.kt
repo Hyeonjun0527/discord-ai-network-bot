@@ -5,7 +5,7 @@ import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 /**
  * burstProfile prompt compiler(NEXA-P14-T010, application).
  *
- * 메시지 조각 수, 짧은 조각, 최대 길이, 첫 반응/후속 핵심 구조를 모델에게 **확정 형태**로 전달한다.
+ * 메시지 조각 수, 최대 길이, 첫 반응/후속 핵심 구조를 모델에게 **확정 형태**로 전달한다.
  *
  * **acceptance(T010) — 정책이 1개 버블을 고른 경우 모델이 4개를 강제하지 못한다**: 컴파일러는 [SpeechBurstShape.fragmentCount]
  * 를 "정확히 N개" 라는 **하드 제약**으로 적는다(범위가 아님). [bubbleCount] 가 곧 패킷이 강제하는 조각 수다 —
@@ -27,7 +27,7 @@ class BurstPromptCompiler {
             }
         return buildString {
             append(structure)
-            append(" 각 조각은 ${shape.maxFragmentLength}자 이내로 짧게, 채팅하듯 담백하게.")
+            append(" 각 조각은 ${shape.maxFragmentLength}자 이내에서 맡은 행위를 수행할 만큼 쓰고, 채팅하듯 담백하게.")
             append(" 조각 수를 임의로 늘리거나 줄이지 말고 정확히 ${n}개를 지켜요.")
         }
     }

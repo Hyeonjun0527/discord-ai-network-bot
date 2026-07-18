@@ -3,8 +3,10 @@ package com.discordassistant.central.actionruntime.application.scheduler
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.ClaimedAction
 import com.discordassistant.central.actionruntime.application.port.out.ReevaluationTarget
+import com.discordassistant.central.actionruntime.application.port.out.WaitReevaluationOutboxPort
 import com.discordassistant.central.actionruntime.application.reevaluate.ReevaluationOutcome
 import com.discordassistant.central.actionruntime.application.reevaluate.StaleActionReevaluator
+import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.actionruntime.domain.service.CancellationPolicy
 import com.discordassistant.central.actionruntime.domain.service.CancellationVerdict
@@ -39,6 +41,7 @@ class DueActionPoller(
     private val leaseDuration: Duration = DEFAULT_LEASE_DURATION,
     /** 한 tick 에 claim 할 최대 건수(과점유 방지). */
     private val batchLimit: Int = DEFAULT_BATCH_LIMIT,
+    private val waitReevaluationOutbox: WaitReevaluationOutboxPort? = null,
 ) {
     /**
      * due 예약을 한 batch claim 해 처리하고 결과 목록을 돌려준다. 빈 목록이면 처리할 due 가 없었던 것이다.
@@ -61,6 +64,21 @@ class DueActionPoller(
             return DueActionOutcome(action, DueActionDisposition.CANCELLED_BY_POLICY, cancellation = verdict)
         }
 
+        if (action.type == ScheduledActionType.WAIT) {
+            if (action.isExpired(Instant.now(clock)) || action.waitAttempt >= action.maxAttempts) {
+                scheduler.cancel(action.identity)
+                return DueActionOutcome(action, DueActionDisposition.CANCELLED_STALE)
+            }
+            val currentVersion = reevaluator.currentSceneContextVersion(target)
+            val enqueued = currentVersion?.let { waitReevaluationOutbox?.completeAndEnqueue(action, it) }
+            return if (enqueued != null) {
+                DueActionOutcome(action.complete(), DueActionDisposition.READY_TO_REEVALUATE)
+            } else {
+                scheduler.cancel(action.identity)
+                DueActionOutcome(action, DueActionDisposition.CANCELLED_STALE)
+            }
+        }
+
         // 3) contextVersion 재평가 — stale·무효면 취소.
         return when (reevaluator.decide(action, target)) {
             ReevaluationOutcome.CANCEL -> {
@@ -80,6 +98,9 @@ class DueActionPoller(
             guildPseudonym = target.guildPseudonym,
             channelId = target.channelId,
             threadId = target.threadId,
+            routingChannelId = target.routingChannelId,
+            scheduledTurnGeneration = target.targetMessageId?.toLongOrNull(),
+            scheduledSceneContextVersion = target.sceneContextVersion,
         )
 
     companion object {
@@ -114,6 +135,9 @@ enum class DueActionDisposition {
 
     /** 통과 — TYPING 진행(실제 전송은 다음 묶음 T015~T017). */
     READY_TO_TYPE,
+
+    /** WAIT 완료와 child 판단 outbox가 원자적으로 생성됨. 전송 상태로 진입하지 않는다. */
+    READY_TO_REEVALUATE,
 }
 
 /**

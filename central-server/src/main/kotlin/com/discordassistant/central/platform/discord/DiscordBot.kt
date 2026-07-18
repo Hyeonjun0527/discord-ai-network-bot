@@ -1583,7 +1583,7 @@ class DiscordBot(
                             channelId = event.channel.idLong,
                             messageId = messageId,
                             userId = event.author.idLong,
-                            threadId = event.message.startedThread?.idLong,
+                            threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
                             replyToMessageId = event.message.referencedMessage?.idLong,
                             sourceType = participationSourceTypeOf(event),
                             mentioned = mentioned,
@@ -1604,9 +1604,11 @@ class DiscordBot(
                             lastNiaSpokeAgeSeconds = niaTurnContinuation.lastNiaSpokeAgeSeconds,
                             niaTurnContinuationLikely = niaTurnContinuation.likely,
                             tsMs = tsMs,
-                            sceneSeq = messageId,
-                            contextVersion = messageId,
+                            // 실제 값은 participation bridge가 conversation projection read-after-write 결과로 덮어쓴다.
+                            sceneSeq = 0,
+                            contextVersion = 0,
                             seed = messageId,
+                            turnGeneration = messageId,
                         ),
                     )
                 participationTurn

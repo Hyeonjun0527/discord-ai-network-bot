@@ -17,6 +17,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -62,6 +63,7 @@ class NexaLiveSpeechServiceTest {
                 consentGate = gate,
                 generationGate = SpeechGenerationGate(generationService),
                 candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaLiveSpeechService(gate, pipeline) to gate
     }

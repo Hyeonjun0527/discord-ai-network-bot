@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
  *
  * 예약 당시 [ShadowMode]는 실행 권한의 상한이고, due 전 현재 모드는 그 권한을 더 좁힐 수만 있다. 따라서 SHADOW에서
  * 예약된 action은 이후 채널이 LIVE로 승격돼도 실제 전송될 수 없다.
- * channelId 를 숫자로 해석할 수 없으면 운영 Discord 채널로 확정할 수 없으므로 fail-closed 로 OFF 를 반환한다.
+ * 암호화 저장 후 복원된 routingChannelId가 없거나 숫자가 아니면 운영 Discord 채널로 확정할 수 없으므로 fail-closed한다.
  */
 @Component
 class ParticipationActionExecutionModeAdapter(
@@ -31,7 +31,7 @@ class ParticipationActionExecutionModeAdapter(
         target: ActionTarget,
         originRolloutMode: ShadowMode,
     ): ShadowMode {
-        val channelId = target.channelId.toLongOrNull() ?: return ShadowMode.OFF
+        val channelId = target.discordChannelId()?.toLongOrNull() ?: return ShadowMode.OFF
         val storedMode = shadowModeStore.currentMode(target.guildPseudonym)
         val guildLane = if (storedMode == ShadowMode.OFF) globalDefaultLane else ParticipationLane.fromShadowMode(storedMode)
         val currentMode =

@@ -59,7 +59,12 @@ class CloudLlmNiaJudgeAdapter(
                             prompt = request.prompt,
                             model = model,
                             history = emptyList(),
-                            thinking = CloudThinking.DISABLED,
+                            thinking =
+                                if (request.metadata[REASONING_MODE_METADATA] == REASONING_MODE_DELIBERATE) {
+                                    CloudThinking.ENABLED
+                                } else {
+                                    CloudThinking.DISABLED
+                                },
                         )
                     },
                 )
@@ -92,6 +97,8 @@ class CloudLlmNiaJudgeAdapter(
         const val FINISH_REASON_COMPLETED: String = "completed"
         private const val CALL_THREADS: Int = 8
         private const val CALL_QUEUE_CAPACITY: Int = 16
+        private const val REASONING_MODE_METADATA: String = "reasoning_mode"
+        private const val REASONING_MODE_DELIBERATE: String = "deliberate"
         private val THREAD_SEQUENCE = AtomicInteger()
 
         private fun newCallExecutor(): ThreadPoolExecutor =

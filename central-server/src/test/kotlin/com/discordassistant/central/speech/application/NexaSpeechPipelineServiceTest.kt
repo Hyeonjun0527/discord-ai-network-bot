@@ -22,6 +22,7 @@ import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
+import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -99,6 +100,7 @@ class NexaSpeechPipelineServiceTest {
             generationGate = SpeechGenerationGate(generationService),
             candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
             decisionLog = log,
+            completeActionSelector = deterministicCompleteActionSelector(),
         )
     }
 

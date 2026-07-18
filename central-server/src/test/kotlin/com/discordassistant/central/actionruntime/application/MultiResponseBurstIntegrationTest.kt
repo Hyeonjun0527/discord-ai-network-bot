@@ -79,15 +79,11 @@ class MultiResponseBurstIntegrationTest {
             }
         val scheduler = InMemoryActionScheduler(clock)
         val audit = InMemoryActionAudit()
+        // focus thread와 실제 Discord reply 대상은 별도다. 첫 버블에만 targetMessageId를 전달한다.
         val replyToMessageId = "1234567890123456789"
-        val action =
-            typingSpeakAction(
-                contextVersion = 1L,
-                threadId = "conversation-focus",
-                replyToMessageId = replyToMessageId,
-            )
-        assertThat(action.target.threadId).isEqualTo("conversation-focus")
-        assertThat(action.target.replyToMessageId).isEqualTo(replyToMessageId)
+        val action = typingSpeakAction(contextVersion = 1L, threadId = "focus-thread", targetMessageId = replyToMessageId)
+        assertThat(action.target.threadId).isEqualTo("focus-thread")
+        assertThat(action.target.targetMessageId).isEqualTo(replyToMessageId)
         scheduler.put(action)
 
         // 정책이 명시한 멀티 버블(3개).

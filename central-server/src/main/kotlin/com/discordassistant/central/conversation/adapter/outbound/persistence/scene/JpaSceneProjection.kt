@@ -9,8 +9,12 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.LockModeType
 import jakarta.persistence.Table
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
@@ -24,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional
  * **snapshot 삭제·재구축(acceptance T020)**: [deleteAll] 로 두 테이블을 비운 뒤 event store 를 재생하며 [save] 를
  * 다시 호출하면 동일 snapshot 이 재구축된다 — 이 테이블은 event store 의 파생 읽기 모델이라 원천이 아니다.
  *
- * 원문 비저장(logging-boundary.md): 식별자 수·버전·순번만 — combined text 가 아니라 요약 메타만 보관한다.
+ * 원문 비저장(logging-boundary.md): Discord ID는 projection 전용 keyed pseudonym으로 바꾸고, 수·버전·순번 같은
+ * 요약 메타만 보관한다.
  */
 @Repository
 class JpaSceneProjection(
@@ -33,15 +38,17 @@ class JpaSceneProjection(
 ) : SceneProjectionPort {
     @Transactional
     override fun save(scene: ConversationScene) {
-        val channelId = scene.channelId.value
-        val entity = snapshots.findByChannelId(channelId) ?: NexaSceneSnapshotEntity(channelId = channelId)
-        entity.guildId = scene.guildId.value
-        entity.sceneSeq = scene.sceneSeq
-        entity.contextVersion = scene.contextVersion.value
-        entity.recentBurstCount = scene.recentBurstIds.size
-        entity.activeThreadCount = scene.activeThreadIds.size
-        entity.participantCount = scene.participants.size
-        snapshots.save(entity)
+        val channelId = ScenePersistenceIdentity.channel(scene.channelId.value)
+        val entity = snapshots.findByChannelIdForUpdate(channelId) ?: NexaSceneSnapshotEntity(channelId = channelId)
+        if (scene.sceneSeq >= entity.sceneSeq) {
+            entity.guildId = ScenePersistenceIdentity.guild(scene.guildId.value)
+            entity.sceneSeq = scene.sceneSeq
+            entity.contextVersion = maxOf(entity.contextVersion, scene.contextVersion.value)
+            entity.recentBurstCount = scene.recentBurstIds.size
+            entity.activeThreadCount = scene.activeThreadIds.size
+            entity.participantCount = scene.participants.size
+            snapshots.save(entity)
+        }
 
         // version history: (channel_id, scene_seq) 유니크 upsert — 같은 순번 재생도 한 행.
         val versionEntity =
@@ -52,11 +59,12 @@ class JpaSceneProjection(
     }
 
     @Transactional(readOnly = true)
-    override fun findByChannel(channelId: Long): SceneSnapshotRecord? = snapshots.findByChannelId(channelId)?.toRecord()
+    override fun findByChannel(channelId: Long): SceneSnapshotRecord? =
+        snapshots.findByChannelId(ScenePersistenceIdentity.channel(channelId))?.toRecord()
 
     @Transactional(readOnly = true)
     override fun history(channelId: Long): List<SceneVersionRecord> =
-        versions.findByChannelIdOrderBySceneSeqAsc(channelId).map {
+        versions.findByChannelIdOrderBySceneSeqAsc(ScenePersistenceIdentity.channel(channelId)).map {
             SceneVersionRecord(channelId = it.channelId, sceneSeq = it.sceneSeq, contextVersion = it.contextVersion)
         }
 
@@ -99,6 +107,12 @@ class NexaSceneSnapshotEntity(
 
 interface NexaSceneSnapshotRepository : JpaRepository<NexaSceneSnapshotEntity, Long> {
     fun findByChannelId(channelId: Long): NexaSceneSnapshotEntity?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from NexaSceneSnapshotEntity s where s.channelId = :channelId")
+    fun findByChannelIdForUpdate(
+        @Param("channelId") channelId: Long,
+    ): NexaSceneSnapshotEntity?
 }
 
 /**
@@ -112,6 +126,7 @@ class NexaSceneVersionEntity(
     @Column(name = "channel_id") var channelId: Long = 0,
     @Column(name = "scene_seq") var sceneSeq: Long = 0,
     @Column(name = "context_version") var contextVersion: Long = 0,
+    @Column(name = "observation_ref") var observationRef: String? = null,
 ) {
     override fun toString(): String = "NexaSceneVersionEntity(channelId=$channelId, sceneSeq=$sceneSeq, contextVersion=$contextVersion)"
 }
@@ -123,4 +138,6 @@ interface NexaSceneVersionRepository : JpaRepository<NexaSceneVersionEntity, Lon
     ): NexaSceneVersionEntity?
 
     fun findByChannelIdOrderBySceneSeqAsc(channelId: Long): List<NexaSceneVersionEntity>
+
+    fun findByObservationRef(observationRef: String): NexaSceneVersionEntity?
 }

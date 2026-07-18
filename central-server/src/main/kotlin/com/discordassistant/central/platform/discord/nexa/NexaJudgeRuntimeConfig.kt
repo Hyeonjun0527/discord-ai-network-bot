@@ -13,10 +13,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
 
-/**
- * NIA single judge runtime wiring. No judge bean is created until a concrete [NiaJudgeLlmPort] adapter exists,
- * so the default deployed behavior stays unchanged.
- */
+/** NIA single judge runtime wiring. A concrete [NiaJudgeLlmPort] makes the raw-scene judge available to the bridge. */
 @Configuration
 class NexaJudgeRuntimeConfig {
     @Bean

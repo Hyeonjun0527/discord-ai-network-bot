@@ -78,6 +78,22 @@ class NiaJudgePromptAssemblerTest {
         assertThat(llmRequest.toString()).doesNotContain("야 이럴땐 위로해줘")
     }
 
+    @Test
+    fun `열린 약속이 있는 장면은 deliberate reasoning으로 승격한다`() {
+        val base = sampleRequest()
+        val request =
+            base.copy(
+                sceneSnapshot =
+                    base.sceneSnapshot.copy(
+                        memoryState = JudgeMemorySceneState(false, null, null, pendingIntentActive = true),
+                    ),
+            )
+
+        val llmRequest = NiaJudgePromptAssembler().assemble(request)
+
+        assertThat(llmRequest.metadata["reasoning_mode"]).isEqualTo("deliberate")
+    }
+
     private fun sampleRequest(): SingleJudgeDecisionRequest =
         SingleJudgeDecisionRequest(
             rawContextWindow =

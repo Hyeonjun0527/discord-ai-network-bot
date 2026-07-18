@@ -3,6 +3,7 @@ package com.discordassistant.central.actionruntime.adapter.inbound.scheduler
 import com.discordassistant.central.actionruntime.adapter.outbound.multiresponse.MultiResponseBurstAdapter
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.ExecutionOutcome
+import com.discordassistant.central.actionruntime.application.execution.ReactionExecutionService
 import com.discordassistant.central.actionruntime.application.port.out.SpeechContentResolver
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionDisposition
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionPoller
@@ -27,7 +28,8 @@ import org.springframework.stereotype.Component
  *    [com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort] 가 실행 직전 현재 모드와 교집합을
  *    낸다. SHADOW 예약이 채널 승격만으로 실제 전송 권한을 얻을 수 없다.
  *  - **버블 보존**: speech가 확정한 버블 수를 저장 content에서 복원해 각각 별도 Discord 메시지로 실행한다.
- *  - **SPEAK 만**: content 가 있는 것은 SPEAK 뿐이다. REACT 는 아직 미지원이라 로그만 남기고 건너뛴다(별도 실행 경로 필요).
+ *  - **중단 가능한 버블**: 저장된 버블 계획은 각 전송 사이에 contextVersion을 다시 확인해 새 사건이 생기면 남은 발화를 취소한다.
+ *  - **타입별 실행**: SPEAK는 본문 전송, REACT는 원 메시지 리액션 경로로 실행하고 WAIT는 child 판단만 깨운다.
  *  - **graceful**: poll·개별 execute 실패는 흡수한다(runCatching + 로그) — 한 건 실패가 tick 전체나 다른 예약을 막지 않는다.
  *
  * 스케줄링은 앱 전역 [org.springframework.scheduling.annotation.EnableScheduling](RelayWebSocketConfig)로 이미 켜져 있다.
@@ -37,6 +39,7 @@ import org.springframework.stereotype.Component
 class AutonomousSendScheduler(
     private val dueActionPoller: DueActionPoller,
     private val actionExecutionService: ActionExecutionService,
+    private val reactionExecutionService: ReactionExecutionService,
     private val burstAdapter: MultiResponseBurstAdapter,
     private val contentResolver: SpeechContentResolver,
     private val shadowStatus: ShadowStatusService,
@@ -46,7 +49,7 @@ class AutonomousSendScheduler(
 
     /**
      * 한 tick: due 예약을 claim·재평가하고, READY_TO_TYPE SPEAK 를 실제 전송 경로에 태운다. poll 실패나 개별 실행 실패는
-     * 흡수한다(다른 예약·다음 tick 에 영향 없음). REACT 등 비 SPEAK 는 미지원으로 로그만 남기고 건너뛴다.
+     * 흡수한다(다른 예약·다음 tick 에 영향 없음). WAIT는 poller/outbox가 처리하므로 전송 실행에 들어오지 않는다.
      */
     @Scheduled(fixedDelayString = "\${central.nexa.autonomous-send.poll-interval-ms:2000}")
     fun tick() {
@@ -61,11 +64,14 @@ class AutonomousSendScheduler(
         for (outcome in outcomes) {
             if (outcome.disposition != DueActionDisposition.READY_TO_TYPE) continue
             val action = outcome.action // 재평가 통과 → TYPING 상태(ActionExecutionService 진입 요건).
-            if (action.type != ScheduledActionType.SPEAK) {
-                // REACT 등은 별도 실행 경로(ReactionExecutionService) 필요 — 현재 자율 전송은 SPEAK 만 지원.
-                log.info("NEXA 자율 전송: {} 는 아직 미지원 — skip(action={})", action.type, action.identity.value)
+            if (action.type == ScheduledActionType.REACT) {
+                runCatching { reactionExecutionService.react(action.originRolloutMode, action) }
+                    .onFailure { error ->
+                        log.warn("NEXA reaction 실행 실패(action={}) — {}", action.identity.value, error.message)
+                    }
                 continue
             }
+            if (action.type != ScheduledActionType.SPEAK) continue
             runCatching {
                 val content = contentResolver.resolve(action.identity.value)
                 val plan = burstAdapter.fromPersistedSpeech(action.identity.value, content)

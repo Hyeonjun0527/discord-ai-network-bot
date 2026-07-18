@@ -56,6 +56,7 @@ import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
+import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -241,6 +242,7 @@ class NexaSpeechEmitServiceTest {
                 generationGate = SpeechGenerationGate(generationService),
                 candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
                 decisionLog = speechLog,
+                completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaSpeechEmitService(
             safetyDecision = BanterSafetyDecisionService(participationLog, clock),
@@ -333,23 +335,23 @@ class NexaSpeechEmitServiceTest {
     }
 
     @Test
-    fun `selected bubbles are persisted as a decodable multi message burst`() {
+    fun `selected bubbles are persisted in one interruptible action plan`() {
         val scheduler = FakeScheduler()
-        val writer = CapturingContentWriter()
+        val stored = linkedMapOf<String, String>()
         val bubbles = listOf("이야기 시작", "중간 내용", "마지막 반전 ㅋㅋ")
         val seam =
             seam(
                 candidates = listOf(SpeechCandidate("c1", bubbles)),
                 consent = ConsentDecision.OBSERVE_AND_SPEAK,
                 scheduler = scheduler,
-                contentWriter = writer,
+                contentWriter = SpeechContentWriter { ref, content -> stored[ref] = content },
             )
 
         val result = seam.emit(request(scenePacket = packet(fragmentCount = 3)))
 
         assertThat(result.willSpeak).isTrue()
-        assertThat(writer.storedRef).isEqualTo("corr-1#0")
-        assertThat(SpeechBurstContentCodec.decode(writer.storedContent!!)).containsExactlyElementsOf(bubbles)
+        assertThat(scheduler.scheduled.map { it.identity.value }).containsExactly("corr-1#0")
+        assertThat(SpeechBurstContentCodec.decode(stored.getValue("corr-1#0"))).containsExactlyElementsOf(bubbles)
     }
 
     @Test

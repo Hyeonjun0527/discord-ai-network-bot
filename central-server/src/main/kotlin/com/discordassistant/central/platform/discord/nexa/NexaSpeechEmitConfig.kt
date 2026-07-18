@@ -1,6 +1,7 @@
 package com.discordassistant.central.platform.discord.nexa
 
 import com.discordassistant.central.actionruntime.application.ParticipationActionRouter
+import com.discordassistant.central.actionruntime.application.port.out.ActionConsentPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.conversation.application.port.out.ConsentPolicyPort
 import com.discordassistant.central.global.privacy.ConsentGate
@@ -9,8 +10,10 @@ import com.discordassistant.central.participation.application.port.out.Participa
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
+import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
+import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
@@ -43,6 +46,21 @@ class NexaSpeechEmitConfig {
     @ConditionalOnMissingBean(ConsentGate::class)
     fun nexaPolicyBackedConsentGate(consentPolicy: ConsentPolicyPort): ConsentGate = PolicyBackedConsentGate(consentPolicy)
 
+    /** 예약 뒤 실행되는 SEND/REACT도 같은 consent 정책을 즉시 다시 읽는다. */
+    @Bean
+    @ConditionalOnMissingBean(ActionConsentPort::class)
+    fun nexaActionConsentPort(consentPolicy: ConsentPolicyPort): ActionConsentPort =
+        ActionConsentPort { target ->
+            val guildId = target.routingGuildId?.toLongOrNull()
+            val channelId = target.routingChannelId?.toLongOrNull()
+            val userId = target.routingUserId?.toLongOrNull()
+            if (guildId == null || channelId == null || userId == null) {
+                false
+            } else {
+                consentPolicy.observationDecision(guildId, userId, channelId).speechAllowed
+            }
+        }
+
     /** 발화 생성 게이트(SPEAK·not stale 일 때만 [SpeechGenerationPort] 호출). */
     @Bean
     @ConditionalOnMissingBean(SpeechGenerationGate::class)
@@ -63,12 +81,14 @@ class NexaSpeechEmitConfig {
         consentGate: ConsentGate,
         generationGate: SpeechGenerationGate,
         decisionLog: SpeechDecisionLogPort,
+        completeActionEvaluation: CompleteActionEvaluationPort,
     ): NexaSpeechPipelineService =
         NexaSpeechPipelineService(
             consentGate = consentGate,
             generationGate = generationGate,
             candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
             decisionLog = decisionLog,
+            completeActionSelector = CompleteActionSelector(completeActionEvaluation),
         )
 
     /** speech decision log 미바인딩 환경 기본값(Noop) — 실제 sink 어댑터가 있으면 그쪽이 우선. */

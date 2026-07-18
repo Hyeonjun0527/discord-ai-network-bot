@@ -10,6 +10,9 @@ enum class MemoryStatus {
     /** 현재 유효한 기억. retrieval 에 포함된다. */
     ACTIVE,
 
+    /** 미완 의도나 상호작용이 실제로 수행되어 정상 종결됨. */
+    COMPLETED,
+
     /** 더 새로운 사실로 대체됨(T008). 물리 삭제하지 않고 현재 조회에서만 제외(validTo 설정). */
     SUPERSEDED,
 

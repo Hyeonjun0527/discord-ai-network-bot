@@ -15,7 +15,8 @@ import java.time.Duration
  *
  * **acceptance(T019) — 기존 pseudo-streaming API 가 정책 action 수를 늘리지 않는다**:
  * - [fromPseudoStream]: 편집 스냅샷이 몇 개든 [BurstPlan.bubbleCount] == 1.
- * - 의도적 멀티 버블(정책이 명시한 burst)은 [fromBubbles] 로 별도 구성한다 — 이때만 action 수가 버블 수와 같다.
+ * - 의도적 멀티 버블(정책이 명시한 burst)은 [fromBubbles] 로 별도 구성한다 — 예약 행동은 하나이고 Discord 전송 수만
+ *   버블 수와 같다.
  *
  * actionruntime adapter 레이어 — 도메인 [BurstPlan] 만 만든다(다른 도메인 구현·JDA 미참조, ArchUnit 경계 준수).
  */
@@ -29,7 +30,7 @@ class MultiResponseBurstAdapter {
 
     /**
      * 정책이 명시한 멀티 버블 burst 를 [BurstPlan] 으로 구성한다([refs] 순서대로 버블, 마지막을 뺀 각 버블 뒤에
-     * [gap] 간격). action 수 = 버블 수(정책이 의도한 수). 단일 [refs] 면 [fromPseudoStream] 과 동일(버블 1개).
+     * [gap] 간격). 예약 행동 하나 안에서 버블 수만큼 순차 전송한다. 단일 [refs] 면 [fromPseudoStream] 과 동일하다.
      */
     fun fromBubbles(
         refs: List<String>,

@@ -20,6 +20,10 @@ import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAc
 class StaleActionReevaluator(
     private val reevaluation: ActionReevaluationPort,
 ) {
+    fun currentContextVersion(target: ReevaluationTarget): Long? = reevaluation.currentContextVersion(target)
+
+    fun currentSceneContextVersion(target: ReevaluationTarget): Long? = reevaluation.currentSceneContextVersion(target)
+
     /**
      * [action] 을 [target] 기준으로 재평가한다.
      * - 현재 버전 == 예약 버전: stale 아님 → [ReevaluationOutcome.PROCEED](직전 판단 재사용).
@@ -30,7 +34,7 @@ class StaleActionReevaluator(
         action: ScheduledSocialAction,
         target: ReevaluationTarget,
     ): ReevaluationOutcome {
-        val current = reevaluation.currentContextVersion(target) ?: return ReevaluationOutcome.CANCEL
+        val current = currentContextVersion(target) ?: return ReevaluationOutcome.CANCEL
         if (!action.isStale(current)) return ReevaluationOutcome.PROCEED
         val stillValid =
             reevaluation.stillValid(

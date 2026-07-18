@@ -2,17 +2,20 @@ package com.discordassistant.central.actionruntime.adapter.inbound.scheduler
 
 import com.discordassistant.central.actionruntime.application.execution.ActionExecutionService
 import com.discordassistant.central.actionruntime.application.execution.BackpressureGate
+import com.discordassistant.central.actionruntime.application.execution.ReactionExecutionService
 import com.discordassistant.central.actionruntime.application.port.out.ActionAuditPort
+import com.discordassistant.central.actionruntime.application.port.out.ActionConsentPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionExecutionModePort
+import com.discordassistant.central.actionruntime.application.port.out.ActionOutcomeObservationPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionReevaluationPort
 import com.discordassistant.central.actionruntime.application.port.out.ActionSchedulerPort
 import com.discordassistant.central.actionruntime.application.port.out.DiscordExecutorPort
-import com.discordassistant.central.actionruntime.application.port.out.ReevaluationTarget
+import com.discordassistant.central.actionruntime.application.port.out.ExecutionPermitPort
+import com.discordassistant.central.actionruntime.application.port.out.WaitReevaluationOutboxPort
 import com.discordassistant.central.actionruntime.application.reevaluate.StaleActionReevaluator
 import com.discordassistant.central.actionruntime.application.scheduler.DueActionPoller
 import com.discordassistant.central.actionruntime.application.scheduler.SceneEvidenceProvider
 import com.discordassistant.central.actionruntime.domain.service.CancellationPolicy
-import com.discordassistant.central.actionruntime.domain.service.SceneEvidence
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -37,39 +40,12 @@ import java.time.Clock
  * [ActionExecutionService] 가 executor 를 한 번도 호출하지 않는다(전송 0). flag 는 "파이프라인을 살릴지", ShadowMode 는
  * "그 채널에 실제로 보낼지" 의 **직교** 게이트다.
  *
- * 보수적 기본 포트([ActionReevaluationPort]·[SceneEvidenceProvider]) — participation-backed 실 어댑터가 아직 없어
- * canary 등급 기본값을 둔다(항상 진행·취소 안 함). 실 전송은 위 ShadowMode 게이트가 별도로 막으므로 안전하다. 실
- * 어댑터가 뒤에 등록되면 [ConditionalOnMissingBean] 으로 이 기본값이 물러난다.
+ * 재평가와 장면 evidence는 social-policy projection을 읽는 별도 어댑터가 제공한다. 장면을 읽을 수 없는 예약 행동은
+ * fail-closed하므로, 오래된 문장이 새 대화 위에 그대로 전송되는 우회 경로가 없다.
  */
 @Configuration
 @ConditionalOnProperty(name = ["central.nexa.autonomous-send.enabled"], havingValue = "true")
 class AutonomousSendConfig {
-    /**
-     * canary 등급 기본 재평가 포트 — 항상 "진행"(stale 취소 안 함). participation-backed 실 어댑터가 없을 때만 쓰인다.
-     * 실 전송 여부는 [ActionExecutionModePort] 의 ShadowMode 가 별도로 게이팅하므로, 이 기본값이 전송을 유발하지 않는다.
-     */
-    @Bean
-    @ConditionalOnMissingBean(ActionReevaluationPort::class)
-    fun nexaAutonomousReevaluationPort(): ActionReevaluationPort =
-        object : ActionReevaluationPort {
-            override fun currentContextVersion(target: ReevaluationTarget): Long? = PROCEED_CONTEXT_VERSION
-
-            override fun stillValid(
-                decisionId: String,
-                target: ReevaluationTarget,
-                scheduledContextVersion: Long,
-                currentContextVersion: Long,
-            ): Boolean = true
-        }
-
-    /** canary 등급 기본 scene evidence — 취소 근거 없음([CancellationPolicy] KEEP). 실 어댑터가 있으면 물러난다. */
-    @Bean
-    @ConditionalOnMissingBean(SceneEvidenceProvider::class)
-    fun nexaAutonomousSceneEvidenceProvider(): SceneEvidenceProvider =
-        SceneEvidenceProvider {
-            SceneEvidence(humanRepliesSinceSchedule = 0, currentFocusThreadId = null, targetExpired = false)
-        }
-
     /** due poll 한 tick 본문(claim → 취소정책 → 재평가 → TYPING). [AutonomousSendScheduler] 가 주기 호출한다. */
     @Bean
     @ConditionalOnMissingBean(DueActionPoller::class)
@@ -77,6 +53,7 @@ class AutonomousSendConfig {
         scheduler: ActionSchedulerPort,
         reevaluationPort: ActionReevaluationPort,
         sceneEvidenceProvider: SceneEvidenceProvider,
+        waitReevaluationOutbox: WaitReevaluationOutboxPort,
     ): DueActionPoller =
         DueActionPoller(
             scheduler = scheduler,
@@ -84,6 +61,7 @@ class AutonomousSendConfig {
             cancellationPolicy = CancellationPolicy(),
             sceneEvidenceProvider = sceneEvidenceProvider,
             clock = Clock.systemUTC(),
+            waitReevaluationOutbox = waitReevaluationOutbox,
         )
 
     /** 실제 실행 유스케이스(typing → 버블 전송 → 완료). shadow/OFF 채널은 executor 미호출(P09 hard block). */
@@ -95,6 +73,9 @@ class AutonomousSendConfig {
         reevaluationPort: ActionReevaluationPort,
         audit: ActionAuditPort,
         modePort: ActionExecutionModePort,
+        outcomeObserver: ActionOutcomeObservationPort,
+        actionConsent: ActionConsentPort,
+        executionPermit: ExecutionPermitPort,
     ): ActionExecutionService =
         ActionExecutionService(
             executor = executor,
@@ -104,10 +85,33 @@ class AutonomousSendConfig {
             backpressure = BackpressureGate(),
             clock = Clock.systemUTC(),
             modePort = modePort,
+            outcomeObserver = outcomeObserver,
+            consent = actionConsent,
+            executionPermit = executionPermit,
         )
 
-    private companion object {
-        /** 기본 재평가 포트가 돌려주는 현재 버전 — 어떤 예약 버전과도 다르면 stillValid=true 로 진행(항상 PROCEED). */
-        const val PROCEED_CONTEXT_VERSION: Long = Long.MIN_VALUE
-    }
+    /** REACT 실행 유스케이스. 실패는 SPEAK로 바꾸지 않고 terminal 상태로 끝낸다. */
+    @Bean
+    @ConditionalOnMissingBean(ReactionExecutionService::class)
+    fun nexaReactionExecutionService(
+        executor: DiscordExecutorPort,
+        scheduler: ActionSchedulerPort,
+        reevaluationPort: ActionReevaluationPort,
+        audit: ActionAuditPort,
+        modePort: ActionExecutionModePort,
+        outcomeObserver: ActionOutcomeObservationPort,
+        actionConsent: ActionConsentPort,
+        executionPermit: ExecutionPermitPort,
+    ): ReactionExecutionService =
+        ReactionExecutionService(
+            executor = executor,
+            scheduler = scheduler,
+            reevaluation = reevaluationPort,
+            audit = audit,
+            clock = Clock.systemUTC(),
+            modePort = modePort,
+            outcomeObserver = outcomeObserver,
+            consent = actionConsent,
+            executionPermit = executionPermit,
+        )
 }

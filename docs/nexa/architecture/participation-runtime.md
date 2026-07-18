@@ -36,6 +36,10 @@ deadline 계산과 `idleDue` 판정만 담당하고, [ParticipationRuntimeLoop.k
 runtime은 원문을 보관하지 않는다. 원문 source transcript는 RawContextStore와 `JudgeContextWindow`가 관리하고, judge
 request의 `rawContextWindow`로 들어간다. runtime은 judge가 원문과 함께 볼 구조화 신호만 만든다.
 
+메시지마다 사라지지 않아야 하는 공통 기반·경쟁 의도 가설·최근 니아 행동·그 행동에 대한 사람 반응은
+`socialpolicy`의 focus-thread별 bounded scene belief projection에 남는다. judge 갱신에는 evidence ref와 불확실성이
+필수이며, 다음 관찰이 기존 가설을 supersede/reject할 수 있다.
+
 ## Turn-taking signals
 
 runtime과 scene snapshot은 아래 신호를 enum이 아니라 연속 값/불리언 evidence로 넘긴다.
@@ -62,6 +66,8 @@ runtime과 scene snapshot은 아래 신호를 enum이 아니라 연속 값/불�
 - 다른 사람이 충분히 답했으면 `CancelPending(OTHER_HUMAN_ANSWERED)`.
 - context version이 바뀌었으면 기존 판단을 그대로 보내지 않고 `ReevaluatePending(CONTEXT_VERSION_CHANGED)`.
 - 그 외에는 `ReevaluatePending(PENDING_DUE)`로 최신 raw context window와 scene snapshot을 다시 구성한다.
+- `WAIT` due는 기존 결정을 전송하지 않는다. WAIT 완료와 child judge 명령을 transactional outbox에 함께 기록한 뒤
+  최신 scene으로 새 판단을 시작한다. 프로세스 재시작에 필요한 routing ID는 outbox에 암호화해 보존한다.
 
 ## Guard boundary
 
@@ -69,7 +75,8 @@ rate limit과 anti-spam은 judge 입력과 actionruntime 전송 guard 양쪽에 
 
 - runtime/scene 단계: 압력을 `rateLimitPressure`, `antiSpamPressure`로 넘겨 judge가 말하기/기다리기/반응만 하기
   판단에 반영한다.
-- actionruntime 단계: 실제 전송 직전 quota/backpressure guard가 최종 안전장치로 남는다.
+- actionruntime 단계: 각 실제 SEND bubble/REACT Discord 호출 직전 채널·전역 원자적 execution permit이 최종
+  안전장치로 남는다.
 
 이 경계 때문에 "제한이 있으니 무조건 선제 hard drop"이 아니라, 제한에 가까운 상황도 judge가 자연스러운 WAIT/IGNORE로
 해석할 수 있다.

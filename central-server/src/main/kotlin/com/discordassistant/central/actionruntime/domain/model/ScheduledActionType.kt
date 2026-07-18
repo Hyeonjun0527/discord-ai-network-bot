@@ -20,4 +20,7 @@ enum class ScheduledActionType(
 
     /** 리액션(REACT) — 발화 없이 reaction 코드만. */
     REACT("react", isSpeech = false),
+
+    /** 조건부 대기(WAIT) — 전송하지 않고 due 시 최신 장면을 다시 판단. */
+    WAIT("wait", isSpeech = false),
 }

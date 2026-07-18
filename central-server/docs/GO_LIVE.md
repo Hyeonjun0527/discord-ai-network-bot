@@ -23,7 +23,7 @@
 ## 2. central-server 기동 (봇 ON)
 `central-server/` 에서:
 ```bash
-# 로컬/수동 검증: docker compose (Postgres+서버)
+# 로컬/수동 검증: docker compose (Postgres+Redis+서버)
 DISCORD_ENABLED=true \
 DISCORD_BOT_TOKEN='붙여넣기' \
 CENTRAL_DEV_ENABLED=false \
@@ -33,6 +33,11 @@ docker compose up -d --build
 curl -s localhost:8085/actuator/health   # {"status":"UP"}
 ```
 로그에 `Discord(JDA) 기동 완료` 가 보이면 봇 온라인.
+
+니아 자율 발화는 로컬 기본값이 OFF다. 켜려면 `NEXA_AUTONOMOUS_SEND_ENABLED=true`와 함께
+`NEXA_FIELD_ENC_KEY`, `ZAI_API_KEY`를 설정해야 하며, 하나라도 없으면 조용히 침묵하지 않고 서버가 즉시 부팅 실패한다.
+compose의 Redis health가 통과해야 실행 permit도 활성화된다. 실제 Discord 전송은 이 전역 스위치와 별개로 채널 lane이
+`CANARY` 또는 `LIVE`일 때만 가능하다.
 
 **슬래시 명령 즉시 반영(권장, 단일/테스트 서버):** `DISCORD_GUILD_ID` 를 주면 해당 서버에 명령을
 **즉시 등록**한다(글로벌은 전파에 최대 ~1h). 서버 ID 는 Discord 개발자 모드 켠 뒤 서버명 우클릭

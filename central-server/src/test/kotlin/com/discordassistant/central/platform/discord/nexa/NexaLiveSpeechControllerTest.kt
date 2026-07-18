@@ -13,6 +13,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
@@ -57,6 +58,7 @@ class NexaLiveSpeechControllerTest {
                         ),
                     ),
                 candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaLiveSpeechService(gate, pipeline)
     }

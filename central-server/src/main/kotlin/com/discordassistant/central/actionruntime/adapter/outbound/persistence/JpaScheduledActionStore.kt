@@ -10,6 +10,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import com.discordassistant.central.global.crypto.FieldCrypto
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -49,6 +50,17 @@ class JpaScheduledActionStore(
     @Transactional
     override fun schedule(action: ScheduledSocialAction): Boolean {
         if (repo.findByIdentity(action.identity.value) != null) return false // idempotent — 중복 예약 안 만듦(T004).
+        if (
+            listOf(
+                action.target.routingGuildId,
+                action.target.routingChannelId,
+                action.target.routingUserId,
+                action.target.targetMessageId,
+                action.target.replyToMessageId,
+            ).any { it != null }
+        ) {
+            require(FieldCrypto.isConfigured()) { "Discord routing metadata encryption key is not configured" }
+        }
         val now = Instant.now(clock)
         repo.save(action.markScheduled().toEntity(now))
         return true
@@ -203,6 +215,12 @@ class JpaScheduledActionStore(
         status = action.status.name
         attempt = action.attempt
         maxAttempts = action.maxAttempts
+        waitAttempt = action.waitAttempt
+        expiresAt = action.expiresAt
+        executionPerChannelLimit = action.executionPerChannelLimit
+        executionGlobalLimit = action.executionGlobalLimit
+        executionWindowSeconds = action.executionWindowSeconds
+        fulfillsPendingIntentId = action.fulfillsPendingIntentId
         failureReason = action.failureReason?.wireName
         updatedAt = now
     }
@@ -216,7 +234,21 @@ class JpaScheduledActionStore(
             channelId = target.channelId,
             threadId = target.threadId,
             subjectPseudonym = target.subjectPseudonym,
-            replyToMessageId = target.replyToMessageId,
+            // V81의 평문 reply column은 legacy read 호환만 유지한다. 새 write는 암호화 target column으로 통합한다.
+            replyToMessageId = null,
+            targetMessageId = FieldCrypto.encrypt(target.targetMessageId ?: target.replyToMessageId),
+            routingGuildId = FieldCrypto.encrypt(target.routingGuildId),
+            routingChannelId = FieldCrypto.encrypt(target.routingChannelId),
+            routingUserId = FieldCrypto.encrypt(target.routingUserId),
+            sceneContextVersion = target.sceneContextVersion,
+            reactionCode = reactionCode,
+            wakeUpHint = wakeUpHint,
+            waitAttempt = waitAttempt,
+            expiresAt = expiresAt,
+            executionPerChannelLimit = executionPerChannelLimit,
+            executionGlobalLimit = executionGlobalLimit,
+            executionWindowSeconds = executionWindowSeconds,
+            fulfillsPendingIntentId = fulfillsPendingIntentId,
             executeAfter = executeAfter,
             contextVersion = contextVersion,
             originRolloutMode = originRolloutMode.name,
@@ -240,6 +272,11 @@ class JpaScheduledActionStore(
                     threadId = threadId,
                     subjectPseudonym = subjectPseudonym,
                     replyToMessageId = replyToMessageId,
+                    targetMessageId = FieldCrypto.decryptOrNull(targetMessageId) ?: replyToMessageId,
+                    routingGuildId = FieldCrypto.decryptOrNull(routingGuildId),
+                    routingChannelId = FieldCrypto.decryptOrNull(routingChannelId),
+                    routingUserId = FieldCrypto.decryptOrNull(routingUserId),
+                    sceneContextVersion = sceneContextVersion,
                 ),
             executeAfter = executeAfter,
             contextVersion = contextVersion,
@@ -248,6 +285,14 @@ class JpaScheduledActionStore(
             attempt = attempt,
             failureReason = failureReason?.let { reasonFromWire(it) },
             maxAttempts = maxAttempts,
+            reactionCode = reactionCode ?: if (typeFromWire(actionType) == ScheduledActionType.REACT) "ack" else null,
+            wakeUpHint = wakeUpHint,
+            waitAttempt = waitAttempt,
+            expiresAt = expiresAt,
+            executionPerChannelLimit = executionPerChannelLimit,
+            executionGlobalLimit = executionGlobalLimit,
+            executionWindowSeconds = executionWindowSeconds,
+            fulfillsPendingIntentId = fulfillsPendingIntentId,
         )
 
     private companion object {
@@ -288,6 +333,21 @@ class ScheduledActionEntity(
     @Column(name = "subject_pseudonym") var subjectPseudonym: String? = null,
     @Column(name = "reply_to_message_id", length = ActionTarget.MAX_REPLY_TO_MESSAGE_ID_LENGTH)
     var replyToMessageId: String? = null,
+    @Column(name = "target_message_id") var targetMessageId: String? = null,
+    @Column(name = "routing_guild_id") var routingGuildId: String? = null,
+    @Column(name = "routing_channel_id") var routingChannelId: String? = null,
+    @Column(name = "routing_user_id") var routingUserId: String? = null,
+    @Column(name = "scene_context_version") var sceneContextVersion: Long? = null,
+    @Column(name = "reaction_code") var reactionCode: String? = null,
+    @Column(name = "wake_up_hint") var wakeUpHint: String? = null,
+    @Column(name = "wait_attempt") var waitAttempt: Int = 0,
+    @Column(name = "expires_at") var expiresAt: Instant? = null,
+    @Column(
+        name = "execution_per_channel_limit",
+    ) var executionPerChannelLimit: Int = ScheduledSocialAction.DEFAULT_EXECUTION_PER_CHANNEL_LIMIT,
+    @Column(name = "execution_global_limit") var executionGlobalLimit: Int = ScheduledSocialAction.DEFAULT_EXECUTION_GLOBAL_LIMIT,
+    @Column(name = "execution_window_seconds") var executionWindowSeconds: Long = ScheduledSocialAction.DEFAULT_EXECUTION_WINDOW_SECONDS,
+    @Column(name = "fulfills_pending_intent_id") var fulfillsPendingIntentId: String? = null,
     @Column(name = "execute_after") var executeAfter: Instant = Instant.EPOCH,
     @Column(name = "context_version") var contextVersion: Long = 0,
     @Column(name = "origin_rollout_mode") var originRolloutMode: String = ShadowMode.OFF.name,

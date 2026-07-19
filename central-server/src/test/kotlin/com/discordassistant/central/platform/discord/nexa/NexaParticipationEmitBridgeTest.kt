@@ -380,7 +380,7 @@ class NexaParticipationEmitBridgeTest {
                 perChannelPerMin = 6,
                 globalPerMin = 30,
                 judgeModeName = "final",
-                singleJudge = CapturingJudge(speakDecision(bubbleCount = 3)),
+                singleJudge = CapturingJudge(speakDecision(bubbleCount = 3, maxBubbleChars = 1_200)),
                 actionRouter = ParticipationActionRouter(scheduler),
             )
 
@@ -388,9 +388,38 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val request = generationPort.lastRequest!!
-        assertThat(request.systemPrompt).contains("정확히 3개", "bubble_count=3")
+        assertThat(request.systemPrompt).contains("정확히 3개", "bubble_count=3", "max_bubble_chars=1200")
         assertThat(request.maxOutputTokens).isEqualTo(1024)
         assertThat(scheduler.scheduled).hasSize(1)
+    }
+
+    @Test
+    fun `final judge social act choice reaches speech generation without rule reinterpretation`() {
+        val scheduler = FakeScheduler()
+        val generationPort = CapturingGenerationPort()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit =
+                    emitSeam(
+                        consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                        scheduler = scheduler,
+                        generationPort = generationPort,
+                    ),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(speakDecision(actHint = "tease")),
+                actionRouter = ParticipationActionRouter(scheduler),
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = "플로이드워셜 알고리즘 말해봐"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(generationPort.lastRequest!!.socialAct).isEqualTo(SpeechSocialAct.TEASE)
+        assertThat(generationPort.lastRequest!!.systemPrompt).contains("act_hint=tease", "친한 사이의 가벼운 장난 결")
     }
 
     @Test
@@ -464,7 +493,7 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val examples = judge.lastRequest!!.fewShotSet.examples
-        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(7)
+        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(9)
         assertThat(examples.map { it.exampleId })
             .contains(
                 "default_direct_reply_request",
@@ -476,6 +505,7 @@ class NexaParticipationEmitBridgeTest {
                 "default_humans_continue_after_yield",
                 "default_readdress_after_yield",
                 "default_self_repair_question",
+                "default_knowledge_questions_become_social_test",
                 "default_reentry_for_delayed_behavior_question",
             )
         val directRequestExample = examples.single { it.exampleId == "default_direct_reply_request" }
@@ -506,6 +536,13 @@ class NexaParticipationEmitBridgeTest {
         val readdressExample = examples.single { it.exampleId == "default_readdress_after_yield" }
         assertThat(readdressExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
         assertThat(readdressExample.badAlternative.action).isEqualTo(NiaFewShotAction.IGNORE)
+        val knowledgeTrajectoryExample =
+            examples.single { it.exampleId == "default_knowledge_questions_become_social_test" }
+        assertThat(knowledgeTrajectoryExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(knowledgeTrajectoryExample.rawMessages.map { it.text })
+            .contains("다익스트라 알고리즘 말해봐", "벨만포드 알고리즘 말해봐", "플로이드워셜 알고리즘 말해봐")
+        assertThat(knowledgeTrajectoryExample.expectedReplies.single()).contains("다음은 이거 물어볼 줄 알았음")
+        assertThat(knowledgeTrajectoryExample.reason).contains("quiz or behavior test", "lighter information depth")
         val delayedRepairExample =
             examples.single { it.exampleId == "default_reentry_for_delayed_behavior_question" }
         assertThat(delayedRepairExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
@@ -2248,7 +2285,11 @@ class NexaParticipationEmitBridgeTest {
         }
     }
 
-    private fun speakDecision(bubbleCount: Int = 1): SingleJudgeDecision =
+    private fun speakDecision(
+        bubbleCount: Int = 1,
+        maxBubbleChars: Int = JudgeSpeechIntent.DEFAULT_MAX_BUBBLE_CHARS,
+        actHint: String = "answer",
+    ): SingleJudgeDecision =
         SingleJudgeDecision(
             action = SocialActionKind.SPEAK,
             confidence = 0.8,
@@ -2259,6 +2300,8 @@ class NexaParticipationEmitBridgeTest {
                     intentSummary = "answer direct social request",
                     sceneDirection = "deliver the requested content now",
                     bubbleCount = bubbleCount,
+                    maxBubbleChars = maxBubbleChars,
+                    actHint = actHint,
                 ),
             toneAxes = JudgeToneAxes.NEUTRAL,
             reasonCode = JudgeReasonCode("judge.shadow"),

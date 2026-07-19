@@ -38,6 +38,23 @@ class CloudCompleteActionEvaluationAdapter(
             appendLine("실제 문구와 침묵·리액션이 낳을 다음 결과를 비교한다.")
             appendLine("상대 의도 수행, 새로운 기여, 공통 기반 중복 방지, 미완료 약속 해결, 끼어들기 비용을 함께 본다.")
             appendLine("단지 짧거나 무난하다는 이유로 SEND를 고르지 말고, 이미 알려진 안내 반복은 낮게 평가한다.")
+            appendLine(
+                "마지막 문장만 보지 말고 최근 대화를 하나의 궤적으로 평가한다. 연속된 같은 계열 질문이 정보 요청에서 " +
+                    "시험·장난·반응 확인으로 변했는지, 후보가 그 변화를 실제 문구로 알아챘는지 본다.",
+            )
+            appendLine(
+                "이전 니아 답변과 같은 첫마디·설명 순서·종결형·웃음표현을 반복하는 후보와, 매 요청을 독립된 " +
+                    "백과사전 답안처럼 완성하는 후보는 낮게 평가한다. 사실을 모두 말한 길이가 사회적 적합성을 대신하지 않는다.",
+            )
+            appendLine(
+                "반대로 사용자가 진짜 상세 설명이나 코드를 요구하면 사람답게 보이려는 메타 농담으로 회피하는 후보도 " +
+                    "낮게 평가한다. speech_intent가 정한 정보 깊이를 실제로 지킨 후보를 고른다.",
+            )
+            appendLine(
+                "갑작스러운 무거운 주제 전환은 채널 말투로 연결할 수 있다. 다만 전환의 뜬금없음에 반응한 웃음과 " +
+                    "피해·비극 자체를 웃음거리로 만든 태도를 구분한다. 정체성 놀림에는 불필요한 시스템 자백이나 " +
+                    "사람이라는 거짓 주장보다 대화 흐름을 받아치는 후보를 선호한다.",
+            )
             appendLine("speech_intent=${request.speechIntent.orEmpty().take(MAX_INTENT_CHARS)}")
             appendLine("social_act=${request.socialAct.wireName}")
             appendLine("provisional=${request.provisionalDecision}; confidence=${request.provisionalConfidence}")

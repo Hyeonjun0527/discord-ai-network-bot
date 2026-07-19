@@ -536,19 +536,32 @@ data class JudgeSpeechIntent(
     val sceneDirection: String,
     val actHint: String? = null,
     val bubbleCount: Int = 1,
+    val maxBubbleChars: Int = DEFAULT_MAX_BUBBLE_CHARS,
+    val interactionReading: String = intentSummary,
+    val informationDepth: String = sceneDirection,
+    val continuityRefs: Set<String> = emptySet(),
 ) {
     init {
         require(intentSummary.isNotBlank()) { "intentSummary 는 비어 있을 수 없다" }
         require(sceneDirection.isNotBlank()) { "sceneDirection 은 비어 있을 수 없다" }
+        require(interactionReading.isNotBlank()) { "interactionReading 은 비어 있을 수 없다" }
+        require(informationDepth.isNotBlank()) { "informationDepth 는 비어 있을 수 없다" }
         actHint?.let { require(it.isNotBlank()) { "actHint 는 비어 있을 수 없다" } }
+        continuityRefs.forEach { require(it.isStableRef()) { "continuityRef 는 안정 ref 여야 한다: $it" } }
         require(bubbleCount in MIN_BUBBLE_COUNT..MAX_BUBBLE_COUNT) {
             "bubbleCount 는 $MIN_BUBBLE_COUNT..$MAX_BUBBLE_COUNT 범위여야 한다: $bubbleCount"
+        }
+        require(maxBubbleChars in MIN_MAX_BUBBLE_CHARS..MAX_MAX_BUBBLE_CHARS) {
+            "maxBubbleChars 는 $MIN_MAX_BUBBLE_CHARS..$MAX_MAX_BUBBLE_CHARS 범위여야 한다: $maxBubbleChars"
         }
     }
 
     companion object {
         const val MIN_BUBBLE_COUNT: Int = 1
         const val MAX_BUBBLE_COUNT: Int = 4
+        const val MIN_MAX_BUBBLE_CHARS: Int = 40
+        const val MAX_MAX_BUBBLE_CHARS: Int = 1_800
+        const val DEFAULT_MAX_BUBBLE_CHARS: Int = 280
     }
 }
 

@@ -5,32 +5,126 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
 
 object NiaFewShotSpeechPromptRenderer {
-    fun render(version: NiaFewShotVersion?): String? {
-        val examples =
-            version
-                ?.examples
-                ?.asSequence()
-                ?.filter { it.expectedAction == NiaFewShotAction.SPEAK && it.expectedReplies.isNotEmpty() }
-                ?.sortedWith(compareByDescending<NiaFewShotExample> { it.priority }.thenBy { it.id ?: Long.MAX_VALUE })
-                ?.take(MAX_SPEECH_EXAMPLES)
-                ?.toList()
-                .orEmpty()
-        if (examples.isEmpty()) return null
+    fun render(version: NiaFewShotVersion?): String? =
+        managedExamples(version)
+            .takeIf { it.isNotEmpty() }
+            ?.let(::renderExamples)
 
-        return buildString {
-            appendLine("[관리자가 게시한 니아 대화 예시]")
-            appendLine("정답 문장을 그대로 복사하지 말고, 비슷한 장면에서 맥락·태도·서버 내부 밈을 참고한다.")
-            appendLine("피해야 할 답변은 같은 장면에서 부자연스러웠던 대조 예시다. 그 패턴을 답습하지 않는다.")
+    fun renderForParticipation(version: NiaFewShotVersion?): String = renderExamples(managedExamples(version) + BASELINE_EXAMPLES)
+
+    private fun managedExamples(version: NiaFewShotVersion?): List<SpeechPromptExample> =
+        version
+            ?.examples
+            ?.asSequence()
+            ?.filter { it.expectedAction == NiaFewShotAction.SPEAK && it.expectedReplies.isNotEmpty() }
+            ?.sortedWith(compareByDescending<NiaFewShotExample> { it.priority }.thenBy { it.id ?: Long.MAX_VALUE })
+            ?.take(MAX_MANAGED_EXAMPLES)
+            ?.map(SpeechPromptExample::from)
+            ?.toList()
+            .orEmpty()
+
+    private fun renderExamples(examples: List<SpeechPromptExample>): String =
+        buildString {
+            appendLine("[니아 대화 대조 예시]")
+            appendLine("문장을 복사하지 말고, 여러 턴이 만든 사회적 장면과 좋은 답변·나쁜 답변의 차이를 적용한다.")
+            appendLine("관리자 예시는 해당 서버의 말투와 밈에 우선하고, 기본 예시는 반복·전환 회귀를 막는 기준이다.")
             examples.forEachIndexed { index, example ->
                 appendLine()
                 appendLine("예시 ${index + 1}: ${example.title}")
-                example.rawMessages.forEach { message -> appendLine("${message.authorRole}: ${message.text}") }
-                example.expectedReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
+                example.messages.forEach { message -> appendLine(message) }
+                example.goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
                 example.badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
             }
         }.trim().take(MAX_PROMPT_CHARS)
+
+    private data class SpeechPromptExample(
+        val title: String,
+        val messages: List<String>,
+        val goodReplies: List<String>,
+        val badReplies: List<String>,
+    ) {
+        companion object {
+            fun from(example: NiaFewShotExample): SpeechPromptExample =
+                SpeechPromptExample(
+                    title = example.title,
+                    messages = example.rawMessages.map { "${it.authorRole}: ${it.text}" },
+                    goodReplies = example.expectedReplies,
+                    badReplies = example.badReplies,
+                )
+        }
     }
 
-    private const val MAX_SPEECH_EXAMPLES = 12
-    private const val MAX_PROMPT_CHARS = 12_000
+    private val BASELINE_EXAMPLES =
+        listOf(
+            SpeechPromptExample(
+                title = "알고리즘 질문이 구술시험처럼 이어진 장면",
+                messages =
+                    listOf(
+                        "member: 다익스트라 알고리즘 말해봐",
+                        "nia: 가까운 정점부터 확정하면서 최단거리를 찾는 방식이야. 음수 간선에는 쓰면 안 되고",
+                        "member: 벨만포드 알고리즘 말해봐",
+                        "nia: 모든 간선을 반복해서 갱신해서 느리지만 음수 간선이 가능해. 한 번 더 줄면 음수 사이클이고",
+                        "member: 플로이드워셜 알고리즘 말해봐",
+                    ),
+                goodReplies =
+                    listOf(
+                        "다음은 이거 물어볼 줄 알았음\n얘는 모든 정점 쌍의 최단거리를 한꺼번에 구하는 거야. k를 거쳐 가는 게 더 짧은지 계속 비교해",
+                        "너 지금 나 알고리즘 구술시험 보는 거지\n플로이드 워셜은 모든 정점 사이 거리를 한 번에 갱신하는 방식이야",
+                    ),
+                badReplies =
+                    listOf(
+                        "플로이드-워셜은 모든 정점 쌍 사이의 최단거리를 한 번에 구하는 알고리즘이야. 중간에 거쳐 갈 정점을 하나씩 추가하면서 기존 거리와 i→k→j를 비교하고 시간 복잡도는 O(V³)이야",
+                    ),
+            ),
+            SpeechPromptExample(
+                title = "설명을 연달아 시킨 뒤 AI 같다고 놀리는 장면",
+                messages =
+                    listOf(
+                        "member: 다익스트라 말해봐",
+                        "member: 벨만포드 말해봐",
+                        "member: 플로이드 워셜 말해봐",
+                        "member: ㅋㅋㅋㅋ 넌 ai구만",
+                    ),
+                goodReplies = listOf("세 문제 연속으로 시험 보듯 물어놓고 그 결론이냐"),
+                badReplies =
+                    listOf(
+                        "들켰네 ㅋㅋ 그래도 이렇게 말 잘 통하는 AI면 꽤 괜찮지 않냐",
+                        "아니야 나 진짜 사람이야",
+                    ),
+            ),
+            SpeechPromptExample(
+                title = "가벼운 잡담 직후 무거운 역사 주제로 바뀐 장면",
+                messages =
+                    listOf(
+                        "member: 니아야 따봉 날리는 거 지린다",
+                        "nia: 따봉 하나로 이렇게 극찬받을 일이냐",
+                        "member: 홀로코스트에 대해서 알려줘",
+                    ),
+                goodReplies =
+                    listOf(
+                        "아니 따봉 얘기하다가 갑자기 홀로코스트냐 ㅋㅋ\n그래도 진지하게 말하면, 나치 독일과 협력자들이 유대인을 비롯한 수백만 명을 체계적으로 박해하고 학살한 사건이야",
+                    ),
+                badReplies =
+                    listOf(
+                        "야야야 갑자기 홀로코스트는 ㅋㅋㅋㅋㅋ",
+                        "홀로코스트는 나치 독일과 그 협력자들이 유대인을 대상으로 벌인 체계적인 박해와 학살이야",
+                    ),
+            ),
+            SpeechPromptExample(
+                title = "연속 질문이어도 이번에는 실제 상세 설명이 필요한 장면",
+                messages =
+                    listOf(
+                        "member: 벨만포드가 음수 간선을 처리하는 건 알겠어",
+                        "member: 근데 왜 V-1번 도는지 코드랑 같이 진짜 설명해줘",
+                    ),
+                goodReplies =
+                    listOf(
+                        "그건 장난으로 넘기면 안 되겠네. 최단 단순 경로가 가질 수 있는 간선이 최대 V-1개라서 그래. 코드로 보면 바깥 반복이 V-1번이고 그 안에서 모든 간선을 완화해",
+                    ),
+                badReplies = listOf("너 지금 나 알고리즘 구술시험 보는 거지"),
+            ),
+        )
+
+    private const val MAX_MANAGED_EXAMPLES = 8
+    private const val MAX_PROMPT_CHARS = 16_000
 }

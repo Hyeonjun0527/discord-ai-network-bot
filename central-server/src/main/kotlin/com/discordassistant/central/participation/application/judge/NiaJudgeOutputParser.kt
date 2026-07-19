@@ -147,6 +147,18 @@ class NiaJudgeOutputParser(
                     sceneDirection = speechIntent.requiredText("sceneDirection"),
                     actHint = speechIntent.optionalText("actHint"),
                     bubbleCount = speechIntent.optionalInt("bubbleCount", JudgeSpeechIntent.MIN_BUBBLE_COUNT),
+                    maxBubbleChars =
+                        speechIntent.optionalInt(
+                            "maxBubbleChars",
+                            JudgeSpeechIntent.DEFAULT_MAX_BUBBLE_CHARS,
+                        ),
+                    interactionReading =
+                        speechIntent.optionalText("interactionReading")
+                            ?: speechIntent.requiredText("intentSummary"),
+                    informationDepth =
+                        speechIntent.optionalText("informationDepth")
+                            ?: speechIntent.requiredText("sceneDirection"),
+                    continuityRefs = speechIntent.optionalTextArray("continuityRefs").toSet(),
                 )
             }
             else -> null
@@ -327,7 +339,17 @@ class NiaJudgeOutputParser(
                 "reevaluateAfterMs",
                 "beliefUpdates",
             )
-        private val SPEECH_INTENT_FIELDS = setOf("intentSummary", "sceneDirection", "actHint", "bubbleCount")
+        private val SPEECH_INTENT_FIELDS =
+            setOf(
+                "intentSummary",
+                "sceneDirection",
+                "actHint",
+                "bubbleCount",
+                "maxBubbleChars",
+                "interactionReading",
+                "informationDepth",
+                "continuityRefs",
+            )
         private val TONE_AXIS_FIELDS = setOf("warmth", "playfulness", "directness", "emotionalIntensity")
         private val BELIEF_UPDATE_FIELDS = setOf("commonGround", "intentHypotheses", "commitments")
         private val COMMON_GROUND_FIELDS = setOf("code", "confidence", "evidenceRefs", "status")

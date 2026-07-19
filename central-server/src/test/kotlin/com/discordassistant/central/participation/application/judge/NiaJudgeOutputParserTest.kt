@@ -23,7 +23,14 @@ class NiaJudgeOutputParserTest {
         assertThat(parsedByAction["REACT"]!!.decision.reactionCandidate!!.reactionCode).isEqualTo("soft_ack")
         assertThat(parsedByAction["SPEAK"]!!.decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.intentSummary).contains("acknowledge")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.interactionReading)
+            .isEqualTo("the repeated knowledge questions look like a social test")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.informationDepth)
+            .isEqualTo("acknowledge the pattern and give one concise fact")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.continuityRefs)
+            .containsExactly("msg_1", "msg_3")
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.bubbleCount).isEqualTo(3)
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.maxBubbleChars).isEqualTo(900)
         assertThat(parsedByAction["CANCEL"]!!.decision.action).isEqualTo(SocialActionKind.CANCEL_PENDING)
     }
 
@@ -76,6 +83,33 @@ class NiaJudgeOutputParserTest {
 
         assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
         assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("bubbleCount")
+    }
+
+    @Test
+    fun `parser rejects speech bubble limits outside the supported range`() {
+        val invalid =
+            mapper.readValue(output("SPEAK"), MutableMap::class.java).also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>)["maxBubbleChars"] = 1_801
+            }
+
+        val result = parser.parse(mapper.writeValueAsString(invalid))
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("maxBubbleChars")
+    }
+
+    @Test
+    fun `older speech intent without max bubble limit uses the safe chat default`() {
+        val compatible =
+            mapper.readValue(output("SPEAK"), MutableMap::class.java).also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>).remove("maxBubbleChars")
+            }
+
+        val parsed = parser.parse(mapper.writeValueAsString(compatible)).accepted()
+
+        assertThat(parsed.decision.speechIntent!!.maxBubbleChars).isEqualTo(JudgeSpeechIntent.DEFAULT_MAX_BUBBLE_CHARS)
     }
 
     @Test
@@ -210,6 +244,10 @@ class NiaJudgeOutputParserTest {
                     "sceneDirection" to "one short sentence, no over-comforting",
                     "actHint" to "acknowledge",
                     "bubbleCount" to 3,
+                    "maxBubbleChars" to 900,
+                    "interactionReading" to "the repeated knowledge questions look like a social test",
+                    "informationDepth" to "acknowledge the pattern and give one concise fact",
+                    "continuityRefs" to listOf("msg_1", "msg_3"),
                 )
         }
         base.putAll(extra)

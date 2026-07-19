@@ -112,6 +112,7 @@ import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import com.discordassistant.central.participation.domain.model.action.SocialAct as ParticipationSocialAct
 
 /**
  * NEXA participation **자발 발화 wiring**(NEXA participation-activation-plan 단계 1, platform/discord 어댑터).
@@ -1112,7 +1113,7 @@ class NexaParticipationEmitBridge(
             fewShotService
                 ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
                 ?.active
-        val managedPrompt = NiaFewShotSpeechPromptRenderer.render(active) ?: return NIA_IDENTITY
+        val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(active)
         return NIA_IDENTITY.copy(personaBlock = "${NIA_IDENTITY.personaBlock}\n\n$managedPrompt")
     }
 
@@ -1624,30 +1625,34 @@ class NexaParticipationEmitBridge(
     private fun com.discordassistant.central.participation.application.judge.JudgeDecisionDelay.toActionDelay(): ActionDelay =
         if (millis <= 0) ActionDelay.IMMEDIATE else ActionDelay.fire(Duration.ofMillis(millis))
 
-    private fun SingleJudgeDecision.toPolicyResponse(): PolicyDecisionResponse =
-        PolicyDecisionResponse(
+    private fun SingleJudgeDecision.toPolicyResponse(): PolicyDecisionResponse {
+        val selectedSocialAct =
+            speechIntent
+                ?.actHint
+                ?.trim()
+                ?.lowercase()
+                ?.let(ParticipationSocialAct::fromWireName)
+                ?.takeUnless(ParticipationSocialAct::isUnknown)
+                ?: ParticipationSocialAct.ACKNOWLEDGE
+        return PolicyDecisionResponse(
             actionWeights = mapOf(SocialActionKind.SPEAK to 1.0),
             targetDistribution = ActionTargetDistribution.none(resolverVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION),
             delayDistribution = DelayDistribution.IMMEDIATE,
-            socialActWeights = emptyMap(),
+            socialActWeights = mapOf(selectedSocialAct to 1.0),
             burstProfile = speechIntent?.toBurstProfile() ?: BurstProfile.singleLine(),
             uncertainty = (1.0 - confidence).coerceIn(0.0, 1.0),
             modelVersion = SINGLE_JUDGE_FINAL_MODEL_VERSION,
         )
+    }
 
-    private fun JudgeSpeechIntent.toBurstProfile(): BurstProfile {
-        val intent = "$intentSummary $sceneDirection ${actHint.orEmpty()}".lowercase()
-        val needsCompletedContent =
-            listOf("이야기", "얘기", "썰", "설명", "답변", "대답", "사과", "story", "explain", "answer", "apolog")
-                .any(intent::contains)
-        return BurstProfile(
+    private fun JudgeSpeechIntent.toBurstProfile(): BurstProfile =
+        BurstProfile(
             fragmentCountWeights = mapOf(bubbleCount to 1.0),
-            maxFragmentLength = if (needsCompletedContent) 1_800 else SPEECH_BUBBLE_MAX_CHARS,
+            maxFragmentLength = maxBubbleChars,
             gapLowerBound = Duration.ZERO,
             gapUpperBound = Duration.ZERO,
             reactionOnlyProbability = 0.0,
         )
-    }
 
     private fun SingleJudgeDecision.toSingleJudgeAttribution(
         request: SingleJudgeDecisionRequest,
@@ -1672,7 +1677,11 @@ class NexaParticipationEmitBridge(
             append("reason_code=$reasonCode; ")
             append("intent_summary=$intentSummary; ")
             append("scene_direction=$sceneDirection; ")
+            append("interaction_reading=$interactionReading; ")
+            append("information_depth=$informationDepth; ")
+            append("continuity_refs=${continuityRefs.sorted().joinToString(",")}; ")
             append("bubble_count=$bubbleCount; ")
+            append("max_bubble_chars=$maxBubbleChars; ")
             actHint?.let { append("act_hint=$it; ") }
             append("speech는 이 방향을 수행하는 실제 문구 후보를 만들고, 침묵·리액션과 결과를 비교해 최종 행동을 고른다.")
         }
@@ -1870,11 +1879,10 @@ class NexaParticipationEmitBridge(
         private const val FOCUS_THREAD_MARKER: String = ":thread:"
         private const val BASELINE_DECISION_SOURCE: String = "BASELINE"
         private const val DEFAULT_REACTION_CODE: String = "ack"
-        private const val SPEECH_BUBBLE_MAX_CHARS: Int = 280
         private val COMMITMENT_TTL: Duration = Duration.ofDays(7)
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
-        private const val DEFAULT_FEW_SHOT_VERSION: Int = 7
+        private const val DEFAULT_FEW_SHOT_VERSION: Int = 9
         private val ROMANIZED_NIA_NAME_SIGNAL: Regex =
             Regex("""(?i)(^|[^a-z0-9_])n\s*i\s*a(?:\s*y\s*a|ya|야|씨)?(?=$|[^a-z0-9_])""")
 
@@ -2102,6 +2110,43 @@ class NexaParticipationEmitBridge(
                                 ),
                             tags = setOf("self-repair", "whole-scene"),
                             priority = 90,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_knowledge_questions_become_social_test",
+                            title = "consecutive knowledge questions become a social test",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "다익스트라 알고리즘 말해봐"),
+                                    JudgeFewShotRawMessagePayload(
+                                        "m2",
+                                        "nia",
+                                        30_000,
+                                        "가까운 정점부터 확정하면서 최단거리를 찾는 방식이야",
+                                    ),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 60_000, "벨만포드 알고리즘 말해봐"),
+                                    JudgeFewShotRawMessagePayload(
+                                        "m4",
+                                        "nia",
+                                        90_000,
+                                        "모든 간선을 반복해서 갱신해서 음수 간선도 처리할 수 있어",
+                                    ),
+                                    JudgeFewShotRawMessagePayload("m5", "member", 120_000, "플로이드워셜 알고리즘 말해봐"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            expectedReplies = listOf("다음은 이거 물어볼 줄 알았음\n얘는 모든 정점 쌍의 최단거리를 한꺼번에 구해"),
+                            reason =
+                                "The latest question still invites a response, but the sequence now also looks like a " +
+                                    "quiz or behavior test. Speech should acknowledge that trajectory and choose a " +
+                                    "lighter information depth instead of producing a third uniform textbook answer.",
+                            evidenceRefs = setOf("m1", "m2", "m3", "m4", "m5"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.IGNORE,
+                                    whyBad = "Silence misses both the direct request and the emerging social pattern.",
+                                ),
+                            tags = setOf("whole-scene", "trajectory", "knowledge-quiz", "response-depth"),
+                            priority = 100,
                             privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
                         ),
                         JudgeFewShotExamplePayload(

@@ -89,6 +89,20 @@ class NiaJudgePromptAssembler(
         repair it. A fresh stop or handoff in the current turn can still make silence appropriate.
         Treat sceneState.socialBeliefState as revisable evidence, not unquestionable truth. Use its common ground,
         competing intent hypotheses, NIA's recent actions, and observed human outcomes when predicting what each complete action would cause.
+        Read repeated turns as one trajectory, not as isolated requests. Before SPEAK, compare at least the literal request
+        with plausible social readings such as a quiz, teasing, testing NIA's behavior, or a genuine follow-up. Repeated
+        topic-family questions and NIA's own uniform previous answers are evidence that the social meaning may have changed.
+        In that case the best contribution can acknowledge the pattern, vary the conversational move, and give only the
+        amount of information the current scene calls for. Do not force every surface request into a complete textbook answer.
+        Conversely, when the member genuinely asks to learn or explicitly requests detail, do not dodge the requested content
+        merely to sound casual. The speech intent must state the inferred interaction, the intended information depth, and
+        which prior turns the utterance should visibly connect to.
+        Preserve emotional continuity across topic changes. An abrupt switch from banter to a grave historical or human-harm
+        topic can be acknowledged in the channel's natural register, but distinguish reacting to the abrupt transition from
+        laughing at victims or facts. The actual treatment of the subject must remain proportionate and respectful.
+        Do not use the same opener, answer outline, ending, or laughter marker just because earlier NIA turns used it.
+        If a member teases NIA for sounding like AI, respond to the social move without volunteering system exposition or
+        falsely claiming to be human. A direct factual identity question still requires an honest answer.
         Do not repeat a functional contribution already present in common ground unless new evidence makes it necessary.
         Return beliefUpdates only for compact claims or hypotheses supported by evidenceRefs from the supplied scene.
         Keep competing hypotheses instead of forcing certainty; supersede or reject older entries when new evidence changes them.
@@ -107,10 +121,18 @@ class NiaJudgePromptAssembler(
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
         REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `bubbleCount`,
-        and optional `actHint`. `bubbleCount` must be an integer from 1 through 4. Use 1 for ordinary short banter,
-        redirects, and repairs. Use 2 through 4 when the member asks NIA to tell a story, joke, or other conversational
-        content that cannot be completed naturally in one short chat message. For such requests, direct the speech
-        pipeline to deliver the actual content now, never merely promise to prepare, think of, or tell it later.
+        `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, and optional `actHint`. `interactionReading` is the
+        judge's short whole-scene interpretation, not a paraphrase of the last message. `informationDepth` describes how much
+        literal content belongs in this turn. `continuityRefs` names the raw message refs the speech should visibly build on.
+        `actHint` is the judge's chosen social move and, when present, must be exactly one of
+        `acknowledge`, `agree`, `disagree`, `tease`, `ask`, `answer`, `correct`, `self_disclose`, or `change_topic`.
+        Use `answer` when the turn should actually provide requested content; use `tease` only when the scene supports playful
+        pattern recognition. Do not use `ask` merely because the human's input is a question.
+        `bubbleCount` must be an integer from 1 through 4 and `maxBubbleChars` from 40 through 1800. Choose both from the
+        complete social action you intend, not from a fixed topic template. Ordinary banter is usually one short bubble;
+        stories or genuinely detailed explanations may need more room or several bubbles. Give only enough space to complete
+        the chosen action naturally. When actual content is requested, direct the speech pipeline to deliver it now, never
+        merely promise to prepare, think of, or tell it later.
         Omit fields that do not apply. Never include final response text, utterance, message, or content. For SPEAK,
         include only intent-level speechIntent fields; the speech pipeline writes the actual reply.
         Optional beliefUpdates format:
@@ -258,7 +280,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v7"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v9"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }

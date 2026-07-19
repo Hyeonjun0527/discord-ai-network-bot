@@ -3,6 +3,11 @@ export type GuildSummary = {
   name: string;
 };
 
+export type ChannelSummary = {
+  id: string | number;
+  name: string;
+};
+
 export type DashboardPanel = "aiNetwork" | "requests" | "usageTrend";
 
 export type DashboardPartialError = {
@@ -15,17 +20,13 @@ export type DashboardPartialError = {
 };
 
 export type DashboardState = {
+  selectedGuildId: string;
   guilds: GuildSummary[];
   overview: Record<string, unknown> | null;
   aiNetwork: Record<string, unknown> | null;
   requests: Record<string, unknown>[];
   usageTrend: Record<string, unknown>[];
   partialErrors: DashboardPartialError[];
-};
-
-export type ApiOptions = {
-  baseUrl: string;
-  adminToken: string;
 };
 
 export type ApiMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -112,21 +113,15 @@ export class ApiResponseParseError extends Error {
   }
 }
 
-export function apiBase(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/$/, "");
-}
-
 export function resolveOrigin(): string {
   return globalThis.location?.origin ?? "";
 }
 
-export function resolveRequestTarget(path: string, baseUrl: string, origin: string = resolveOrigin()): RequestTarget {
-  const base = apiBase(baseUrl);
-  const serverBaseUrl = base || origin;
+export function resolveRequestTarget(path: string, origin: string = resolveOrigin()): RequestTarget {
   return {
-    fetchUrl: `${base}${path}`,
-    requestUrl: serverBaseUrl ? `${serverBaseUrl}${path}` : path,
-    serverBaseUrl,
+    fetchUrl: path,
+    requestUrl: origin ? `${origin}${path}` : path,
+    serverBaseUrl: origin,
   };
 }
 

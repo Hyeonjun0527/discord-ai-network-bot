@@ -88,12 +88,13 @@ class DashboardController(
     @GetMapping("/{guildId}/requests")
     fun requests(
         @PathVariable guildId: Long,
+        @RequestParam(required = false) channelId: Long? = null,
         @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<Map<String, Any?>> {
         featureGate.requireDashboardEnabled()
         return DashboardRequestLogResponse.from(
             guildId,
-            analytics.recentGuildRequests(guildId),
+            analytics.recentGuildRequests(guildId, channelId),
             DashboardAudience.from(audience),
         )
     }

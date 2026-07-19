@@ -67,10 +67,20 @@ class AnalyticsService(
      * 엔티티가 아니라 [RequestLogEntry] DTO 로 반환해 web 어댑터가 persistence 에 의존하지 않게 한다.
      */
     @Transactional(readOnly = true)
-    fun recentGuildRequests(guildId: Long): List<RequestLogEntry> =
-        requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
+    fun recentGuildRequests(
+        guildId: Long,
+        channelId: Long? = null,
+    ): List<RequestLogEntry> {
+        val recent =
+            if (channelId == null) {
+                requests.findTop20ByGuildIdOrderByIdDesc(guildId)
+            } else {
+                requests.findTop20ByGuildIdAndChannelIdOrderByIdDesc(guildId, channelId)
+            }
+        return recent.map {
             RequestLogEntry(
                 requestId = it.requestId,
+                channelId = it.channelId,
                 state = it.state.name,
                 requiredBurden = it.requiredBurden,
                 providerId = it.providerId,
@@ -78,6 +88,7 @@ class AnalyticsService(
                 createdAt = it.createdAt.toString(),
             )
         }
+    }
 
     /**
      * 채널 사용 현황(Phase 2 어드민 대시보드 (a)). 어떤 디스코드 채널이 AI/풀을 쓰는지 —
@@ -164,6 +175,7 @@ class AnalyticsService(
     /** 대시보드 요청 로그 한 줄(프롬프트 본문·유저 id 제외). */
     data class RequestLogEntry(
         val requestId: String,
+        val channelId: Long,
         val state: String,
         val requiredBurden: String,
         val providerId: Long?,

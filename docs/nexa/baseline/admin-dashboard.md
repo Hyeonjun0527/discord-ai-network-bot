@@ -52,7 +52,7 @@ The dashboard has two independent layers:
    - OAuth sessions are admin-capable only if the Discord user ID is present in `central.dashboard.admin-user-ids`; an OAuth login without allowlist membership fails closed for admin API access.
    - The static dashboard stores the token in `sessionStorage` under `nexa.dashboardAdminToken`; it is not persisted to localStorage.
 
-Static `fetch()` calls are same-origin by default, so OAuth cookies are sent for `/admin/dashboard/` -> `/api/**` calls. The Vite `admin-console` client is different: it supports an optional `baseUrl`, stores token/base/guild in localStorage, and calls `fetch(..., { credentials: "include" })` for cross-origin-capable development.
+Both dashboard clients use same-origin `/api/**` requests so the Discord OAuth session is sent automatically. The Vite `admin-console` is served at `/admin/console/` and no longer exposes API base URL or admin-token inputs. Its local development server proxies `/api`, `/login`, and `/oauth2` to `VITE_DEV_API_TARGET`; when that override is absent, it derives the target from `SERVER_PORT` and falls back to port `8080`. If local token authentication is enabled, the Vite server injects `CENTRAL_DASHBOARD_ADMIN_TOKEN` into proxied API requests without exposing it to browser state. Request history is loaded only after both a Discord guild and one of that guild's channels are selected, using the server-side `channelId` filter. Only selected guild/channel identifiers remain as internal local state.
 
 ## API dependency map
 
@@ -72,7 +72,7 @@ Static `fetch()` calls are same-origin by default, so OAuth cookies are sent for
 | Multi-response advanced | `GET /api/ai-network/multi-response/{guildId}/operations-summary`, `/runs`, `/decision-summary`, `/recommendation`; `POST /policy`, `/pseudo-stream-plan`; `GET /api/ai-network/features`. |
 | License funnel | `GET /api/ai-network/license/funnel?audience=admin`. |
 
-The smaller Vite `admin-console/src/api.ts` currently consumes only `/api/dashboard/guilds`, `/api/dashboard/{guildId}/overview`, `/api/ai-network/{guildId}/dashboard`, `/api/dashboard/{guildId}/requests`, and `/api/dashboard/{guildId}/usage-trend?days=14`.
+The smaller Vite `admin-console/src/api.ts` consumes `/api/dashboard/guilds`, `/api/dashboard/{guildId}/overview`, `/api/ai-network/{guildId}/dashboard`, `/api/dashboard/{guildId}/requests`, `/api/dashboard/{guildId}/usage-trend?days=14`, and `/api/admin/nia/few-shot/**` for managed few-shot versions.
 
 ## Build, deployment, and SSOT rule
 

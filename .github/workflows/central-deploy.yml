@@ -13,6 +13,8 @@ on:
     branches: [main]
     paths:
       - "central-server/**"
+      - "admin-console/**"
+      - "scripts/sync_admin_console.sh"
       - ".github/workflows/central-deploy.yml"
   workflow_dispatch:
 
@@ -56,7 +58,8 @@ jobs:
             # 최신 코드이므로 계속 진행한다. 예전엔 tip 이동만으로 무조건 스킵해서, 매 머지
             # 뒤 자동으로 붙는 RAG 리빌드 커밋이 코드 배포를 통째로 삼켜 배포가 안 됐다.
             newer="$(git diff --name-only "${{ github.sha }}" "$latest" -- \
-              'central-server/**' '.github/workflows/central-deploy.yml' 2>/dev/null || echo UNKNOWN)"
+              'central-server/**' 'admin-console/**' 'scripts/sync_admin_console.sh' \
+              '.github/workflows/central-deploy.yml' 2>/dev/null || echo UNKNOWN)"
             if [ -n "$newer" ]; then
               echo "배포 경로를 건드린 더 최신 main 커밋($latest)이 있어 이 배포는 스킵합니다:"
               echo "$newer"
@@ -78,6 +81,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: admin-console/pnpm-lock.yaml
+      - name: 관리자 콘솔 빌드·정적 자산 동기화
+        run: ./scripts/sync_admin_console.sh
       - name: bootJar 빌드
         working-directory: central-server
         run: ./gradlew bootJar --no-daemon --console=plain

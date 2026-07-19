@@ -3,7 +3,7 @@ JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/H
 PY := .venv/bin
 CENTRAL := central-server/gradlew -p central-server
 
-.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check desktop-shapes ssot-viewer ssot-viewer-check i18n-gen i18n-check packaging-check security-redaction ci-preflight
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop sync-admin-console desktop-check desktop-shapes ssot-viewer ssot-viewer-check i18n-gen i18n-check packaging-check security-redaction ci-preflight
 
 help:  ## 사용 가능한 타깃
 	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
@@ -13,6 +13,9 @@ central-build:  ## central-server 빌드+테스트(JDK 21)
 
 central-jar:  ## central-server bootJar(app.jar)
 	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) bootJar --no-daemon --console=plain
+
+sync-admin-console:  ## React 관리자 콘솔을 central-server 정적 자산으로 생성
+	./scripts/sync_admin_console.sh
 
 agent-test:  ## provider-agent 테스트
 	cd provider-agent && PYTHONPATH=src ../$(PY)/python -m pytest tests/ -q

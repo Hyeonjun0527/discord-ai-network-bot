@@ -142,6 +142,7 @@ data class NiaFewShotExample(
     val rawMessages: List<NiaFewShotRawMessage>,
     val expectedAction: NiaFewShotAction,
     val expectedReplies: List<String> = emptyList(),
+    val badReplies: List<String> = emptyList(),
     val reason: String,
     val evidenceRefs: Set<String>,
     val badAlternative: NiaFewShotBadAlternative,
@@ -162,8 +163,16 @@ data class NiaFewShotExample(
             require(reply.isNotBlank()) { "few-shot expected reply 는 비어 있을 수 없다" }
             require(reply.length <= MAX_EXPECTED_REPLY_CHARS) { "few-shot expected reply 가 너무 길다" }
         }
+        require(badReplies.size <= MAX_BAD_REPLIES) { "few-shot badReplies 가 너무 많다" }
+        badReplies.forEach { reply ->
+            require(reply.isNotBlank()) { "few-shot bad reply 는 비어 있을 수 없다" }
+            require(reply.length <= MAX_EXPECTED_REPLY_CHARS) { "few-shot bad reply 가 너무 길다" }
+        }
         require(expectedAction == NiaFewShotAction.SPEAK || expectedReplies.isEmpty()) {
             "SPEAK 이 아닌 few-shot 은 expectedReplies 를 가질 수 없다"
+        }
+        require(expectedAction == NiaFewShotAction.SPEAK || badReplies.isEmpty()) {
+            "SPEAK 이 아닌 few-shot 은 badReplies 를 가질 수 없다"
         }
         require(badAlternative.action != expectedAction) { "badAlternative 는 expectedAction 과 달라야 한다" }
         require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
@@ -178,6 +187,7 @@ data class NiaFewShotExample(
         const val MAX_REASON_CHARS = 1_000
         const val MAX_RAW_MESSAGES = 32
         const val MAX_EXPECTED_REPLIES = 4
+        const val MAX_BAD_REPLIES = 4
         const val MAX_EXPECTED_REPLY_CHARS = 2_000
     }
 }

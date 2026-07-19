@@ -15,6 +15,11 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
 
     fun findTop20ByGuildIdOrderByIdDesc(guildId: Long): List<AiRequestEntity>
 
+    fun findTop20ByGuildIdAndChannelIdOrderByIdDesc(
+        guildId: Long,
+        channelId: Long,
+    ): List<AiRequestEntity>
+
     fun findByProviderIdAndState(
         providerId: Long,
         state: RequestState,

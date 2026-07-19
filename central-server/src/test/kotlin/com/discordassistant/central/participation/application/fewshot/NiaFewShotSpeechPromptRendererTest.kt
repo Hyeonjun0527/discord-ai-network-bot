@@ -13,9 +13,21 @@ import java.time.Instant
 class NiaFewShotSpeechPromptRendererTest {
     @Test
     fun `published speak examples render scene and expected replies`() {
-        val prompt = NiaFewShotSpeechPromptRenderer.render(version(example(expectedReplies = listOf("그건 서연이한테 말해 ㅋㅋ"))))
+        val prompt =
+            NiaFewShotSpeechPromptRenderer.render(
+                version(
+                    example(
+                        expectedReplies = listOf("그건 서연이한테 말해"),
+                        badReplies = listOf("뭐가 궁금한데 ㅋㅋ"),
+                    ),
+                ),
+            )
 
-        assertThat(prompt).contains("서연아 내 고민 좀 들어줘", "니아: 그건 서연이한테 말해 ㅋㅋ")
+        assertThat(prompt).contains(
+            "서연아 내 고민 좀 들어줘",
+            "좋은 니아 답변: 그건 서연이한테 말해",
+            "피해야 할 니아 답변: 뭐가 궁금한데 ㅋㅋ",
+        )
     }
 
     @Test
@@ -23,16 +35,19 @@ class NiaFewShotSpeechPromptRendererTest {
         assertThat(NiaFewShotSpeechPromptRenderer.render(version(example(expectedReplies = emptyList())))).isNull()
     }
 
-    private fun example(expectedReplies: List<String>) =
-        NiaFewShotExample(
-            title = "다른 사람에게 하는 말",
-            rawMessages = listOf(NiaFewShotRawMessage("m1", "member", 0, "서연아 내 고민 좀 들어줘")),
-            expectedAction = NiaFewShotAction.SPEAK,
-            expectedReplies = expectedReplies,
-            reason = "서버 밈에 맞는 응답",
-            evidenceRefs = setOf("m1"),
-            badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "이 예시에서는 응답이 기준이다"),
-        )
+    private fun example(
+        expectedReplies: List<String>,
+        badReplies: List<String> = emptyList(),
+    ) = NiaFewShotExample(
+        title = "다른 사람에게 하는 말",
+        rawMessages = listOf(NiaFewShotRawMessage("m1", "member", 0, "서연아 내 고민 좀 들어줘")),
+        expectedAction = NiaFewShotAction.SPEAK,
+        expectedReplies = expectedReplies,
+        badReplies = badReplies,
+        reason = "서버 밈에 맞는 응답",
+        evidenceRefs = setOf("m1"),
+        badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "이 예시에서는 응답이 기준이다"),
+    )
 
     private fun version(example: NiaFewShotExample) =
         NiaFewShotVersion(

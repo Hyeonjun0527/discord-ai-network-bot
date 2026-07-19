@@ -96,6 +96,7 @@ data class DashboardRequestLogResponse(
         buildMap {
             val providerId = request.providerId
             put("requestId", request.requestId)
+            put("channelId", request.channelId)
             put("state", request.state)
             put("burden", request.requiredBurden)
             put("providerLabel", providerLabel(guildId, providerId, index))

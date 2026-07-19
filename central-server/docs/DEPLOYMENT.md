@@ -64,7 +64,9 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 
 ## B. 어드민 대시보드 접속
 
-- URL: **`https://discord-ai.yeon.world/admin/dashboard/`** (정적 SPA). 대시보드는 **서버(길드)별** — `/api/dashboard/{guildId}/...`.
+- 새 React 콘솔: **`https://discord-ai.yeon.world/admin/console/`**. Few-shot, 운영 현황, 서버→채널별 요청 기록을 관리한다.
+- 기존 운영 대시보드: **`https://discord-ai.yeon.world/admin/dashboard/`**. 기존 AI Network 운영 기능을 보존한다.
+- 두 화면 모두 **서버(길드)별** API(`/api/dashboard/{guildId}/...`)를 사용하며 Discord OAuth 보호를 받는다.
 - 인증 방식 2가지:
   - **B안 — Discord OAuth (권장)**: `CENTRAL_OAUTH_ENABLED=true` + `CENTRAL_DASHBOARD_ADMIN_USER_IDS=<userId>`. 디스코드 OAuth 앱 redirect에 **`https://discord-ai.yeon.world/login/oauth2/code/discord`** 추가 등록.
     - **OAuth 켜지면 `/admin/dashboard/`는 인증 필요** → 미로그인 접속 시 **디스코드 로그인으로 자동 리디렉트**(SecurityConfig가 `/admin/dashboard/**`를 authenticated로 두고, 단일 OAuth 클라이언트라 `/oauth2/authorization/discord`로 직행). 로그인 후 허용목록 계정만 어드민.
@@ -73,7 +75,10 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
   - **A안 — 관리자 토큰(로컬/스테이징 전용)**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부). 현재 운영 Compose에는 평문 env 방지를 위해 이 선택 키를 연결하지 않는다.
     - 정책 쓰기(`/api/dashboard/{id}/welcome`·`auto-approve`·`role-policy`)도 **OAuth 없이 토큰만으로 동작**한다(`DashboardWriteController`는 항상 등록, 인증은 `AiNetworkApiSecurityFilter`가 토큰/OAuth 허용목록으로 강제 — 둘 다 없으면 403). 로컬(`localhost:8080`)에서도 `CENTRAL_DASHBOARD_ADMIN_TOKEN`만 주면 전 기능 테스트 가능.
 - **디스코드 userId 얻기**: 디스코드 설정 → 고급 → **개발자 모드 ON** → 내 프로필 우클릭 → **"사용자 ID 복사"**(18~19자리 숫자).
-- 로컬: `http://localhost:8080/admin/dashboard/`.
+- 로컬 React 콘솔: `http://localhost:5174/admin/console/`.
+
+`central-deploy.yml`은 `admin-console`을 빌드한 뒤 산출물을 central-server JAR의
+`/static/admin/console/`에 포함한다. 로컬에서 같은 산출물을 확인하려면 `make sync-admin-console`을 실행한다.
 
 > ⚠️ B안을 켜면 대시보드 **페이지·데이터 API가 로그인 필요**가 된다(허용목록 계정만 어드민, 공개 익명 뷰 없음).
 

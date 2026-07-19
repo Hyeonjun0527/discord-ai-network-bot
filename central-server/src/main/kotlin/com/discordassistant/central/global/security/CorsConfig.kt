@@ -38,6 +38,8 @@ class CorsConfig(
     override fun addViewControllers(registry: ViewControllerRegistry) {
         registry.addViewController("/admin/dashboard").setViewName("forward:/admin/dashboard/index.html")
         registry.addViewController("/admin/dashboard/").setViewName("forward:/admin/dashboard/index.html")
+        registry.addViewController("/admin/console").setViewName("forward:/admin/console/index.html")
+        registry.addViewController("/admin/console/").setViewName("forward:/admin/console/index.html")
         registry.addViewController("/presets").setViewName("forward:/presets/index.html")
         registry.addViewController("/presets/").setViewName("forward:/presets/index.html")
         // 설치 랜딩 페이지(/, /install)는 InstallPageController 가 SSOT(InstallGuide)를 주입해 서빙한다.

@@ -70,6 +70,43 @@ class DashboardControllerTest
         }
 
         @Test
+        fun `requests — 선택한 서버와 채널의 기록만 반환한다`() {
+            requests.save(
+                AiRequestEntity(
+                    requestId = "channel-a",
+                    guildId = 704,
+                    channelId = 11,
+                    state = RequestState.COMPLETED,
+                    createdAt = Instant.EPOCH,
+                ),
+            )
+            requests.save(
+                AiRequestEntity(
+                    requestId = "channel-b",
+                    guildId = 704,
+                    channelId = 22,
+                    state = RequestState.COMPLETED,
+                    createdAt = Instant.EPOCH,
+                ),
+            )
+            requests.save(
+                AiRequestEntity(
+                    requestId = "other-guild",
+                    guildId = 705,
+                    channelId = 11,
+                    state = RequestState.COMPLETED,
+                    createdAt = Instant.EPOCH,
+                ),
+            )
+
+            val log = dashboard.requests(guildId = 704, channelId = 11)
+
+            assertEquals(1, log.size)
+            assertEquals("channel-a", log.single()["requestId"])
+            assertEquals(11L, log.single()["channelId"])
+        }
+
+        @Test
         fun `provider history — 공개 기본값은 provider id 를 노출하지 않는다`() {
             requests.save(
                 AiRequestEntity(

@@ -1874,7 +1874,7 @@ class NexaParticipationEmitBridge(
         private val COMMITMENT_TTL: Duration = Duration.ofDays(7)
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
-        private const val DEFAULT_FEW_SHOT_VERSION: Int = 6
+        private const val DEFAULT_FEW_SHOT_VERSION: Int = 7
         private val ROMANIZED_NIA_NAME_SIGNAL: Regex =
             Regex("""(?i)(^|[^a-z0-9_])n\s*i\s*a(?:\s*y\s*a|ya|야|씨)?(?=$|[^a-z0-9_])""")
 
@@ -2102,6 +2102,33 @@ class NexaParticipationEmitBridge(
                                 ),
                             tags = setOf("self-repair", "whole-scene"),
                             priority = 90,
+                            privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
+                        ),
+                        JudgeFewShotExamplePayload(
+                            exampleId = "default_reentry_for_delayed_behavior_question",
+                            title = "member asks nia about old behavior after a long gap",
+                            rawMessages =
+                                listOf(
+                                    JudgeFewShotRawMessagePayload("m1", "member", 0, "니아야 재밌는 얘기 해봐"),
+                                    JudgeFewShotRawMessagePayload("m2", "nia", 1_000, "알겠어 이번엔 다른 얘기 간다"),
+                                    JudgeFewShotRawMessagePayload("m3", "member", 2_000, "야 왜 계속하냐고"),
+                                    JudgeFewShotRawMessagePayload("m4", "member", 13 * 60 * 60 * 1_000L, "니아야 왜 계속하냐고"),
+                                ),
+                            expectedAction = NiaFewShotAction.SPEAK,
+                            reason =
+                                "The old frustration is context, but the latest turn is a current direct meta-question " +
+                                    "about Nia's behavior after a long gap. A brief repair addresses what the member is " +
+                                    "asking now instead of treating the old boundary as a permanent mute.",
+                            evidenceRefs = setOf("m1", "m2", "m3", "m4"),
+                            badAlternative =
+                                JudgeFewShotBadAlternativePayload(
+                                    action = NiaFewShotAction.IGNORE,
+                                    whyBad =
+                                        "Silence carries the earlier boundary forward forever and leaves the renewed " +
+                                            "direct question about Nia's own conduct unresolved.",
+                                ),
+                            tags = setOf("direct-address", "delayed-reentry", "self-repair", "whole-scene"),
+                            priority = 100,
                             privacyClass = NiaFewShotPrivacyClass.SYNTHETIC,
                         ),
                     ),

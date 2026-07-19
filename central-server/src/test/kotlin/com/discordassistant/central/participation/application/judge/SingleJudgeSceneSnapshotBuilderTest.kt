@@ -167,6 +167,10 @@ class SingleJudgeSceneSnapshotBuilderTest {
             SingleJudgeSceneSnapshotBuilder.build(
                 observation(triggerText = "왜 반응 안 해?"),
             )
+        val delayedBehaviorQuestion =
+            SingleJudgeSceneSnapshotBuilder.build(
+                observation(triggerText = "니아야 왜 계속하냐고", directAddressed = true),
+            )
         val quietRequest =
             SingleJudgeSceneSnapshotBuilder.build(
                 observation(triggerText = "조용히 말해줘"),
@@ -192,6 +196,8 @@ class SingleJudgeSceneSnapshotBuilderTest {
         assertThat(stopRequest.sceneSnapshot.textSignals.stopRequested).isTrue()
         assertThat(ordinaryStatement.sceneSnapshot.textSignals.stopRequested).isFalse()
         assertThat(responseComplaint.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(delayedBehaviorQuestion.sceneSnapshot.textSignals.stopRequested).isFalse()
+        assertThat(delayedBehaviorQuestion.sceneSnapshot.textSignals.isQuestion).isTrue()
         assertThat(quietRequest.sceneSnapshot.textSignals.stopRequested).isFalse()
         assertThat(similarWord.sceneSnapshot.textSignals.stopRequested).isFalse()
         assertThat(responseOptional.sceneSnapshot.textSignals.stopRequested).isTrue()

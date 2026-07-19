@@ -30,7 +30,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v6")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v7")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -48,6 +48,8 @@ class NiaJudgePromptAssemblerTest {
                 "mistaken interruption",
                 "newer correction, withdrawal, or addressee change",
                 "invitation was retracted",
+                "A past request to stop is not a permanent mute",
+                "current direct meta-question about NIA's own behavior",
                 "Do not encode this as keyword matching",
                 "Return exactly one JSON object",
                 "Every action except IGNORE requires at least one raw-scene evidence ref",
@@ -58,12 +60,65 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload["schema"].asText()).isEqualTo(NiaJudgePromptAssembler.INPUT_SCHEMA)
         assertThat(payload["outputSchema"].asText()).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(payload.at("/rawScene/messages/1/text").asText()).isEqualTo("야 이럴땐 위로해줘")
+        assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_2")
+        assertThat(payload.at("/rawScene/messages/0/elapsedSincePreviousMs").isNull).isTrue()
+        assertThat(payload.at("/rawScene/messages/1/elapsedSincePreviousMs").asLong()).isEqualTo(1_000L)
         assertThat(payload.at("/fewShotSet/version").asInt()).isEqualTo(3)
         assertThat(payload.at("/fewShotSet/examples/0/expectedAction").asText()).isEqualTo("SPEAK")
         assertThat(payload.at("/fewShotSet/examples/0/badAlternative/action").asText()).isEqualTo("WAIT")
         assertThat(payload.at("/socialMemory/0/refId").asText()).isEqualTo("mem-1")
         assertThat(payload.at("/constraints/allowedActions").map { it.asText() }).contains("CANCEL", "SPEAK")
         assertThat(payload.at("/featureVector/turn.direct_pressure/value").asDouble()).isEqualTo(0.8)
+    }
+
+    @Test
+    fun `prompt makes a long gap before the current repair question explicit`() {
+        val base = sampleRequest()
+        val request =
+            base.copy(
+                rawContextWindow =
+                    JudgeContextWindowBuilder(
+                        maxRawChars = 1_000,
+                        niaAuthorPseudonyms = setOf("nia_bot"),
+                    ).build(
+                        RawContextSnapshot(
+                            scope = scope,
+                            entries =
+                                listOf(
+                                    rawEntry(20L, RawContextSourceType.HUMAN, "니아야 재밌는 얘기 해봐"),
+                                    rawEntry(
+                                        messageId = 21L,
+                                        sourceType = RawContextSourceType.BOT,
+                                        text = "알겠어 이번엔 다른 얘기 간다",
+                                        occurredAt = now.plusSeconds(1),
+                                    ),
+                                    rawEntry(
+                                        messageId = 22L,
+                                        sourceType = RawContextSourceType.HUMAN,
+                                        text = "야 왜 계속하냐고",
+                                        occurredAt = now.plusSeconds(2),
+                                    ),
+                                    rawEntry(
+                                        messageId = 23L,
+                                        sourceType = RawContextSourceType.HUMAN,
+                                        text = "니아야 왜 계속하냐고",
+                                        occurredAt = now.plusSeconds(2 + 13 * 60 * 60),
+                                    ),
+                                ),
+                        ),
+                    ),
+            )
+
+        val payload =
+            mapper.readTree(
+                NiaJudgePromptAssembler().assemble(request).prompt.substringAfter("INPUT_JSON:\n"),
+            )
+
+        assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_4")
+        assertThat(payload.at("/rawScene/messages/1/authorRole").asText()).isEqualTo("nia")
+        assertThat(payload.at("/rawScene/messages/3/text").asText()).isEqualTo("니아야 왜 계속하냐고")
+        assertThat(payload.at("/rawScene/messages/3/elapsedSincePreviousMs").asLong())
+            .isEqualTo(13 * 60 * 60 * 1_000L)
     }
 
     @Test

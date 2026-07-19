@@ -6,6 +6,7 @@ import com.discordassistant.central.participation.application.port.out.NiaJudgeL
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import java.time.Duration
 
 class NiaJudgePromptAssembler(
     private val mapper: ObjectMapper = jacksonObjectMapper(),
@@ -80,6 +81,12 @@ class NiaJudgePromptAssembler(
         Treat a newer correction, withdrawal, or addressee change as stronger evidence than older name, mention, or
         reply signals. If NIA has not spoken after an invitation was retracted, IGNORE is normally the repair; if she
         just interrupted, at most one brief acknowledgement and yield is appropriate.
+        A past request to stop is not a permanent mute. Scope it to the conversational episode and NIA behavior that
+        prompted it. Use rawScene.latestMessageRef and elapsedSincePreviousMs to distinguish stale context from the
+        current turn. In particular, a current direct meta-question about NIA's own behavior can reopen the interaction
+        even when an older message expressed frustration. Compare the complete consequences: silence may leave the
+        current question and NIA's mistake unresolved, while one brief acknowledgement, explanation, or apology may
+        repair it. A fresh stop or handoff in the current turn can still make silence appropriate.
         Treat sceneState.socialBeliefState as revisable evidence, not unquestionable truth. Use its common ground,
         competing intent hypotheses, NIA's recent actions, and observed human outcomes when predicting what each complete action would cause.
         Do not repeat a functional contribution already present in common ground unless new evidence makes it necessary.
@@ -127,7 +134,8 @@ class NiaJudgePromptAssembler(
                     maxChars = rawContextWindow.maxChars,
                     omittedOldestCount = rawContextWindow.omittedOldestCount,
                     quotedSceneData = rawContextWindow.quotedSceneData,
-                    messages = rawContextWindow.messages.map { it.toPromptMessage() },
+                    latestMessageRef = rawContextWindow.messages.lastOrNull()?.ref,
+                    messages = rawContextWindow.messages.toPromptMessages(),
                 ),
             fewShotSet = fewShotSet.toPromptFewShotSet(),
             socialMemory = memoryRefs.map { it.toPromptMemory() },
@@ -156,13 +164,23 @@ class NiaJudgePromptAssembler(
                 ),
         )
 
-    private fun JudgeContextMessage.toPromptMessage(): PromptRawMessage =
+    private fun List<JudgeContextMessage>.toPromptMessages(): List<PromptRawMessage> =
+        mapIndexed { index, message ->
+            val elapsedSincePreviousMs =
+                getOrNull(index - 1)?.let { previous ->
+                    Duration.between(previous.createdAt, message.createdAt).toMillis()
+                }
+            message.toPromptMessage(elapsedSincePreviousMs)
+        }
+
+    private fun JudgeContextMessage.toPromptMessage(elapsedSincePreviousMs: Long?): PromptRawMessage =
         when (val value = content) {
             is JudgeContextContent.Available ->
                 PromptRawMessage(
                     ref = ref,
                     authorRole = authorRole,
                     createdAt = createdAt.toString(),
+                    elapsedSincePreviousMs = elapsedSincePreviousMs,
                     replyToRef = replyToRef,
                     text = value.text,
                     unavailableReason = null,
@@ -172,6 +190,7 @@ class NiaJudgePromptAssembler(
                     ref = ref,
                     authorRole = authorRole,
                     createdAt = createdAt.toString(),
+                    elapsedSincePreviousMs = elapsedSincePreviousMs,
                     replyToRef = replyToRef,
                     text = null,
                     unavailableReason = value.reason,
@@ -239,7 +258,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v6"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v7"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }
@@ -262,6 +281,7 @@ private data class PromptRawScene(
     val maxChars: Int,
     val omittedOldestCount: Int,
     val quotedSceneData: String,
+    val latestMessageRef: String?,
     val messages: List<PromptRawMessage>,
 )
 
@@ -269,6 +289,7 @@ private data class PromptRawMessage(
     val ref: String,
     val authorRole: String,
     val createdAt: String,
+    val elapsedSincePreviousMs: Long?,
     val replyToRef: String?,
     val text: String?,
     val unavailableReason: String?,

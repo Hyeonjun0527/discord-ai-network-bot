@@ -464,7 +464,7 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val examples = judge.lastRequest!!.fewShotSet.examples
-        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(6)
+        assertThat(judge.lastRequest!!.fewShotSet.version).isEqualTo(7)
         assertThat(examples.map { it.exampleId })
             .contains(
                 "default_direct_reply_request",
@@ -476,6 +476,7 @@ class NexaParticipationEmitBridgeTest {
                 "default_humans_continue_after_yield",
                 "default_readdress_after_yield",
                 "default_self_repair_question",
+                "default_reentry_for_delayed_behavior_question",
             )
         val directRequestExample = examples.single { it.exampleId == "default_direct_reply_request" }
         assertThat(directRequestExample.reason).contains("raw scene")
@@ -505,6 +506,13 @@ class NexaParticipationEmitBridgeTest {
         val readdressExample = examples.single { it.exampleId == "default_readdress_after_yield" }
         assertThat(readdressExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
         assertThat(readdressExample.badAlternative.action).isEqualTo(NiaFewShotAction.IGNORE)
+        val delayedRepairExample =
+            examples.single { it.exampleId == "default_reentry_for_delayed_behavior_question" }
+        assertThat(delayedRepairExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
+        assertThat(delayedRepairExample.badAlternative.action).isEqualTo(NiaFewShotAction.IGNORE)
+        assertThat(delayedRepairExample.rawMessages.last().offsetMs).isEqualTo(13 * 60 * 60 * 1_000L)
+        assertThat(delayedRepairExample.rawMessages.map { it.authorRole }).contains("nia")
+        assertThat(delayedRepairExample.reason).contains("current direct meta-question")
     }
 
     @Test

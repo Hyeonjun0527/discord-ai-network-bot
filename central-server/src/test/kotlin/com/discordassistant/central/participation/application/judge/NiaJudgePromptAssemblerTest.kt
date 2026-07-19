@@ -30,7 +30,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v7")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v9")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -41,7 +41,8 @@ class NiaJudgePromptAssemblerTest {
                 "Repeated direct calls are not a reason to stay silent",
                 "mild friendly annoyance is natural",
                 "bubbleCount",
-                "deliver the actual content now",
+                "maxBubbleChars",
+                "deliver it now",
                 "niaTurnContinuationLikely",
                 "It is evidence, not an automatic SPEAK rule",
                 "Silence is a successful action",
@@ -50,6 +51,14 @@ class NiaJudgePromptAssemblerTest {
                 "invitation was retracted",
                 "A past request to stop is not a permanent mute",
                 "current direct meta-question about NIA's own behavior",
+                "Read repeated turns as one trajectory",
+                "Do not force every surface request into a complete textbook answer",
+                "interactionReading",
+                "informationDepth",
+                "continuityRefs",
+                "grave historical or human-harm",
+                "distinguish reacting to the abrupt transition",
+                "falsely claiming to be human",
                 "Do not encode this as keyword matching",
                 "Return exactly one JSON object",
                 "Every action except IGNORE requires at least one raw-scene evidence ref",

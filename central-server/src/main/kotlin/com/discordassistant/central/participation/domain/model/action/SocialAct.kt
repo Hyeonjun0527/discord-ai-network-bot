@@ -2,7 +2,7 @@ package com.discordassistant.central.participation.domain.model.action
 
 /**
  * social act(사회적 발화 행위) 분류(NEXA-P08-T002, 순수 도메인·버전 관리). NEXA 가 SPEAK 로 갈 때 "어떤 종류의
- * 말" 인지의 **안정 코드** 집합이다 — ACKNOWLEDGE/AGREE/DISAGREE/TEASE/ASK/CORRECT/SELF_DISCLOSE/CHANGE_TOPIC 등.
+ * 말" 인지의 **안정 코드** 집합이다 — ACKNOWLEDGE/AGREE/DISAGREE/TEASE/ASK/ANSWER/CORRECT/SELF_DISCLOSE/CHANGE_TOPIC 등.
  *
  * participation 은 이 코드를 정할 뿐 **문장을 만들지 않는다**(불변식 2) — 실제 문구는 speech 가 만든다.
  *
@@ -32,6 +32,9 @@ enum class SocialAct(
     /** 질문. */
     ASK("ask"),
 
+    /** 상대가 요청한 내용을 장면에 맞는 깊이로 답함. */
+    ANSWER("answer"),
+
     /** 사실 정정. */
     CORRECT("correct"),
 
@@ -54,7 +57,7 @@ enum class SocialAct(
 
     companion object {
         /** social act 코드 집합의 버전(코드 진화 추적 — 데이터셋/계약과 동기화). */
-        const val CATALOG_VERSION: Int = 1
+        const val CATALOG_VERSION: Int = 2
 
         private val BY_WIRE_NAME: Map<String, SocialAct> = entries.associateBy { it.wireName }
 

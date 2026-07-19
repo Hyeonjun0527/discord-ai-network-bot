@@ -28,6 +28,9 @@ enum class SpeechSocialAct(
     /** 질문. */
     ASK("ask"),
 
+    /** 상대가 요청한 내용을 장면에 맞는 깊이로 답함. */
+    ANSWER("answer"),
+
     /** 사실 정정. */
     CORRECT("correct"),
 
@@ -47,12 +50,13 @@ enum class SpeechSocialAct(
 
     /**
      * 이 발화가 **사실 조회(factual lookup)** 를 요구하는가(NEXA-P15-T012). knowledge RAG 는 이 값이 true 일 때만
-     * 조건부로 실행된다 — 질문([ASK])·사실 정정([CORRECT])만 외부 사실 근거가 필요하고, 맞장구·동의·장난·자기 개시·
-     * 주제 전환 같은 잡담/반응성 발화는 BM25/web search 를 돌리지 않는다(quota-boundary.md·비용 절감).
+     * 조건부로 실행된다 — 질문([ASK])·답변([ANSWER])·사실 정정([CORRECT])만 외부 사실 근거가 필요하고,
+     * 맞장구·동의·장난·자기 개시·주제 전환 같은 잡담/반응성 발화는 BM25/web search 를 돌리지
+     * 않는다(quota-boundary.md·비용 절감).
      * [UNKNOWN] 은 보수적으로 false(불필요한 검색 금지).
      */
     val requiresFactualLookup: Boolean
-        get() = this == ASK || this == CORRECT
+        get() = this == ASK || this == ANSWER || this == CORRECT
 
     companion object {
         private val BY_WIRE_NAME: Map<String, SpeechSocialAct> = entries.associateBy { it.wireName }

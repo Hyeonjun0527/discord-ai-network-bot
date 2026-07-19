@@ -33,8 +33,8 @@ class ConditionalKnowledgeConnectorTest {
     }
 
     @Test
-    fun `acceptance — ASK·CORRECT 는 knowledge 검색을 실행한다`() {
-        for (act in listOf(SpeechSocialAct.ASK, SpeechSocialAct.CORRECT)) {
+    fun `acceptance — ASK·ANSWER·CORRECT 는 knowledge 검색을 실행한다`() {
+        for (act in listOf(SpeechSocialAct.ASK, SpeechSocialAct.ANSWER, SpeechSocialAct.CORRECT)) {
             val port = CountingKnowledge(listOf("사실 스니펫"))
             val result = ConditionalKnowledgeConnector(port).retrieveIfFactual(act, guildId = 7L, query = "오늘 날씨")
             assertThat(port.calls).withFailMessage("%s must search", act).isEqualTo(1)

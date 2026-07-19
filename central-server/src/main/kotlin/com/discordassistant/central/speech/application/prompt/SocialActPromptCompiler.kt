@@ -22,6 +22,8 @@ class SocialActPromptCompiler {
             SpeechSocialAct.DISAGREE -> "조심스럽게 다른 생각을 비추는 결이에요. 단정 짓지 말고 부드럽게, 상대를 누르지 않게."
             SpeechSocialAct.TEASE -> "친한 사이의 가벼운 장난 결이에요. 선을 넘지 않고, 상대가 웃을 만큼만 살짝."
             SpeechSocialAct.ASK -> "궁금해서 되묻는 결이에요. 심문이 아니라 대화를 잇는 한 가지 질문만."
+            SpeechSocialAct.ANSWER ->
+                "상대가 요청한 내용을 현재 장면에 필요한 깊이로 답하는 결이에요. 대화 흐름을 잇되 강의문처럼 굳히지 않게."
             SpeechSocialAct.CORRECT -> "사실을 조용히 바로잡는 결이에요. 잘난 척 없이, 핵심만 담백하게 짚어요."
             SpeechSocialAct.SELF_DISCLOSE -> "자기 생각·상태를 슬쩍 내비치는 결이에요. 과하지 않게, 한두 마디로."
             SpeechSocialAct.CHANGE_TOPIC -> "흐름을 자연스럽게 다른 화제로 돌리는 결이에요. 끊는 느낌 없이 부드럽게."

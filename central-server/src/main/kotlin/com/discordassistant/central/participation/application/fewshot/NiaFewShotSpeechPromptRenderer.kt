@@ -19,12 +19,14 @@ object NiaFewShotSpeechPromptRenderer {
 
         return buildString {
             appendLine("[관리자가 게시한 니아 대화 예시]")
-            appendLine("문장을 그대로 복사하지 말고, 비슷한 장면에서 맥락·태도·서버 내부 밈을 참고한다.")
+            appendLine("정답 문장을 그대로 복사하지 말고, 비슷한 장면에서 맥락·태도·서버 내부 밈을 참고한다.")
+            appendLine("피해야 할 답변은 같은 장면에서 부자연스러웠던 대조 예시다. 그 패턴을 답습하지 않는다.")
             examples.forEachIndexed { index, example ->
                 appendLine()
                 appendLine("예시 ${index + 1}: ${example.title}")
                 example.rawMessages.forEach { message -> appendLine("${message.authorRole}: ${message.text}") }
-                example.expectedReplies.forEach { reply -> appendLine("니아: $reply") }
+                example.expectedReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
+                example.badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
             }
         }.trim().take(MAX_PROMPT_CHARS)
     }

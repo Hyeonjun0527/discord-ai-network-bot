@@ -62,10 +62,22 @@ class NiaFewShotModelsTest {
             .hasMessageContaining("SPEAK")
     }
 
+    @Test
+    fun `bad replies preserve contrastive output examples`() {
+        val result = example(badReplies = listOf("알았으니까 얘기해봐 ㅋㅋ"))
+
+        assertThat(result.badReplies).containsExactly("알았으니까 얘기해봐 ㅋㅋ")
+        assertThatThrownBy {
+            example(expectedAction = NiaFewShotAction.IGNORE, badReplies = listOf("불필요한 끼어들기"))
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("SPEAK")
+    }
+
     private fun example(
         expectedAction: NiaFewShotAction = NiaFewShotAction.SPEAK,
         evidenceRefs: Set<String> = setOf("m1"),
         expectedReplies: List<String> = emptyList(),
+        badReplies: List<String> = emptyList(),
         badAlternative: NiaFewShotBadAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "waiting ignores a direct ask"),
     ): NiaFewShotExample =
         NiaFewShotExample(
@@ -81,6 +93,7 @@ class NiaFewShotModelsTest {
                 ),
             expectedAction = expectedAction,
             expectedReplies = expectedReplies,
+            badReplies = badReplies,
             reason = "The user is explicitly asking Nia for a response, so the judge should speak.",
             evidenceRefs = evidenceRefs,
             badAlternative = badAlternative,

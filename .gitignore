@@ -45,5 +45,8 @@ provider-agent/build/
 # 데스크톱 앱 이식 자산(scripts/sync_desktop_app.py 생성물 — 시안은 prototypes/desktop 이 SSOT)
 provider-agent/src/provider_agent/webui_assets/
 
+# React 관리자 콘솔 빌드 산출물(admin-console이 SSOT, 배포 전에 sync-admin-console로 생성)
+central-server/src/main/resources/static/admin/console/
+
 # codegraph 코드 인덱스(로컬 산출물 — 각자 `npx @colbymchenry/codegraph init` 으로 생성)
 .codegraph/

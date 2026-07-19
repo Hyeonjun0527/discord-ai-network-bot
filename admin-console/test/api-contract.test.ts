@@ -79,16 +79,10 @@ test("ApiRequestError exposes code, action guide, and server request id", () => 
 });
 
 test("resolveRequestTarget keeps fetch URL and reported request URL aligned", () => {
-  assert.deepEqual(resolveRequestTarget("/api/dashboard/guilds", "", "https://console.example"), {
+  assert.deepEqual(resolveRequestTarget("/api/dashboard/guilds", "https://console.example"), {
     fetchUrl: "/api/dashboard/guilds",
     requestUrl: "https://console.example/api/dashboard/guilds",
     serverBaseUrl: "https://console.example",
-  });
-
-  assert.deepEqual(resolveRequestTarget("/api/dashboard/guilds", "https://api.example/", "https://console.example"), {
-    fetchUrl: "https://api.example/api/dashboard/guilds",
-    requestUrl: "https://api.example/api/dashboard/guilds",
-    serverBaseUrl: "https://api.example",
   });
 });
 

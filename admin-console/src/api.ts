@@ -4,7 +4,7 @@ import {
   ApiResponseParseError,
   REQUEST_ID_HEADER,
   type ApiMethod,
-  type ApiOptions,
+  type ChannelSummary,
   type DashboardPanel,
   type DashboardPartialError,
   type DashboardState,
@@ -15,7 +15,7 @@ import {
 } from "./api-contract";
 
 export { ApiRequestError, ApiResponseParseError };
-export type { ApiOptions, DashboardPartialError, DashboardPanel, DashboardState, GuildSummary };
+export type { ChannelSummary, DashboardPartialError, DashboardPanel, DashboardState, GuildSummary };
 
 type RequestJsonOptions = {
   method?: ApiMethod;
@@ -47,6 +47,7 @@ export type NiaFewShotExample = {
   rawMessages: NiaFewShotRawMessage[];
   expectedAction: string;
   expectedReplies: string[];
+  badReplies: string[];
   reason: string;
   evidenceRefs: string[];
   badAlternative: NiaFewShotBadAlternative;
@@ -95,14 +96,13 @@ function createRequestId() {
 
 function buildApiContext(
   path: string,
-  options: ApiOptions,
   requestId: string,
   method: ApiMethod,
   httpStatus?: number,
   serverRequestId?: string,
   errorCode?: string,
 ): BugsinkApiContext {
-  const target = resolveRequestTarget(path, options.baseUrl);
+  const target = resolveRequestTarget(path);
   return {
     requestId,
     serverRequestId,
@@ -123,14 +123,11 @@ async function parseSuccessJson<T>(path: string, response: Response, requestId: 
   }
 }
 
-async function requestJson<T>(path: string, options: ApiOptions, requestOptions: RequestJsonOptions = {}): Promise<T> {
+async function requestJson<T>(path: string, requestOptions: RequestJsonOptions = {}): Promise<T> {
   const method = requestOptions.method ?? "GET";
   const requestId = createRequestId();
-  const target = resolveRequestTarget(path, options.baseUrl);
+  const target = resolveRequestTarget(path);
   const headers: Record<string, string> = { Accept: "application/json", [REQUEST_ID_HEADER]: requestId };
-  if (options.adminToken.trim()) {
-    headers["X-Dashboard-Admin-Token"] = options.adminToken.trim();
-  }
   if (requestOptions.body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
@@ -139,11 +136,11 @@ async function requestJson<T>(path: string, options: ApiOptions, requestOptions:
     response = await fetch(target.fetchUrl, {
       method,
       headers,
-      credentials: "include",
+      credentials: "same-origin",
       body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body),
     });
   } catch (error) {
-    captureConsoleError(error, buildApiContext(path, options, requestId, method));
+    captureConsoleError(error, buildApiContext(path, requestId, method));
     throw error;
   }
   if (!response.ok) {
@@ -151,7 +148,7 @@ async function requestJson<T>(path: string, options: ApiOptions, requestOptions:
     const error = new ApiRequestError(path, response, parseApiErrorPayload(body));
     captureConsoleError(
       error,
-      buildApiContext(path, options, requestId, method, response.status, error.requestId, error.code),
+      buildApiContext(path, requestId, method, response.status, error.requestId, error.code),
     );
     throw error;
   }
@@ -162,7 +159,6 @@ async function requestJson<T>(path: string, options: ApiOptions, requestOptions:
       error,
       buildApiContext(
         path,
-        options,
         requestId,
         method,
         response.status,
@@ -178,137 +174,136 @@ async function loadOptionalPanel<T>(
   panel: DashboardPanel,
   path: string,
   fallback: T,
-  options: ApiOptions,
   partialErrors: DashboardPartialError[],
 ): Promise<T> {
   try {
-    return await requestJson<T>(path, options);
+    return await requestJson<T>(path);
   } catch (error) {
     partialErrors.push(toPartialDashboardError(panel, path, error));
     return fallback;
   }
 }
 
-export async function loadDashboard(guildId: string, options: ApiOptions): Promise<DashboardState> {
+export async function loadDashboard(guildId: string): Promise<DashboardState> {
   const partialErrors: DashboardPartialError[] = [];
-  const guildsPromise = requestJson<GuildSummary[]>("/api/dashboard/guilds", options);
-  const overviewPromise = guildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${guildId}/overview`, options) : null;
-  const aiNetworkPromise = guildId
+  const guilds = await requestJson<GuildSummary[]>("/api/dashboard/guilds");
+  const selectedGuildId = guilds.some((guild) => String(guild.id) === guildId) ? guildId : String(guilds[0]?.id ?? "");
+  const overviewPromise = selectedGuildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${selectedGuildId}/overview`) : null;
+  const aiNetworkPromise = selectedGuildId
     ? loadOptionalPanel<Record<string, unknown> | null>(
         "aiNetwork",
-        `/api/ai-network/${guildId}/dashboard`,
+        `/api/ai-network/${selectedGuildId}/dashboard`,
         null,
-        options,
         partialErrors,
       )
     : null;
-  const requestsPromise = guildId
-    ? loadOptionalPanel<Record<string, unknown>[]>(
-        "requests",
-        `/api/dashboard/${guildId}/requests`,
-        [],
-        options,
-        partialErrors,
-      )
-    : [];
-  const usageTrendPromise = guildId
+  const usageTrendPromise = selectedGuildId
     ? loadOptionalPanel<Record<string, unknown>[]>(
         "usageTrend",
-        `/api/dashboard/${guildId}/usage-trend?days=14`,
+        `/api/dashboard/${selectedGuildId}/usage-trend?days=14`,
         [],
-        options,
         partialErrors,
       )
     : [];
 
-  const [guilds, overview, aiNetwork, requests, usageTrend] = await Promise.all([
-    guildsPromise,
+  const [overview, aiNetwork, usageTrend] = await Promise.all([
     overviewPromise,
     aiNetworkPromise,
-    requestsPromise,
     usageTrendPromise,
   ]);
 
   return {
+    selectedGuildId,
     guilds,
     overview,
     aiNetwork,
-    requests,
+    requests: [],
     usageTrend,
     partialErrors,
   };
 }
 
-export async function loadFewShotSets(options: ApiOptions): Promise<NiaFewShotSet[]> {
-  return requestJson<NiaFewShotSet[]>("/api/admin/nia/few-shot/sets", options);
+export async function loadGuildChannels(guildId: string): Promise<ChannelSummary[]> {
+  if (!guildId) return [];
+  return requestJson<ChannelSummary[]>(`/api/dashboard/${guildId}/channels`);
+}
+
+export async function loadGuildChannelRequests(
+  guildId: string,
+  channelId: string,
+): Promise<Record<string, unknown>[]> {
+  if (!guildId || !channelId) return [];
+  return requestJson<Record<string, unknown>[]>(
+    `/api/dashboard/${guildId}/requests?channelId=${encodeURIComponent(channelId)}&audience=admin`,
+  );
+}
+
+export async function loadFewShotSets(): Promise<NiaFewShotSet[]> {
+  return requestJson<NiaFewShotSet[]>("/api/admin/nia/few-shot/sets");
 }
 
 export async function createFewShotDraft(
-  options: ApiOptions,
   scope: NiaFewShotScope,
   examples: NiaFewShotExample[],
 ): Promise<NiaFewShotVersion> {
-  return requestJson<NiaFewShotVersion>("/api/admin/nia/few-shot/sets", options, {
+  return requestJson<NiaFewShotVersion>("/api/admin/nia/few-shot/sets", {
     method: "POST",
     body: { scope, examples },
   });
 }
 
 export async function replaceFewShotDraft(
-  options: ApiOptions,
   setId: number,
   version: number,
   examples: NiaFewShotExample[],
 ): Promise<NiaFewShotVersion> {
-  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}`, options, {
+  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}`, {
     method: "PUT",
     body: { examples },
   });
 }
 
 export async function createFewShotDraftForSet(
-  options: ApiOptions,
   setId: number,
   examples: NiaFewShotExample[],
 ): Promise<NiaFewShotVersion> {
-  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts`, options, {
+  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/drafts`, {
     method: "POST",
     body: { examples },
   });
 }
 
 export async function previewFewShotDraft(
-  options: ApiOptions,
   setId: number,
   version: number,
   redactRawText = false,
 ): Promise<NiaFewShotPreview> {
-  return requestJson<NiaFewShotPreview>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}/preview`, options, {
+  return requestJson<NiaFewShotPreview>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}/preview`, {
     method: "POST",
     body: { redactRawText },
   });
 }
 
-export async function evalFewShotDraft(options: ApiOptions, setId: number, version: number): Promise<NiaFewShotEval> {
-  return requestJson<NiaFewShotEval>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}/eval`, options, {
+export async function evalFewShotDraft(setId: number, version: number): Promise<NiaFewShotEval> {
+  return requestJson<NiaFewShotEval>(`/api/admin/nia/few-shot/sets/${setId}/drafts/${version}/eval`, {
     method: "POST",
   });
 }
 
-export async function publishFewShotVersion(options: ApiOptions, setId: number, version: number): Promise<NiaFewShotSet> {
-  return requestJson<NiaFewShotSet>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/publish`, options, {
+export async function publishFewShotVersion(setId: number, version: number): Promise<NiaFewShotSet> {
+  return requestJson<NiaFewShotSet>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/publish`, {
     method: "POST",
   });
 }
 
-export async function rollbackFewShotVersion(options: ApiOptions, setId: number, version: number): Promise<NiaFewShotSet> {
-  return requestJson<NiaFewShotSet>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/rollback`, options, {
+export async function rollbackFewShotVersion(setId: number, version: number): Promise<NiaFewShotSet> {
+  return requestJson<NiaFewShotSet>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/rollback`, {
     method: "POST",
   });
 }
 
-export async function archiveFewShotVersion(options: ApiOptions, setId: number, version: number): Promise<NiaFewShotVersion> {
-  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/archive`, options, {
+export async function archiveFewShotVersion(setId: number, version: number): Promise<NiaFewShotVersion> {
+  return requestJson<NiaFewShotVersion>(`/api/admin/nia/few-shot/sets/${setId}/versions/${version}/archive`, {
     method: "POST",
   });
 }

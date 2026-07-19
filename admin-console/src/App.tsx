@@ -26,12 +26,15 @@ import {
   evalFewShotDraft,
   loadDashboard,
   loadFewShotSets,
+  loadGuildChannelRequests,
+  loadGuildChannels,
   previewFewShotDraft,
   publishFewShotVersion,
   replaceFewShotDraft,
   rollbackFewShotVersion,
   type DashboardPanel,
   type DashboardState,
+  type ChannelSummary,
   type NiaFewShotEval,
   type NiaFewShotExample,
   type NiaFewShotPreview,
@@ -39,12 +42,29 @@ import {
   type NiaFewShotSet,
 } from "./api";
 
-const API_BASE_STORAGE_KEY = "nexa-console-api-base";
-const ADMIN_TOKEN_STORAGE_KEY = "nexa-console-admin-token";
 const GUILD_ID_STORAGE_KEY = "nexa-console-guild-id";
 
-const defaultApiBase = import.meta.env.VITE_CENTRAL_API_BASE_URL || "";
 const ACTIONS = ["IGNORE", "WAIT", "REACT", "SPEAK", "CANCEL"] as const;
+const ACTION_LABELS: Record<(typeof ACTIONS)[number], string> = {
+  IGNORE: "말하지 않기",
+  WAIT: "잠깐 기다리기",
+  REACT: "리액션만 남기기",
+  SPEAK: "말하기",
+  CANCEL: "예정 행동 취소",
+};
+type AdminView = "OVERVIEW" | "REQUESTS" | "FEWSHOT" | "API";
+
+const VIEW_META: Record<AdminView, { hash: string; title: string }> = {
+  OVERVIEW: { hash: "overview", title: "운영 현황" },
+  REQUESTS: { hash: "requests", title: "요청 기록" },
+  FEWSHOT: { hash: "fewshot", title: "Few-shot 관리" },
+  API: { hash: "api", title: "API 상태" },
+};
+
+function viewFromHash(hash: string): AdminView {
+  const section = hash.replace(/^#/, "");
+  return (Object.entries(VIEW_META).find(([, meta]) => meta.hash === section)?.[0] as AdminView | undefined) ?? "OVERVIEW";
+}
 
 function readStorage(key: string, fallback: string) {
   return window.localStorage.getItem(key) ?? fallback;
@@ -76,11 +96,13 @@ function SelectField({
   value,
   onChange,
   options,
+  optionLabels,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
+  optionLabels?: Record<string, string>;
 }) {
   return (
     <label className="field">
@@ -88,7 +110,7 @@ function SelectField({
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabels?.[option] ?? option}
           </option>
         ))}
       </select>
@@ -139,14 +161,19 @@ function StatusPill({ value }: { value: string }) {
 
 function defaultFewShotExample(): NiaFewShotExample {
   return {
-    title: "direct reply request",
-    rawMessages: [{ ref: "m1", authorRole: "member", offsetMs: 0, text: "야 대답해줘" }],
+    title: "재미없는 이야기를 계속하지 않고 수습하기",
+    rawMessages: [
+      { ref: "m1", authorRole: "member", offsetMs: 0, text: "니아야 재밌는 얘기 좀 해봐" },
+      { ref: "m2", authorRole: "nia", offsetMs: 1000, text: "친구가 무선 이어폰을 자랑하다가 한쪽만 끊겼대" },
+      { ref: "m3", authorRole: "member", offsetMs: 2000, text: "아니 왜 계속함... 개노잼임" },
+    ],
     expectedAction: "SPEAK",
-    expectedReplies: ["응 듣고 있어, 무슨 일인데"],
-    reason: "니아를 직접 부르며 답을 요구했으므로 바로 반응한다.",
-    evidenceRefs: ["m1"],
-    badAlternative: { action: "WAIT", whyBad: "기다리면 직접 요청을 무시하는 것처럼 보인다." },
-    tags: ["direct-ask"],
+    expectedReplies: ["아 인정 이번 건 접을게"],
+    badReplies: ["야 욕은 잘하네 ㅋㅋ 그럼 하나 더 간다"],
+    reason: "마지막 말은 새 이야기를 요구한 것이 아니라 직전 결과에 대한 부정적 평가다. 짧게 인정하고 멈추는 수습이 현재 장면을 가장 잘 이어간다.",
+    evidenceRefs: ["m2", "m3"],
+    badAlternative: { action: "WAIT", whyBad: "아무 반응 없이 기다리면 방금 받은 직접적인 피드백을 못 알아들은 것처럼 보일 수 있다." },
+    tags: ["latest-feedback", "repair"],
     priority: 100,
     privacyClass: "SYNTHETIC",
     evalStatus: "NOT_RUN",
@@ -158,6 +185,7 @@ function cloneFewShotExamples(examples: NiaFewShotExample[]): NiaFewShotExample[
     ...example,
     rawMessages: example.rawMessages.map((message) => ({ ...message })),
     expectedReplies: [...(example.expectedReplies ?? [])],
+    badReplies: [...(example.badReplies ?? [])],
     evidenceRefs: [...example.evidenceRefs],
     badAlternative: { ...example.badAlternative },
     tags: [...example.tags],
@@ -183,10 +211,11 @@ function panelLabel(panel: DashboardPanel): string {
 }
 
 function App() {
-  const [apiBase, setApiBase] = useState(() => readStorage(API_BASE_STORAGE_KEY, defaultApiBase));
-  const [adminToken, setAdminToken] = useState(() => readStorage(ADMIN_TOKEN_STORAGE_KEY, ""));
   const [guildId, setGuildId] = useState(() => readStorage(GUILD_ID_STORAGE_KEY, ""));
   const [state, setState] = useState<DashboardState | null>(null);
+  const [requestChannels, setRequestChannels] = useState<ChannelSummary[]>([]);
+  const [requestChannelId, setRequestChannelId] = useState("");
+  const [requestRows, setRequestRows] = useState<Record<string, unknown>[]>([]);
   const [fewShotSets, setFewShotSets] = useState<NiaFewShotSet[]>([]);
   const [selectedFewShotSetId, setSelectedFewShotSetId] = useState("");
   const [fewShotExamples, setFewShotExamples] = useState<NiaFewShotExample[]>(() => [defaultFewShotExample()]);
@@ -199,7 +228,9 @@ function App() {
   }));
   const [fewShotPreview, setFewShotPreview] = useState<NiaFewShotPreview | null>(null);
   const [fewShotEval, setFewShotEval] = useState<NiaFewShotEval | null>(null);
+  const [activeView, setActiveView] = useState<AdminView>(() => viewFromHash(window.location.hash));
   const [loading, setLoading] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
   const [fewShotLoading, setFewShotLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -213,7 +244,6 @@ function App() {
     ] as const;
   }, [state]);
 
-  const apiOptions = useMemo(() => ({ baseUrl: apiBase, adminToken }), [apiBase, adminToken]);
   const selectedFewShotSet = useMemo(
     () => fewShotSets.find((set) => String(set.id) === selectedFewShotSetId) ?? fewShotSets[0] ?? null,
     [fewShotSets, selectedFewShotSetId],
@@ -227,12 +257,24 @@ function App() {
     [selectedFewShotSet],
   );
   const selectedFewShotExample = fewShotExamples[selectedFewShotExampleIndex] ?? fewShotExamples[0] ?? null;
+  const fewShotOutputCount = useMemo(
+    () => fewShotExamples.reduce((count, example) => count + (example.expectedReplies?.length ?? 0), 0),
+    [fewShotExamples],
+  );
 
   useEffect(() => {
-    window.localStorage.setItem(API_BASE_STORAGE_KEY, apiBase);
-    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, adminToken);
     window.localStorage.setItem(GUILD_ID_STORAGE_KEY, guildId);
-  }, [apiBase, adminToken, guildId]);
+  }, [guildId]);
+
+  useEffect(() => {
+    const syncViewWithHash = () => {
+      setActiveView(viewFromHash(window.location.hash));
+      window.scrollTo({ top: 0 });
+    };
+    syncViewWithHash();
+    window.addEventListener("hashchange", syncViewWithHash);
+    return () => window.removeEventListener("hashchange", syncViewWithHash);
+  }, []);
 
   useEffect(() => {
     const source = editableDraft?.examples ?? activeFewShot?.examples;
@@ -241,11 +283,30 @@ function App() {
     if (selectedFewShotSet) setFewShotScope({ ...selectedFewShotSet.scope });
   }, [selectedFewShotSet?.id, editableDraft?.version, activeFewShot?.version]);
 
-  async function refresh() {
+  useEffect(() => {
+    if (activeView === "FEWSHOT") {
+      void refreshFewShot();
+    } else {
+      void refresh();
+    }
+  }, [activeView]);
+
+  async function refresh(nextGuildId = guildId.trim()) {
     setLoading(true);
     setError("");
+    if (activeView === "REQUESTS") {
+      setRequestChannels([]);
+      setRequestChannelId("");
+      setRequestRows([]);
+    }
     try {
-      setState(await loadDashboard(guildId.trim(), { baseUrl: apiBase, adminToken }));
+      const dashboard = await loadDashboard(nextGuildId);
+      setState(dashboard);
+      setGuildId(dashboard.selectedGuildId);
+      if (activeView === "REQUESTS") {
+        const channels = await loadGuildChannels(dashboard.selectedGuildId);
+        setRequestChannels(channels);
+      }
     } catch (err) {
       if (!wasBugsinkReported(err)) {
         captureConsoleError(err);
@@ -256,11 +317,27 @@ function App() {
     }
   }
 
+  async function selectRequestChannel(nextChannelId: string) {
+    setRequestChannelId(nextChannelId);
+    setRequestRows([]);
+    if (!guildId || !nextChannelId) return;
+    setRequestLoading(true);
+    setError("");
+    try {
+      setRequestRows(await loadGuildChannelRequests(guildId, nextChannelId));
+    } catch (err) {
+      if (!wasBugsinkReported(err)) captureConsoleError(err);
+      setError(err instanceof Error ? err.message : "요청 기록을 불러오지 못했습니다.");
+    } finally {
+      setRequestLoading(false);
+    }
+  }
+
   async function refreshFewShot() {
     setFewShotLoading(true);
     setError("");
     try {
-      const sets = await loadFewShotSets(apiOptions);
+      const sets = await loadFewShotSets();
       setFewShotSets(sets);
       setSelectedFewShotSetId((current) => current || String(sets[0]?.id ?? ""));
     } catch (err) {
@@ -282,6 +359,9 @@ function App() {
           example.badAlternative.action === example.expectedAction
             ? ACTIONS.find((action) => action !== example.expectedAction) ?? "WAIT"
             : example.badAlternative.action;
+        const evidenceIndexes = example.rawMessages.flatMap((message, index) =>
+          example.evidenceRefs.includes(message.ref) ? [index] : [],
+        );
         const rawMessages = example.rawMessages.map((message, index) => ({
           ...message,
           ref: `m${index + 1}`,
@@ -292,16 +372,20 @@ function App() {
           id: null,
           rawMessages,
           expectedReplies: example.expectedAction === "SPEAK" ? example.expectedReplies.filter((reply) => reply.trim()) : [],
-          evidenceRefs: [rawMessages.at(-1)?.ref ?? "m1"],
+          badReplies: example.expectedAction === "SPEAK" ? (example.badReplies ?? []).filter((reply) => reply.trim()) : [],
+          evidenceRefs:
+            evidenceIndexes.length > 0
+              ? evidenceIndexes.map((index) => rawMessages[index]?.ref).filter((ref): ref is string => Boolean(ref))
+              : [rawMessages.at(-1)?.ref ?? "m1"],
           badAlternative: { ...example.badAlternative, action: nextBadAction },
         };
       });
       if (editableDraft?.setId) {
-        await replaceFewShotDraft(apiOptions, editableDraft.setId, editableDraft.version, examples);
+        await replaceFewShotDraft(editableDraft.setId, editableDraft.version, examples);
       } else if (selectedFewShotSet?.id) {
-        await createFewShotDraftForSet(apiOptions, selectedFewShotSet.id, examples);
+        await createFewShotDraftForSet(selectedFewShotSet.id, examples);
       } else {
-        await createFewShotDraft(apiOptions, fewShotScope, examples);
+        await createFewShotDraft(fewShotScope, examples);
       }
       setFewShotEval(null);
       setFewShotPreview(null);
@@ -347,7 +431,7 @@ function App() {
     setFewShotLoading(true);
     setError("");
     try {
-      setFewShotPreview(await previewFewShotDraft(apiOptions, editableDraft.setId, editableDraft.version, true));
+      setFewShotPreview(await previewFewShotDraft(editableDraft.setId, editableDraft.version, true));
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
@@ -360,7 +444,7 @@ function App() {
     setFewShotLoading(true);
     setError("");
     try {
-      setFewShotEval(await evalFewShotDraft(apiOptions, editableDraft.setId, editableDraft.version));
+      setFewShotEval(await evalFewShotDraft(editableDraft.setId, editableDraft.version));
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
@@ -373,7 +457,7 @@ function App() {
     setFewShotLoading(true);
     setError("");
     try {
-      await publishFewShotVersion(apiOptions, editableDraft.setId, editableDraft.version);
+      await publishFewShotVersion(editableDraft.setId, editableDraft.version);
       setFewShotEval(null);
       await refreshFewShot();
     } catch (err) {
@@ -388,7 +472,7 @@ function App() {
     setFewShotLoading(true);
     setError("");
     try {
-      await rollbackFewShotVersion(apiOptions, selectedFewShotSet.id, version);
+      await rollbackFewShotVersion(selectedFewShotSet.id, version);
       await refreshFewShot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
@@ -402,7 +486,7 @@ function App() {
     setFewShotLoading(true);
     setError("");
     try {
-      await archiveFewShotVersion(apiOptions, selectedFewShotSet.id, version);
+      await archiveFewShotVersion(selectedFewShotSet.id, version);
       await refreshFewShot();
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
@@ -422,17 +506,17 @@ function App() {
           </div>
         </div>
         <nav aria-label="콘솔 영역">
-          <a href="#overview">
-            <Activity size={18} /> Overview
+          <a href="#overview" className={activeView === "OVERVIEW" ? "active" : ""} aria-current={activeView === "OVERVIEW" ? "page" : undefined}>
+            <Activity size={18} /> 운영 현황
           </a>
-          <a href="#requests">
-            <Bot size={18} /> Requests
+          <a href="#requests" className={activeView === "REQUESTS" ? "active" : ""} aria-current={activeView === "REQUESTS" ? "page" : undefined}>
+            <Bot size={18} /> 요청 기록
           </a>
-          <a href="#fewshot">
-            <BookOpen size={18} /> NIA Few-Shot
+          <a href="#fewshot" className={activeView === "FEWSHOT" ? "active" : ""} aria-current={activeView === "FEWSHOT" ? "page" : undefined}>
+            <BookOpen size={18} /> Few-shot
           </a>
-          <a href="#raw">
-            <ServerCog size={18} /> API Snapshot
+          <a href="#api" className={activeView === "API" ? "active" : ""} aria-current={activeView === "API" ? "page" : undefined}>
+            <ServerCog size={18} /> API 상태
           </a>
         </nav>
       </aside>
@@ -440,20 +524,18 @@ function App() {
       <section className="workspace">
         <header className="workspace-header">
           <div>
-            <p className="eyebrow">Admin SPA</p>
-            <h1>서버 운영 상태를 한 화면에서 봅니다.</h1>
+            <p className="workspace-path">관리자 / {VIEW_META[activeView].title}</p>
+            <h1>{VIEW_META[activeView].title}</h1>
           </div>
-          <button className="primary-action" onClick={refresh} disabled={loading}>
-            <RefreshCw size={18} className={loading ? "spin" : ""} />
-            새로고침
+          <button
+            className="primary-action"
+            onClick={activeView === "FEWSHOT" ? refreshFewShot : () => refresh()}
+            disabled={activeView === "FEWSHOT" ? fewShotLoading : loading}
+          >
+            <RefreshCw size={18} className={activeView === "FEWSHOT" ? (fewShotLoading ? "spin" : "") : (loading ? "spin" : "")} />
+            {activeView === "FEWSHOT" ? "데이터 불러오기" : "새로고침"}
           </button>
         </header>
-
-        <section className="control-strip" aria-label="연결 설정">
-          <Field label="API Base URL" value={apiBase} onChange={setApiBase} placeholder="비우면 같은 origin" />
-          <Field label="Guild ID" value={guildId} onChange={setGuildId} placeholder="Discord 서버 ID" />
-          <Field label="Admin Token" value={adminToken} onChange={setAdminToken} type="password" />
-        </section>
 
         {error && (
           <div className="error-banner" role="alert">
@@ -462,7 +544,7 @@ function App() {
           </div>
         )}
 
-        {state?.partialErrors.length ? (
+        {activeView !== "FEWSHOT" && state?.partialErrors.length ? (
           <section className="partial-errors" role="status" aria-label="부분 API 오류">
             <div className="partial-errors-title">
               <ShieldAlert size={18} />
@@ -482,375 +564,543 @@ function App() {
           </section>
         ) : null}
 
-        <section id="overview" className="metric-grid">
-          {overviewMetrics.map(([label, value]) => (
-            <Metric key={label} label={label} value={value} />
-          ))}
-        </section>
+        {activeView === "OVERVIEW" && (
+          <>
+            <section id="overview" className="metric-grid">
+              {overviewMetrics.map(([label, value]) => (
+                <Metric key={label} label={label} value={value} />
+              ))}
+            </section>
+            <section className="panel guild-panel">
+              <div className="panel-title">
+                <h2>연결된 서버</h2>
+                <span>{state?.guilds.length ?? 0}개</span>
+              </div>
+              <div className="guild-list">
+                {(state?.guilds ?? []).slice(0, 12).map((guild) => {
+                  const id = String(guild.id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={id === guildId ? "selected" : ""}
+                      onClick={() => {
+                        setGuildId(id);
+                        void refresh(id);
+                      }}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>{guild.name}</span>
+                      <code>{id}</code>
+                    </button>
+                  );
+                })}
+                {state && state.guilds.length === 0 && <p>관리할 수 있는 Discord 서버가 없습니다.</p>}
+              </div>
+            </section>
+          </>
+        )}
 
-        <section className="panel guild-panel">
-          <div className="panel-title">
-            <h2>연결된 서버</h2>
-            <span>{state?.guilds.length ?? 0}개</span>
-          </div>
-          <div className="guild-list">
-            {(state?.guilds ?? []).slice(0, 12).map((guild) => (
-              <button key={String(guild.id)} type="button" onClick={() => setGuildId(String(guild.id))}>
-                <CheckCircle2 size={16} />
-                <span>{guild.name}</span>
-                <code>{String(guild.id)}</code>
-              </button>
-            ))}
-            {state && state.guilds.length === 0 && <p>관리자 토큰 또는 OAuth 세션으로 서버 목록을 불러오세요.</p>}
-          </div>
-        </section>
-
-        <section id="requests" className="panel">
-          <div className="panel-title">
-            <h2>최근 요청</h2>
-            <span>{state?.requests.length ?? 0}건</span>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>상태</th>
-                  <th>제공자</th>
-                  <th>시각</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(state?.requests ?? []).slice(0, 12).map((request, index) => (
-                  <tr key={index}>
-                    <td>{String(request.status ?? request.state ?? "-")}</td>
-                    <td>{String(request.provider ?? request.providerId ?? "-")}</td>
-                    <td>{String(request.createdAt ?? request.timestamp ?? "-")}</td>
+        {activeView === "REQUESTS" && (
+          <section id="requests" className="panel page-panel">
+            <div className="panel-title">
+              <div>
+                <h2>요청 기록</h2>
+                <p>서버를 고른 뒤 그 서버의 채널별 기록을 확인합니다.</p>
+              </div>
+              <span>{requestRows.length}건</span>
+            </div>
+            <div className="request-scope-picker">
+              <label>
+                <span>Discord 서버</span>
+                <select
+                  value={guildId}
+                  onChange={(event) => {
+                    const nextGuildId = event.target.value;
+                    setGuildId(nextGuildId);
+                    void refresh(nextGuildId);
+                  }}
+                  disabled={loading || (state?.guilds.length ?? 0) === 0}
+                >
+                  {(state?.guilds ?? []).map((guild) => (
+                    <option key={String(guild.id)} value={String(guild.id)}>{guild.name}</option>
+                  ))}
+                </select>
+              </label>
+              <span className="request-scope-step" aria-hidden="true">→</span>
+              <label>
+                <span>채널</span>
+                <select
+                  value={requestChannelId}
+                  onChange={(event) => void selectRequestChannel(event.target.value)}
+                  disabled={loading || requestChannels.length === 0}
+                >
+                  <option value="">채널을 선택하세요</option>
+                  {requestChannels.map((channel) => (
+                    <option key={String(channel.id)} value={String(channel.id)}>#{channel.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {requestChannelId ? (
+              <div className="request-scope-current">
+                <strong>{state?.guilds.find((guild) => String(guild.id) === guildId)?.name ?? guildId}</strong>
+                <span>/</span>
+                <strong>#{requestChannels.find((channel) => String(channel.id) === requestChannelId)?.name ?? requestChannelId}</strong>
+              </div>
+            ) : null}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>상태</th>
+                    <th>제공자</th>
+                    <th>시각</th>
                   </tr>
+                </thead>
+                <tbody>
+                  {requestRows.slice(0, 50).map((request, index) => (
+                    <tr key={index}>
+                      <td>{String(request.status ?? request.state ?? "-")}</td>
+                      <td>{String(request.providerLabel ?? request.provider ?? request.providerId ?? "-")}</td>
+                      <td>{String(request.createdAt ?? request.timestamp ?? "-")}</td>
+                    </tr>
+                  ))}
+                  {!requestChannelId && (
+                    <tr><td colSpan={3} className="empty-table-cell">확인할 채널을 먼저 선택하세요.</td></tr>
+                  )}
+                  {requestChannelId && !requestLoading && requestRows.length === 0 && (
+                    <tr><td colSpan={3} className="empty-table-cell">선택한 채널의 요청 기록이 없습니다.</td></tr>
+                  )}
+                  {requestLoading && (
+                    <tr><td colSpan={3} className="empty-table-cell">요청 기록을 불러오는 중입니다.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activeView === "FEWSHOT" && (
+          <>
+            <section id="fewshot" className="fewshot-studio" aria-labelledby="fewshot-page-title">
+              <div className="fewshot-page-title">
+                <div>
+                  <h2 id="fewshot-page-title">데이터셋</h2>
+                  <span>{selectedFewShotSet ? scopeKey(selectedFewShotSet.scope) : scopeKey(fewShotScope)}</span>
+                </div>
+                <dl>
+                  <div><dt>판단 예시</dt><dd>{fewShotExamples.length}</dd></div>
+                  <div><dt>발화 예시</dt><dd>{fewShotOutputCount}</dd></div>
+                  <div><dt>활성 버전</dt><dd>{activeFewShot ? `v${activeFewShot.version}` : "없음"}</dd></div>
+                  <div><dt>편집 버전</dt><dd>{editableDraft ? `v${editableDraft.version}` : "새 초안"}</dd></div>
+                </dl>
+              </div>
+
+          <div className="set-board">
+            <div className="set-board-head">
+              <div>
+                <span>적용 범위</span>
+                <strong>{selectedFewShotSet ? scopeKey(selectedFewShotSet.scope) : "새 세트"}</strong>
+              </div>
+              <span>{editableDraft ? `초안 v${editableDraft.version}` : activeFewShot ? `사용 중 v${activeFewShot.version}` : "게시 전"}</span>
+            </div>
+            <div className="fewshot-grid">
+              <div className="fewshot-list">
+                {fewShotSets.map((set) => (
+                  <button
+                    key={String(set.id)}
+                    type="button"
+                    className={String(set.id) === String(selectedFewShotSet?.id) ? "selected" : ""}
+                    onClick={() => setSelectedFewShotSetId(String(set.id))}
+                  >
+                    <strong>{scopeKey(set.scope)}</strong>
+                    <span>사용 중 v{set.activeVersion ?? "-"}</span>
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="fewshot" className="panel">
-          <div className="panel-title">
-            <h2>NIA Few-Shot</h2>
-            <button className="secondary-action" type="button" onClick={refreshFewShot} disabled={fewShotLoading}>
-              <RefreshCw size={16} className={fewShotLoading ? "spin" : ""} />
-              불러오기
-            </button>
-          </div>
-
-          <div className="fewshot-grid">
-            <div className="fewshot-list">
-              {(fewShotSets.length ? fewShotSets : []).map((set) => (
-                <button
-                  key={String(set.id)}
-                  type="button"
-                  className={String(set.id) === String(selectedFewShotSet?.id) ? "selected" : ""}
-                  onClick={() => setSelectedFewShotSetId(String(set.id))}
-                >
-                  <strong>{scopeKey(set.scope)}</strong>
-                  <span>active v{set.activeVersion ?? "-"}</span>
-                </button>
-              ))}
-              {fewShotSets.length === 0 && <p>등록된 세트 없음</p>}
-            </div>
-
-            <div className="fewshot-versions">
-              <div className="version-summary">
-                <strong>{selectedFewShotSet ? scopeKey(selectedFewShotSet.scope) : "global"}</strong>
-                <span>{activeFewShot ? `active v${activeFewShot.version}` : "active 없음"}</span>
+                {fewShotSets.length === 0 && <p className="empty-copy">저장된 세트가 없습니다.</p>}
               </div>
-              {(selectedFewShotSet?.versions ?? []).map((version) => (
-                <div className="version-row" key={version.version}>
-                  <div>
-                    <strong>v{version.version}</strong>
-                    <StatusPill value={version.status} />
-                    <span>{version.examples.length} examples</span>
-                  </div>
-                  <div className="button-row compact">
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      onClick={() => rollbackFewShot(version.version)}
-                      disabled={fewShotLoading || version.status === "DRAFT" || version.version === selectedFewShotSet?.activeVersion}
-                    >
-                      <Undo2 size={15} />
-                      rollback
-                    </button>
-                    <button
-                      className="danger-action"
-                      type="button"
-                      onClick={() => archiveFewShot(version.version)}
-                      disabled={fewShotLoading || version.version === selectedFewShotSet?.activeVersion}
-                    >
-                      <Archive size={15} />
-                      archive
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        <section className="panel" aria-labelledby="fewshot-editor-title">
-          <div className="panel-title">
-            <div>
-              <h2 id="fewshot-editor-title">니아 대화 예시 편집</h2>
-              <p className="panel-description">게시 전까지는 실제 니아에게 적용되지 않습니다. SPEAK 예시의 기대 답변은 판단과 실제 말투 양쪽에 반영됩니다.</p>
-            </div>
-            <span>{editableDraft ? `초안 v${editableDraft.version}` : selectedFewShotSet ? "새 초안" : "새 세트"}</span>
-          </div>
-
-          {!selectedFewShotSet && (
-            <div className="form-grid">
-              <SelectField
-                label="적용 범위"
-                value={fewShotScope.type}
-                onChange={(type) => setFewShotScope((scope) => ({ ...scope, type: type as NiaFewShotScope["type"] }))}
-                options={["GLOBAL", "GUILD", "CHANNEL", "PERSONA"]}
-              />
-              <Field
-                label="서버 ID"
-                value={String(fewShotScope.guildId ?? "")}
-                onChange={(value) => setFewShotScope((scope) => ({ ...scope, guildId: value ? Number(value) : null }))}
-              />
-              <Field
-                label="채널 ID"
-                value={String(fewShotScope.channelId ?? "")}
-                onChange={(value) => setFewShotScope((scope) => ({ ...scope, channelId: value ? Number(value) : null }))}
-              />
-            </div>
-          )}
-
-          <div className="fewshot-editor-grid">
-            <aside className="fewshot-example-list" aria-label="대화 예시 목록">
-              <div className="example-list-toolbar">
-                <strong>예시 {fewShotExamples.length}개</strong>
-                <button className="secondary-action icon-action" type="button" onClick={addFewShotExample} title="예시 추가">
-                  <Plus size={16} />
-                </button>
-              </div>
-              {fewShotExamples.map((example, index) => (
-                <button
-                  key={`${index}-${example.title}`}
-                  type="button"
-                  className={index === selectedFewShotExampleIndex ? "selected" : ""}
-                  onClick={() => setSelectedFewShotExampleIndex(index)}
-                >
-                  <span className="example-number">{String(index + 1).padStart(2, "0")}</span>
-                  <span>
-                    <strong>{example.title || "제목 없는 예시"}</strong>
-                    <small>{example.expectedAction} · 대화 {example.rawMessages.length}줄</small>
-                  </span>
-                </button>
-              ))}
-            </aside>
-
-            {selectedFewShotExample && (
-              <div className="fewshot-example-editor">
-                <div className="example-editor-toolbar">
-                  <div>
-                    <strong>예시 {selectedFewShotExampleIndex + 1}</strong>
-                    <span>우선순위 {selectedFewShotExample.priority}</span>
-                  </div>
-                  <div className="button-row compact">
-                    <button className="secondary-action" type="button" onClick={duplicateFewShotExample}>
-                      <Copy size={15} /> 복제
-                    </button>
-                    <button className="danger-action" type="button" onClick={removeFewShotExample} disabled={fewShotExamples.length <= 1}>
-                      <Trash2 size={15} /> 삭제
-                    </button>
-                  </div>
-                </div>
-
-                <div className="form-grid wide">
-                  <Field
-                    label="예시 이름"
-                    value={selectedFewShotExample.title}
-                    onChange={(title) => updateSelectedFewShotExample((example) => ({ ...example, title }))}
-                    placeholder="예: 서연이에게 말하는데 니아가 끼어들지 않기"
-                  />
-                  <Field
-                    label="태그"
-                    value={selectedFewShotExample.tags.join(",")}
-                    onChange={(value) =>
-                      updateSelectedFewShotExample((example) => ({
-                        ...example,
-                        tags: value.split(",").map((tag) => tag.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean),
-                      }))
-                    }
-                    placeholder="server-meme, direct-ask"
-                  />
-                </div>
-
-                <div className="form-grid">
-                  <SelectField
-                    label="니아가 할 행동"
-                    value={selectedFewShotExample.expectedAction}
-                    onChange={(expectedAction) =>
-                      updateSelectedFewShotExample((example) => ({
-                        ...example,
-                        expectedAction,
-                        expectedReplies: expectedAction === "SPEAK" ? example.expectedReplies : [],
-                        badAlternative:
-                          example.badAlternative.action === expectedAction
-                            ? { ...example.badAlternative, action: ACTIONS.find((action) => action !== expectedAction) ?? "WAIT" }
-                            : example.badAlternative,
-                      }))
-                    }
-                    options={ACTIONS}
-                  />
-                  <SelectField
-                    label="피해야 할 행동"
-                    value={selectedFewShotExample.badAlternative.action}
-                    onChange={(action) =>
-                      updateSelectedFewShotExample((example) => ({ ...example, badAlternative: { ...example.badAlternative, action } }))
-                    }
-                    options={ACTIONS}
-                  />
-                  <Field
-                    label="우선순위"
-                    value={String(selectedFewShotExample.priority)}
-                    onChange={(value) => updateSelectedFewShotExample((example) => ({ ...example, priority: Number(value) || 0 }))}
-                  />
-                </div>
-
-                <div className="conversation-editor">
-                  <div className="conversation-editor-title">
+              <div className="fewshot-versions">
+                {(selectedFewShotSet?.versions ?? []).map((version) => (
+                  <div className="version-row" key={version.version}>
                     <div>
-                      <strong>대화 장면</strong>
-                      <span>실제로 이어진 순서대로 입력하세요</span>
+                      <strong>v{version.version}</strong>
+                      <StatusPill value={version.status} />
+                      <span>예시 {version.examples.length}개</span>
                     </div>
-                    <button
-                      className="secondary-action"
-                      type="button"
-                      onClick={() =>
-                        updateSelectedFewShotExample((example) => ({
-                          ...example,
-                          rawMessages: [
-                            ...example.rawMessages,
-                            { ref: `m${example.rawMessages.length + 1}`, authorRole: "member", offsetMs: example.rawMessages.length * 1000, text: "" },
-                          ],
-                        }))
-                      }
-                    >
-                      <MessageSquarePlus size={16} /> 대화 한 줄 추가
-                    </button>
-                  </div>
-                  {selectedFewShotExample.rawMessages.map((message, messageIndex) => (
-                    <div className="fewshot-message-row" key={`${message.ref}-${messageIndex}`}>
-                      <select
-                        aria-label={`대화 ${messageIndex + 1} 화자`}
-                        value={message.authorRole}
-                        onChange={(event) =>
-                          updateSelectedFewShotExample((example) => ({
-                            ...example,
-                            rawMessages: example.rawMessages.map((item, index) =>
-                              index === messageIndex ? { ...item, authorRole: event.target.value } : item,
-                            ),
-                          }))
-                        }
-                      >
-                        <option value="member">멤버</option>
-                        <option value="nia">니아</option>
-                        <option value="other">다른 사람</option>
-                      </select>
-                      <input
-                        aria-label={`대화 ${messageIndex + 1} 내용`}
-                        value={message.text}
-                        onChange={(event) =>
-                          updateSelectedFewShotExample((example) => ({
-                            ...example,
-                            rawMessages: example.rawMessages.map((item, index) =>
-                              index === messageIndex ? { ...item, text: event.target.value } : item,
-                            ),
-                          }))
-                        }
-                        placeholder="이 장면에서 실제로 나온 말"
-                      />
+                    <div className="button-row compact">
                       <button
-                        className="icon-action danger-action"
+                        className="secondary-action"
                         type="button"
-                        aria-label={`대화 ${messageIndex + 1} 삭제`}
-                        disabled={selectedFewShotExample.rawMessages.length <= 1}
-                        onClick={() =>
-                          updateSelectedFewShotExample((example) => ({
-                            ...example,
-                            rawMessages: example.rawMessages.filter((_, index) => index !== messageIndex),
-                          }))
-                        }
+                        onClick={() => rollbackFewShot(version.version)}
+                        disabled={fewShotLoading || version.status === "DRAFT" || version.version === selectedFewShotSet?.activeVersion}
                       >
-                        <Trash2 size={15} />
+                        <Undo2 size={15} /> 되돌리기
+                      </button>
+                      <button
+                        className="danger-action"
+                        type="button"
+                        onClick={() => archiveFewShot(version.version)}
+                        disabled={fewShotLoading || version.version === selectedFewShotSet?.activeVersion}
+                      >
+                        <Archive size={15} /> 보관
                       </button>
                     </div>
-                  ))}
-                </div>
-
-                {selectedFewShotExample.expectedAction === "SPEAK" && (
-                  <TextArea
-                    label="니아의 기대 답변 · 한 채팅당 한 줄"
-                    value={selectedFewShotExample.expectedReplies.join("\n")}
-                    rows={3}
-                    onChange={(value) =>
-                      updateSelectedFewShotExample((example) => ({ ...example, expectedReplies: value.split("\n").slice(0, 4) }))
-                    }
-                  />
-                )}
-                <TextArea
-                  label="왜 이 행동이 자연스러운가"
-                  value={selectedFewShotExample.reason}
-                  onChange={(reason) => updateSelectedFewShotExample((example) => ({ ...example, reason }))}
-                />
-                <TextArea
-                  label="피해야 할 행동이 왜 나쁜가"
-                  value={selectedFewShotExample.badAlternative.whyBad}
-                  onChange={(whyBad) =>
-                    updateSelectedFewShotExample((example) => ({ ...example, badAlternative: { ...example.badAlternative, whyBad } }))
-                  }
-                />
+                  </div>
+                ))}
+                {!selectedFewShotSet && <p className="empty-copy">초안을 저장하면 버전 이력이 생성됩니다.</p>}
               </div>
-            )}
-          </div>
-
-          <div className="publish-bar">
-            <div>
-              <strong>{fewShotEval?.readyForPublish ? "검증 통과 · 게시 가능" : "저장 후 검증해야 게시할 수 있습니다"}</strong>
-              <span>게시하면 이 범위의 이전 활성 버전은 자동 보관됩니다</span>
             </div>
-            <div className="button-row compact">
-              <button className="primary-action" type="button" onClick={saveFewShotDraft} disabled={fewShotLoading}>
-                <Send size={17} /> 초안 저장
-              </button>
-              <button className="secondary-action" type="button" onClick={runFewShotPreview} disabled={fewShotLoading || !editableDraft}>
-                <Eye size={17} /> 미리보기
-              </button>
-              <button className="secondary-action" type="button" onClick={runFewShotEval} disabled={fewShotLoading || !editableDraft}>
-                <PlayCircle size={17} /> 검증
-              </button>
-              <button
-                className="primary-action"
-                type="button"
-                onClick={publishFewShot}
-                disabled={fewShotLoading || !editableDraft || fewShotEval?.readyForPublish !== true}
-              >
-                <CheckCircle2 size={17} /> 게시
-              </button>
-            </div>
-          </div>
-        </section>
+              </div>
+            </section>
 
-        <section className="split-grid">
-          <JsonPanel title="검증 결과" value={fewShotEval} />
-          <JsonPanel title="프롬프트 미리보기" value={fewShotPreview} />
-        </section>
+            <section className="fewshot-editor-shell" aria-labelledby="fewshot-editor-title">
+              <div className="editor-heading">
+                <div>
+                  <h2 id="fewshot-editor-title">예시 편집</h2>
+                  <p>저장되는 예시 한 건을 그대로 편집합니다.</p>
+                </div>
+                <span>{editableDraft ? `초안 v${editableDraft.version}` : selectedFewShotSet ? "새 초안" : "새 세트"}</span>
+              </div>
 
-        <section className="split-grid" id="raw">
-          <JsonPanel title="AI Network Snapshot" value={state?.aiNetwork} />
-          <JsonPanel title="Usage Trend" value={state?.usageTrend} />
-        </section>
+              {!selectedFewShotSet && (
+                <div className="scope-editor">
+                  <SelectField
+                    label="적용 범위"
+                    value={fewShotScope.type}
+                    onChange={(type) => setFewShotScope((scope) => ({ ...scope, type: type as NiaFewShotScope["type"] }))}
+                    options={["GLOBAL", "GUILD", "CHANNEL", "PERSONA"]}
+                    optionLabels={{ GLOBAL: "전체", GUILD: "서버", CHANNEL: "채널", PERSONA: "페르소나" }}
+                  />
+                  <Field
+                    label="서버 ID"
+                    value={String(fewShotScope.guildId ?? "")}
+                    onChange={(value) => setFewShotScope((scope) => ({ ...scope, guildId: value ? Number(value) : null }))}
+                  />
+                  <Field
+                    label="채널 ID"
+                    value={String(fewShotScope.channelId ?? "")}
+                    onChange={(value) => setFewShotScope((scope) => ({ ...scope, channelId: value ? Number(value) : null }))}
+                  />
+                </div>
+              )}
+
+              <div className="fewshot-editor-grid">
+                <aside className="fewshot-example-list" aria-label="예시 목록">
+                  <div className="example-list-toolbar">
+                    <div>
+                      <span>예시</span>
+                      <strong>{fewShotExamples.length}개</strong>
+                    </div>
+                    <button className="secondary-action" type="button" onClick={addFewShotExample}>
+                      <Plus size={16} /> 추가
+                    </button>
+                  </div>
+                  {fewShotExamples.map((example, index) => (
+                    <button
+                      key={`${index}-${example.title}`}
+                      type="button"
+                      className={index === selectedFewShotExampleIndex ? "selected" : ""}
+                      onClick={() => setSelectedFewShotExampleIndex(index)}
+                    >
+                      <span className="example-number">{String(index + 1).padStart(2, "0")}</span>
+                      <span>
+                        <strong>{example.title || "제목 없는 예시"}</strong>
+                        <small>{ACTION_LABELS[example.expectedAction as keyof typeof ACTION_LABELS] ?? example.expectedAction} · 대화 {example.rawMessages.length}개</small>
+                      </span>
+                    </button>
+                  ))}
+                </aside>
+
+                {selectedFewShotExample && (
+                  <div className="fewshot-example-editor">
+                    <div className="example-editor-toolbar">
+                      <div>
+                        <strong>예시 {String(selectedFewShotExampleIndex + 1).padStart(2, "0")}</strong>
+                        <span>{ACTION_LABELS[selectedFewShotExample.expectedAction as keyof typeof ACTION_LABELS] ?? selectedFewShotExample.expectedAction}</span>
+                      </div>
+                      <div className="button-row compact">
+                        <button className="secondary-action" type="button" onClick={duplicateFewShotExample}>
+                          <Copy size={15} /> 복제
+                        </button>
+                        <button className="danger-action" type="button" onClick={removeFewShotExample} disabled={fewShotExamples.length <= 1}>
+                          <Trash2 size={15} /> 삭제
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="scene-metadata">
+                      <Field
+                        label="예시 이름"
+                        value={selectedFewShotExample.title}
+                        onChange={(title) => updateSelectedFewShotExample((example) => ({ ...example, title }))}
+                        placeholder="예: 최신 불만을 알아채고 이야기 멈추기"
+                      />
+                      <Field
+                        label="태그"
+                        value={selectedFewShotExample.tags.join(",")}
+                        onChange={(value) =>
+                          updateSelectedFewShotExample((example) => ({
+                            ...example,
+                            tags: value.split(",").map((tag) => tag.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean),
+                          }))
+                        }
+                        placeholder="latest-feedback, repair"
+                      />
+                      <Field
+                        label="우선순위"
+                        value={String(selectedFewShotExample.priority)}
+                        onChange={(value) => updateSelectedFewShotExample((example) => ({ ...example, priority: Number(value) || 0 }))}
+                      />
+                      <SelectField
+                        label="데이터 출처"
+                        value={selectedFewShotExample.privacyClass ?? "SYNTHETIC"}
+                        onChange={(privacyClass) => updateSelectedFewShotExample((example) => ({ ...example, privacyClass }))}
+                        options={["SYNTHETIC", "ANONYMIZED", "PRODUCTION_DERIVED"]}
+                        optionLabels={{ SYNTHETIC: "작성한 예시", ANONYMIZED: "익명 처리한 대화", PRODUCTION_DERIVED: "운영 대화 기반" }}
+                      />
+                    </div>
+
+                    <section className="example-section" aria-labelledby="scene-input-title">
+                      <div className="example-section-heading">
+                        <span>1</span>
+                        <div><h3 id="scene-input-title">대화 장면</h3><p>실제 대화 순서와 화자를 입력합니다.</p></div>
+                        <button
+                          className="secondary-action"
+                          type="button"
+                          onClick={() =>
+                            updateSelectedFewShotExample((example) => ({
+                              ...example,
+                              rawMessages: [
+                                ...example.rawMessages,
+                                { ref: `m${example.rawMessages.length + 1}`, authorRole: "member", offsetMs: example.rawMessages.length * 1000, text: "" },
+                              ],
+                            }))
+                          }
+                        >
+                          <MessageSquarePlus size={16} /> 대화 추가
+                        </button>
+                      </div>
+                      <div className="conversation-editor">
+                        {selectedFewShotExample.rawMessages.map((message, messageIndex) => (
+                          <div className="fewshot-message-row" key={`${message.ref}-${messageIndex}`}>
+                            <span className="message-order">{String(messageIndex + 1).padStart(2, "0")}</span>
+                            <select
+                              aria-label={`대화 ${messageIndex + 1} 화자`}
+                              value={message.authorRole}
+                              onChange={(event) =>
+                                updateSelectedFewShotExample((example) => ({
+                                  ...example,
+                                  rawMessages: example.rawMessages.map((item, index) =>
+                                    index === messageIndex ? { ...item, authorRole: event.target.value } : item,
+                                  ),
+                                }))
+                              }
+                            >
+                              <option value="member">멤버</option>
+                              <option value="nia">니아</option>
+                              <option value="other">다른 사람</option>
+                            </select>
+                            <input
+                              aria-label={`대화 ${messageIndex + 1} 내용`}
+                              value={message.text}
+                              onChange={(event) =>
+                                updateSelectedFewShotExample((example) => ({
+                                  ...example,
+                                  rawMessages: example.rawMessages.map((item, index) =>
+                                    index === messageIndex ? { ...item, text: event.target.value } : item,
+                                  ),
+                                }))
+                              }
+                              placeholder="대화 내용"
+                            />
+                            <button
+                              className="icon-action danger-action"
+                              type="button"
+                              aria-label={`대화 ${messageIndex + 1} 삭제`}
+                              disabled={selectedFewShotExample.rawMessages.length <= 1}
+                              onClick={() =>
+                                updateSelectedFewShotExample((example) => ({
+                                  ...example,
+                                  rawMessages: example.rawMessages.filter((_, index) => index !== messageIndex),
+                                  evidenceRefs: example.evidenceRefs.filter((ref) => ref !== message.ref),
+                                }))
+                              }
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="example-section" aria-labelledby="judgment-title">
+                      <div className="example-section-heading">
+                        <span>2</span>
+                        <div><h3 id="judgment-title">판단 예시</h3><p>이 장면에서 고를 행동과 그 근거입니다.</p></div>
+                      </div>
+                      <div className="judgment-actions">
+                        <SelectField
+                          label="선택할 행동"
+                          value={selectedFewShotExample.expectedAction}
+                          onChange={(expectedAction) =>
+                            updateSelectedFewShotExample((example) => ({
+                              ...example,
+                              expectedAction,
+                              expectedReplies: expectedAction === "SPEAK" ? example.expectedReplies : [],
+                              badReplies: expectedAction === "SPEAK" ? example.badReplies : [],
+                              badAlternative:
+                                example.badAlternative.action === expectedAction
+                                  ? { ...example.badAlternative, action: ACTIONS.find((action) => action !== expectedAction) ?? "WAIT" }
+                                  : example.badAlternative,
+                            }))
+                          }
+                          options={ACTIONS}
+                          optionLabels={ACTION_LABELS}
+                        />
+                        <SelectField
+                          label="비교할 잘못된 행동"
+                          value={selectedFewShotExample.badAlternative.action}
+                          onChange={(action) =>
+                            updateSelectedFewShotExample((example) => ({ ...example, badAlternative: { ...example.badAlternative, action } }))
+                          }
+                          options={ACTIONS}
+                          optionLabels={ACTION_LABELS}
+                        />
+                      </div>
+                      <TextArea
+                        label="판단 이유"
+                        value={selectedFewShotExample.reason}
+                        rows={5}
+                        onChange={(reason) => updateSelectedFewShotExample((example) => ({ ...example, reason }))}
+                      />
+                      <div className="evidence-picker">
+                        <div><strong>근거 메시지</strong><span>판단에 직접 사용한 대화를 선택합니다.</span></div>
+                        <div>
+                          {selectedFewShotExample.rawMessages.map((message, index) => (
+                            <label key={message.ref} className={selectedFewShotExample.evidenceRefs.includes(message.ref) ? "selected" : ""}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFewShotExample.evidenceRefs.includes(message.ref)}
+                                onChange={(event) =>
+                                  updateSelectedFewShotExample((example) => ({
+                                    ...example,
+                                    evidenceRefs: event.target.checked
+                                      ? [...new Set([...example.evidenceRefs, message.ref])]
+                                      : example.evidenceRefs.filter((ref) => ref !== message.ref),
+                                  }))
+                                }
+                              />
+                              <span>{String(index + 1).padStart(2, "0")}</span>
+                              <p>{message.text || "내용 없음"}</p>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <TextArea
+                        label="비교 행동이 잘못된 이유"
+                        value={selectedFewShotExample.badAlternative.whyBad}
+                        rows={4}
+                        onChange={(whyBad) =>
+                          updateSelectedFewShotExample((example) => ({ ...example, badAlternative: { ...example.badAlternative, whyBad } }))
+                        }
+                      />
+                    </section>
+
+                    <section className="example-section" aria-labelledby="speech-title">
+                      <div className="example-section-heading">
+                        <span>3</span>
+                        <div><h3 id="speech-title">발화 예시</h3><p>SPEAK 행동일 때 실제 발화 생성에 사용됩니다.</p></div>
+                      </div>
+                      {selectedFewShotExample.expectedAction === "SPEAK" ? (
+                        <>
+                          <div className="output-editor-grid">
+                            <div className="output-column good-output">
+                              <TextArea
+                                label="좋은 발화 · 메시지 하나당 한 줄"
+                                value={selectedFewShotExample.expectedReplies.join("\n")}
+                                rows={6}
+                                onChange={(value) =>
+                                  updateSelectedFewShotExample((example) => ({ ...example, expectedReplies: value.split("\n").slice(0, 4) }))
+                                }
+                              />
+                            </div>
+                            <div className="output-column bad-output">
+                              <TextArea
+                                label="피해야 할 발화 · 메시지 하나당 한 줄"
+                                value={(selectedFewShotExample.badReplies ?? []).join("\n")}
+                                rows={6}
+                                onChange={(value) =>
+                                  updateSelectedFewShotExample((example) => ({ ...example, badReplies: value.split("\n").slice(0, 4) }))
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="discord-preview" aria-label="Discord 발화 미리보기">
+                            <div className="preview-label">Discord 미리보기</div>
+                            <div className="preview-message">
+                              <div className="preview-avatar">N</div>
+                              <div>
+                                <div className="preview-author"><strong>니아 · Nia</strong><span>앱</span><time>방금</time></div>
+                                {(selectedFewShotExample.expectedReplies.length ? selectedFewShotExample.expectedReplies : ["좋은 발화를 입력하세요"]).map((reply, index) => (
+                                  <p key={`${reply}-${index}`}>{reply || "빈 메시지"}</p>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="silent-output">
+                          <strong>발화 예시 없음</strong>
+                          <p>{ACTION_LABELS[selectedFewShotExample.expectedAction as keyof typeof ACTION_LABELS] ?? selectedFewShotExample.expectedAction}은 판단 모델에만 사용되며 발화 모델에는 전달되지 않습니다.</p>
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                )}
+              </div>
+
+              <div className="publish-bar">
+                <div>
+                  <strong>{fewShotEval?.readyForPublish ? "게시 조건 통과" : "초안 저장 → 게시 조건 검사 → 게시"}</strong>
+                  <span>게시된 버전만 실제 판단·발화 프롬프트에 반영됩니다.</span>
+                </div>
+                <div className="button-row compact">
+                  <button className="primary-action" type="button" onClick={saveFewShotDraft} disabled={fewShotLoading}>
+                    <Send size={17} /> 초안 저장
+                  </button>
+                  <button className="secondary-action" type="button" onClick={runFewShotPreview} disabled={fewShotLoading || !editableDraft}>
+                    <Eye size={17} /> 저장 데이터 확인
+                  </button>
+                  <button className="secondary-action" type="button" onClick={runFewShotEval} disabled={fewShotLoading || !editableDraft}>
+                    <PlayCircle size={17} /> 게시 조건 검사
+                  </button>
+                  <button
+                    className="primary-action"
+                    type="button"
+                    onClick={publishFewShot}
+                    disabled={fewShotLoading || !editableDraft || fewShotEval?.readyForPublish !== true}
+                  >
+                    <CheckCircle2 size={17} /> 게시
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="split-grid">
+              <JsonPanel title="게시 조건 검사 결과" value={fewShotEval} />
+              <JsonPanel title="저장 데이터" value={fewShotPreview} />
+            </section>
+          </>
+        )}
+
+        {activeView === "API" && (
+          <section className="split-grid page-panel" id="api">
+            <JsonPanel title="AI Network Snapshot" value={state?.aiNetwork} />
+            <JsonPanel title="Usage Trend" value={state?.usageTrend} />
+          </section>
+        )}
       </section>
     </main>
   );

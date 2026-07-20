@@ -13,6 +13,16 @@ import kotlin.math.abs
 // - 컨트롤러는 핸들러 반환 타입(Map/List)을 유지한 채 toMap()/toMaps() 로 위임한다(테스트 map-index 접근 보존).
 // - 엔티티/리포 의존 0(application 결과·집계 입력만 받는다).
 
+data class DashboardGuildSummaryResponse(
+    val id: String,
+    val name: String,
+)
+
+data class DashboardChannelSummaryResponse(
+    val id: String,
+    val name: String,
+)
+
 /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */
 data class DashboardOverviewResponse(
     val guildId: Long,

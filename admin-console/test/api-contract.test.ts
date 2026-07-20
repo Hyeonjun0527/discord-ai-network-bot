@@ -4,10 +4,20 @@ import test from "node:test";
 import {
   ApiRequestError,
   ApiResponseParseError,
+  type ChannelSummary,
+  type GuildSummary,
   parseApiErrorPayload,
   resolveRequestTarget,
   toPartialDashboardError,
 } from "../src/api-contract.js";
+
+test("Discord snowflake summaries keep exact string identifiers", () => {
+  const guild: GuildSummary = { id: "1380395592336805928", name: "test guild" };
+  const channel: ChannelSummary = { id: "1509347932665675867", name: "general" };
+
+  assert.equal(guild.id, "1380395592336805928");
+  assert.equal(channel.id, "1509347932665675867");
+});
 
 test("parseApiErrorPayload preserves typed server error fields", () => {
   const payload = parseApiErrorPayload(

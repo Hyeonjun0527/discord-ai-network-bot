@@ -559,7 +559,7 @@ function App() {
                 <span>Discord 서버</span>
                 <select value={guildId} onChange={(event) => void refreshExecutionScope(event.target.value)}>
                   {(dashboard?.guilds ?? []).map((guild) => (
-                    <option key={String(guild.id)} value={String(guild.id)}>{guild.name}</option>
+                    <option key={guild.id} value={guild.id}>{guild.name}</option>
                   ))}
                 </select>
               </label>
@@ -568,7 +568,7 @@ function App() {
                 <select value={channelId} onChange={(event) => void selectChannel(event.target.value)}>
                   <option value="">채널 선택</option>
                   {channels.map((channel) => (
-                    <option key={String(channel.id)} value={String(channel.id)}>#{channel.name}</option>
+                    <option key={channel.id} value={channel.id}>#{channel.name}</option>
                   ))}
                 </select>
               </label>

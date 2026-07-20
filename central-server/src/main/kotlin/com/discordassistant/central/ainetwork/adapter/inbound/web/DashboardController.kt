@@ -1,13 +1,13 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardChannelSummaryResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardGuildSummaryResponse
 import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardOverviewResponse
 import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardProviderHistoryResponse
 import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardRequestLogResponse
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.ainetwork.application.DashboardAudience
 import com.discordassistant.central.guild.application.PolicyService
-import com.discordassistant.central.platform.discord.BotChannelInfo
-import com.discordassistant.central.platform.discord.BotGuildInfo
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.requestlog.application.AnalyticsService
@@ -37,9 +37,9 @@ class DashboardController(
      * 를 관리자 토큰/OAuth 로 보호). 봇 비활성/미연결이면 빈 목록.
      */
     @GetMapping("/guilds")
-    fun guilds(): List<BotGuildInfo> {
+    fun guilds(): List<DashboardGuildSummaryResponse> {
         featureGate.requireDashboardEnabled()
-        return botGuilds.botGuilds()
+        return botGuilds.botGuilds().map { DashboardGuildSummaryResponse(it.id.toString(), it.name) }
     }
 
     /**
@@ -50,9 +50,9 @@ class DashboardController(
     @GetMapping("/{guildId}/channels")
     fun channels(
         @PathVariable guildId: Long,
-    ): List<BotChannelInfo> {
+    ): List<DashboardChannelSummaryResponse> {
         featureGate.requireDashboardEnabled()
-        return botGuilds.botChannels(guildId)
+        return botGuilds.botChannels(guildId).map { DashboardChannelSummaryResponse(it.id.toString(), it.name) }
     }
 
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */

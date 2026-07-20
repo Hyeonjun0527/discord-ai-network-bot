@@ -1,10 +1,10 @@
 export type GuildSummary = {
-  id: string | number;
+  id: string;
   name: string;
 };
 
 export type ChannelSummary = {
-  id: string | number;
+  id: string;
   name: string;
 };
 

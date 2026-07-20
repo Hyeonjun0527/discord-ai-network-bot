@@ -253,7 +253,7 @@ async function loadOptionalPanel<T>(
 export async function loadDashboard(guildId: string): Promise<DashboardState> {
   const partialErrors: DashboardPartialError[] = [];
   const guilds = await requestJson<GuildSummary[]>("/api/dashboard/guilds");
-  const selectedGuildId = guilds.some((guild) => String(guild.id) === guildId) ? guildId : String(guilds[0]?.id ?? "");
+  const selectedGuildId = guilds.some((guild) => guild.id === guildId) ? guildId : (guilds[0]?.id ?? "");
   const overviewPromise = selectedGuildId ? requestJson<Record<string, unknown>>(`/api/dashboard/${selectedGuildId}/overview`) : null;
   const aiNetworkPromise = selectedGuildId
     ? loadOptionalPanel<Record<string, unknown> | null>(

@@ -13,6 +13,8 @@ package com.discordassistant.central.speech.domain.model
  * 순수성: Spring/JPA/JDA 미참조. participation/conversation 타입도 import 하지 않는다 — speech 자기 어휘만 쓴다.
  */
 data class SpeechScenePacket(
+    /** 관리자 입력 추적용 실행 correlation. 외부 프롬프트 내용에는 포함하지 않는다. */
+    val inputTraceId: String? = null,
     /** 발화가 일어나는 focus thread 식별자(가명화된 thread key — snowflake 원문 아님, T005 minimizer 가 보장). */
     val focusThreadKey: String,
     /** 발화 대상(특정 사용자/스레드/없음). */
@@ -39,6 +41,7 @@ data class SpeechScenePacket(
     val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
 ) {
     init {
+        inputTraceId?.let { require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "inputTraceId 형식이 잘못됐다" } }
         require(focusThreadKey.isNotBlank()) { "focusThreadKey 는 비어 있을 수 없다" }
         require(recentTurns.size <= MAX_TURNS) {
             "recentTurns 는 최대 $MAX_TURNS 개까지만 담는다(무제한 채널 로그 금지): ${recentTurns.size}"
@@ -79,6 +82,7 @@ data class SpeechScenePacket(
          * memory refs 도 [MAX_MEMORY_REFS] 로 상한한다.
          */
         fun of(
+            inputTraceId: String? = null,
             focusThreadKey: String,
             target: SpeechTarget,
             recentTurns: List<ConversationTurn>,
@@ -93,6 +97,7 @@ data class SpeechScenePacket(
             groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
         ): SpeechScenePacket =
             SpeechScenePacket(
+                inputTraceId = inputTraceId,
                 focusThreadKey = focusThreadKey,
                 target = target,
                 recentTurns = recentTurns.takeLast(MAX_TURNS),

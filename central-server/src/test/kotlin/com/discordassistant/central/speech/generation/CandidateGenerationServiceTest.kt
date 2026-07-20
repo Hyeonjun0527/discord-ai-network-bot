@@ -10,6 +10,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechFactualGro
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
+import com.discordassistant.central.speech.application.port.out.SpeechInputTracePort
 import com.discordassistant.central.speech.application.privacy.ExternalPayloadAllowlistSerializer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
@@ -36,6 +37,7 @@ class CandidateGenerationServiceTest {
     private fun service(
         port: SpeechGenerationPort,
         grounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
+        inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
     ) = CandidateGenerationService(
         generationPort = port,
         socialActCompiler = SocialActPromptCompiler(),
@@ -44,7 +46,24 @@ class CandidateGenerationServiceTest {
         payloadSerializer = ExternalPayloadAllowlistSerializer(),
         contentIsolator = ConversationContentIsolator(),
         factualGrounding = grounding,
+        inputTrace = inputTrace,
     )
+
+    @Test
+    fun `exact assembled speech input is captured under the execution trace id`() {
+        val port = CapturingPort()
+        var captured: Triple<String, String, String>? = null
+        val trace = SpeechInputTracePort { traceId, systemPrompt, userPrompt -> captured = Triple(traceId, systemPrompt, userPrompt) }
+
+        service(port, inputTrace = trace).generate(
+            SpeechGenerationFixtures.packet(inputTraceId = "trace-41"),
+            GenerationBudget.DEFAULT,
+        )
+
+        assertThat(captured?.first).isEqualTo("trace-41")
+        assertThat(captured?.second).isEqualTo(port.lastRequest?.systemPrompt)
+        assertThat(captured?.third).isEqualTo(port.lastRequest?.userPrompt)
+    }
 
     @Test
     fun `ambiguous budget requests up to three candidates`() {

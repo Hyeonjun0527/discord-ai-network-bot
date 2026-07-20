@@ -103,7 +103,22 @@ export type NiaExecutionMessage = {
 
 export type NiaRetrievedConversation = {
   id: string;
+  title: string;
+  score: number;
+  scoringMethod: "EMBEDDING" | "TEXT_FALLBACK";
+  expectedAction: string;
   messages: NiaExecutionMessage[];
+  expectedReplies: string[];
+};
+
+export type NiaInputSnapshot = {
+  judgePrompt?: string | null;
+  speechSystemPrompt?: string | null;
+  speechUserPrompt?: string | null;
+  globalFewShotSetId?: number | null;
+  globalFewShotVersion?: number | null;
+  globalFewShotExampleCount: number;
+  ragQuery?: string | null;
 };
 
 export type NiaExecution = {
@@ -116,7 +131,30 @@ export type NiaExecution = {
   willSpeak?: boolean | null;
   currentConversation: NiaExecutionMessage[];
   retrievedConversations: NiaRetrievedConversation[];
+  inputSnapshot?: NiaInputSnapshot | null;
   niaReply: string[];
+};
+
+export type ConversationRagEntry = {
+  id?: number | null;
+  example: NiaFewShotExample;
+  indexed: boolean;
+  embeddingModel?: string | null;
+  updatedAt: string;
+};
+
+export type ConversationRagLibrary = {
+  entries: ConversationRagEntry[];
+  embeddingModel: string;
+  indexedCount: number;
+  updatedAt?: string | null;
+};
+
+export type ConversationRagMatch = {
+  id?: number | null;
+  score: number;
+  scoringMethod: "EMBEDDING" | "TEXT_FALLBACK";
+  example: NiaFewShotExample;
 };
 function createRequestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -276,6 +314,24 @@ export async function loadNiaExecutions(guildId: string, channelId: string): Pro
 
 export async function loadFewShotSets(): Promise<NiaFewShotSet[]> {
   return requestJson<NiaFewShotSet[]>("/api/admin/nia/few-shot/sets");
+}
+
+export async function loadConversationRag(): Promise<ConversationRagLibrary> {
+  return requestJson<ConversationRagLibrary>("/api/admin/nia/conversation-rag");
+}
+
+export async function replaceConversationRag(examples: NiaFewShotExample[]): Promise<ConversationRagLibrary> {
+  return requestJson<ConversationRagLibrary>("/api/admin/nia/conversation-rag", {
+    method: "PUT",
+    body: { examples },
+  });
+}
+
+export async function searchConversationRag(sceneText: string): Promise<ConversationRagMatch[]> {
+  return requestJson<ConversationRagMatch[]>("/api/admin/nia/conversation-rag/search", {
+    method: "POST",
+    body: { sceneText, limit: 2 },
+  });
 }
 
 export async function createFewShotDraft(

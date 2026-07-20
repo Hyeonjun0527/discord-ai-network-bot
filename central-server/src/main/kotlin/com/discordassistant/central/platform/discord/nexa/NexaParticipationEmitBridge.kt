@@ -21,9 +21,11 @@ import com.discordassistant.central.participation.application.NexaParticipationF
 import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
 import com.discordassistant.central.participation.application.context.NiaJudgeContextAssembler
 import com.discordassistant.central.participation.application.context.NiaJudgeContextInput
+import com.discordassistant.central.participation.application.debug.NiaInputTraceStore
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
+import com.discordassistant.central.participation.application.debug.ParticipationTraceConversation
 import com.discordassistant.central.participation.application.debug.ParticipationTraceMessage
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.feature.MemoryObservation
@@ -31,6 +33,8 @@ import com.discordassistant.central.participation.application.feature.Relationsh
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotSpeechPromptRenderer
 import com.discordassistant.central.participation.application.judge.JudgeCommonGroundState
+import com.discordassistant.central.participation.application.judge.JudgeConversationRagMatchPayload
+import com.discordassistant.central.participation.application.judge.JudgeConversationRagPayload
 import com.discordassistant.central.participation.application.judge.JudgeDecisionConstraints
 import com.discordassistant.central.participation.application.judge.JudgeFewShotBadAlternativePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotExamplePayload
@@ -58,6 +62,7 @@ import com.discordassistant.central.participation.application.port.out.PolicyCon
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionResponse
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
+import com.discordassistant.central.participation.application.rag.ConversationRagService
 import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowResult
 import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowService
 import com.discordassistant.central.participation.domain.model.action.PendingActionId
@@ -73,6 +78,7 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
+import com.discordassistant.central.participation.domain.model.rag.ConversationRagMatch
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.AttentionGateConstants
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
@@ -167,6 +173,9 @@ class NexaParticipationEmitBridge(
     private val judgeShadowService: NiaJudgeShadowService? = null,
     private val singleJudge: SingleParticipationJudgePort? = null,
     private val fewShotService: NiaFewShotService? = null,
+    private val conversationRag: ConversationRagService? = null,
+    private val judgePromptAssembler: NiaJudgePromptAssembler = NiaJudgePromptAssembler(),
+    private val inputTraceStore: NiaInputTraceStore? = null,
     private val actionRouter: ParticipationActionRouter? = null,
     private val turnGenerations: NiaTurnGenerationTracker = NiaTurnGenerationTracker(),
     private val sceneBeliefState: SceneBeliefStatePort? = null,
@@ -195,6 +204,7 @@ class NexaParticipationEmitBridge(
     private val attentionStates =
         java.util.concurrent.ConcurrentHashMap<String, ChannelAttentionGate.ChannelAttentionState>()
     private val lastHumanSignals = java.util.concurrent.ConcurrentHashMap<String, ParticipationMessageSignal>()
+    private val ragMatchesByTrace = java.util.concurrent.ConcurrentHashMap<String, List<ConversationRagMatch>>()
 
     /**
      * [signal] (raw Discord 메시지 신호)에 대해 NEXA participation 평가를 돌리고, 정책이 낸 분포가 SPEAK 로 접히면
@@ -1049,17 +1059,34 @@ class NexaParticipationEmitBridge(
         guildPseudonym: String,
         channelKey: String,
         sceneBuild: SingleJudgeSceneBuildResult,
-    ): SingleJudgeDecisionRequest =
-        judgeContextAssembler.assemble(
-            NiaJudgeContextInput(
-                rawContextSnapshot = rawContextSnapshot(signal),
-                sceneObservation = sceneObservationOf(signal, guildPseudonym, channelKey),
-                sceneBuild = sceneBuild,
-                constraints = judgeConstraints(),
-                seed = signal.seed,
-                fewShotSet = activeFewShotPayload(signal),
-            ),
+    ): SingleJudgeDecisionRequest {
+        val base =
+            judgeContextAssembler.assemble(
+                NiaJudgeContextInput(
+                    rawContextSnapshot = rawContextSnapshot(signal),
+                    sceneObservation = sceneObservationOf(signal, guildPseudonym, channelKey),
+                    sceneBuild = sceneBuild,
+                    constraints = judgeConstraints(),
+                    seed = signal.seed,
+                    fewShotSet = activeFewShotPayload(signal),
+                ),
+            )
+        val query = base.rawContextWindow.quotedSceneData
+        val matches = conversationRag?.search(query, ConversationRagService.DEFAULT_MATCH_COUNT).orEmpty()
+        val traceId = correlationIdOf(signal)
+        ragMatchesByTrace[traceId] = matches
+        val request = base.copy(conversationRag = matches.toJudgePayload())
+        inputTraceStore?.recordJudge(
+            traceId = traceId,
+            judgePrompt = judgePromptAssembler.assemble(request).prompt,
+            globalFewShotSetId = request.fewShotSet.setId,
+            globalFewShotVersion = request.fewShotSet.version,
+            globalFewShotExampleCount = request.fewShotSet.examples.size,
+            ragQuery = query,
+            ragMatches = matches.map { it.toTraceConversation() },
         )
+        return request
+    }
 
     private fun rawContextSnapshot(signal: ParticipationMessageSignal): RawContextSnapshot {
         val scope = RawContextScope(guildId = signal.guildId, channelId = signal.channelId, threadId = signal.threadId)
@@ -1121,8 +1148,38 @@ class NexaParticipationEmitBridge(
                 ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
                 ?.active
         val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(active)
-        return NIA_IDENTITY.copy(personaBlock = "${NIA_IDENTITY.personaBlock}\n\n$managedPrompt")
+        val retrievedPrompt =
+            ragMatchesByTrace[correlationIdOf(signal)]
+                ?.map { it.entry.example }
+                ?.let(NiaFewShotSpeechPromptRenderer::renderRetrieved)
+        val persona = listOfNotNull(NIA_IDENTITY.personaBlock, managedPrompt, retrievedPrompt).joinToString("\n\n")
+        return NIA_IDENTITY.copy(personaBlock = persona)
     }
+
+    private fun List<ConversationRagMatch>.toJudgePayload(): JudgeConversationRagPayload =
+        JudgeConversationRagPayload(
+            matches =
+                mapNotNull { match ->
+                    val entryId = match.entry.id ?: return@mapNotNull null
+                    JudgeConversationRagMatchPayload(
+                        entryId = entryId,
+                        score = match.score,
+                        scoringMethod = match.scoringMethod.name,
+                        example = match.entry.example.toJudgePayload("rag_$entryId"),
+                    )
+                },
+        )
+
+    private fun ConversationRagMatch.toTraceConversation(): ParticipationTraceConversation =
+        ParticipationTraceConversation(
+            id = entry.id?.toString() ?: "unsaved",
+            title = entry.example.title,
+            score = score,
+            scoringMethod = scoringMethod.name,
+            expectedAction = entry.example.expectedAction.name,
+            messages = entry.example.rawMessages.map { ParticipationTraceMessage(it.authorRole, it.text) },
+            expectedReplies = entry.example.expectedReplies,
+        )
 
     private fun NiaFewShotVersion.toJudgePayload(setId: Long): JudgeFewShotSetPayload =
         JudgeFewShotSetPayload(
@@ -1131,16 +1188,12 @@ class NexaParticipationEmitBridge(
             examples =
                 examples
                     .sortedWith(compareByDescending<NiaFewShotExample> { it.priority }.thenBy { it.id ?: Long.MAX_VALUE })
-                    .mapIndexed { index, example -> example.toJudgePayload(setId, version, index) },
+                    .mapIndexed { index, example -> example.toJudgePayload("fewshot_${setId}_${version}_${example.id ?: index}") },
         )
 
-    private fun NiaFewShotExample.toJudgePayload(
-        setId: Long,
-        version: Int,
-        index: Int,
-    ): JudgeFewShotExamplePayload =
+    private fun NiaFewShotExample.toJudgePayload(exampleId: String): JudgeFewShotExamplePayload =
         JudgeFewShotExamplePayload(
-            exampleId = "fewshot_${setId}_${version}_${id ?: index}",
+            exampleId = exampleId,
             title = title,
             rawMessages =
                 rawMessages.map { message ->
@@ -1265,6 +1318,7 @@ class NexaParticipationEmitBridge(
                 }
         val packet =
             SpeechScenePacket.of(
+                inputTraceId = correlationIdOf(signal),
                 focusThreadKey = focusThreadKey(signal, guildPseudonym),
                 target = SpeechTarget.member(userPseudonym),
                 recentTurns = signal.recentTurns,
@@ -1363,9 +1417,11 @@ class NexaParticipationEmitBridge(
         mode: ShadowMode,
         outcome: ParticipationEmitOutcome,
     ): ParticipationEmitOutcome {
+        val traceId = correlationIdOf(signal)
+        val retrieved = ragMatchesByTrace.remove(traceId).orEmpty().map { it.toTraceConversation() }
         val trace =
             ParticipationGateTrace(
-                correlationId = correlationIdOf(signal),
+                correlationId = traceId,
                 guildId = signal.guildId,
                 channelId = signal.channelId,
                 sceneSeq = signal.sceneSeq,
@@ -1383,6 +1439,8 @@ class NexaParticipationEmitBridge(
                     signal.recentTurns.map { turn ->
                         ParticipationTraceMessage(speaker = turn.speakerLabel, text = turn.text)
                     },
+                retrievedConversations = retrieved,
+                inputSnapshot = inputTraceStore?.take(traceId),
                 niaReply =
                     (outcome as? ParticipationEmitOutcome.Emitted)
                         ?.result

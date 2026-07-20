@@ -5,6 +5,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechFactualGro
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
+import com.discordassistant.central.speech.application.port.out.SpeechInputTracePort
 import com.discordassistant.central.speech.application.privacy.ExternalPayloadAllowlistSerializer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
@@ -42,6 +43,7 @@ class CandidateGenerationService(
      */
     private val contentIsolator: ConversationContentIsolator = ConversationContentIsolator(),
     private val factualGrounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
+    private val inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
 ) {
     /**
      * [packet] 으로 후보를 생성한다. [budget] 으로 후보 수·token 을 clamp 한다. 외부 실패·malformed 는 포트가 빈
@@ -53,6 +55,7 @@ class CandidateGenerationService(
     ): SpeechGenerationResult {
         val grounding = retrieveGrounding(packet)
         val request = assembleRequest(packet, budget, grounding)
+        packet.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.userPrompt) }
         return generationPort.generate(request)
     }
 

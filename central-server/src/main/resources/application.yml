@@ -141,6 +141,9 @@ central:
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
   nexa:
+    conversation-rag:
+      embedding-model: ${NEXA_CONVERSATION_RAG_EMBEDDING_MODEL:text-embedding-3-small}
+      timeout-seconds: ${NEXA_CONVERSATION_RAG_TIMEOUT_SECONDS:15}
     execution-permit:
       # NEXA 실행 permit은 기본 Redis Lua 원자 경로다. 로컬 단일 인스턴스/테스트에서만 명시적으로 false를 준다.
       # Redis 장애는 reserve=false로 닫혀 CANARY/LIVE의 채널/전역 상한이 인스턴스별로 갈라지지 않는다.

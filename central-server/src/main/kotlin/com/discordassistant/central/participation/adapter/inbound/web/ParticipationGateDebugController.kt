@@ -1,5 +1,6 @@
 package com.discordassistant.central.participation.adapter.inbound.web
 
+import com.discordassistant.central.participation.application.debug.NiaInputSnapshot
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
@@ -53,6 +54,7 @@ data class ParticipationGateTraceDto(
     val willSpeak: Boolean?,
     val currentConversation: List<ParticipationTraceMessageDto>,
     val retrievedConversations: List<ParticipationTraceConversationDto>,
+    val inputSnapshot: NiaInputSnapshotDto?,
     val niaReply: List<String>,
     val features: ParticipationGateTraceFeaturesDto,
 )
@@ -64,7 +66,22 @@ data class ParticipationTraceMessageDto(
 
 data class ParticipationTraceConversationDto(
     val id: String,
+    val title: String,
+    val score: Double,
+    val scoringMethod: String,
+    val expectedAction: String,
     val messages: List<ParticipationTraceMessageDto>,
+    val expectedReplies: List<String>,
+)
+
+data class NiaInputSnapshotDto(
+    val judgePrompt: String?,
+    val speechSystemPrompt: String?,
+    val speechUserPrompt: String?,
+    val globalFewShotSetId: Long?,
+    val globalFewShotVersion: Int?,
+    val globalFewShotExampleCount: Int,
+    val ragQuery: String?,
 )
 
 data class ParticipationGateTraceFeaturesDto(
@@ -116,11 +133,28 @@ private fun ParticipationGateTrace.toDto(): ParticipationGateTraceDto =
             retrievedConversations.take(2).map { conversation ->
                 ParticipationTraceConversationDto(
                     id = conversation.id,
+                    title = conversation.title,
+                    score = conversation.score,
+                    scoringMethod = conversation.scoringMethod,
+                    expectedAction = conversation.expectedAction,
                     messages = conversation.messages.map { ParticipationTraceMessageDto(it.speaker, it.text) },
+                    expectedReplies = conversation.expectedReplies,
                 )
             },
+        inputSnapshot = inputSnapshot?.toDto(),
         niaReply = niaReply,
         features = features.toDto(),
+    )
+
+private fun NiaInputSnapshot.toDto(): NiaInputSnapshotDto =
+    NiaInputSnapshotDto(
+        judgePrompt = judgePrompt,
+        speechSystemPrompt = speechSystemPrompt,
+        speechUserPrompt = speechUserPrompt,
+        globalFewShotSetId = globalFewShotSetId,
+        globalFewShotVersion = globalFewShotVersion,
+        globalFewShotExampleCount = globalFewShotExampleCount,
+        ragQuery = ragQuery,
     )
 
 private fun ParticipationGateTraceFeatures.toDto(): ParticipationGateTraceFeaturesDto =

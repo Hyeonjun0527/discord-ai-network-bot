@@ -510,9 +510,9 @@ class NexaParticipationEmitBridgeTest {
                 "default_reentry_for_delayed_behavior_question",
             )
         val directRequestExample = examples.single { it.exampleId == "default_direct_reply_request" }
-        assertThat(directRequestExample.reason).contains("raw scene")
+        assertThat(directRequestExample.reason).contains("앞선 장면")
         val repeatedCallExample = examples.single { it.exampleId == "default_repeated_empty_name_call" }
-        assertThat(repeatedCallExample.reason).contains("generic greeting")
+        assertThat(repeatedCallExample.reason).contains("평범한 인사")
         assertThat(repeatedCallExample.rawMessages.map { it.text }).contains("응 여기 있어 ㅋㅋ 무슨 일인데", "nia ya")
         val contextualFollowUp = examples.single { it.exampleId == "default_same_member_follow_up_after_nia" }
         assertThat(contextualFollowUp.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
@@ -524,12 +524,12 @@ class NexaParticipationEmitBridgeTest {
         val retractedAddressExample = examples.single { it.exampleId == "default_retracted_direct_address" }
         assertThat(retractedAddressExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
         assertThat(retractedAddressExample.badAlternative.action).isEqualTo(NiaFewShotAction.SPEAK)
-        assertThat(retractedAddressExample.reason).contains("newer correction supersedes")
+        assertThat(retractedAddressExample.reason).contains("최근의 대상 정정")
         assertThat(retractedAddressExample.rawMessages.map { it.text })
             .contains("니아야 나 고민 있어", "아니 니아 말고 서연이한테 한 말이야", "서연아 자니")
         val interruptionExample = examples.single { it.exampleId == "default_mistaken_interruption_yield" }
         assertThat(interruptionExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
-        assertThat(interruptionExample.reason).contains("must not ask another question")
+        assertThat(interruptionExample.reason).contains("다시 질문하거나")
         assertThat(interruptionExample.rawMessages.map { it.text }).contains("너 말고 서연이한테 한 말임")
         val withdrawalExample = examples.single { it.exampleId == "default_humans_continue_after_yield" }
         assertThat(withdrawalExample.expectedAction).isEqualTo(NiaFewShotAction.IGNORE)
@@ -543,14 +543,14 @@ class NexaParticipationEmitBridgeTest {
         assertThat(knowledgeTrajectoryExample.rawMessages.map { it.text })
             .contains("다익스트라 알고리즘 말해봐", "벨만포드 알고리즘 말해봐", "플로이드워셜 알고리즘 말해봐")
         assertThat(knowledgeTrajectoryExample.expectedReplies.single()).contains("다음은 이거 물어볼 줄 알았음")
-        assertThat(knowledgeTrajectoryExample.reason).contains("quiz or behavior test", "lighter information depth")
+        assertThat(knowledgeTrajectoryExample.reason).contains("퀴즈나 행동 시험", "가벼운 깊이")
         val delayedRepairExample =
             examples.single { it.exampleId == "default_reentry_for_delayed_behavior_question" }
         assertThat(delayedRepairExample.expectedAction).isEqualTo(NiaFewShotAction.SPEAK)
         assertThat(delayedRepairExample.badAlternative.action).isEqualTo(NiaFewShotAction.IGNORE)
         assertThat(delayedRepairExample.rawMessages.last().offsetMs).isEqualTo(13 * 60 * 60 * 1_000L)
         assertThat(delayedRepairExample.rawMessages.map { it.authorRole }).contains("nia")
-        assertThat(delayedRepairExample.reason).contains("current direct meta-question")
+        assertThat(delayedRepairExample.reason).contains("현재의 질문")
     }
 
     @Test

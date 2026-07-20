@@ -60,6 +60,9 @@ class NiaFewShotAdminControllerTest {
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.schema").value("nia.participation-judge-input.v1"))
             .andExpect(jsonPath("$.fewShotSet.examples[0].rawMessages[0].text").value("[redacted]"))
+            .andExpect(jsonPath("$.fewShotSet.examples[10].expectedReevaluateAfterMs").value(1_500))
+            .andExpect(jsonPath("$.fewShotSet.examples[19].expectedReactionCode").value("eyes"))
+            .andExpect(jsonPath("$.fewShotSet.examples[35].currentState").value("A pending action is no longer valid."))
 
         mockMvc
             .perform(
@@ -202,6 +205,9 @@ class NiaFewShotAdminControllerTest {
                 "title" to "seed example $index",
                 "rawMessages" to messages,
                 "expectedAction" to expectedAction,
+                "currentState" to if (expectedAction == "CANCEL") "A pending action is no longer valid." else null,
+                "expectedReactionCode" to if (expectedAction == "REACT") "eyes" else null,
+                "expectedReevaluateAfterMs" to if (expectedAction == "WAIT") 1_500 else null,
                 "reason" to "Synthetic seed reason for $expectedAction.",
                 "evidenceRefs" to listOf(if (stale) "m2" else "m1"),
                 "badAlternative" to mapOf("action" to badAction, "whyBad" to "It would choose the wrong participation action."),
@@ -231,6 +237,9 @@ class NiaFewShotAdminControllerTest {
                         ),
                     ),
                 "expectedAction" to expectedAction,
+                "currentState" to if (expectedAction == "CANCEL") "A pending action is no longer valid." else null,
+                "expectedReactionCode" to if (expectedAction == "REACT") "eyes" else null,
+                "expectedReevaluateAfterMs" to if (expectedAction == "WAIT") 1_500 else null,
                 "reason" to "The judge should use the raw message as evidence.",
                 "evidenceRefs" to listOf("m1"),
                 "badAlternative" to mapOf("action" to badAction, "whyBad" to "It ignores the evidence."),

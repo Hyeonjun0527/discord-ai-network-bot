@@ -48,6 +48,9 @@ export type NiaFewShotExample = {
   expectedAction: string;
   expectedReplies: string[];
   badReplies: string[];
+  currentState?: string | null;
+  expectedReactionCode?: string | null;
+  expectedReevaluateAfterMs?: number | null;
   reason: string;
   evidenceRefs: string[];
   badAlternative: NiaFewShotBadAlternative;

@@ -42,6 +42,15 @@ class NiaFewShotEvalService {
             if (STALE_MEMORY_TAG in example.tags && !example.citesLatestMessage()) {
                 failures += NiaFewShotEvalFailure("stale_memory.latest_not_cited", ref, "latest raw message must be evidence")
             }
+            if (example.expectedAction == NiaFewShotAction.REACT && example.expectedReactionCode == null) {
+                failures += NiaFewShotEvalFailure("react.missing_reaction_code", ref, "REACT example needs expectedReactionCode")
+            }
+            if (example.expectedAction == NiaFewShotAction.WAIT && example.expectedReevaluateAfterMs == null) {
+                failures += NiaFewShotEvalFailure("wait.missing_reevaluate_after", ref, "WAIT example needs expectedReevaluateAfterMs")
+            }
+            if (example.expectedAction == NiaFewShotAction.CANCEL && example.currentState == null) {
+                failures += NiaFewShotEvalFailure("cancel.missing_current_state", ref, "CANCEL example needs currentState")
+            }
         }
 
         return NiaFewShotEvalResult(

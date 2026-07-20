@@ -208,8 +208,7 @@ h1 {
 }
 
 .data-toolbar label > span,
-.execution-toolbar label > span,
-.reply-editor > span {
+.execution-toolbar label > span {
   color: #6c6c66;
   font-size: 9px;
   font-weight: 800;
@@ -281,8 +280,7 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
 .section-heading strong { font-size: 12px; }
 
 .section-heading button,
-.editor-heading button,
-.message-row > button {
+.editor-heading button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -343,43 +341,52 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   padding-bottom: 18px;
 }
 
-.title-input {
-  width: min(660px, 100%);
-  border: 0;
-  padding: 0;
-  font-size: 24px;
-  font-weight: 780;
-  letter-spacing: -0.035em;
+.editor-heading > div:first-child {
+  display: grid;
+  gap: 4px;
 }
 
-.title-input:focus { outline: 0; box-shadow: 0 1px var(--ink); }
-.editor-heading > div { display: flex; gap: 6px; }
+.editor-heading > div:first-child strong { font-size: 18px; }
+.editor-heading > div:first-child span { color: var(--muted); font-size: 11px; }
+.editor-heading > div:last-child { display: flex; gap: 6px; }
 .editor-heading button { width: 34px; height: 34px; }
 
-.message-editor { margin-top: 24px; }
-.message-editor > .section-heading { padding: 0 0 8px; }
-
-.message-row {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) 32px;
-  align-items: start;
-  gap: 8px;
-  margin-bottom: 8px;
+.markdown-format {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
 }
 
-.message-row select { width: 100%; }
-.message-row textarea { width: 100%; min-height: 62px; }
-.message-row > button { width: 32px; height: 38px; }
-
-.reply-editor {
-  display: grid;
-  gap: 8px;
-  margin-top: 28px;
-  border-top: 1px solid var(--line);
-  padding-top: 22px;
+.markdown-format code {
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 5px 7px;
+  color: #585852;
+  background: #f7f7f3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
 }
 
-.reply-editor textarea { min-height: 116px; }
+.markdown-editor {
+  width: 100%;
+  min-height: 520px;
+  margin-top: 10px;
+  padding: 20px;
+  border-color: var(--line);
+  color: #232320;
+  background: #fdfdfb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.markdown-editor:focus {
+  border-color: var(--ink);
+  outline: 1px solid var(--ink);
+  outline-offset: 1px;
+}
 
 .execution-toolbar { align-items: end; }
 
@@ -498,8 +505,7 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   .version-status { margin: 0; }
   .episode-editor,
   .execution-detail { padding: 22px 16px 36px; }
-  .message-row { grid-template-columns: 74px minmax(0, 1fr); }
-  .message-row > button { grid-column: 2; justify-self: end; }
+  .markdown-editor { min-height: 440px; padding: 14px; font-size: 13px; }
   .conversation-line { grid-template-columns: 70px minmax(0, 1fr); }
   .retrieved-grid { grid-template-columns: 1fr; }
 }

@@ -119,6 +119,30 @@ class JpaNiaFewShotStoreTest
             assertThat(entity.toString()).doesNotContain("raw-secret-canary")
         }
 
+        @Test
+        fun `action-specific few-shot payloads survive persistence round trip`() {
+            val react =
+                example("reaction").copy(
+                    expectedAction = NiaFewShotAction.REACT,
+                    currentState = "The latest message needs acknowledgement without another message.",
+                    expectedReactionCode = "eyes",
+                    badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.SPEAK, "speech would interrupt the flow"),
+                )
+            val draft = store.createDraft(NiaFewShotScope.global(), listOf(react), actorUserId = null)
+
+            val stored =
+                store
+                    .findSet(draft.setId!!)!!
+                    .versions
+                    .single()
+                    .examples
+                    .single()
+
+            assertThat(stored.currentState).isEqualTo(react.currentState)
+            assertThat(stored.expectedReactionCode).isEqualTo("eyes")
+            assertThat(stored.expectedReevaluateAfterMs).isNull()
+        }
+
         private fun example(
             title: String = "direct request",
             priority: Int = 10,

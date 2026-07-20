@@ -143,6 +143,9 @@ data class NiaFewShotExample(
     val expectedAction: NiaFewShotAction,
     val expectedReplies: List<String> = emptyList(),
     val badReplies: List<String> = emptyList(),
+    val currentState: String? = null,
+    val expectedReactionCode: String? = null,
+    val expectedReevaluateAfterMs: Long? = null,
     val reason: String,
     val evidenceRefs: Set<String>,
     val badAlternative: NiaFewShotBadAlternative,
@@ -174,6 +177,18 @@ data class NiaFewShotExample(
         require(expectedAction == NiaFewShotAction.SPEAK || badReplies.isEmpty()) {
             "SPEAK 이 아닌 few-shot 은 badReplies 를 가질 수 없다"
         }
+        currentState?.let {
+            require(it.isNotBlank()) { "few-shot currentState 는 빈 문자열일 수 없다" }
+            require(it.length <= MAX_CURRENT_STATE_CHARS) { "few-shot currentState 가 너무 길다" }
+        }
+        expectedReactionCode?.let {
+            require(expectedAction == NiaFewShotAction.REACT) { "REACT 가 아닌 few-shot 은 expectedReactionCode 를 가질 수 없다" }
+            require(it in SUPPORTED_REACTION_CODES) { "지원하지 않는 expectedReactionCode 다: $it" }
+        }
+        expectedReevaluateAfterMs?.let {
+            require(expectedAction == NiaFewShotAction.WAIT) { "WAIT 가 아닌 few-shot 은 expectedReevaluateAfterMs 를 가질 수 없다" }
+            require(it > 0) { "expectedReevaluateAfterMs 는 양수여야 한다" }
+        }
         require(badAlternative.action != expectedAction) { "badAlternative 는 expectedAction 과 달라야 한다" }
         require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
         evidenceRefs.forEach { require(it.isStableRef()) { "few-shot evidence ref 는 안정 ref 여야 한다" } }
@@ -189,6 +204,9 @@ data class NiaFewShotExample(
         const val MAX_EXPECTED_REPLIES = 4
         const val MAX_BAD_REPLIES = 4
         const val MAX_EXPECTED_REPLY_CHARS = 2_000
+        const val MAX_CURRENT_STATE_CHARS = 2_000
+        val SUPPORTED_REACTION_CODES: Set<String> =
+            setOf("ack", "thumbs_up", "smile", "laugh", "eyes", "thinking", "unamused", "heart")
     }
 }
 

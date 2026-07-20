@@ -51,7 +51,20 @@ data class ParticipationGateTraceDto(
     val speechOutcome: String?,
     val consentStage: String?,
     val willSpeak: Boolean?,
+    val currentConversation: List<ParticipationTraceMessageDto>,
+    val retrievedConversations: List<ParticipationTraceConversationDto>,
+    val niaReply: List<String>,
     val features: ParticipationGateTraceFeaturesDto,
+)
+
+data class ParticipationTraceMessageDto(
+    val speaker: String,
+    val text: String,
+)
+
+data class ParticipationTraceConversationDto(
+    val id: String,
+    val messages: List<ParticipationTraceMessageDto>,
 )
 
 data class ParticipationGateTraceFeaturesDto(
@@ -98,6 +111,15 @@ private fun ParticipationGateTrace.toDto(): ParticipationGateTraceDto =
         speechOutcome = speechOutcome,
         consentStage = consentStage,
         willSpeak = willSpeak,
+        currentConversation = currentConversation.map { ParticipationTraceMessageDto(it.speaker, it.text) },
+        retrievedConversations =
+            retrievedConversations.take(2).map { conversation ->
+                ParticipationTraceConversationDto(
+                    id = conversation.id,
+                    messages = conversation.messages.map { ParticipationTraceMessageDto(it.speaker, it.text) },
+                )
+            },
+        niaReply = niaReply,
         features = features.toDto(),
     )
 

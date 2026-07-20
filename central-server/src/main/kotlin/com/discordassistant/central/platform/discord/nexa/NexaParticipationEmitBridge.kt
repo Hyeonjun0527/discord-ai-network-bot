@@ -24,6 +24,7 @@ import com.discordassistant.central.participation.application.context.NiaJudgeCo
 import com.discordassistant.central.participation.application.debug.ParticipationGateTrace
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceFeatures
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
+import com.discordassistant.central.participation.application.debug.ParticipationTraceMessage
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipObservation
@@ -1367,6 +1368,17 @@ class NexaParticipationEmitBridge(
                 speechOutcome = outcome.traceSpeechOutcome,
                 consentStage = outcome.traceConsentStage,
                 willSpeak = outcome.traceWillSpeak,
+                currentConversation =
+                    signal.recentTurns.map { turn ->
+                        ParticipationTraceMessage(speaker = turn.speakerLabel, text = turn.text)
+                    },
+                niaReply =
+                    (outcome as? ParticipationEmitOutcome.Emitted)
+                        ?.result
+                        ?.pipelineResult
+                        ?.selected
+                        ?.bubbles
+                        .orEmpty(),
                 features =
                     ParticipationGateTraceFeatures(
                         mentioned = signal.mentioned,

@@ -57,8 +57,9 @@ class NiaJudgePromptAssembler(
         You are NIA's single participation judge.
         Decide exactly one action for the current Discord scene: IGNORE, WAIT, REACT, SPEAK, or CANCEL.
         Use the raw scene text as the primary source. Use few-shot examples as the judgment constitution.
-        In a few-shot example, currentState explains the relevant pending scene state, expectedReactionCode is the exact
-        REACT payload, and expectedReevaluateAfterMs is the exact WAIT delay. Use only fields that belong to its action.
+        In a few-shot example, currentState explains the relevant pending scene state, expectedDeliveryMode is the exact
+        SPEAK delivery choice, expectedReactionCode is the exact REACT payload, and expectedReevaluateAfterMs is the exact
+        WAIT delay. Use only fields that belong to its action.
         Use memory and metadata only as secondary support when they do not contradict the raw scene.
 
         NIA is one participant in a multi-person conversation, not an answer API that must respond to every message.
@@ -129,9 +130,11 @@ class NiaJudgePromptAssembler(
         `confidence` must be between 0 and 1. Every action except IGNORE requires at least one raw-scene evidence ref.
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
-        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `bubbleCount`,
+        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `deliveryMode`, `bubbleCount`,
         `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, `responseTargetRef`,
-        `responseObligation`, `groundingNeed`, and optional `actHint`. `responseTargetRef` must equal
+        `responseObligation`, `groundingNeed`, and optional `actHint`. `deliveryMode` is `CHANNEL|REPLY`: CHANNEL sends a
+        normal channel message, while REPLY visibly quotes the triggering message. Choose it from the complete social scene;
+        do not default every response to REPLY. `responseTargetRef` must equal
         rawScene.latestMessageRef. `responseObligation` is `REQUIRED|OPTIONAL`; `groundingNeed` is `NONE|WEB_VERIFY`.
         `interactionReading` is the
         judge's short whole-scene interpretation, not a paraphrase of the last message. `informationDepth` describes how much
@@ -250,6 +253,7 @@ class NiaJudgePromptAssembler(
                                 )
                             },
                         expectedAction = example.expectedAction.name,
+                        expectedDeliveryMode = example.expectedDeliveryMode?.name,
                         currentState = example.currentState,
                         expectedReactionCode = example.expectedReactionCode,
                         expectedReevaluateAfterMs = example.expectedReevaluateAfterMs,
@@ -258,6 +262,7 @@ class NiaJudgePromptAssembler(
                         badAlternative =
                             PromptFewShotBadAlternative(
                                 action = example.badAlternative.action.name,
+                                deliveryMode = example.badAlternative.deliveryMode?.name,
                                 whyBad = example.badAlternative.whyBad,
                             ),
                         tags = example.tags.sorted(),
@@ -295,7 +300,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v11"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v12"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }
@@ -343,6 +348,7 @@ private data class PromptFewShotExample(
     val title: String,
     val rawMessages: List<PromptFewShotRawMessage>,
     val expectedAction: String,
+    val expectedDeliveryMode: String?,
     val currentState: String?,
     val expectedReactionCode: String?,
     val expectedReevaluateAfterMs: Long?,
@@ -363,6 +369,7 @@ private data class PromptFewShotRawMessage(
 
 private data class PromptFewShotBadAlternative(
     val action: String,
+    val deliveryMode: String?,
     val whyBad: String,
 )
 

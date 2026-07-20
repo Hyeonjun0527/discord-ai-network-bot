@@ -168,6 +168,10 @@ class NiaJudgeOutputParser(
                         JudgeGroundingNeed.valueOf(
                             speechIntent.requiredText("groundingNeed").uppercase(Locale.ROOT),
                         ),
+                    deliveryMode =
+                        SpeechDeliveryMode.valueOf(
+                            speechIntent.requiredText("deliveryMode").uppercase(Locale.ROOT),
+                        ),
                 )
             }
             else -> null
@@ -361,6 +365,7 @@ class NiaJudgeOutputParser(
                 "responseTargetRef",
                 "responseObligation",
                 "groundingNeed",
+                "deliveryMode",
             )
         private val TONE_AXIS_FIELDS = setOf("warmth", "playfulness", "directness", "emotionalIntensity")
         private val BELIEF_UPDATE_FIELDS = setOf("commonGround", "intentHypotheses", "commitments")

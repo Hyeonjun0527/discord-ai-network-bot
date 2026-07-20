@@ -10,6 +10,11 @@ enum class NiaFewShotAction {
     CANCEL,
 }
 
+enum class NiaFewShotDeliveryMode {
+    CHANNEL,
+    REPLY,
+}
+
 enum class NiaFewShotVersionStatus {
     DRAFT,
     ACTIVE,
@@ -125,8 +130,12 @@ data class NiaFewShotRawMessage(
 data class NiaFewShotBadAlternative(
     val action: NiaFewShotAction,
     val whyBad: String,
+    val deliveryMode: NiaFewShotDeliveryMode? = null,
 ) {
     init {
+        require(action == NiaFewShotAction.SPEAK || deliveryMode == null) {
+            "SPEAK 이 아닌 bad alternative 는 deliveryMode 를 가질 수 없다"
+        }
         require(whyBad.isNotBlank()) { "bad alternative reason 은 비어 있을 수 없다" }
         require(whyBad.length <= MAX_REASON_CHARS) { "bad alternative reason 이 너무 길다" }
     }
@@ -141,6 +150,7 @@ data class NiaFewShotExample(
     val title: String,
     val rawMessages: List<NiaFewShotRawMessage>,
     val expectedAction: NiaFewShotAction,
+    val expectedDeliveryMode: NiaFewShotDeliveryMode? = null,
     val expectedReplies: List<String> = emptyList(),
     val badReplies: List<String> = emptyList(),
     val currentState: String? = null,
@@ -177,6 +187,9 @@ data class NiaFewShotExample(
         require(expectedAction == NiaFewShotAction.SPEAK || badReplies.isEmpty()) {
             "SPEAK 이 아닌 few-shot 은 badReplies 를 가질 수 없다"
         }
+        expectedDeliveryMode?.let {
+            require(expectedAction == NiaFewShotAction.SPEAK) { "SPEAK 이 아닌 few-shot 은 expectedDeliveryMode 를 가질 수 없다" }
+        }
         currentState?.let {
             require(it.isNotBlank()) { "few-shot currentState 는 빈 문자열일 수 없다" }
             require(it.length <= MAX_CURRENT_STATE_CHARS) { "few-shot currentState 가 너무 길다" }
@@ -189,7 +202,11 @@ data class NiaFewShotExample(
             require(expectedAction == NiaFewShotAction.WAIT) { "WAIT 가 아닌 few-shot 은 expectedReevaluateAfterMs 를 가질 수 없다" }
             require(it > 0) { "expectedReevaluateAfterMs 는 양수여야 한다" }
         }
-        require(badAlternative.action != expectedAction) { "badAlternative 는 expectedAction 과 달라야 한다" }
+        require(
+            badAlternative.action != expectedAction ||
+                expectedAction == NiaFewShotAction.SPEAK &&
+                badAlternative.deliveryMode != expectedDeliveryMode,
+        ) { "badAlternative 는 expectedAction 과 deliveryMode 조합이 달라야 한다" }
         require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
         evidenceRefs.forEach { require(it.isStableRef()) { "few-shot evidence ref 는 안정 ref 여야 한다" } }
         val rawRefs = rawMessages.map { it.ref }.toSet()

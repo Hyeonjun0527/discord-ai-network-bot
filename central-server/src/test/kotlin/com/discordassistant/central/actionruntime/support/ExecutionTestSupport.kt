@@ -9,6 +9,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionAuditEvent
 import com.discordassistant.central.actionruntime.domain.model.ActionAuditPhase
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Instant
@@ -36,6 +37,7 @@ open class RecordingDiscordExecutor(
         private set
     val sentBubbleIndexes = mutableListOf<Int>()
     val sentMessageIds = mutableListOf<String>()
+    val replyTargets = mutableListOf<String?>()
 
     /** 모든 실제 전송류 호출의 총합(전송 0회 검증용 — typing 포함 어떤 JDA 호출도 일어나지 않았는지). */
     val totalExecutorCalls: Int
@@ -61,6 +63,7 @@ open class RecordingDiscordExecutor(
         bubbleIndex: Int,
         replyToMessageId: String?,
     ): ExecutionResult {
+        replyTargets += replyToMessageId
         val result = if (sendResults.isNotEmpty()) sendResults.removeFirst() else ExecutionResult.Sent("msg-$bubbleIndex")
         if (result is ExecutionResult.Sent) {
             sentBubbleIndexes += bubbleIndex
@@ -117,6 +120,7 @@ fun typingSpeakAction(
     threadId: String = "thread-1",
     replyToMessageId: String? = null,
     targetMessageId: String? = null,
+    deliveryMode: ScheduledDeliveryMode = ScheduledDeliveryMode.REPLY,
 ): ScheduledSocialAction =
     ScheduledSocialAction
         .create(
@@ -135,6 +139,7 @@ fun typingSpeakAction(
             executeAfter = Instant.parse("2026-01-01T00:00:00Z"),
             contextVersion = contextVersion,
             originRolloutMode = ShadowMode.LIVE,
+            deliveryMode = deliveryMode,
         ).markScheduled()
         .beginReevaluation()
         .passReevaluation()

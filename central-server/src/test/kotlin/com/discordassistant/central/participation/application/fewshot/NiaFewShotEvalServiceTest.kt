@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.application.fewshot
 
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotRawMessage
@@ -102,6 +103,7 @@ class NiaFewShotEvalServiceTest {
                     listOf(NiaFewShotRawMessage("m1", "member", 0, "synthetic seed $index"))
                 },
             expectedAction = expectedAction,
+            expectedDeliveryMode = if (expectedAction == NiaFewShotAction.SPEAK) NiaFewShotDeliveryMode.CHANNEL else null,
             reason = "Synthetic seed reason.",
             evidenceRefs = setOf(if (stale) "m2" else "m1"),
             badAlternative =

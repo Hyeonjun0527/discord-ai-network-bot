@@ -19,6 +19,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionFailureReas
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.BurstPlan
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Clock
@@ -305,7 +306,7 @@ class ActionExecutionService(
 
     /** reply 대상(원 메시지 ID) — 대화 초점 키인 threadId를 Discord snowflake로 오인하지 않는다. */
     private fun replyTargetFor(action: ScheduledSocialAction): String? =
-        if (action.type == ScheduledActionType.SPEAK) {
+        if (action.type == ScheduledActionType.SPEAK && action.deliveryMode == ScheduledDeliveryMode.REPLY) {
             action.target.targetMessageId?.takeIf { it.isNotBlank() }
                 ?: action.target.replyToMessageId
         } else {

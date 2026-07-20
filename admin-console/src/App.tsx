@@ -1,23 +1,18 @@
 import {
   BookOpen,
   Check,
-  ChevronRight,
-  Copy,
   History,
-  Plus,
   RefreshCw,
   Save,
   ShieldAlert,
-  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { captureConsoleError, wasBugsinkReported } from "./bugsink";
 import {
-  parseConversationMarkdown,
-  renameConversationMarkdown,
-  serializeConversationMarkdown,
-  summarizeConversationMarkdown,
+  parseConversationDataset,
+  serializeConversationDataset,
+  summarizeConversationDataset,
   toStoredAction,
 } from "./conversation-markdown";
 import {
@@ -56,18 +51,20 @@ function newConversation(): NiaFewShotExample {
   return {
     title: "새 대화",
     rawMessages: [
-      { ref: "m1", authorRole: "member", offsetMs: 0, text: "" },
-      { ref: "m2", authorRole: "member", offsetMs: 1000, text: "" },
+      { ref: "m1", authorRole: "a", offsetMs: 0, text: "오늘 모임 몇 시야" },
+      { ref: "m2", authorRole: "b", offsetMs: 1000, text: "여덟 시" },
+      { ref: "m3", authorRole: "a", offsetMs: 2000, text: "아 확인" },
     ],
-    expectedAction: "SPEAK",
-    expectedReplies: [""],
+    expectedAction: "CANCEL",
+    expectedDeliveryMode: null,
+    expectedReplies: [],
     badReplies: [],
-    currentState: null,
+    currentState: "니아가 2초 뒤 A의 질문에 답하려고 기다리는 중",
     expectedReactionCode: null,
     expectedReevaluateAfterMs: null,
-    reason: "현재 대화의 흐름을 자연스럽게 이어간다.",
-    evidenceRefs: ["m2"],
-    badAlternative: { action: "WAIT", whyBad: "저장된 다음 발화를 수행하지 못한다." },
+    reason: "B가 이미 답했고 A도 확인했으므로 예약된 발화를 취소한다",
+    evidenceRefs: ["m2", "m3"],
+    badAlternative: { action: "SPEAK", deliveryMode: "CHANNEL", whyBad: "끝난 질문에 뒤늦게 같은 답을 하게 된다" },
     tags: [],
     priority: 100,
     privacyClass: "SYNTHETIC",
@@ -130,19 +127,22 @@ function normalizeExamples(examples: NiaFewShotExample[]): NiaFewShotExample[] {
     if (expectedAction === "WAIT" && (!example.expectedReevaluateAfterMs || example.expectedReevaluateAfterMs <= 0)) {
       throw new Error(`'${example.title}'에 다시 판단할 시간을 입력하세요.`);
     }
-    const badAction = example.badAlternative.action === expectedAction ? "WAIT" : example.badAlternative.action;
     return {
       ...example,
       id: null,
       title: example.title.trim() || "제목 없는 대화",
       rawMessages,
       expectedReplies: expectedAction === "SPEAK" ? expectedReplies : [],
+      expectedDeliveryMode: expectedAction === "SPEAK" ? example.expectedDeliveryMode : null,
       badReplies: expectedAction === "SPEAK" ? example.badReplies.filter((reply) => reply.trim()) : [],
       currentState: example.currentState?.trim() || null,
       expectedReactionCode: expectedAction === "REACT" ? example.expectedReactionCode?.trim() : null,
       expectedReevaluateAfterMs: expectedAction === "WAIT" ? example.expectedReevaluateAfterMs : null,
       evidenceRefs: [rawMessages.at(-1)?.ref ?? "m1"],
-      badAlternative: { ...example.badAlternative, action: badAction },
+      badAlternative: {
+        ...example.badAlternative,
+        deliveryMode: example.badAlternative.action === "SPEAK" ? example.badAlternative.deliveryMode : null,
+      },
     };
   });
 }
@@ -177,10 +177,7 @@ function App() {
   const [sets, setSets] = useState<NiaFewShotSet[]>([]);
   const [selectedSetId, setSelectedSetId] = useState("");
   const [examples, setExamples] = useState<NiaFewShotExample[]>([newConversation()]);
-  const [markdownDocuments, setMarkdownDocuments] = useState<string[]>([
-    serializeConversationMarkdown(newConversation()),
-  ]);
-  const [selectedExampleIndex, setSelectedExampleIndex] = useState(0);
+  const [datasetMarkdown, setDatasetMarkdown] = useState(() => serializeConversationDataset([newConversation()]));
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);
   const [guildId, setGuildId] = useState(() => window.localStorage.getItem(GUILD_ID_STORAGE_KEY) ?? "");
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
@@ -196,8 +193,7 @@ function App() {
   );
   const draft = useMemo(() => draftVersion(selectedSet), [selectedSet]);
   const active = useMemo(() => activeVersion(selectedSet), [selectedSet]);
-  const selectedExample = examples[selectedExampleIndex] ?? examples[0] ?? null;
-  const selectedMarkdown = markdownDocuments[selectedExampleIndex] ?? markdownDocuments[0] ?? "";
+  const datasetSummary = useMemo(() => summarizeConversationDataset(datasetMarkdown), [datasetMarkdown]);
   const selectedExecution = useMemo(
     () => executions.find((execution) => execution.correlationId === selectedExecutionId) ?? executions[0] ?? null,
     [executions, selectedExecutionId],
@@ -219,8 +215,7 @@ function App() {
     const source = draft?.examples ?? active?.examples;
     const nextExamples = source?.length ? cloneExamples(source) : [newConversation()];
     setExamples(nextExamples);
-    setMarkdownDocuments(nextExamples.map(serializeConversationMarkdown));
-    setSelectedExampleIndex(0);
+    setDatasetMarkdown(serializeConversationDataset(nextExamples));
   }, [selectedSet?.id, draft?.version, draft?.updatedAt, active?.version, active?.updatedAt]);
 
   async function run(task: () => Promise<void>) {
@@ -270,39 +265,8 @@ function App() {
     });
   }
 
-  function updateMarkdown(markdown: string) {
-    setMarkdownDocuments((current) =>
-      current.map((document, index) => (index === selectedExampleIndex ? markdown : document)),
-    );
-  }
-
-  function addExample() {
-    const conversation = newConversation();
-    setExamples((current) => [...current, conversation]);
-    setMarkdownDocuments((current) => [...current, serializeConversationMarkdown(conversation)]);
-    setSelectedExampleIndex(examples.length);
-  }
-
-  function duplicateExample() {
-    if (!selectedExample) return;
-    const copy = cloneExamples([selectedExample])[0];
-    const summary = summarizeConversationMarkdown(selectedMarkdown);
-    const title = `${summary.title} 복사본`;
-    setExamples((current) => [...current, { ...copy, id: null, title }]);
-    setMarkdownDocuments((current) => [...current, renameConversationMarkdown(selectedMarkdown, title)]);
-    setSelectedExampleIndex(examples.length);
-  }
-
-  function removeExample() {
-    if (examples.length === 1) return;
-    setExamples((current) => current.filter((_, index) => index !== selectedExampleIndex));
-    setMarkdownDocuments((current) => current.filter((_, index) => index !== selectedExampleIndex));
-    setSelectedExampleIndex((current) => Math.max(0, current - 1));
-  }
-
   function examplesFromMarkdown(): NiaFewShotExample[] {
-    return markdownDocuments.map((markdown, index) => {
-      const parsed = parseConversationMarkdown(markdown);
+    return parseConversationDataset(datasetMarkdown).map((parsed, index) => {
       const base = examples[index] ?? newConversation();
       return {
         ...base,
@@ -314,6 +278,7 @@ function App() {
           text: message.text,
         })),
         expectedAction: toStoredAction(parsed.action),
+        expectedDeliveryMode: parsed.deliveryMode,
         expectedReplies: parsed.replies,
         currentState: parsed.currentState,
         expectedReactionCode: parsed.reactionCode,
@@ -321,6 +286,7 @@ function App() {
         reason: parsed.reason,
         badAlternative: {
           action: toStoredAction(parsed.badAction),
+          deliveryMode: parsed.badDeliveryMode,
           whyBad: parsed.badReason,
         },
       };
@@ -426,68 +392,32 @@ function App() {
               </div>
             </div>
 
-            <div className="data-layout">
-              <aside className="episode-list">
-                <div className="section-heading">
-                  <strong>대화 {examples.length}개</strong>
-                  <button type="button" onClick={addExample} aria-label="대화 추가"><Plus size={17} /></button>
+            <article className="dataset-editor">
+              <div className="editor-heading">
+                <div>
+                  <strong>Markdown 편집기</strong>
+                  <span>{datasetSummary.exampleCount}개 예시 · {datasetSummary.messageCount}개 대화 메시지</span>
                 </div>
-                {markdownDocuments.map((markdown, index) => {
-                  const summary = summarizeConversationMarkdown(markdown);
-                  return (
-                    <button
-                      type="button"
-                      className={index === selectedExampleIndex ? "episode-row selected" : "episode-row"}
-                      key={index}
-                      onClick={() => setSelectedExampleIndex(index)}
-                    >
-                      <span>{summary.title}</span>
-                      <small>{summary.action} · {summary.messageCount}개 메시지</small>
-                      <ChevronRight size={15} />
-                    </button>
-                  );
-                })}
-              </aside>
-
-              {selectedExample ? (
-                <article className="episode-editor">
-                  <div className="editor-heading">
-                    <div>
-                      <strong>Markdown 편집기</strong>
-                      <span>대화 전체를 아래 한 칸에 붙여넣으세요</span>
-                    </div>
-                    <div>
-                      <button type="button" onClick={duplicateExample} aria-label="대화 복제"><Copy size={17} /></button>
-                      <button type="button" onClick={removeExample} disabled={examples.length === 1} aria-label="대화 삭제">
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="markdown-format" aria-label="Markdown 형식">
-                    <code># 제목</code>
-                    <code>## 니아의 행동</code>
-                    <code>SPEAK · REACT · WAIT · IGNORE · CANCEL_PENDING</code>
-                    <code>## 현재 상태</code>
-                    <code>## 대화</code>
-                    <code>### 사람</code>
-                    <code>### 니아</code>
-                    <code>## 판단 이유</code>
-                    <code>## 피해야 할 행동</code>
-                    <code>## 니아가 이어서 할 말</code>
-                    <code>## 리액션</code>
-                    <code>## 다시 판단할 시간(ms)</code>
-                  </div>
-                  <textarea
-                    className="markdown-editor"
-                    value={selectedMarkdown}
-                    onChange={(event) => updateMarkdown(event.target.value)}
-                    aria-label="대화 Markdown"
-                    spellCheck={false}
-                  />
-                </article>
-              ) : null}
-            </div>
+              </div>
+              <div className="markdown-format" aria-label="Markdown 형식">
+                <code>- A: 메시지</code>
+                <code>- NIA: 이전 메시지</code>
+                <code>- =&gt; NIA [SPEAK CHANNEL]: 발화</code>
+                <code>- =&gt; NIA [SPEAK REPLY]: 발화</code>
+                <code>- =&gt; NIA [REACT 👍]</code>
+                <code>- =&gt; NIA [WAIT 1800ms]</code>
+                <code>- =&gt; NIA [IGNORE]</code>
+                <code>- =&gt; NIA [CANCEL_PENDING]</code>
+                <code>--- 예시 구분</code>
+              </div>
+              <textarea
+                className="markdown-editor dataset-markdown-editor"
+                value={datasetMarkdown}
+                onChange={(event) => setDatasetMarkdown(event.target.value)}
+                aria-label="대화 데이터 Markdown"
+                spellCheck={false}
+              />
+            </article>
           </section>
         ) : (
           <section className="execution-workspace">

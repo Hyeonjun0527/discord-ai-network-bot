@@ -117,7 +117,9 @@ import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import com.discordassistant.central.participation.application.judge.SpeechDeliveryMode as JudgeSpeechDeliveryMode
 import com.discordassistant.central.participation.domain.model.action.SocialAct as ParticipationSocialAct
+import com.discordassistant.central.participation.domain.model.action.SpeechDeliveryMode as ActionSpeechDeliveryMode
 
 /**
  * NEXA participation **자발 발화 wiring**(NEXA participation-activation-plan 단계 1, platform/discord 어댑터).
@@ -1150,13 +1152,19 @@ class NexaParticipationEmitBridge(
                     )
                 },
             expectedAction = expectedAction,
+            expectedDeliveryMode = expectedDeliveryMode,
             expectedReplies = expectedReplies,
             currentState = currentState,
             expectedReactionCode = expectedReactionCode,
             expectedReevaluateAfterMs = expectedReevaluateAfterMs,
             reason = reason,
             evidenceRefs = evidenceRefs,
-            badAlternative = JudgeFewShotBadAlternativePayload(action = badAlternative.action, whyBad = badAlternative.whyBad),
+            badAlternative =
+                JudgeFewShotBadAlternativePayload(
+                    action = badAlternative.action,
+                    whyBad = badAlternative.whyBad,
+                    deliveryMode = badAlternative.deliveryMode,
+                ),
             tags = tags,
             priority = priority,
             privacyClass = privacyClass,
@@ -1636,6 +1644,11 @@ class NexaParticipationEmitBridge(
                         com.discordassistant.central.participation.domain.model.action.SpeechRequestRef(
                             correlationIdOf(signal),
                         ),
+                    deliveryMode =
+                        when (speechIntent?.deliveryMode ?: JudgeSpeechDeliveryMode.CHANNEL) {
+                            JudgeSpeechDeliveryMode.CHANNEL -> ActionSpeechDeliveryMode.CHANNEL
+                            JudgeSpeechDeliveryMode.REPLY -> ActionSpeechDeliveryMode.REPLY
+                        },
                     delay = delay.toActionDelay(),
                 )
             SocialActionKind.CANCEL_PENDING ->
@@ -1716,6 +1729,7 @@ class NexaParticipationEmitBridge(
             append("response_target_ref=${responseTargetRef.orEmpty()}; ")
             append("response_obligation=${responseObligation.name}; ")
             append("grounding_need=${groundingNeed.name}; ")
+            append("delivery_mode=${deliveryMode.name}; ")
             append("bubble_count=$bubbleCount; ")
             append("max_bubble_chars=$maxBubbleChars; ")
             actHint?.let { append("act_hint=$it; ") }

@@ -5,6 +5,7 @@ import com.discordassistant.central.participation.application.port.out.FeatureVe
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
 
 interface SingleParticipationJudgePort {
@@ -60,6 +61,7 @@ data class JudgeFewShotExamplePayload(
     val title: String,
     val rawMessages: List<JudgeFewShotRawMessagePayload>,
     val expectedAction: NiaFewShotAction,
+    val expectedDeliveryMode: NiaFewShotDeliveryMode? = null,
     val expectedReplies: List<String> = emptyList(),
     val currentState: String? = null,
     val expectedReactionCode: String? = null,
@@ -83,7 +85,11 @@ data class JudgeFewShotExamplePayload(
         currentState?.let { require(it.isNotBlank()) { "few-shot currentState 는 빈 문자열일 수 없다" } }
         expectedReactionCode?.let { require(it.isNotBlank()) { "few-shot expectedReactionCode 는 빈 문자열일 수 없다" } }
         expectedReevaluateAfterMs?.let { require(it > 0) { "few-shot expectedReevaluateAfterMs 는 양수여야 한다" } }
-        require(badAlternative.action != expectedAction) { "few-shot badAlternative 는 expectedAction 과 달라야 한다" }
+        require(
+            badAlternative.action != expectedAction ||
+                expectedAction == NiaFewShotAction.SPEAK &&
+                badAlternative.deliveryMode != expectedDeliveryMode,
+        ) { "few-shot badAlternative 는 expected action 과 delivery mode 조합이 달라야 한다" }
         require(evidenceRefs.isNotEmpty()) { "few-shot evidenceRefs 는 비어 있을 수 없다" }
         evidenceRefs.forEach { require(it.isStableRef()) { "few-shot evidence ref 는 안정 ref 여야 한다: $it" } }
         val rawRefs = rawMessages.map { it.ref }.toSet()
@@ -126,6 +132,7 @@ data class JudgeFewShotRawMessagePayload(
 data class JudgeFewShotBadAlternativePayload(
     val action: NiaFewShotAction,
     val whyBad: String,
+    val deliveryMode: NiaFewShotDeliveryMode? = null,
 ) {
     init {
         require(whyBad.isNotBlank()) { "few-shot bad alternative reason 은 비어 있을 수 없다" }
@@ -549,6 +556,7 @@ data class JudgeSpeechIntent(
     val responseTargetRef: String? = null,
     val responseObligation: JudgeResponseObligation = JudgeResponseObligation.OPTIONAL,
     val groundingNeed: JudgeGroundingNeed = JudgeGroundingNeed.NONE,
+    val deliveryMode: SpeechDeliveryMode = SpeechDeliveryMode.CHANNEL,
 ) {
     init {
         require(intentSummary.isNotBlank()) { "intentSummary 는 비어 있을 수 없다" }
@@ -573,6 +581,11 @@ data class JudgeSpeechIntent(
         const val MAX_MAX_BUBBLE_CHARS: Int = 1_800
         const val DEFAULT_MAX_BUBBLE_CHARS: Int = 280
     }
+}
+
+enum class SpeechDeliveryMode {
+    CHANNEL,
+    REPLY,
 }
 
 /** 최종 행동 평가기가 잠정 SPEAK를 다시 침묵으로 바꿔도 되는지 AI judge가 정한 대화 의무다. */

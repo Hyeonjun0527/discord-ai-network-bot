@@ -6,9 +6,11 @@ import com.discordassistant.central.actionruntime.domain.model.ActionFailureReas
 import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.action.ReactionCode
 import com.discordassistant.central.participation.domain.model.action.SocialAction
+import com.discordassistant.central.participation.domain.model.action.SpeechDeliveryMode
 import com.discordassistant.central.participation.domain.model.action.SpeechRequestRef
 import com.discordassistant.central.participation.domain.model.decision.ActionDelay
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
@@ -80,7 +82,11 @@ class ParticipationActionRouterTest {
 
     @Test
     fun `acceptance — SPEAK 는 SPEAK 예약`() {
-        val speak = SocialAction.Speak(speechRequest = SpeechRequestRef(correlationId = "d-1"))
+        val speak =
+            SocialAction.Speak(
+                speechRequest = SpeechRequestRef(correlationId = "d-1"),
+                deliveryMode = SpeechDeliveryMode.CHANNEL,
+            )
         val result =
             router.route(
                 decisionId = "d-1",
@@ -93,6 +99,7 @@ class ParticipationActionRouterTest {
             )
         assertThat(result).isEqualTo(RouteResult.Scheduled(ScheduledActionType.SPEAK, newlyScheduled = true))
         assertThat(scheduler.scheduled.first().type).isEqualTo(ScheduledActionType.SPEAK)
+        assertThat(scheduler.scheduled.first().deliveryMode).isEqualTo(ScheduledDeliveryMode.CHANNEL)
     }
 
     @Test

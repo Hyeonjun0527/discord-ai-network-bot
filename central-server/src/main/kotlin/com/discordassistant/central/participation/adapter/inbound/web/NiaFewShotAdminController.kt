@@ -11,6 +11,7 @@ import com.discordassistant.central.participation.application.fewshot.ReplaceNia
 import com.discordassistant.central.participation.application.fewshot.RollbackNiaFewShotVersionCommand
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotEvalStatus
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotPrivacyClass
@@ -229,6 +230,7 @@ data class NiaFewShotExampleDto(
     val title: String,
     val rawMessages: List<NiaFewShotRawMessageDto>,
     val expectedAction: String,
+    val expectedDeliveryMode: String? = null,
     val expectedReplies: List<String> = emptyList(),
     val badReplies: List<String> = emptyList(),
     val currentState: String? = null,
@@ -248,6 +250,7 @@ data class NiaFewShotExampleDto(
             title = title,
             rawMessages = rawMessages.map { it.toDomain() },
             expectedAction = NiaFewShotAction.valueOf(expectedAction.trim().uppercase()),
+            expectedDeliveryMode = expectedDeliveryMode?.trim()?.uppercase()?.let(NiaFewShotDeliveryMode::valueOf),
             expectedReplies = expectedReplies,
             badReplies = badReplies,
             currentState = currentState,
@@ -281,10 +284,12 @@ data class NiaFewShotRawMessageDto(
 data class NiaFewShotBadAlternativeDto(
     val action: String,
     val whyBad: String,
+    val deliveryMode: String? = null,
 ) {
     fun toDomain(): NiaFewShotBadAlternative =
         NiaFewShotBadAlternative(
             action = NiaFewShotAction.valueOf(action.trim().uppercase()),
+            deliveryMode = deliveryMode?.trim()?.uppercase()?.let(NiaFewShotDeliveryMode::valueOf),
             whyBad = whyBad,
         )
 }
@@ -418,6 +423,7 @@ private fun NiaFewShotExample.toDto(redactRawText: Boolean): NiaFewShotExampleDt
         title = title,
         rawMessages = rawMessages.map { it.toDto(redactRawText) },
         expectedAction = expectedAction.name,
+        expectedDeliveryMode = expectedDeliveryMode?.name,
         expectedReplies = expectedReplies,
         badReplies = badReplies,
         currentState = currentState,
@@ -428,6 +434,7 @@ private fun NiaFewShotExample.toDto(redactRawText: Boolean): NiaFewShotExampleDt
         badAlternative =
             NiaFewShotBadAlternativeDto(
                 action = badAlternative.action.name,
+                deliveryMode = badAlternative.deliveryMode?.name,
                 whyBad = badAlternative.whyBad,
             ),
         tags = tags,

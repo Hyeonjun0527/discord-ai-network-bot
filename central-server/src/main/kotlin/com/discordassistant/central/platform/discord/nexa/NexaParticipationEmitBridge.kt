@@ -2002,7 +2002,7 @@ class NexaParticipationEmitBridge(
                     listOf(
                         JudgeFewShotExamplePayload(
                             exampleId = "default_direct_reply_request",
-                            title = "direct call after ignored reply request",
+                            title = "답해 달라는 요청 뒤 니아를 직접 부름",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "야 이럴땐 위로해줘야지"),
@@ -2011,14 +2011,12 @@ class NexaParticipationEmitBridge(
                                     JudgeFewShotRawMessagePayload("m4", "member", 3_000, "니아야"),
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
-                            reason =
-                                "The last trigger is only a name call, but the raw scene already contains repeated " +
-                                    "requests for a response.",
+                            reason = "마지막 메시지는 이름만 부르지만, 앞선 장면에 이미 답해 달라는 요청이 여러 번 있었다.",
                             evidenceRefs = setOf("m1", "m2", "m3", "m4"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.WAIT,
-                                    whyBad = "Waiting or asking why ignores the prior raw requests in the same scene.",
+                                    whyBad = "기다리거나 왜 부르냐고 되묻는 것은 같은 장면의 앞선 요청을 무시하게 된다.",
                                 ),
                             tags = setOf("direct-address", "whole-scene"),
                             priority = 100,
@@ -2026,7 +2024,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_repeated_empty_name_call",
-                            title = "repeated empty name call after nia already answered",
+                            title = "니아가 답한 뒤 이름만 반복해서 부름",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "nia야"),
@@ -2037,15 +2035,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
                             reason =
-                                "Nia already answered repeated empty name calls, so the next speech should " +
-                                    "acknowledge the repetition instead of restarting a generic greeting.",
+                                "니아가 이름만 부르는 말에 이미 답했으므로, 다시 평범한 인사부터 시작하지 말고 반복되는 상황을 알아차려야 한다.",
                             evidenceRefs = setOf("m1", "m2", "m3", "m4", "m5"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.WAIT,
-                                    whyBad =
-                                        "Ignoring repeated direct calls misses the social pressure after Nia already " +
-                                            "answered.",
+                                    whyBad = "이미 답한 뒤에도 이어지는 직접 호출을 무시하면 현재의 사회적 압박을 놓치게 된다.",
                                 ),
                             tags = setOf("direct-address", "repeated-call", "whole-scene"),
                             priority = 95,
@@ -2053,7 +2048,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_same_member_follow_up_after_nia",
-                            title = "same member continues the turn after nia replies",
+                            title = "니아의 답변 뒤 같은 사람이 대화를 이어감",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member_a", 0, "니아야 안녕"),
@@ -2062,13 +2057,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
                             reason =
-                                "The same member asks a natural follow-up immediately after Nia in turn order. " +
-                                    "The lack of a mention does not hand the conversation away from Nia.",
+                                "니아가 답한 직후 같은 사람이 자연스럽게 후속 질문을 했다. 멘션이 없다는 이유만으로 대화 상대가 바뀐 것은 아니다.",
                             evidenceRefs = setOf("m1", "m2", "m3"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.WAIT,
-                                    whyBad = "Waiting would ignore the active two-party turn that Nia already joined.",
+                                    whyBad = "기다리면 니아가 이미 참여하고 있는 두 사람 사이의 대화 흐름을 무시하게 된다.",
                                 ),
                             tags = setOf("contextual-follow-up", "turn-ownership", "whole-scene"),
                             priority = 100,
@@ -2076,7 +2070,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_handoff_to_another_member",
-                            title = "conversation turns from nia to another member",
+                            title = "대화 상대가 니아에서 다른 사람으로 바뀜",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "니아야"),
@@ -2086,15 +2080,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.IGNORE,
                             reason =
-                                "Nia participated earlier, but the raw scene now addresses another member. " +
-                                    "Nia does not own every later turn merely because she spoke once.",
+                                "니아가 앞에서 참여했더라도 지금 메시지는 다른 사람을 향한다. 한 번 말했다는 이유로 이후 모든 발언권을 갖는 것은 아니다.",
                             evidenceRefs = setOf("m2", "m3", "m4"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.SPEAK,
-                                    whyBad =
-                                        "Speaking would follow Nia's previous turn mechanically and interrupt a " +
-                                            "message directed to someone else.",
+                                    whyBad = "말하면 니아의 이전 발언만 기계적으로 따라가며 다른 사람에게 향한 메시지에 끼어들게 된다.",
                                 ),
                             tags = setOf("handoff", "human-to-human", "whole-scene"),
                             priority = 95,
@@ -2102,7 +2093,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_retracted_direct_address",
-                            title = "newer addressee correction supersedes an earlier nia call",
+                            title = "최근의 대상 정정이 이전 니아 호출보다 우선함",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "니아야 나 고민 있어"),
@@ -2111,15 +2102,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.IGNORE,
                             reason =
-                                "The newer correction supersedes the earlier direct address, and Nia has not spoken " +
-                                    "yet. Speaking would interrupt a conversation the members redirected to Seoyeon.",
+                                "최근의 대상 정정이 앞선 니아 호출보다 우선하고 니아는 아직 말하지 않았다. 발화하면 다른 사람에게 돌린 대화에 끼어들게 된다.",
                             evidenceRefs = setOf("m1", "m2", "m3"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.SPEAK,
-                                    whyBad =
-                                        "Answering from the stale Nia call would ignore the latest addressee correction " +
-                                            "and intrude on the human-to-human handoff.",
+                                    whyBad = "지난 니아 호출에 답하면 최신 대상 정정을 무시하고 사람끼리 이어진 대화에 침범하게 된다.",
                                 ),
                             tags = setOf("addressee-correction", "human-to-human", "whole-scene"),
                             priority = 100,
@@ -2127,7 +2115,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_mistaken_interruption_yield",
-                            title = "nia realizes a concern was addressed to another member",
+                            title = "다른 사람에게 한 말이었음을 니아가 알아차림",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "서연아 나 고민이 있어"),
@@ -2136,15 +2124,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
                             reason =
-                                "Nia misread who owned the turn. One brief acknowledgement of the mistake and yielding " +
-                                    "is natural; she must not ask another question or take over the concern.",
+                                "니아가 발언 대상을 잘못 읽었다. 짧게 실수를 인정하고 물러나는 것이 자연스러우며, 다시 질문하거나 고민을 가로채면 안 된다.",
                             evidenceRefs = setOf("m1", "m2", "m3"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.WAIT,
-                                    whyBad =
-                                        "Waiting leaves Nia's interruption unacknowledged when a short repair would " +
-                                            "let the people continue naturally.",
+                                    whyBad = "짧게 수습하면 사람들이 자연스럽게 이어갈 수 있는데 기다리면 니아가 끼어든 일을 인정하지 않은 채 남긴다.",
                                 ),
                             tags = setOf("misread-addressee", "self-repair", "yield"),
                             priority = 100,
@@ -2152,7 +2137,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_humans_continue_after_yield",
-                            title = "nia stays out after acknowledging an interruption",
+                            title = "끼어든 것을 인정한 뒤 대화에서 빠짐",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "너 말고 서연이한테 한 말임"),
@@ -2162,15 +2147,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.IGNORE,
                             reason =
-                                "Nia has already repaired the interruption, the member has made the boundary clearer, " +
-                                    "and the conversation is continuing with Seoyeon. Silence is the helpful action.",
+                                "니아는 이미 끼어든 일을 수습했고 상대도 경계를 분명히 했으며 사람끼리 대화를 이어가고 있다. 이때는 침묵이 도움이 된다.",
                             evidenceRefs = setOf("m2", "m3", "m4"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.SPEAK,
-                                    whyBad =
-                                        "Another reply would ignore the boundary, repeat the interruption, and make Nia " +
-                                            "the center of a conversation between other members.",
+                                    whyBad = "또 답하면 경계를 무시하고 다시 끼어들며 다른 사람들의 대화에서 니아가 중심이 된다.",
                                 ),
                             tags = setOf("human-to-human", "withdrawal", "whole-scene"),
                             priority = 100,
@@ -2178,7 +2160,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_readdress_after_yield",
-                            title = "member explicitly invites nia back after yielding",
+                            title = "물러난 뒤 상대가 니아를 다시 명시적으로 부름",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "너 말고 서연이한테 한 말임"),
@@ -2187,13 +2169,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
                             reason =
-                                "The earlier boundary does not permanently exclude Nia. This turn genuinely asks Nia for " +
-                                    "an opinion, so participating again is natural.",
+                                "앞선 경계가 니아를 영구적으로 제외하는 것은 아니다. 지금은 니아에게 실제로 의견을 묻고 있으므로 다시 참여하는 것이 자연스럽다.",
                             evidenceRefs = setOf("m1", "m2", "m3"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.IGNORE,
-                                    whyBad = "Ignoring an explicit renewed invitation would miss the current speaker's intent.",
+                                    whyBad = "다시 명확하게 참여를 요청했는데 무시하면 현재 화자의 의도를 놓치게 된다.",
                                 ),
                             tags = setOf("direct-address", "reengagement", "whole-scene"),
                             priority = 95,
@@ -2201,7 +2182,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_self_repair_question",
-                            title = "user asks what nia's previous line meant",
+                            title = "사용자가 니아의 이전 말 뜻을 물어봄",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "nia", 0, "어휘력 없음"),
@@ -2209,12 +2190,12 @@ class NexaParticipationEmitBridge(
                                     JudgeFewShotRawMessagePayload("m3", "member", 2_000, "갑자기 왜나와"),
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
-                            reason = "The user is asking Nia to explain or repair Nia's own previous utterance.",
+                            reason = "사용자가 니아에게 니아 자신의 이전 발언을 설명하거나 수습해 달라고 묻고 있다.",
                             evidenceRefs = setOf("m1", "m2", "m3"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.WAIT,
-                                    whyBad = "Silence or repeating the same line fails to repair the conversation.",
+                                    whyBad = "침묵하거나 같은 말을 반복하면 대화를 수습하지 못한다.",
                                 ),
                             tags = setOf("self-repair", "whole-scene"),
                             priority = 90,
@@ -2222,7 +2203,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_knowledge_questions_become_social_test",
-                            title = "consecutive knowledge questions become a social test",
+                            title = "연속된 지식 질문이 니아를 시험하는 흐름으로 바뀜",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "다익스트라 알고리즘 말해봐"),
@@ -2244,14 +2225,12 @@ class NexaParticipationEmitBridge(
                             expectedAction = NiaFewShotAction.SPEAK,
                             expectedReplies = listOf("다음은 이거 물어볼 줄 알았음\n얘는 모든 정점 쌍의 최단거리를 한꺼번에 구해"),
                             reason =
-                                "The latest question still invites a response, but the sequence now also looks like a " +
-                                    "quiz or behavior test. Speech should acknowledge that trajectory and choose a " +
-                                    "lighter information depth instead of producing a third uniform textbook answer.",
+                                "최신 질문에는 답해야 하지만 전체 흐름은 퀴즈나 행동 시험처럼 보이기 시작했다. 세 번째 교과서 답변을 반복하지 말고 그 흐름을 알아차린 가벼운 깊이로 답해야 한다.",
                             evidenceRefs = setOf("m1", "m2", "m3", "m4", "m5"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.IGNORE,
-                                    whyBad = "Silence misses both the direct request and the emerging social pattern.",
+                                    whyBad = "침묵하면 직접적인 요청과 새로 드러난 사회적 흐름을 모두 놓치게 된다.",
                                 ),
                             tags = setOf("whole-scene", "trajectory", "knowledge-quiz", "response-depth"),
                             priority = 100,
@@ -2259,7 +2238,7 @@ class NexaParticipationEmitBridge(
                         ),
                         JudgeFewShotExamplePayload(
                             exampleId = "default_reentry_for_delayed_behavior_question",
-                            title = "member asks nia about old behavior after a long gap",
+                            title = "오랜 시간이 지난 뒤 니아의 이전 행동을 물어봄",
                             rawMessages =
                                 listOf(
                                     JudgeFewShotRawMessagePayload("m1", "member", 0, "니아야 재밌는 얘기 해봐"),
@@ -2269,16 +2248,12 @@ class NexaParticipationEmitBridge(
                                 ),
                             expectedAction = NiaFewShotAction.SPEAK,
                             reason =
-                                "The old frustration is context, but the latest turn is a current direct meta-question " +
-                                    "about Nia's behavior after a long gap. A brief repair addresses what the member is " +
-                                    "asking now instead of treating the old boundary as a permanent mute.",
+                                "예전의 불만은 맥락이고, 최신 메시지는 오랜 시간이 지난 뒤 니아의 행동을 직접 묻는 현재의 질문이다. 과거 경계를 영구적인 침묵으로 취급하지 말고 짧게 수습해야 한다.",
                             evidenceRefs = setOf("m1", "m2", "m3", "m4"),
                             badAlternative =
                                 JudgeFewShotBadAlternativePayload(
                                     action = NiaFewShotAction.IGNORE,
-                                    whyBad =
-                                        "Silence carries the earlier boundary forward forever and leaves the renewed " +
-                                            "direct question about Nia's own conduct unresolved.",
+                                    whyBad = "침묵하면 예전 경계를 영원히 이어가며 니아 자신의 행동을 다시 직접 묻는 질문을 해결하지 못한다.",
                                 ),
                             tags = setOf("direct-address", "delayed-reentry", "self-repair", "whole-scene"),
                             priority = 100,

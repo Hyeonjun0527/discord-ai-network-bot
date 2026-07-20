@@ -90,6 +90,29 @@ export type NiaFewShotEval = {
 };
 
 export type NiaFewShotPreview = Record<string, unknown>;
+
+export type NiaExecutionMessage = {
+  speaker: string;
+  text: string;
+};
+
+export type NiaRetrievedConversation = {
+  id: string;
+  messages: NiaExecutionMessage[];
+};
+
+export type NiaExecution = {
+  correlationId: string;
+  guildId: number;
+  channelId: number;
+  recordedAt: string;
+  outcome: string;
+  speechOutcome?: string | null;
+  willSpeak?: boolean | null;
+  currentConversation: NiaExecutionMessage[];
+  retrievedConversations: NiaRetrievedConversation[];
+  niaReply: string[];
+};
 function createRequestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -235,6 +258,14 @@ export async function loadGuildChannelRequests(
   if (!guildId || !channelId) return [];
   return requestJson<Record<string, unknown>[]>(
     `/api/dashboard/${guildId}/requests?channelId=${encodeURIComponent(channelId)}&audience=admin`,
+  );
+}
+
+export async function loadNiaExecutions(guildId: string, channelId: string): Promise<NiaExecution[]> {
+  if (!guildId || !channelId) return [];
+  return requestJson<NiaExecution[]>(
+    `/api/ai-network/nexa/debug/participation/guilds/${encodeURIComponent(guildId)}` +
+      `/channels/${encodeURIComponent(channelId)}/traces?limit=50`,
   );
 }
 

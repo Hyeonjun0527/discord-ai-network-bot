@@ -31,6 +31,7 @@ import com.discordassistant.central.participation.adapter.outbound.policy.baseli
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
+import com.discordassistant.central.participation.application.debug.ParticipationTraceMessage
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.feature.MemoryObservation
 import com.discordassistant.central.participation.application.feature.RelationshipFeatures
@@ -1484,6 +1485,32 @@ class NexaParticipationEmitBridgeTest {
         assertThat(trace.consentStage).isNotNull()
         assertThat(trace.willSpeak).isFalse()
         assertThat(scheduler.scheduled).isEmpty()
+    }
+
+    @Test
+    fun `실행 기록에는 모델이 본 대화와 선택한 답변이 함께 남는다`() {
+        val scheduler = FakeScheduler()
+        val traces = ParticipationGateTraceStore(maxTracesPerChannel = 5)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.SHADOW_PREDICT),
+                policy = CooldownHeuristicPolicy(),
+                emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "shadow",
+                traceStore = traces,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        val trace = traces.recent(guildId = 1L, channelId = 3L).single()
+        assertThat(trace.currentConversation)
+            .containsExactly(ParticipationTraceMessage(speaker = "user_2", text = "안녕"))
+        assertThat(trace.retrievedConversations).isEmpty()
+        assertThat(trace.niaReply).containsExactly("좋아")
     }
 
     @Test

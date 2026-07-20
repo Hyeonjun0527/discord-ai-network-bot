@@ -64,7 +64,10 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 
 ## B. 어드민 대시보드 접속
 
-- 새 React 콘솔: **`https://discord-ai.yeon.world/admin/console/`**. Few-shot, 운영 현황, 서버→채널별 요청 기록을 관리한다.
+- 새 React 콘솔: **`https://discord-ai.yeon.world/admin/console/`**.
+  - **대화 데이터**: NIA가 참고할 실제 대화 예시와 다음 답변을 편집·저장하고 검증 후 적용한다.
+  - **실행 기록**: Discord 서버와 채널을 먼저 고른 뒤, 실행별 현재 대화·참고한 대화(최대 2개)·NIA의 최종
+    답변만 확인한다. 실행 기록은 현재 서버 메모리 기반이라 재시작하면 초기화된다.
 - 기존 운영 대시보드: **`https://discord-ai.yeon.world/admin/dashboard/`**. 기존 AI Network 운영 기능을 보존한다.
 - 두 화면 모두 **서버(길드)별** API(`/api/dashboard/{guildId}/...`)를 사용하며 Discord OAuth 보호를 받는다.
 - 인증 방식 2가지:

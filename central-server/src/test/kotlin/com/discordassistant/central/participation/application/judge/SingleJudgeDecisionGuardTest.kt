@@ -102,6 +102,24 @@ class SingleJudgeDecisionGuardTest {
     }
 
     @Test
+    fun `SPEAK 응답 대상은 최신 raw scene 메시지로 정렬한다`() {
+        val guarded =
+            SingleJudgeDecisionGuard.apply(
+                request = sampleRequest(),
+                decision =
+                    speakDecision(confidence = 0.9).copy(
+                        speechIntent =
+                            speakDecision(confidence = 0.9).speechIntent!!.copy(
+                                responseTargetRef = "msg_older",
+                            ),
+                    ),
+            )
+
+        assertThat(guarded.finalDecision.speechIntent!!.responseTargetRef).isEqualTo("msg_1")
+        assertThat(guarded.adjustments.map { it.code }).containsExactly("response_target_aligned")
+    }
+
+    @Test
     fun `low confidence fallback 은 WAIT 또는 IGNORE 로만 제한된다`() {
         assertThatThrownBy {
             JudgeDecisionConstraints(
@@ -180,6 +198,7 @@ class SingleJudgeDecisionGuardTest {
                     intentSummary = "짧게 반응한다",
                     sceneDirection = "한 문장으로 인정한다",
                     actHint = "acknowledge",
+                    responseTargetRef = "msg_1",
                 ),
             toneAxes = JudgeToneAxes.NEUTRAL,
             reasonCode = JudgeReasonCode("direct_address"),

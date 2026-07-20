@@ -210,6 +210,9 @@ class NiaParticipationJudgeTest {
                 mapOf(
                     "intentSummary" to "acknowledge direct request",
                     "sceneDirection" to "one short sentence",
+                    "responseTargetRef" to "msg_1",
+                    "responseObligation" to "REQUIRED",
+                    "groundingNeed" to "NONE",
                 )
         }
         return mapper.writeValueAsString(base)

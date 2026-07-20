@@ -5,6 +5,7 @@ import com.discordassistant.central.speech.application.port.out.CompleteActionEv
 import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationRequest
 import com.discordassistant.central.speech.application.port.out.CompleteActionKind
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
+import com.discordassistant.central.speech.domain.model.SpeechResponseObligation
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
 /** 모호한 장면에서 실제 SEND 문구·REACT·IGNORE를 평가한 뒤 최종 행동을 고른다. */
@@ -20,6 +21,7 @@ class CompleteActionSelector(
         triggerMessageRef: String? = null,
         offerReaction: Boolean = true,
     ): CompleteActionSelection {
+        val responseRequired = packet.responseObligation == SpeechResponseObligation.REQUIRED
         val candidates =
             buildList {
                 speechCandidates.forEach { candidate ->
@@ -31,7 +33,7 @@ class CompleteActionSelector(
                         ),
                     )
                 }
-                if (offerReaction) {
+                if (offerReaction && !responseRequired) {
                     add(
                         CompleteActionCandidate(
                             REACTION_CANDIDATE_ID,
@@ -40,7 +42,9 @@ class CompleteActionSelector(
                         ),
                     )
                 }
-                add(CompleteActionCandidate(IGNORE_CANDIDATE_ID, CompleteActionKind.IGNORE))
+                if (!responseRequired) {
+                    add(CompleteActionCandidate(IGNORE_CANDIDATE_ID, CompleteActionKind.IGNORE))
+                }
             }
         val evaluation =
             evaluator.select(
@@ -59,11 +63,11 @@ class CompleteActionSelector(
                     enforcementConstraints = ENFORCEMENT_CONSTRAINTS,
                     candidates = candidates,
                 ),
-            ) ?: return CompleteActionSelection.Ignore
-        if (evaluation.confidence < MIN_CONFIDENCE) return CompleteActionSelection.Ignore
+            ) ?: return fallbackSelection(speechCandidates, responseRequired)
+        if (evaluation.confidence < MIN_CONFIDENCE) return fallbackSelection(speechCandidates, responseRequired)
         val selected =
             candidates.firstOrNull { it.candidateId == evaluation.selectedCandidateId }
-                ?: return CompleteActionSelection.Ignore
+                ?: return fallbackSelection(speechCandidates, responseRequired)
         return when (selected.kind) {
             CompleteActionKind.SEND ->
                 speechCandidates.firstOrNull { it.candidateId == selected.candidateId }?.let(CompleteActionSelection::Send)
@@ -72,6 +76,17 @@ class CompleteActionSelector(
             CompleteActionKind.IGNORE -> CompleteActionSelection.Ignore
         }
     }
+
+    private fun fallbackSelection(
+        speechCandidates: List<SpeechCandidate>,
+        responseRequired: Boolean,
+    ): CompleteActionSelection =
+        if (responseRequired) {
+            speechCandidates.minByOrNull(SpeechCandidate::uncertainty)?.let(CompleteActionSelection::Send)
+                ?: CompleteActionSelection.Ignore
+        } else {
+            CompleteActionSelection.Ignore
+        }
 
     companion object {
         const val REACTION_CANDIDATE_ID: String = "action_react_ack"

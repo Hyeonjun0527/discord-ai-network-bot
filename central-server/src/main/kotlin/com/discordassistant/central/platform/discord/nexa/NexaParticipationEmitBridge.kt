@@ -35,9 +35,11 @@ import com.discordassistant.central.participation.application.judge.JudgeFewShot
 import com.discordassistant.central.participation.application.judge.JudgeFewShotExamplePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotRawMessagePayload
 import com.discordassistant.central.participation.application.judge.JudgeFewShotSetPayload
+import com.discordassistant.central.participation.application.judge.JudgeGroundingNeed
 import com.discordassistant.central.participation.application.judge.JudgeIntentHypothesisState
 import com.discordassistant.central.participation.application.judge.JudgeRecentNiaActionState
 import com.discordassistant.central.participation.application.judge.JudgeRecentOutcomeState
+import com.discordassistant.central.participation.application.judge.JudgeResponseObligation
 import com.discordassistant.central.participation.application.judge.JudgeSocialBeliefState
 import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
 import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
@@ -101,6 +103,8 @@ import com.discordassistant.central.speech.application.generation.GenerationBudg
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
+import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
+import com.discordassistant.central.speech.domain.model.SpeechResponseObligation
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
@@ -1257,6 +1261,9 @@ class NexaParticipationEmitBridge(
                 identity = speechIdentity(signal),
                 speechIntent = effectiveSpeechIntent,
                 rawContextSceneData = rawContextSceneDataForSpeech(signal),
+                responseTargetRef = attribution.responseTargetRef,
+                responseObligation = attribution.responseObligation,
+                groundingNeed = attribution.groundingNeed,
             )
         val emitRequest =
             rawWindowTrace(signal).let { rawTrace ->
@@ -1669,6 +1676,17 @@ class NexaParticipationEmitBridge(
             fewShotSetId = request.fewShotSet.setId?.toString(),
             fewShotVersion = request.fewShotSet.version,
             speechIntent = speechIntent?.toPromptIntent(reasonCode.code),
+            responseTargetRef = speechIntent?.responseTargetRef,
+            responseObligation =
+                when (speechIntent?.responseObligation) {
+                    JudgeResponseObligation.REQUIRED -> SpeechResponseObligation.REQUIRED
+                    else -> SpeechResponseObligation.OPTIONAL
+                },
+            groundingNeed =
+                when (speechIntent?.groundingNeed) {
+                    JudgeGroundingNeed.WEB_VERIFY -> SpeechGroundingNeed.WEB_VERIFY
+                    else -> SpeechGroundingNeed.NONE
+                },
         )
 
     private fun com.discordassistant.central.participation.application.judge.JudgeSpeechIntent.toPromptIntent(reasonCode: String): String =
@@ -1680,6 +1698,9 @@ class NexaParticipationEmitBridge(
             append("interaction_reading=$interactionReading; ")
             append("information_depth=$informationDepth; ")
             append("continuity_refs=${continuityRefs.sorted().joinToString(",")}; ")
+            append("response_target_ref=${responseTargetRef.orEmpty()}; ")
+            append("response_obligation=${responseObligation.name}; ")
+            append("grounding_need=${groundingNeed.name}; ")
             append("bubble_count=$bubbleCount; ")
             append("max_bubble_chars=$maxBubbleChars; ")
             actHint?.let { append("act_hint=$it; ") }
@@ -2219,6 +2240,9 @@ private data class DecisionAttribution(
     val fewShotSetId: String? = null,
     val fewShotVersion: Int? = null,
     val speechIntent: String? = null,
+    val responseTargetRef: String? = null,
+    val responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
+    val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
 )
 
 /**

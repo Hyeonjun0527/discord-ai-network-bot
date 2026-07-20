@@ -29,6 +29,11 @@ class NiaJudgeOutputParserTest {
             .isEqualTo("acknowledge the pattern and give one concise fact")
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.continuityRefs)
             .containsExactly("msg_1", "msg_3")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.responseTargetRef).isEqualTo("msg_3")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.responseObligation)
+            .isEqualTo(JudgeResponseObligation.REQUIRED)
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.groundingNeed)
+            .isEqualTo(JudgeGroundingNeed.WEB_VERIFY)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.bubbleCount).isEqualTo(3)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.maxBubbleChars).isEqualTo(900)
         assertThat(parsedByAction["CANCEL"]!!.decision.action).isEqualTo(SocialActionKind.CANCEL_PENDING)
@@ -248,6 +253,9 @@ class NiaJudgeOutputParserTest {
                     "interactionReading" to "the repeated knowledge questions look like a social test",
                     "informationDepth" to "acknowledge the pattern and give one concise fact",
                     "continuityRefs" to listOf("msg_1", "msg_3"),
+                    "responseTargetRef" to "msg_3",
+                    "responseObligation" to "REQUIRED",
+                    "groundingNeed" to "WEB_VERIFY",
                 )
         }
         base.putAll(extra)

@@ -30,6 +30,23 @@ object SingleJudgeDecisionGuard {
             current = fallbackDecision(current, fallback, "low_confidence")
         }
 
+        val latestMessageRef =
+            request.rawContextWindow.messages
+                .lastOrNull()
+                ?.ref
+        if (
+            current.action == SocialActionKind.SPEAK &&
+            latestMessageRef != null &&
+            current.speechIntent?.responseTargetRef != latestMessageRef
+        ) {
+            adjustments += adjustment("response_target_aligned", current.action, current.action)
+            current =
+                current.copy(
+                    speechIntent = current.speechIntent?.copy(responseTargetRef = latestMessageRef),
+                    reasonCode = current.reasonCode.withSuffix("response_target_aligned"),
+                )
+        }
+
         val clipped = clipDelayIfNeeded(request, current)
         if (clipped != current) {
             adjustments += adjustment("delay_clipped", current.action, current.action)

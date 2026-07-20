@@ -5,6 +5,8 @@ import com.discordassistant.central.speech.application.generation.GenerationBudg
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.port.out.ReasoningMode
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
+import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
+import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -12,6 +14,7 @@ import com.discordassistant.central.speech.application.privacy.ExternalPayloadAl
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -30,15 +33,18 @@ class CandidateGenerationServiceTest {
         }
     }
 
-    private fun service(port: SpeechGenerationPort) =
-        CandidateGenerationService(
-            generationPort = port,
-            socialActCompiler = SocialActPromptCompiler(),
-            burstCompiler = BurstPromptCompiler(),
-            reasoningModeSelector = ReasoningModeSelector(),
-            payloadSerializer = ExternalPayloadAllowlistSerializer(),
-            contentIsolator = ConversationContentIsolator(),
-        )
+    private fun service(
+        port: SpeechGenerationPort,
+        grounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
+    ) = CandidateGenerationService(
+        generationPort = port,
+        socialActCompiler = SocialActPromptCompiler(),
+        burstCompiler = BurstPromptCompiler(),
+        reasoningModeSelector = ReasoningModeSelector(),
+        payloadSerializer = ExternalPayloadAllowlistSerializer(),
+        contentIsolator = ConversationContentIsolator(),
+        factualGrounding = grounding,
+    )
 
     @Test
     fun `ambiguous budget requests up to three candidates`() {
@@ -182,5 +188,84 @@ class CandidateGenerationServiceTest {
             GenerationBudget.DEFAULT,
         )
         assertThat(port.lastRequest!!.reasoningMode).isEqualTo(ReasoningMode.THINKING)
+    }
+
+    @Test
+    fun `최신 토큰 질문은 오래된 엽떡 질문 대신 현재 응답 대상으로 명시된다`() {
+        val port = CapturingPort()
+        service(port).generate(
+            SpeechGenerationFixtures.packet(
+                turns =
+                    listOf(
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "엽떡 7단계 먹어봤냐"),
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "니아야 왜 대답 안해"),
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "토큰없냐"),
+                    ),
+                responseTargetRef = "msg_3",
+            ),
+        )
+
+        val request = port.lastRequest!!
+        assertThat(request.userPrompt).contains(
+            "[현재 응답 대상]",
+            "raw_scene_ref=msg_3",
+            "«member: 토큰없냐»",
+            "과거 질문은 맥락일 뿐 이 turn을 대신하지 않는다",
+        )
+        assertThat(request.systemPrompt).contains("이전 미응답 질문을 최신 질문 대신 답하지 않는다")
+    }
+
+    @Test
+    fun `AI judge가 웹 검증을 요구하면 검색 근거를 생성 프롬프트에 연결한다`() {
+        val port = CapturingPort()
+        var searchedQuery: String? = null
+        val grounding =
+            SpeechFactualGroundingPort { query ->
+                searchedQuery = query
+                SpeechFactualGrounding(
+                    evidence = "공식 메뉴에는 7단계가 없다고 안내되어 있다",
+                    sourceRefs = listOf("https://example.test/menu"),
+                )
+            }
+
+        service(port, grounding).generate(
+            SpeechGenerationFixtures.packet(
+                turns =
+                    listOf(
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "엽떡 7단계 먹어봤냐"),
+                    ),
+                groundingNeed = SpeechGroundingNeed.WEB_VERIFY,
+                responseTargetRef = "msg_1",
+            ),
+        )
+
+        assertThat(searchedQuery).isEqualTo("엽떡 7단계 먹어봤냐")
+        assertThat(port.lastRequest!!.userPrompt).contains(
+            "[외부 사실 검증 결과",
+            "공식 메뉴에는 7단계가 없다고 안내되어 있다",
+            "https://example.test/menu",
+        )
+    }
+
+    @Test
+    fun `웹 검증이 실패하면 없는 단계와 먹어본 경험을 지어내지 않도록 명시한다`() {
+        val port = CapturingPort()
+        service(port).generate(
+            SpeechGenerationFixtures.packet(
+                turns =
+                    listOf(
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "엽떡 7단계 먹어봤냐"),
+                    ),
+                groundingNeed = SpeechGroundingNeed.WEB_VERIFY,
+            ),
+        )
+
+        assertThat(port.lastRequest!!.userPrompt).contains("검증 근거를 얻지 못했다", "추측하거나 지어내지 말고")
+        assertThat(port.lastRequest!!.systemPrompt).contains("먹어봤다·가봤다·직접 봤다는 말은 실제 근거가 있을 때만")
     }
 }

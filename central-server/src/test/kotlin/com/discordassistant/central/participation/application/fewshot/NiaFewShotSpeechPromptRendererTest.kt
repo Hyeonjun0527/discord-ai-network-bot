@@ -65,6 +65,24 @@ class NiaFewShotSpeechPromptRendererTest {
         assertThat(NiaFewShotSpeechPromptRenderer.render(version(example(expectedReplies = emptyList())))).isNull()
     }
 
+    @Test
+    fun `retrieved renderer adds only the top two speak examples without global baselines`() {
+        val first = example(expectedReplies = listOf("첫 장면 답변")).copy(title = "첫 장면")
+        val ignored =
+            example(expectedReplies = emptyList()).copy(
+                title = "침묵 장면",
+                expectedAction = NiaFewShotAction.IGNORE,
+            )
+        val second = example(expectedReplies = listOf("둘째 장면 답변")).copy(title = "둘째 장면")
+        val third = example(expectedReplies = listOf("셋째 장면 답변")).copy(title = "셋째 장면")
+
+        val prompt = NiaFewShotSpeechPromptRenderer.renderRetrieved(listOf(first, ignored, second, third))
+
+        assertThat(prompt)
+            .contains("현재 장면과 가까운 대화 RAG", "첫 장면 답변", "둘째 장면 답변")
+            .doesNotContain("셋째 장면 답변", "다익스트라 알고리즘 말해봐")
+    }
+
     private fun example(
         expectedReplies: List<String>,
         badReplies: List<String> = emptyList(),

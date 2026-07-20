@@ -13,6 +13,7 @@ import com.discordassistant.central.speech.domain.model.SpeechTarget
 /** speech 생성 테스트 공용 패킷 빌더(중복 제거). */
 internal object SpeechGenerationFixtures {
     fun packet(
+        inputTraceId: String? = null,
         socialAct: SpeechSocialAct = SpeechSocialAct.ACKNOWLEDGE,
         burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
         turns: List<ConversationTurn> = listOf(ConversationTurn("user_1", "안녕")),
@@ -24,6 +25,7 @@ internal object SpeechGenerationFixtures {
         groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
     ): SpeechScenePacket =
         SpeechScenePacket.of(
+            inputTraceId = inputTraceId,
             focusThreadKey = "thread_1",
             target = SpeechTarget.member("user_1"),
             recentTurns = turns,

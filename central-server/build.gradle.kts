@@ -119,15 +119,15 @@ tasks.withType<Test> {
         // Docker 가 필요한 BDD/Testcontainers 계약만 실행해 GitHub runner 메모리 고갈을 방지한다.
         include("**/RunCucumberBddTest.class")
         include("**/PostgresFlywayIntegrationTest.class")
-        maxHeapSize = "1536m"
+        maxHeapSize = "2048m"
     } else {
         // Cucumber BDD 스위트는 Testcontainers Postgres(실 DB) 필요 → 기본 빌드에서 클래스 단위 제외(실행: -PdockerTests).
         // (스위트는 태그 게이트가 자식 시나리오에 전파되지 않아 클래스 제외로 게이트한다.)
         exclude("**/RunCucumberBddTest.class")
         // 단일 fork(maxParallelForks=1)로 전 스위트를 한 JVM 에서 돌린다. ArchUnit @AnalyzeClasses 가 central
         // 전체 패키지 클래스 그래프를 메모리에 올리므로, NEXA 패키지가 늘 때 기본 1024m/1280m 로는
-        // ArchUnit 임포트 단계에서 heap 이 부족해질 수 있다. docker 모드와 같은 1536m 로 맞춘다.
-        maxHeapSize = "1536m"
+        // ArchUnit 임포트 단계에서 heap 이 부족해질 수 있다. 전체 Spring 테스트 뒤에도 그래프를 올릴 수 있게 2048m 로 맞춘다.
+        maxHeapSize = "2048m"
     }
     maxParallelForks = 1
     // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).

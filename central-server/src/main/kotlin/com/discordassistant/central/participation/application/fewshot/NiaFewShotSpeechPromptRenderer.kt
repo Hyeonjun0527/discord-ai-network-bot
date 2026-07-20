@@ -12,6 +12,16 @@ object NiaFewShotSpeechPromptRenderer {
 
     fun renderForParticipation(version: NiaFewShotVersion?): String = renderExamples(managedExamples(version) + BASELINE_EXAMPLES)
 
+    fun renderRetrieved(examples: List<NiaFewShotExample>): String? =
+        examples
+            .asSequence()
+            .filter { it.expectedAction == NiaFewShotAction.SPEAK && it.expectedReplies.isNotEmpty() }
+            .take(MAX_RETRIEVED_EXAMPLES)
+            .map(SpeechPromptExample::from)
+            .toList()
+            .takeIf { it.isNotEmpty() }
+            ?.let { renderExamples(it, "현재 장면과 가까운 대화 RAG") }
+
     private fun managedExamples(version: NiaFewShotVersion?): List<SpeechPromptExample> =
         version
             ?.examples
@@ -23,9 +33,12 @@ object NiaFewShotSpeechPromptRenderer {
             ?.toList()
             .orEmpty()
 
-    private fun renderExamples(examples: List<SpeechPromptExample>): String =
+    private fun renderExamples(
+        examples: List<SpeechPromptExample>,
+        heading: String = "니아 대화 대조 예시",
+    ): String =
         buildString {
-            appendLine("[니아 대화 대조 예시]")
+            appendLine("[$heading]")
             appendLine("문장을 복사하지 말고, 여러 턴이 만든 사회적 장면과 좋은 답변·나쁜 답변의 차이를 적용한다.")
             appendLine("관리자 예시는 해당 서버의 말투와 밈에 우선하고, 기본 예시는 반복·전환 회귀를 막는 기준이다.")
             examples.forEachIndexed { index, example ->
@@ -126,5 +139,6 @@ object NiaFewShotSpeechPromptRenderer {
         )
 
     private const val MAX_MANAGED_EXAMPLES = 8
+    private const val MAX_RETRIEVED_EXAMPLES = 2
     private const val MAX_PROMPT_CHARS = 16_000
 }

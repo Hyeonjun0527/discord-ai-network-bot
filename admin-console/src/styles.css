@@ -250,6 +250,28 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   margin-left: auto;
 }
 
+.rag-toolbar { align-items: center; }
+
+.rag-library-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rag-library-status span,
+.input-summary span,
+.input-summary strong {
+  border: 1px solid var(--line);
+  padding: 7px 10px;
+  color: var(--muted);
+  background: #f8f8f5;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.rag-library-status strong,
+.input-summary strong { color: var(--ink); font-weight: 800; }
+
 .data-layout,
 .execution-layout {
   display: grid;
@@ -398,6 +420,33 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
 
 .dataset-markdown-editor { min-height: 560px; }
 
+.rag-editor .dataset-markdown-editor { min-height: 460px; }
+
+.rag-search-panel {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  padding: 26px 30px 34px;
+  background: var(--paper);
+}
+
+.rag-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.rag-search-form textarea { min-height: 104px; }
+.rag-search-form button { min-height: 42px; }
+
+.rag-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
 .execution-toolbar { align-items: end; }
 
 .execution-row {
@@ -441,6 +490,20 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
 
 .detail-heading h2 { margin: 0; font-size: 17px; letter-spacing: -0.025em; }
 
+.detail-heading a {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+.input-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .conversation-lines { display: grid; gap: 7px; }
 
 .conversation-line {
@@ -463,8 +526,54 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
 
 .retrieved-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .retrieved-card { border: 1px solid var(--line); padding: 14px; }
-.retrieved-card > strong { display: block; margin-bottom: 10px; font-size: 11px; }
 .retrieved-card .conversation-line { grid-template-columns: 64px minmax(0, 1fr); }
+
+.match-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.match-heading strong { font-size: 11px; }
+.match-heading span { color: var(--muted); font-size: 9px; white-space: nowrap; }
+
+.match-action {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.prompt-details {
+  border: 1px solid var(--line);
+  background: #fbfbf8;
+}
+
+.prompt-details + .prompt-details { margin-top: 8px; }
+
+.prompt-details summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.prompt-details pre {
+  max-height: 520px;
+  overflow: auto;
+  margin: 0;
+  border-top: 1px solid var(--line);
+  padding: 16px;
+  color: #292925;
+  background: #f5f5f1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 .nia-output > p:not(.empty-copy) {
   width: fit-content;
@@ -498,7 +607,7 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   .console-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; padding: 16px; }
   .brand-lockup { padding-bottom: 14px; }
-  .sidebar nav { grid-template-columns: repeat(2, 1fr); margin-top: 12px; }
+  .sidebar nav { grid-template-columns: repeat(3, 1fr); margin-top: 12px; }
   .workspace { padding: 24px 18px 56px; }
   .data-layout,
   .execution-layout { grid-template-columns: 1fr; }
@@ -519,4 +628,6 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   .markdown-editor { min-height: 440px; padding: 14px; font-size: 13px; }
   .conversation-line { grid-template-columns: 70px minmax(0, 1fr); }
   .retrieved-grid { grid-template-columns: 1fr; }
+  .rag-results { grid-template-columns: 1fr; }
+  .rag-search-form { grid-template-columns: 1fr; }
 }

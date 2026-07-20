@@ -56,7 +56,9 @@ class NiaJudgePromptAssembler(
         """
         You are NIA's single participation judge.
         Decide exactly one action for the current Discord scene: IGNORE, WAIT, REACT, SPEAK, or CANCEL.
-        Use the raw scene text as the primary source. Use few-shot examples as the judgment constitution.
+        Use the raw scene text as the primary source. `fewShotSet` is the global judgment constitution included every time.
+        `conversationRag` contains only the closest dialogue-library examples retrieved for this scene. Use them as direct
+        situational analogies, not as rules and not as stronger evidence than the current raw scene.
         In a few-shot example, currentState explains the relevant pending scene state, expectedDeliveryMode is the exact
         SPEAK delivery choice, expectedReactionCode is the exact REACT payload, and expectedReevaluateAfterMs is the exact
         WAIT delay. Use only fields that belong to its action.
@@ -175,6 +177,7 @@ class NiaJudgePromptAssembler(
                     messages = rawContextWindow.messages.toPromptMessages(),
                 ),
             fewShotSet = fewShotSet.toPromptFewShotSet(),
+            conversationRag = conversationRag.toPromptConversationRag(),
             socialMemory = memoryRefs.map { it.toPromptMemory() },
             metadata =
                 PromptMetadata(
@@ -275,6 +278,45 @@ class NiaJudgePromptAssembler(
     private fun JudgeMemoryRef.toPromptMemory(): PromptMemoryRef =
         PromptMemoryRef(refId = refId, claim = claim, provenance = provenance, confidence = confidence)
 
+    private fun JudgeConversationRagPayload.toPromptConversationRag(): PromptConversationRag =
+        PromptConversationRag(
+            matches =
+                matches.map { match ->
+                    PromptConversationRagMatch(
+                        entryId = match.entryId,
+                        score = match.score,
+                        scoringMethod = match.scoringMethod,
+                        example = match.example.toPromptFewShotExample(),
+                    )
+                },
+        )
+
+    private fun JudgeFewShotExamplePayload.toPromptFewShotExample(): PromptFewShotExample =
+        PromptFewShotExample(
+            exampleId = exampleId,
+            title = title,
+            rawMessages =
+                rawMessages.map { message ->
+                    PromptFewShotRawMessage(message.ref, message.authorRole, message.offsetMs, message.text)
+                },
+            expectedAction = expectedAction.name,
+            expectedDeliveryMode = expectedDeliveryMode?.name,
+            currentState = currentState,
+            expectedReactionCode = expectedReactionCode,
+            expectedReevaluateAfterMs = expectedReevaluateAfterMs,
+            reason = reason,
+            evidenceRefs = evidenceRefs.sorted(),
+            badAlternative =
+                PromptFewShotBadAlternative(
+                    action = badAlternative.action.name,
+                    deliveryMode = badAlternative.deliveryMode?.name,
+                    whyBad = badAlternative.whyBad,
+                ),
+            tags = tags.sorted(),
+            priority = priority,
+            privacyClass = privacyClass.name,
+        )
+
     private fun SingleJudgeSceneSnapshot.toPromptSceneState(): PromptSceneState =
         PromptSceneState(
             directAddressed = directAddressed,
@@ -300,7 +342,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v12"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v13"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }
@@ -311,11 +353,23 @@ private data class JudgePromptPayload(
     val outputSchema: String,
     val rawScene: PromptRawScene,
     val fewShotSet: PromptFewShotSet,
+    val conversationRag: PromptConversationRag,
     val socialMemory: List<PromptMemoryRef>,
     val metadata: PromptMetadata,
     val sceneState: PromptSceneState,
     val featureVector: Map<String, PromptFeatureValue>,
     val constraints: PromptConstraints,
+)
+
+private data class PromptConversationRag(
+    val matches: List<PromptConversationRagMatch>,
+)
+
+private data class PromptConversationRagMatch(
+    val entryId: Long,
+    val score: Double,
+    val scoringMethod: String,
+    val example: PromptFewShotExample,
 )
 
 private data class PromptRawScene(

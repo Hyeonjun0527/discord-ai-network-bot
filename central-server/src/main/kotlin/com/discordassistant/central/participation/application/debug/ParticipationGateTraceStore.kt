@@ -66,6 +66,8 @@ data class ParticipationGateTrace(
     val currentConversation: List<ParticipationTraceMessage> = emptyList(),
     /** 대화 에피소드 RAG가 고른 원문. 런타임 연결 전에는 비어 있다. */
     val retrievedConversations: List<ParticipationTraceConversation> = emptyList(),
+    /** 실제 모델 호출 직전에 조립된 입력. 메모리 trace 에만 남고 서버 재시작 시 사라진다. */
+    val inputSnapshot: NiaInputSnapshot? = null,
     /** 발화 파이프라인이 최종 선택한 Discord 버블. 발화하지 않았으면 비어 있다. */
     val niaReply: List<String> = emptyList(),
     val features: ParticipationGateTraceFeatures,
@@ -82,7 +84,12 @@ data class ParticipationTraceMessage(
 
 data class ParticipationTraceConversation(
     val id: String,
+    val title: String,
+    val score: Double,
+    val scoringMethod: String,
+    val expectedAction: String,
     val messages: List<ParticipationTraceMessage>,
+    val expectedReplies: List<String> = emptyList(),
 )
 
 data class ParticipationGateTraceFeatures(

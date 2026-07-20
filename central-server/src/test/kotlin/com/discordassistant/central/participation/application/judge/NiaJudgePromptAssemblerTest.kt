@@ -31,7 +31,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v12")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v13")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -83,9 +83,41 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload.at("/fewShotSet/examples/0/expectedDeliveryMode").asText()).isEqualTo("CHANNEL")
         assertThat(payload.at("/fewShotSet/examples/0/currentState").asText()).isEqualTo("Direct consolation is expected.")
         assertThat(payload.at("/fewShotSet/examples/0/badAlternative/action").asText()).isEqualTo("WAIT")
+        assertThat(payload.at("/conversationRag/matches").size()).isZero()
         assertThat(payload.at("/socialMemory/0/refId").asText()).isEqualTo("mem-1")
         assertThat(payload.at("/constraints/allowedActions").map { it.asText() }).contains("CANCEL", "SPEAK")
         assertThat(payload.at("/featureVector/turn.direct_pressure/value").asDouble()).isEqualTo(0.8)
+    }
+
+    @Test
+    fun `global few-shot and retrieved conversation RAG stay separate in every judge input`() {
+        val retrieved = sampleFewShotSet().examples.single().copy(exampleId = "rag_41", title = "비슷한 대화")
+        val request =
+            sampleRequest().copy(
+                conversationRag =
+                    JudgeConversationRagPayload(
+                        listOf(
+                            JudgeConversationRagMatchPayload(
+                                entryId = 41,
+                                score = 0.91,
+                                scoringMethod = "EMBEDDING",
+                                example = retrieved,
+                            ),
+                        ),
+                    ),
+            )
+
+        val assembled = NiaJudgePromptAssembler().assemble(request)
+        val payload = mapper.readTree(assembled.prompt.substringAfter("INPUT_JSON:\n"))
+
+        assertThat(payload.at("/fewShotSet/examples/0/exampleId").asText()).isEqualTo("fs_direct_reply")
+        assertThat(payload.at("/conversationRag/matches/0/entryId").asLong()).isEqualTo(41)
+        assertThat(payload.at("/conversationRag/matches/0/score").asDouble()).isEqualTo(0.91)
+        assertThat(payload.at("/conversationRag/matches/0/example/title").asText()).isEqualTo("비슷한 대화")
+        assertThat(assembled.prompt).contains(
+            "fewShotSet` is the global judgment constitution included every time",
+            "conversationRag` contains only the closest dialogue-library examples retrieved for this scene",
+        )
     }
 
     @Test

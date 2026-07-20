@@ -17,6 +17,7 @@ data class SingleJudgeDecisionRequest(
     val sceneSnapshot: SingleJudgeSceneSnapshot,
     val featureVector: FeatureVectorView,
     val fewShotSet: JudgeFewShotSetPayload = JudgeFewShotSetPayload.EMPTY,
+    val conversationRag: JudgeConversationRagPayload = JudgeConversationRagPayload.EMPTY,
     val memoryRefs: List<JudgeMemoryRef>,
     val constraints: JudgeDecisionConstraints,
     val schemaVersion: Int,
@@ -30,6 +31,34 @@ data class SingleJudgeDecisionRequest(
     companion object {
         const val CURRENT_SCHEMA_VERSION: Int = 1
         const val MAX_MEMORY_REFS: Int = 8
+    }
+}
+
+data class JudgeConversationRagPayload(
+    val matches: List<JudgeConversationRagMatchPayload>,
+) {
+    init {
+        require(matches.size <= MAX_MATCHES) { "conversation RAG matches 는 최대 $MAX_MATCHES 개다" }
+    }
+
+    companion object {
+        val EMPTY = JudgeConversationRagPayload(emptyList())
+        const val MAX_MATCHES = 4
+    }
+}
+
+data class JudgeConversationRagMatchPayload(
+    val entryId: Long,
+    val score: Double,
+    val scoringMethod: String,
+    val example: JudgeFewShotExamplePayload,
+) {
+    init {
+        require(entryId > 0) { "conversation RAG entryId 는 양수여야 한다" }
+        require(score in 0.0..1.0) { "conversation RAG score 는 [0,1] 범위여야 한다" }
+        require(scoringMethod == "EMBEDDING" || scoringMethod == "TEXT_FALLBACK") {
+            "지원하지 않는 conversation RAG scoringMethod 다: $scoringMethod"
+        }
     }
 }
 

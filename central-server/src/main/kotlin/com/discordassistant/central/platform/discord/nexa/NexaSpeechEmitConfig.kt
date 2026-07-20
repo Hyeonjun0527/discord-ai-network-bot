@@ -17,6 +17,7 @@ import com.discordassistant.central.speech.application.port.out.CompleteActionEv
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
+import com.discordassistant.central.speech.application.port.out.SpeechInputTracePort
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -68,6 +69,7 @@ class NexaSpeechEmitConfig {
     fun nexaSpeechGenerationGate(
         generationPort: SpeechGenerationPort,
         factualGrounding: SpeechFactualGroundingPort,
+        inputTrace: SpeechInputTracePort,
     ): SpeechGenerationGate =
         SpeechGenerationGate(
             CandidateGenerationService(
@@ -76,6 +78,7 @@ class NexaSpeechEmitConfig {
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
                 factualGrounding = factualGrounding,
+                inputTrace = inputTrace,
             ),
         )
 

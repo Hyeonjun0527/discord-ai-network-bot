@@ -17,11 +17,18 @@ import java.time.Clock
 @Configuration
 class NexaJudgeRuntimeConfig {
     @Bean
+    @ConditionalOnMissingBean(NiaJudgePromptAssembler::class)
+    fun niaJudgePromptAssembler(): NiaJudgePromptAssembler = NiaJudgePromptAssembler()
+
+    @Bean
     @ConditionalOnBean(NiaJudgeLlmPort::class)
     @ConditionalOnMissingBean(SingleParticipationJudgePort::class)
-    fun niaSingleParticipationJudge(llmPort: NiaJudgeLlmPort): SingleParticipationJudgePort =
+    fun niaSingleParticipationJudge(
+        llmPort: NiaJudgeLlmPort,
+        promptAssembler: NiaJudgePromptAssembler,
+    ): SingleParticipationJudgePort =
         NiaParticipationJudge(
-            promptAssembler = NiaJudgePromptAssembler(),
+            promptAssembler = promptAssembler,
             llmPort = llmPort,
             outputParser = NiaJudgeOutputParser(),
         )

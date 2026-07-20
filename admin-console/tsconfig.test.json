@@ -7,5 +7,5 @@
     "outDir": ".tmp-tests",
     "types": ["node"]
   },
-  "include": ["src/api-contract.ts", "test/**/*.ts"]
+  "include": ["src/api-contract.ts", "src/conversation-markdown.ts", "test/**/*.ts"]
 }

@@ -30,7 +30,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v10")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v11")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -79,10 +79,38 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload.at("/rawScene/messages/1/elapsedSincePreviousMs").asLong()).isEqualTo(1_000L)
         assertThat(payload.at("/fewShotSet/version").asInt()).isEqualTo(3)
         assertThat(payload.at("/fewShotSet/examples/0/expectedAction").asText()).isEqualTo("SPEAK")
+        assertThat(payload.at("/fewShotSet/examples/0/currentState").asText()).isEqualTo("Direct consolation is expected.")
         assertThat(payload.at("/fewShotSet/examples/0/badAlternative/action").asText()).isEqualTo("WAIT")
         assertThat(payload.at("/socialMemory/0/refId").asText()).isEqualTo("mem-1")
         assertThat(payload.at("/constraints/allowedActions").map { it.asText() }).contains("CANCEL", "SPEAK")
         assertThat(payload.at("/featureVector/turn.direct_pressure/value").asDouble()).isEqualTo(0.8)
+    }
+
+    @Test
+    fun `prompt preserves action-specific few-shot payloads`() {
+        val source = sampleFewShotSet().examples.single()
+        val react =
+            source.copy(
+                exampleId = "fs_react",
+                expectedAction = NiaFewShotAction.REACT,
+                currentState = "A reply would be redundant.",
+                expectedReactionCode = "eyes",
+                badAlternative = JudgeFewShotBadAlternativePayload(NiaFewShotAction.SPEAK, "speech would repeat the answer"),
+            )
+        val wait =
+            source.copy(
+                exampleId = "fs_wait",
+                expectedAction = NiaFewShotAction.WAIT,
+                currentState = "The member is sending a message burst.",
+                expectedReevaluateAfterMs = 1_800,
+                badAlternative = JudgeFewShotBadAlternativePayload(NiaFewShotAction.SPEAK, "speech would interrupt the burst"),
+            )
+        val request = sampleRequest().copy(fewShotSet = sampleFewShotSet().copy(examples = listOf(react, wait)))
+
+        val payload = mapper.readTree(NiaJudgePromptAssembler().assemble(request).prompt.substringAfter("INPUT_JSON:\n"))
+
+        assertThat(payload.at("/fewShotSet/examples/0/expectedReactionCode").asText()).isEqualTo("eyes")
+        assertThat(payload.at("/fewShotSet/examples/1/expectedReevaluateAfterMs").asLong()).isEqualTo(1_800)
     }
 
     @Test
@@ -262,6 +290,7 @@ class NiaJudgePromptAssemblerTest {
                                 ),
                             ),
                         expectedAction = NiaFewShotAction.SPEAK,
+                        currentState = "Direct consolation is expected.",
                         reason = "Direct reply request should be judged from raw scene evidence.",
                         evidenceRefs = setOf("m1"),
                         badAlternative =

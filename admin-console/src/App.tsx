@@ -14,6 +14,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { captureConsoleError, wasBugsinkReported } from "./bugsink";
 import {
+  parseConversationMarkdown,
+  renameConversationMarkdown,
+  serializeConversationMarkdown,
+  summarizeConversationMarkdown,
+  toStoredAction,
+} from "./conversation-markdown";
+import {
   createFewShotDraft,
   createFewShotDraftForSet,
   evalFewShotDraft,
@@ -55,6 +62,9 @@ function newConversation(): NiaFewShotExample {
     expectedAction: "SPEAK",
     expectedReplies: [""],
     badReplies: [],
+    currentState: null,
+    expectedReactionCode: null,
+    expectedReevaluateAfterMs: null,
     reason: "현재 대화의 흐름을 자연스럽게 이어간다.",
     evidenceRefs: ["m2"],
     badAlternative: { action: "WAIT", whyBad: "저장된 다음 발화를 수행하지 못한다." },
@@ -94,7 +104,7 @@ function scopeLabel(set: NiaFewShotSet): string {
     case "PERSONA":
       return `페르소나 ${set.scope.persona ?? "nia"}`;
     default:
-      return "전체 서버";
+      return "모든 서버 공통";
   }
 }
 
@@ -114,6 +124,12 @@ function normalizeExamples(examples: NiaFewShotExample[]): NiaFewShotExample[] {
       throw new Error(`'${example.title}'에 니아가 이어서 할 말을 입력하세요.`);
     }
     const expectedAction = example.expectedAction || "SPEAK";
+    if (expectedAction === "REACT" && !example.expectedReactionCode?.trim()) {
+      throw new Error(`'${example.title}'에 리액션을 입력하세요.`);
+    }
+    if (expectedAction === "WAIT" && (!example.expectedReevaluateAfterMs || example.expectedReevaluateAfterMs <= 0)) {
+      throw new Error(`'${example.title}'에 다시 판단할 시간을 입력하세요.`);
+    }
     const badAction = example.badAlternative.action === expectedAction ? "WAIT" : example.badAlternative.action;
     return {
       ...example,
@@ -122,6 +138,9 @@ function normalizeExamples(examples: NiaFewShotExample[]): NiaFewShotExample[] {
       rawMessages,
       expectedReplies: expectedAction === "SPEAK" ? expectedReplies : [],
       badReplies: expectedAction === "SPEAK" ? example.badReplies.filter((reply) => reply.trim()) : [],
+      currentState: example.currentState?.trim() || null,
+      expectedReactionCode: expectedAction === "REACT" ? example.expectedReactionCode?.trim() : null,
+      expectedReevaluateAfterMs: expectedAction === "WAIT" ? example.expectedReevaluateAfterMs : null,
       evidenceRefs: [rawMessages.at(-1)?.ref ?? "m1"],
       badAlternative: { ...example.badAlternative, action: badAction },
     };
@@ -158,6 +177,9 @@ function App() {
   const [sets, setSets] = useState<NiaFewShotSet[]>([]);
   const [selectedSetId, setSelectedSetId] = useState("");
   const [examples, setExamples] = useState<NiaFewShotExample[]>([newConversation()]);
+  const [markdownDocuments, setMarkdownDocuments] = useState<string[]>([
+    serializeConversationMarkdown(newConversation()),
+  ]);
   const [selectedExampleIndex, setSelectedExampleIndex] = useState(0);
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);
   const [guildId, setGuildId] = useState(() => window.localStorage.getItem(GUILD_ID_STORAGE_KEY) ?? "");
@@ -175,6 +197,7 @@ function App() {
   const draft = useMemo(() => draftVersion(selectedSet), [selectedSet]);
   const active = useMemo(() => activeVersion(selectedSet), [selectedSet]);
   const selectedExample = examples[selectedExampleIndex] ?? examples[0] ?? null;
+  const selectedMarkdown = markdownDocuments[selectedExampleIndex] ?? markdownDocuments[0] ?? "";
   const selectedExecution = useMemo(
     () => executions.find((execution) => execution.correlationId === selectedExecutionId) ?? executions[0] ?? null,
     [executions, selectedExecutionId],
@@ -194,9 +217,11 @@ function App() {
 
   useEffect(() => {
     const source = draft?.examples ?? active?.examples;
-    setExamples(source?.length ? cloneExamples(source) : [newConversation()]);
+    const nextExamples = source?.length ? cloneExamples(source) : [newConversation()];
+    setExamples(nextExamples);
+    setMarkdownDocuments(nextExamples.map(serializeConversationMarkdown));
     setSelectedExampleIndex(0);
-  }, [selectedSet?.id, draft?.version, active?.version]);
+  }, [selectedSet?.id, draft?.version, draft?.updatedAt, active?.version, active?.updatedAt]);
 
   async function run(task: () => Promise<void>) {
     setLoading(true);
@@ -245,32 +270,67 @@ function App() {
     });
   }
 
-  function updateExample(update: (example: NiaFewShotExample) => NiaFewShotExample) {
-    setExamples((current) => current.map((example, index) => (index === selectedExampleIndex ? update(example) : example)));
+  function updateMarkdown(markdown: string) {
+    setMarkdownDocuments((current) =>
+      current.map((document, index) => (index === selectedExampleIndex ? markdown : document)),
+    );
   }
 
   function addExample() {
-    setExamples((current) => [...current, newConversation()]);
+    const conversation = newConversation();
+    setExamples((current) => [...current, conversation]);
+    setMarkdownDocuments((current) => [...current, serializeConversationMarkdown(conversation)]);
     setSelectedExampleIndex(examples.length);
   }
 
   function duplicateExample() {
     if (!selectedExample) return;
     const copy = cloneExamples([selectedExample])[0];
-    setExamples((current) => [...current, { ...copy, id: null, title: `${copy.title} 복사본` }]);
+    const summary = summarizeConversationMarkdown(selectedMarkdown);
+    const title = `${summary.title} 복사본`;
+    setExamples((current) => [...current, { ...copy, id: null, title }]);
+    setMarkdownDocuments((current) => [...current, renameConversationMarkdown(selectedMarkdown, title)]);
     setSelectedExampleIndex(examples.length);
   }
 
   function removeExample() {
     if (examples.length === 1) return;
     setExamples((current) => current.filter((_, index) => index !== selectedExampleIndex));
+    setMarkdownDocuments((current) => current.filter((_, index) => index !== selectedExampleIndex));
     setSelectedExampleIndex((current) => Math.max(0, current - 1));
+  }
+
+  function examplesFromMarkdown(): NiaFewShotExample[] {
+    return markdownDocuments.map((markdown, index) => {
+      const parsed = parseConversationMarkdown(markdown);
+      const base = examples[index] ?? newConversation();
+      return {
+        ...base,
+        title: parsed.title,
+        rawMessages: parsed.messages.map((message, messageIndex) => ({
+          ref: `m${messageIndex + 1}`,
+          authorRole: message.authorRole,
+          offsetMs: messageIndex * 1000,
+          text: message.text,
+        })),
+        expectedAction: toStoredAction(parsed.action),
+        expectedReplies: parsed.replies,
+        currentState: parsed.currentState,
+        expectedReactionCode: parsed.reactionCode,
+        expectedReevaluateAfterMs: parsed.reevaluateAfterMs,
+        reason: parsed.reason,
+        badAlternative: {
+          action: toStoredAction(parsed.badAction),
+          whyBad: parsed.badReason,
+        },
+      };
+    });
   }
 
   async function saveDraft(): Promise<NiaFewShotVersion | null> {
     let saved: NiaFewShotVersion | null = null;
     await run(async () => {
-      const normalized = normalizeExamples(examples);
+      const normalized = normalizeExamples(examplesFromMarkdown());
       if (draft?.setId) saved = await replaceFewShotDraft(draft.setId, draft.version, normalized);
       else if (selectedSet?.id) saved = await createFewShotDraftForSet(selectedSet.id, normalized);
       else {
@@ -344,12 +404,12 @@ function App() {
           <section className="data-workspace">
             <div className="data-toolbar">
               <label>
-                <span>데이터 세트</span>
+                <span>대화 데이터</span>
                 <select value={selectedSetId} onChange={(event) => setSelectedSetId(event.target.value)}>
                   {sets.map((set) => (
                     <option key={String(set.id)} value={String(set.id)}>{scopeLabel(set)}</option>
                   ))}
-                  {sets.length === 0 ? <option value="">새 전체 서버 데이터</option> : null}
+                  {sets.length === 0 ? <option value="">저장된 데이터 없음</option> : null}
                 </select>
               </label>
               <div className="version-status">
@@ -372,29 +432,30 @@ function App() {
                   <strong>대화 {examples.length}개</strong>
                   <button type="button" onClick={addExample} aria-label="대화 추가"><Plus size={17} /></button>
                 </div>
-                {examples.map((example, index) => (
-                  <button
-                    type="button"
-                    className={index === selectedExampleIndex ? "episode-row selected" : "episode-row"}
-                    key={`${example.title}-${index}`}
-                    onClick={() => setSelectedExampleIndex(index)}
-                  >
-                    <span>{example.title || "제목 없는 대화"}</span>
-                    <small>{example.rawMessages.length}줄</small>
-                    <ChevronRight size={15} />
-                  </button>
-                ))}
+                {markdownDocuments.map((markdown, index) => {
+                  const summary = summarizeConversationMarkdown(markdown);
+                  return (
+                    <button
+                      type="button"
+                      className={index === selectedExampleIndex ? "episode-row selected" : "episode-row"}
+                      key={index}
+                      onClick={() => setSelectedExampleIndex(index)}
+                    >
+                      <span>{summary.title}</span>
+                      <small>{summary.action} · {summary.messageCount}개 메시지</small>
+                      <ChevronRight size={15} />
+                    </button>
+                  );
+                })}
               </aside>
 
               {selectedExample ? (
                 <article className="episode-editor">
                   <div className="editor-heading">
-                    <input
-                      className="title-input"
-                      value={selectedExample.title}
-                      onChange={(event) => updateExample((example) => ({ ...example, title: event.target.value }))}
-                      aria-label="대화 제목"
-                    />
+                    <div>
+                      <strong>Markdown 편집기</strong>
+                      <span>대화 전체를 아래 한 칸에 붙여넣으세요</span>
+                    </div>
                     <div>
                       <button type="button" onClick={duplicateExample} aria-label="대화 복제"><Copy size={17} /></button>
                       <button type="button" onClick={removeExample} disabled={examples.length === 1} aria-label="대화 삭제">
@@ -403,87 +464,27 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="message-editor">
-                    <div className="section-heading">
-                      <strong>대화 원문</strong>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateExample((example) => ({
-                            ...example,
-                            rawMessages: [
-                              ...example.rawMessages,
-                              {
-                                ref: `m${example.rawMessages.length + 1}`,
-                                authorRole: "member",
-                                offsetMs: example.rawMessages.length * 1000,
-                                text: "",
-                              },
-                            ],
-                          }))
-                        }
-                      >
-                        <Plus size={15} /> 줄 추가
-                      </button>
-                    </div>
-                    {selectedExample.rawMessages.map((message, messageIndex) => (
-                      <div className="message-row" key={`${message.ref}-${messageIndex}`}>
-                        <select
-                          value={message.authorRole}
-                          onChange={(event) =>
-                            updateExample((example) => ({
-                              ...example,
-                              rawMessages: example.rawMessages.map((item, index) =>
-                                index === messageIndex ? { ...item, authorRole: event.target.value } : item,
-                              ),
-                            }))
-                          }
-                          aria-label={`${messageIndex + 1}번째 화자`}
-                        >
-                          <option value="member">사람</option>
-                          <option value="nia">니아</option>
-                        </select>
-                        <textarea
-                          value={message.text}
-                          onChange={(event) =>
-                            updateExample((example) => ({
-                              ...example,
-                              rawMessages: example.rawMessages.map((item, index) =>
-                                index === messageIndex ? { ...item, text: event.target.value } : item,
-                              ),
-                            }))
-                          }
-                          rows={2}
-                          placeholder="실제 대화를 그대로 입력"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateExample((example) => ({
-                              ...example,
-                              rawMessages: example.rawMessages.filter((_, index) => index !== messageIndex),
-                            }))
-                          }
-                          disabled={selectedExample.rawMessages.length === 1}
-                          aria-label={`${messageIndex + 1}번째 대화 삭제`}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
+                  <div className="markdown-format" aria-label="Markdown 형식">
+                    <code># 제목</code>
+                    <code>## 니아의 행동</code>
+                    <code>SPEAK · REACT · WAIT · IGNORE · CANCEL_PENDING</code>
+                    <code>## 현재 상태</code>
+                    <code>## 대화</code>
+                    <code>### 사람</code>
+                    <code>### 니아</code>
+                    <code>## 판단 이유</code>
+                    <code>## 피해야 할 행동</code>
+                    <code>## 니아가 이어서 할 말</code>
+                    <code>## 리액션</code>
+                    <code>## 다시 판단할 시간(ms)</code>
                   </div>
-
-                  <label className="reply-editor">
-                    <span>니아가 이어서 할 말</span>
-                    <textarea
-                      value={selectedExample.expectedReplies.join("\n")}
-                      onChange={(event) =>
-                        updateExample((example) => ({ ...example, expectedReplies: event.target.value.split("\n") }))
-                      }
-                      rows={4}
-                      placeholder="메시지가 여러 개면 줄을 나눠 입력"
-                    />
-                  </label>
+                  <textarea
+                    className="markdown-editor"
+                    value={selectedMarkdown}
+                    onChange={(event) => updateMarkdown(event.target.value)}
+                    aria-label="대화 Markdown"
+                    spellCheck={false}
+                  />
                 </article>
               ) : null}
             </div>

@@ -57,6 +57,8 @@ class NiaJudgePromptAssembler(
         You are NIA's single participation judge.
         Decide exactly one action for the current Discord scene: IGNORE, WAIT, REACT, SPEAK, or CANCEL.
         Use the raw scene text as the primary source. Use few-shot examples as the judgment constitution.
+        In a few-shot example, currentState explains the relevant pending scene state, expectedReactionCode is the exact
+        REACT payload, and expectedReevaluateAfterMs is the exact WAIT delay. Use only fields that belong to its action.
         Use memory and metadata only as secondary support when they do not contradict the raw scene.
 
         NIA is one participant in a multi-person conversation, not an answer API that must respond to every message.
@@ -248,6 +250,9 @@ class NiaJudgePromptAssembler(
                                 )
                             },
                         expectedAction = example.expectedAction.name,
+                        currentState = example.currentState,
+                        expectedReactionCode = example.expectedReactionCode,
+                        expectedReevaluateAfterMs = example.expectedReevaluateAfterMs,
                         reason = example.reason,
                         evidenceRefs = example.evidenceRefs.sorted(),
                         badAlternative =
@@ -290,7 +295,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v10"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v11"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }
@@ -338,6 +343,9 @@ private data class PromptFewShotExample(
     val title: String,
     val rawMessages: List<PromptFewShotRawMessage>,
     val expectedAction: String,
+    val currentState: String?,
+    val expectedReactionCode: String?,
+    val expectedReevaluateAfterMs: Long?,
     val reason: String,
     val evidenceRefs: List<String>,
     val badAlternative: PromptFewShotBadAlternative,

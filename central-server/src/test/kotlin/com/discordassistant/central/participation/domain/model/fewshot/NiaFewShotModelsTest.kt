@@ -73,11 +73,42 @@ class NiaFewShotModelsTest {
             .hasMessageContaining("SPEAK")
     }
 
+    @Test
+    fun `action payloads are accepted only by their matching action`() {
+        assertThat(
+            example(
+                expectedAction = NiaFewShotAction.REACT,
+                expectedReactionCode = "eyes",
+                badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.SPEAK, "a message would interrupt"),
+            ).expectedReactionCode,
+        ).isEqualTo("eyes")
+        assertThat(
+            example(
+                expectedAction = NiaFewShotAction.WAIT,
+                expectedReevaluateAfterMs = 1_500,
+                badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.SPEAK, "the member is still typing"),
+            ).expectedReevaluateAfterMs,
+        ).isEqualTo(1_500)
+        assertThatThrownBy { example(expectedReactionCode = "eyes") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("REACT")
+        assertThatThrownBy {
+            example(
+                expectedAction = NiaFewShotAction.REACT,
+                expectedReactionCode = "party_parrot",
+                badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.SPEAK, "a message would interrupt"),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("지원하지 않는")
+    }
+
     private fun example(
         expectedAction: NiaFewShotAction = NiaFewShotAction.SPEAK,
         evidenceRefs: Set<String> = setOf("m1"),
         expectedReplies: List<String> = emptyList(),
         badReplies: List<String> = emptyList(),
+        expectedReactionCode: String? = null,
+        expectedReevaluateAfterMs: Long? = null,
         badAlternative: NiaFewShotBadAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "waiting ignores a direct ask"),
     ): NiaFewShotExample =
         NiaFewShotExample(
@@ -94,6 +125,8 @@ class NiaFewShotModelsTest {
             expectedAction = expectedAction,
             expectedReplies = expectedReplies,
             badReplies = badReplies,
+            expectedReactionCode = expectedReactionCode,
+            expectedReevaluateAfterMs = expectedReevaluateAfterMs,
             reason = "The user is explicitly asking Nia for a response, so the judge should speak.",
             evidenceRefs = evidenceRefs,
             badAlternative = badAlternative,

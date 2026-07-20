@@ -49,6 +49,25 @@ class NiaFewShotEvalServiceTest {
             .contains("privacy.production_derived", "privacy.production_shaped_text")
     }
 
+    @Test
+    fun `eval rejects incomplete action-specific teaching examples`() {
+        val examples =
+            listOf(
+                example(30, NiaFewShotAction.REACT),
+                example(31, NiaFewShotAction.WAIT),
+                example(32, NiaFewShotAction.CANCEL),
+            )
+
+        val result = service.evaluate(version(examples))
+
+        assertThat(result.failures.map { it.code })
+            .containsExactlyInAnyOrder(
+                "react.missing_reaction_code",
+                "wait.missing_reevaluate_after",
+                "cancel.missing_current_state",
+            )
+    }
+
     private fun seedExamples(): List<NiaFewShotExample> {
         val actions =
             List(10) { NiaFewShotAction.SPEAK } +

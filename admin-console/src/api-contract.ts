@@ -93,6 +93,10 @@ export class ApiRequestError extends Error {
   }
 }
 
+export function isAuthenticationRequired(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
 export class ApiResponseParseError extends Error {
   readonly status: number;
   readonly path: string;

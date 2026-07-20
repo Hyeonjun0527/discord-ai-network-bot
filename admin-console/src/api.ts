@@ -2,6 +2,7 @@ import { captureConsoleError, type BugsinkApiContext } from "./bugsink";
 import {
   ApiRequestError,
   ApiResponseParseError,
+  isAuthenticationRequired,
   REQUEST_ID_HEADER,
   type ApiMethod,
   type ChannelSummary,
@@ -14,7 +15,7 @@ import {
   toPartialDashboardError,
 } from "./api-contract";
 
-export { ApiRequestError, ApiResponseParseError };
+export { ApiRequestError, ApiResponseParseError, isAuthenticationRequired };
 export type { ChannelSummary, DashboardPartialError, DashboardPanel, DashboardState, GuildSummary };
 
 type RequestJsonOptions = {

@@ -6,6 +6,7 @@ import {
   ApiResponseParseError,
   type ChannelSummary,
   type GuildSummary,
+  isAuthenticationRequired,
   parseApiErrorPayload,
   resolveRequestTarget,
   toPartialDashboardError,
@@ -86,6 +87,15 @@ test("ApiRequestError exposes code, action guide, and server request id", () => 
   assert.equal(error.code, "DASHBOARD_ADMIN_REQUIRED");
   assert.equal(error.requestId, "srv-2");
   assert.match(error.message, /다시 로그인하세요/);
+});
+
+test("isAuthenticationRequired only accepts unauthorized API errors", () => {
+  const unauthorized = new ApiRequestError("/api/dashboard/guilds", new Response("", { status: 401 }), null);
+  const forbidden = new ApiRequestError("/api/dashboard/guilds", new Response("", { status: 403 }), null);
+
+  assert.equal(isAuthenticationRequired(unauthorized), true);
+  assert.equal(isAuthenticationRequired(forbidden), false);
+  assert.equal(isAuthenticationRequired(new TypeError("Failed to fetch")), false);
 });
 
 test("resolveRequestTarget keeps fetch URL and reported request URL aligned", () => {

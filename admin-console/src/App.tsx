@@ -280,6 +280,7 @@ function App() {
         expectedAction: toStoredAction(parsed.action),
         expectedDeliveryMode: parsed.deliveryMode,
         expectedReplies: parsed.replies,
+        badReplies: [],
         currentState: parsed.currentState,
         expectedReactionCode: parsed.reactionCode,
         expectedReevaluateAfterMs: parsed.reevaluateAfterMs,
@@ -289,6 +290,10 @@ function App() {
           deliveryMode: parsed.badDeliveryMode,
           whyBad: parsed.badReason,
         },
+        tags: [],
+        priority: 100,
+        privacyClass: "SYNTHETIC",
+        evalStatus: "NOT_RUN",
       };
     });
   }

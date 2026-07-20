@@ -73,6 +73,38 @@ class ConversationRagServiceTest {
         assertThat(matches).allMatch { it.scoringMethod == ConversationRagScoringMethod.TEXT_FALLBACK }
     }
 
+    @Test
+    fun `entries can be added edited filtered and deleted independently`() {
+        val store = FakeStore()
+        val service = ConversationRagService(store, FakeEmbeddings(configured = false) { emptyList() }, Clock.fixed(now, ZoneOffset.UTC))
+
+        val first = service.create(example("피곤한 대화", "오늘 너무 피곤해", "얼른 자"))
+        val second = service.create(example("게임 대화", "스타 한 판", "ㄱ"))
+
+        assertThat(service.page("피곤", 0, 100).entries.map { it.id }).containsExactly(first.id)
+        val updated = service.update(requireNotNull(second.id), example("저녁 게임", "오늘 스타 할래", "한 판 ㄱ"))
+        assertThat(updated.id).isEqualTo(second.id)
+        assertThat(service.entry(requireNotNull(second.id)).example.title).isEqualTo("저녁 게임")
+
+        service.delete(requireNotNull(first.id))
+        assertThat(service.library().entries.map { it.id }).containsExactly(second.id)
+    }
+
+    @Test
+    fun `library page handles more than one hundred long lived examples without returning every body`() {
+        val store = FakeStore()
+        val service = ConversationRagService(store, FakeEmbeddings(configured = false) { emptyList() }, Clock.fixed(now, ZoneOffset.UTC))
+        service.createAll((1..120).map { index -> example("대화 $index", "장면 $index", "응답 $index") })
+
+        val page = service.page(query = null, offset = 100, limit = 20)
+        val firstEntry = page.entries.first()
+        val firstTitle = firstEntry.example.title
+
+        assertThat(page.total).isEqualTo(120)
+        assertThat(page.entries).hasSize(20)
+        assertThat(firstTitle).isEqualTo("대화 101")
+    }
+
     private fun example(
         title: String,
         message: String,
@@ -109,6 +141,28 @@ class ConversationRagServiceTest {
         var entries: MutableList<ConversationRagEntry> = mutableListOf(),
     ) : ConversationRagStorePort {
         override fun list(): List<ConversationRagEntry> = entries.toList()
+
+        override fun find(entryId: Long): ConversationRagEntry? = entries.find { it.id == entryId }
+
+        override fun save(entry: ConversationRagStoredEntry): ConversationRagEntry {
+            val id = entry.id ?: ((entries.maxOfOrNull { it.id ?: 0 } ?: 0) + 1)
+            val saved =
+                ConversationRagEntry(
+                    id = id,
+                    example = entry.example.copy(id = id),
+                    searchText = entry.searchText,
+                    embedding = entry.embedding,
+                    embeddingModel = entry.embeddingModel,
+                    createdAt = entry.createdAt ?: entry.indexedAt,
+                    updatedAt = entry.indexedAt,
+                )
+            entries.removeIf { it.id == id }
+            entries += saved
+            entries.sortBy { it.id }
+            return saved
+        }
+
+        override fun delete(entryId: Long): Boolean = entries.removeIf { it.id == entryId }
 
         override fun replaceAll(entries: List<ConversationRagStoredEntry>): List<ConversationRagEntry> {
             this.entries =

@@ -2287,6 +2287,8 @@ class NexaParticipationEmitBridge(
                     ),
             )
 
+        internal fun builtInFewShotPayload(): JudgeFewShotSetPayload = DEFAULT_FEW_SHOT_PAYLOAD
+
         /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
         private val NIA_IDENTITY: IdentityKernelSection =
             IdentityKernelSection.of(

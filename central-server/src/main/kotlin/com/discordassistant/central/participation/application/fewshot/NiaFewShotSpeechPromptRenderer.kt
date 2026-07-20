@@ -22,6 +22,16 @@ object NiaFewShotSpeechPromptRenderer {
             .takeIf { it.isNotEmpty() }
             ?.let { renderExamples(it, "현재 장면과 가까운 대화 RAG") }
 
+    fun builtInExamples(): List<NiaBuiltInSpeechExample> =
+        BASELINE_EXAMPLES.map { example ->
+            NiaBuiltInSpeechExample(
+                title = example.title,
+                messages = example.messages,
+                goodReplies = example.goodReplies,
+                badReplies = example.badReplies,
+            )
+        }
+
     private fun managedExamples(version: NiaFewShotVersion?): List<SpeechPromptExample> =
         version
             ?.examples
@@ -142,3 +152,10 @@ object NiaFewShotSpeechPromptRenderer {
     private const val MAX_RETRIEVED_EXAMPLES = 2
     private const val MAX_PROMPT_CHARS = 16_000
 }
+
+data class NiaBuiltInSpeechExample(
+    val title: String,
+    val messages: List<String>,
+    val goodReplies: List<String>,
+    val badReplies: List<String>,
+)

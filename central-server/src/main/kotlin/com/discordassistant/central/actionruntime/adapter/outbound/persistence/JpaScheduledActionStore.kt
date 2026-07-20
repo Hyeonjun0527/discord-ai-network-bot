@@ -9,6 +9,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.global.crypto.FieldCrypto
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
@@ -242,6 +243,7 @@ class JpaScheduledActionStore(
             routingUserId = FieldCrypto.encrypt(target.routingUserId),
             sceneContextVersion = target.sceneContextVersion,
             reactionCode = reactionCode,
+            deliveryMode = deliveryMode.name,
             wakeUpHint = wakeUpHint,
             waitAttempt = waitAttempt,
             expiresAt = expiresAt,
@@ -286,6 +288,7 @@ class JpaScheduledActionStore(
             failureReason = failureReason?.let { reasonFromWire(it) },
             maxAttempts = maxAttempts,
             reactionCode = reactionCode ?: if (typeFromWire(actionType) == ScheduledActionType.REACT) "ack" else null,
+            deliveryMode = runCatching { ScheduledDeliveryMode.valueOf(deliveryMode) }.getOrDefault(ScheduledDeliveryMode.REPLY),
             wakeUpHint = wakeUpHint,
             waitAttempt = waitAttempt,
             expiresAt = expiresAt,
@@ -339,6 +342,7 @@ class ScheduledActionEntity(
     @Column(name = "routing_user_id") var routingUserId: String? = null,
     @Column(name = "scene_context_version") var sceneContextVersion: Long? = null,
     @Column(name = "reaction_code") var reactionCode: String? = null,
+    @Column(name = "delivery_mode") var deliveryMode: String = ScheduledDeliveryMode.REPLY.name,
     @Column(name = "wake_up_hint") var wakeUpHint: String? = null,
     @Column(name = "wait_attempt") var waitAttempt: Int = 0,
     @Column(name = "expires_at") var expiresAt: Instant? = null,

@@ -75,6 +75,7 @@ sealed interface SocialAction {
      */
     data class Speak(
         val speechRequest: SpeechRequestRef,
+        val deliveryMode: SpeechDeliveryMode = SpeechDeliveryMode.CHANNEL,
         val delay: ActionDelay = ActionDelay.IMMEDIATE,
     ) : SocialAction {
         override val kind: SocialActionKind get() = SocialActionKind.SPEAK
@@ -92,6 +93,11 @@ sealed interface SocialAction {
         override val kind: SocialActionKind get() = SocialActionKind.CANCEL_PENDING
         override val consumesGenerationQuota: Boolean get() = false
     }
+}
+
+enum class SpeechDeliveryMode {
+    CHANNEL,
+    REPLY,
 }
 
 /**

@@ -51,6 +51,8 @@ data class ScheduledSocialAction(
     val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
     /** REACT 실행에 필요한 안정 reaction 코드. 다른 행동에서는 null. */
     val reactionCode: String? = null,
+    /** SPEAK 첫 버블을 일반 채널 메시지로 보낼지, 특정 메시지 답장으로 보낼지 결정한다. */
+    val deliveryMode: ScheduledDeliveryMode = ScheduledDeliveryMode.REPLY,
     /** WAIT 재평가 조건을 설명하는 최소 힌트. 원문 메시지는 담지 않는다. */
     val wakeUpHint: String? = null,
     /** WAIT 폐루프 전체에서 계승되는 재평가 횟수. 실행 transient attempt와 분리한다. */
@@ -157,6 +159,7 @@ data class ScheduledSocialAction(
             originRolloutMode: ShadowMode,
             maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
             reactionCode: String? = null,
+            deliveryMode: ScheduledDeliveryMode = ScheduledDeliveryMode.REPLY,
             wakeUpHint: String? = null,
             waitAttempt: Int = 0,
             expiresAt: Instant? = null,
@@ -175,6 +178,7 @@ data class ScheduledSocialAction(
                 originRolloutMode = originRolloutMode,
                 maxAttempts = maxAttempts,
                 reactionCode = reactionCode ?: if (type == ScheduledActionType.REACT) DEFAULT_REACTION_CODE else null,
+                deliveryMode = deliveryMode,
                 wakeUpHint = wakeUpHint,
                 waitAttempt = waitAttempt,
                 expiresAt = expiresAt ?: if (type == ScheduledActionType.WAIT) executeAfter.plus(DEFAULT_WAIT_TTL) else null,
@@ -190,6 +194,11 @@ data class ScheduledSocialAction(
         const val DEFAULT_EXECUTION_WINDOW_SECONDS: Long = 60
         private val DEFAULT_WAIT_TTL = java.time.Duration.ofMinutes(2)
     }
+}
+
+enum class ScheduledDeliveryMode {
+    CHANNEL,
+    REPLY,
 }
 
 /**

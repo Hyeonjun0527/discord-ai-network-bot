@@ -247,6 +247,7 @@ class NiaJudgeOutputParserTest {
                 mapOf(
                     "intentSummary" to "acknowledge direct request",
                     "sceneDirection" to "one short sentence, no over-comforting",
+                    "deliveryMode" to "CHANNEL",
                     "actHint" to "acknowledge",
                     "bubbleCount" to 3,
                     "maxBubbleChars" to 900,

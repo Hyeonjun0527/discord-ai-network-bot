@@ -3,6 +3,7 @@ package com.discordassistant.central.participation.adapter.outbound.persistence
 import com.discordassistant.central.participation.application.port.out.NiaFewShotStorePort
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotEvalStatus
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
@@ -280,6 +281,7 @@ class NiaFewShotExampleEntity(
     @Column(name = "raw_messages_json") var rawMessagesJson: String = "",
     @Column(name = "expected_action") var expectedAction: String = "",
     @Column(name = "expected_replies_json") var expectedRepliesJson: String = "[]",
+    @Column(name = "expected_delivery_mode") var expectedDeliveryMode: String? = null,
     @Column(name = "bad_replies_json") var badRepliesJson: String = "[]",
     @Column(name = "current_state") var currentState: String? = null,
     @Column(name = "expected_reaction_code") var expectedReactionCode: String? = null,
@@ -341,6 +343,7 @@ private fun NiaFewShotExample.toEntity(
         rawMessagesJson = mapper.writeValueAsString(rawMessages),
         expectedAction = expectedAction.name,
         expectedRepliesJson = mapper.writeValueAsString(expectedReplies),
+        expectedDeliveryMode = expectedDeliveryMode?.name,
         badRepliesJson = mapper.writeValueAsString(badReplies),
         currentState = currentState?.trim(),
         expectedReactionCode = expectedReactionCode,
@@ -362,6 +365,7 @@ private fun NiaFewShotExampleEntity.toDomain(mapper: com.fasterxml.jackson.datab
         rawMessages = mapper.readValue<List<NiaFewShotRawMessage>>(rawMessagesJson),
         expectedAction = NiaFewShotAction.valueOf(expectedAction),
         expectedReplies = mapper.readValue<List<String>>(expectedRepliesJson),
+        expectedDeliveryMode = expectedDeliveryMode?.let(NiaFewShotDeliveryMode::valueOf),
         badReplies = mapper.readValue<List<String>>(badRepliesJson),
         currentState = currentState,
         expectedReactionCode = expectedReactionCode,

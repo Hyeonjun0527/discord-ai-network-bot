@@ -16,6 +16,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionIdentity
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.global.crypto.FieldCrypto
 import com.discordassistant.central.participation.domain.model.action.SocialAction
@@ -79,6 +80,7 @@ class JpaScheduledActionStoreTest
             replyToMessageId: String? = null,
             targetMessageId: String? = null,
             type: ScheduledActionType = ScheduledActionType.SPEAK,
+            deliveryMode: ScheduledDeliveryMode = ScheduledDeliveryMode.REPLY,
         ) = ScheduledSocialAction.create(
             decisionId = decision,
             sampledActionIndex = index,
@@ -95,6 +97,7 @@ class JpaScheduledActionStoreTest
             executeAfter = executeAfter,
             contextVersion = 7,
             originRolloutMode = ShadowMode.CANARY,
+            deliveryMode = deliveryMode,
         )
 
         @Test
@@ -104,6 +107,7 @@ class JpaScheduledActionStoreTest
             assertThat(persisted.status).isEqualTo(ActionStatus.SCHEDULED)
             assertThat(persisted.contextVersion).isEqualTo(7)
             assertThat(persisted.originRolloutMode).isEqualTo(ShadowMode.CANARY)
+            assertThat(persisted.deliveryMode).isEqualTo(ScheduledDeliveryMode.REPLY)
         }
 
         @Test

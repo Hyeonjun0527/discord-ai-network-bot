@@ -38,6 +38,7 @@ export type NiaFewShotRawMessage = {
 
 export type NiaFewShotBadAlternative = {
   action: string;
+  deliveryMode?: string | null;
   whyBad: string;
 };
 
@@ -46,6 +47,7 @@ export type NiaFewShotExample = {
   title: string;
   rawMessages: NiaFewShotRawMessage[];
   expectedAction: string;
+  expectedDeliveryMode?: string | null;
   expectedReplies: string[];
   badReplies: string[];
   currentState?: string | null;

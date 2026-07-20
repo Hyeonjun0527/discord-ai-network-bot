@@ -13,6 +13,7 @@ import com.discordassistant.central.actionruntime.domain.model.ActionFailureReas
 import com.discordassistant.central.actionruntime.domain.model.ActionStatus
 import com.discordassistant.central.actionruntime.domain.model.Bubble
 import com.discordassistant.central.actionruntime.domain.model.BurstPlan
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.service.BackpressurePolicy
 import com.discordassistant.central.actionruntime.support.ControllableReevaluation
 import com.discordassistant.central.actionruntime.support.InMemoryActionAudit
@@ -51,6 +52,31 @@ class ActionExecutionServiceTest {
         consent = consent,
         executionPermit = executionPermit,
     )
+
+    @Test
+    fun `CHANNEL은 일반 메시지로 보내고 REPLY는 첫 버블만 답장한다`() {
+        fun execute(mode: ScheduledDeliveryMode): RecordingDiscordExecutor {
+            val executor = RecordingDiscordExecutor()
+            val scheduler = InMemoryActionScheduler(clock)
+            val action =
+                typingSpeakAction(
+                    decisionId = "delivery-${mode.name.lowercase()}",
+                    targetMessageId = "1234567890123456789",
+                    deliveryMode = mode,
+                )
+            scheduler.put(action)
+            service(executor, scheduler, ControllableReevaluation(), InMemoryActionAudit())
+                .execute(
+                    ShadowMode.LIVE,
+                    action,
+                    BurstPlan(listOf(Bubble(0, "first", Duration.ZERO), Bubble(1, "second", Duration.ZERO))),
+                )
+            return executor
+        }
+
+        assertThat(execute(ScheduledDeliveryMode.CHANNEL).replyTargets).containsExactly(null, null)
+        assertThat(execute(ScheduledDeliveryMode.REPLY).replyTargets).containsExactly("1234567890123456789", null)
+    }
 
     @Test
     fun `T017 — 모든 버블 전송 후 COMPLETED 이고 message ID 가 audit 에 연결된다`() {

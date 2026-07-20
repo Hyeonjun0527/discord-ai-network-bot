@@ -45,6 +45,9 @@ class NiaFewShotEvalService {
             if (example.expectedAction == NiaFewShotAction.REACT && example.expectedReactionCode == null) {
                 failures += NiaFewShotEvalFailure("react.missing_reaction_code", ref, "REACT example needs expectedReactionCode")
             }
+            if (example.expectedAction == NiaFewShotAction.SPEAK && example.expectedDeliveryMode == null) {
+                failures += NiaFewShotEvalFailure("speak.missing_delivery_mode", ref, "SPEAK example needs expectedDeliveryMode")
+            }
             if (example.expectedAction == NiaFewShotAction.WAIT && example.expectedReevaluateAfterMs == null) {
                 failures += NiaFewShotEvalFailure("wait.missing_reevaluate_after", ref, "WAIT example needs expectedReevaluateAfterMs")
             }

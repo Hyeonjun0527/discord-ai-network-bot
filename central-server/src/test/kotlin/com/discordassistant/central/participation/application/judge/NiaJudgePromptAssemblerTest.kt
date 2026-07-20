@@ -14,6 +14,7 @@ import com.discordassistant.central.participation.application.port.out.NiaJudgeL
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -30,7 +31,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v11")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v12")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -79,6 +80,7 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload.at("/rawScene/messages/1/elapsedSincePreviousMs").asLong()).isEqualTo(1_000L)
         assertThat(payload.at("/fewShotSet/version").asInt()).isEqualTo(3)
         assertThat(payload.at("/fewShotSet/examples/0/expectedAction").asText()).isEqualTo("SPEAK")
+        assertThat(payload.at("/fewShotSet/examples/0/expectedDeliveryMode").asText()).isEqualTo("CHANNEL")
         assertThat(payload.at("/fewShotSet/examples/0/currentState").asText()).isEqualTo("Direct consolation is expected.")
         assertThat(payload.at("/fewShotSet/examples/0/badAlternative/action").asText()).isEqualTo("WAIT")
         assertThat(payload.at("/socialMemory/0/refId").asText()).isEqualTo("mem-1")
@@ -93,6 +95,7 @@ class NiaJudgePromptAssemblerTest {
             source.copy(
                 exampleId = "fs_react",
                 expectedAction = NiaFewShotAction.REACT,
+                expectedDeliveryMode = null,
                 currentState = "A reply would be redundant.",
                 expectedReactionCode = "eyes",
                 badAlternative = JudgeFewShotBadAlternativePayload(NiaFewShotAction.SPEAK, "speech would repeat the answer"),
@@ -101,6 +104,7 @@ class NiaJudgePromptAssemblerTest {
             source.copy(
                 exampleId = "fs_wait",
                 expectedAction = NiaFewShotAction.WAIT,
+                expectedDeliveryMode = null,
                 currentState = "The member is sending a message burst.",
                 expectedReevaluateAfterMs = 1_800,
                 badAlternative = JudgeFewShotBadAlternativePayload(NiaFewShotAction.SPEAK, "speech would interrupt the burst"),
@@ -290,6 +294,7 @@ class NiaJudgePromptAssemblerTest {
                                 ),
                             ),
                         expectedAction = NiaFewShotAction.SPEAK,
+                        expectedDeliveryMode = NiaFewShotDeliveryMode.CHANNEL,
                         currentState = "Direct consolation is expected.",
                         reason = "Direct reply request should be judged from raw scene evidence.",
                         evidenceRefs = setOf("m1"),

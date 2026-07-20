@@ -332,6 +332,14 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
 
 .episode-editor { min-width: 0; padding: 26px 30px 44px; }
 
+.dataset-editor {
+  min-height: 640px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  padding: 26px 30px 44px;
+  background: var(--paper);
+}
+
 .editor-heading {
   display: flex;
   align-items: center;
@@ -387,6 +395,8 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   outline: 1px solid var(--ink);
   outline-offset: 1px;
 }
+
+.dataset-markdown-editor { min-height: 560px; }
 
 .execution-toolbar { align-items: end; }
 
@@ -504,6 +514,7 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   .toolbar-actions button { flex: 1; }
   .version-status { margin: 0; }
   .episode-editor,
+  .dataset-editor,
   .execution-detail { padding: 22px 16px 36px; }
   .markdown-editor { min-height: 440px; padding: 14px; font-size: 13px; }
   .conversation-line { grid-template-columns: 70px minmax(0, 1fr); }

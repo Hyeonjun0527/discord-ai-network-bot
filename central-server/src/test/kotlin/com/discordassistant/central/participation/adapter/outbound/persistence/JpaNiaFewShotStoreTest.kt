@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.adapter.outbound.persistence
 
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotLookupScope
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotRawMessage
@@ -37,6 +38,7 @@ class JpaNiaFewShotStoreTest
             assertThat(activeVersion.status).isEqualTo(NiaFewShotVersionStatus.ACTIVE)
             assertThat(activeExample.rawMessages.single().text)
                 .isEqualTo("raw-canary direct request")
+            assertThat(activeExample.expectedDeliveryMode).isEqualTo(NiaFewShotDeliveryMode.CHANNEL)
         }
 
         @Test
@@ -124,6 +126,7 @@ class JpaNiaFewShotStoreTest
             val react =
                 example("reaction").copy(
                     expectedAction = NiaFewShotAction.REACT,
+                    expectedDeliveryMode = null,
                     currentState = "The latest message needs acknowledgement without another message.",
                     expectedReactionCode = "eyes",
                     badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.SPEAK, "speech would interrupt the flow"),
@@ -159,6 +162,7 @@ class JpaNiaFewShotStoreTest
                         ),
                     ),
                 expectedAction = NiaFewShotAction.SPEAK,
+                expectedDeliveryMode = NiaFewShotDeliveryMode.CHANNEL,
                 reason = "The user directly asks Nia to respond, so the judge should speak.",
                 evidenceRefs = setOf("m1"),
                 badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.WAIT, "waiting would ignore the direct ask"),

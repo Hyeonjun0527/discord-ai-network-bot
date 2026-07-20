@@ -4,9 +4,11 @@ import com.discordassistant.central.actionruntime.application.port.out.ActionSch
 import com.discordassistant.central.actionruntime.application.port.out.ExecutionLimits
 import com.discordassistant.central.actionruntime.domain.model.ActionTarget
 import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledDeliveryMode
 import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialAction
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.action.SpeechDeliveryMode
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import java.time.Instant
 
@@ -91,6 +93,11 @@ class ParticipationActionRouter(
                     executeAfter,
                     contextVersion,
                     originRolloutMode,
+                    deliveryMode =
+                        when ((action as SocialAction.Speak).deliveryMode) {
+                            SpeechDeliveryMode.CHANNEL -> ScheduledDeliveryMode.CHANNEL
+                            SpeechDeliveryMode.REPLY -> ScheduledDeliveryMode.REPLY
+                        },
                     executionLimits = executionLimits,
                     fulfillsPendingIntentId = fulfillsPendingIntentId,
                 )
@@ -113,6 +120,7 @@ class ParticipationActionRouter(
         contextVersion: Long,
         originRolloutMode: ShadowMode,
         reactionCode: String? = null,
+        deliveryMode: ScheduledDeliveryMode = ScheduledDeliveryMode.REPLY,
         wakeUpHint: String? = null,
         waitAttempt: Int = 0,
         waitExpiresAt: Instant? = null,
@@ -130,6 +138,7 @@ class ParticipationActionRouter(
                     contextVersion = contextVersion,
                     originRolloutMode = originRolloutMode,
                     reactionCode = reactionCode,
+                    deliveryMode = deliveryMode,
                     wakeUpHint = wakeUpHint,
                     waitAttempt = waitAttempt,
                     expiresAt = waitExpiresAt,

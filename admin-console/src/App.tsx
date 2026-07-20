@@ -3,10 +3,13 @@ import {
   Check,
   Database,
   History,
+  Plus,
   RefreshCw,
   Save,
   Search,
   ShieldAlert,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -20,23 +23,31 @@ import {
 import {
   createFewShotDraft,
   createFewShotDraftForSet,
+  createConversationRagEntries,
+  createConversationRagEntry,
+  deleteConversationRagEntry,
   evalFewShotDraft,
+  loadEffectiveFewShot,
   loadDashboard,
-  loadConversationRag,
+  loadConversationRagStats,
+  loadConversationRagEntries,
+  loadConversationRagEntry,
   loadFewShotSets,
   loadGuildChannels,
   loadNiaExecutions,
   publishFewShotVersion,
-  replaceConversationRag,
   replaceFewShotDraft,
   searchConversationRag,
+  updateConversationRagEntry,
   type ChannelSummary,
   type DashboardState,
-  type ConversationRagLibrary,
+  type ConversationRagStats,
+  type ConversationRagEntrySummary,
   type ConversationRagMatch,
   type NiaExecution,
   type NiaExecutionMessage,
   type NiaFewShotExample,
+  type NiaEffectiveFewShot,
   type NiaFewShotSet,
   type NiaFewShotVersion,
 } from "./api";
@@ -232,15 +243,67 @@ function MarkdownFormat() {
   );
 }
 
+function BuiltInJudgeExamples({ examples }: { examples: NiaFewShotExample[] }) {
+  return (
+    <div className="built-in-list">
+      {examples.map((example, index) => (
+        <details key={`${example.title}-${index}`}>
+          <summary>
+            <span>{index + 1}</span>
+            <strong>{example.title}</strong>
+            <small>{example.expectedAction}{example.expectedDeliveryMode ? ` · ${example.expectedDeliveryMode}` : ""}</small>
+          </summary>
+          <div className="built-in-detail">
+            <Conversation messages={example.rawMessages.map((message) => ({ speaker: message.authorRole, text: message.text }))} />
+            {example.expectedReplies.map((reply, replyIndex) => <p className="good-example" key={replyIndex}>NIA · {reply}</p>)}
+            <p className="reason-copy">{example.reason}</p>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function BuiltInSpeechExamples({ examples }: { examples: NonNullable<NiaEffectiveFewShot>["builtInSpeechExamples"] }) {
+  return (
+    <div className="built-in-list">
+      {examples.map((example, index) => (
+        <details key={`${example.title}-${index}`}>
+          <summary>
+            <span>{index + 1}</span>
+            <strong>{example.title}</strong>
+            <small>항상 포함</small>
+          </summary>
+          <div className="built-in-detail">
+            <Conversation messages={example.messages.map((message) => {
+              const separator = message.indexOf(":");
+              return separator < 0
+                ? { speaker: "scene", text: message }
+                : { speaker: message.slice(0, separator), text: message.slice(separator + 1).trim() };
+            })} />
+            {example.goodReplies.map((reply, replyIndex) => <p className="good-example" key={`good-${replyIndex}`}>좋은 답변 · {reply}</p>)}
+            {example.badReplies.map((reply, replyIndex) => <p className="bad-example" key={`bad-${replyIndex}`}>피할 답변 · {reply}</p>)}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState<AdminView>(() => viewFromHash(window.location.hash));
   const [sets, setSets] = useState<NiaFewShotSet[]>([]);
+  const [effectiveFewShot, setEffectiveFewShot] = useState<NiaEffectiveFewShot | null>(null);
   const [selectedSetId, setSelectedSetId] = useState("");
   const [examples, setExamples] = useState<NiaFewShotExample[]>([newConversation()]);
   const [datasetMarkdown, setDatasetMarkdown] = useState(() => serializeConversationDataset([newConversation()]));
-  const [ragLibrary, setRagLibrary] = useState<ConversationRagLibrary | null>(null);
-  const [ragExamples, setRagExamples] = useState<NiaFewShotExample[]>([]);
-  const [ragMarkdown, setRagMarkdown] = useState("");
+  const [ragLibrary, setRagLibrary] = useState<ConversationRagStats | null>(null);
+  const [ragEntries, setRagEntries] = useState<ConversationRagEntrySummary[]>([]);
+  const [selectedRagEntryId, setSelectedRagEntryId] = useState("");
+  const [ragEditorBases, setRagEditorBases] = useState<NiaFewShotExample[]>([newConversation()]);
+  const [ragMarkdown, setRagMarkdown] = useState(() => serializeConversationDataset([newConversation()]));
+  const [ragListQuery, setRagListQuery] = useState("");
+  const [ragBulkMode, setRagBulkMode] = useState(false);
   const [ragSearchScene, setRagSearchScene] = useState("");
   const [ragMatches, setRagMatches] = useState<ConversationRagMatch[]>([]);
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);
@@ -300,20 +363,60 @@ function App() {
 
   async function refreshFewShotData() {
     await run(async () => {
-      const nextSets = await loadFewShotSets();
+      const [nextSets, effective] = await Promise.all([loadFewShotSets(), loadEffectiveFewShot()]);
       setSets(nextSets);
+      setEffectiveFewShot(effective);
       setSelectedSetId((current) => current || String(nextSets[0]?.id ?? ""));
     });
   }
 
-  async function refreshRagData() {
+  async function loadRagState(preferredEntryId?: string) {
+    const [library, page] = await Promise.all([loadConversationRagStats(), loadConversationRagEntries(ragListQuery)]);
+    setRagLibrary(library);
+    setRagEntries(page.entries);
+    const nextId = preferredEntryId && page.entries.some((entry) => String(entry.id) === preferredEntryId)
+      ? preferredEntryId
+      : String(page.entries[0]?.id ?? "");
+    if (!nextId) {
+      startNewRagEntry();
+      return;
+    }
+    const entry = await loadConversationRagEntry(Number(nextId));
+    setSelectedRagEntryId(nextId);
+    setRagBulkMode(false);
+    setRagEditorBases([entry.example]);
+    setRagMarkdown(serializeConversationDataset([entry.example]));
+  }
+
+  async function refreshRagData(preferredEntryId?: string) {
     await run(async () => {
-      const library = await loadConversationRag();
-      const nextExamples = library.entries.map((entry) => entry.example);
-      setRagLibrary(library);
-      setRagExamples(cloneExamples(nextExamples));
-      setRagMarkdown(nextExamples.length ? serializeConversationDataset(nextExamples) : "");
+      await loadRagState(preferredEntryId);
       setRagMatches([]);
+    });
+  }
+
+  function startNewRagEntry() {
+    const example = newConversation();
+    setSelectedRagEntryId("");
+    setRagBulkMode(false);
+    setRagEditorBases([example]);
+    setRagMarkdown(serializeConversationDataset([example]));
+  }
+
+  function startRagBulkImport() {
+    setSelectedRagEntryId("");
+    setRagBulkMode(true);
+    setRagEditorBases([]);
+    setRagMarkdown("");
+  }
+
+  async function selectRagEntry(entryId: number) {
+    await run(async () => {
+      const entry = await loadConversationRagEntry(entryId);
+      setSelectedRagEntryId(String(entryId));
+      setRagBulkMode(false);
+      setRagEditorBases([entry.example]);
+      setRagMarkdown(serializeConversationDataset([entry.example]));
     });
   }
 
@@ -375,15 +478,35 @@ function App() {
     });
   }
 
-  async function saveRagLibrary() {
+  async function saveRagEntry() {
     await run(async () => {
-      const normalized = normalizeExamples(parseExamples(ragMarkdown, ragExamples));
-      const library = await replaceConversationRag(normalized);
-      const nextExamples = library.entries.map((entry) => entry.example);
-      setRagLibrary(library);
-      setRagExamples(cloneExamples(nextExamples));
-      setRagMarkdown(nextExamples.length ? serializeConversationDataset(nextExamples) : "");
+      const normalized = normalizeExamples(parseExamples(ragMarkdown, ragEditorBases));
+      if (ragBulkMode) {
+        await createConversationRagEntries(normalized);
+        await loadRagState();
+      } else {
+        if (normalized.length !== 1) throw new Error("개별 편집에서는 대화 하나만 입력하세요.");
+        const saved = selectedRagEntryId
+          ? await updateConversationRagEntry(Number(selectedRagEntryId), normalized[0])
+          : await createConversationRagEntry(normalized[0]);
+        await loadRagState(String(saved.id ?? ""));
+      }
       setRagMatches([]);
+    });
+  }
+
+  async function removeRagEntry() {
+    if (!selectedRagEntryId || !window.confirm("이 대화를 RAG 라이브러리에서 삭제할까요?")) return;
+    await run(async () => {
+      await deleteConversationRagEntry(Number(selectedRagEntryId));
+      await loadRagState();
+    });
+  }
+
+  async function filterRagEntries() {
+    await run(async () => {
+      const page = await loadConversationRagEntries(ragListQuery);
+      setRagEntries(page.entries);
     });
   }
 
@@ -446,6 +569,36 @@ function App() {
 
         {activeView === "GLOBAL_FEWSHOT" ? (
           <section className="data-workspace">
+            <article className="effective-fewshot">
+              <div className="effective-heading">
+                <div>
+                  <span>현재 판단 입력</span>
+                  <strong>{effectiveFewShot?.judgeSource === "MANAGED_GLOBAL" ? "관리자 전역 Few-shot 사용 중" : "코드 기본 판단 예시 사용 중"}</strong>
+                </div>
+                <div className="effective-counts">
+                  <span>판단 기본 <strong>{effectiveFewShot?.builtInJudgeExamples.length ?? 0}</strong></span>
+                  <span>발화 기본 <strong>{effectiveFewShot?.builtInSpeechExamples.length ?? 0}</strong></span>
+                  <span>관리자 적용 <strong>{effectiveFewShot?.managedGlobalExamples.length ?? 0}</strong></span>
+                </div>
+              </div>
+              <div className="built-in-columns">
+                <section>
+                  <div className="section-title">
+                    <strong>코드 기본 판단 예시</strong>
+                    <span>{effectiveFewShot?.judgeSource === "BUILT_IN_FALLBACK" ? "현재 사용 중" : "관리자 세트가 없을 때 사용"}</span>
+                  </div>
+                  <BuiltInJudgeExamples examples={effectiveFewShot?.builtInJudgeExamples ?? []} />
+                </section>
+                <section>
+                  <div className="section-title">
+                    <strong>코드 기본 발화 예시</strong>
+                    <span>항상 사용</span>
+                  </div>
+                  <BuiltInSpeechExamples examples={effectiveFewShot?.builtInSpeechExamples ?? []} />
+                </section>
+              </div>
+            </article>
+
             <div className="data-toolbar">
               <label>
                 <span>전역 Few-shot</span>
@@ -491,33 +644,76 @@ function App() {
           <section className="data-workspace">
             <div className="data-toolbar rag-toolbar">
               <div className="rag-library-status">
-                <span><strong>{ragLibrary?.entries.length ?? 0}</strong>개 대화</span>
+                <span><strong>{ragLibrary?.totalCount ?? 0}</strong>개 대화</span>
                 <span><strong>{ragLibrary?.indexedCount ?? 0}</strong>개 색인</span>
                 <span><strong>{ragLibrary?.embeddingModel ?? "-"}</strong> 모델</span>
               </div>
               <div className="toolbar-actions">
-                <button className="primary-action" onClick={() => void saveRagLibrary()} disabled={loading}>
-                  <Save size={16} /> 저장 및 색인
+                <button className="secondary-action" onClick={startRagBulkImport} disabled={loading}>
+                  <Upload size={16} /> 여러 대화 추가
+                </button>
+                <button className="primary-action" onClick={startNewRagEntry} disabled={loading}>
+                  <Plus size={16} /> 새 대화
                 </button>
               </div>
             </div>
 
-            <article className="dataset-editor rag-editor">
-              <div className="editor-heading">
-                <div>
-                  <strong>검색용 대화 라이브러리</strong>
-                  <span>{ragSummary.exampleCount}개 예시 · {ragSummary.messageCount}개 메시지 · 실행마다 가장 가까운 2개만 사용</span>
+            <article className="rag-library-workspace">
+              <aside className="rag-entry-list">
+                <div className="rag-list-search">
+                  <input
+                    value={ragListQuery}
+                    onChange={(event) => setRagListQuery(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") void filterRagEntries(); }}
+                    placeholder="제목이나 대화 검색"
+                    aria-label="RAG 라이브러리 검색"
+                  />
+                  <button onClick={() => void filterRagEntries()} aria-label="목록 검색"><Search size={16} /></button>
                 </div>
-              </div>
-              <MarkdownFormat />
-              <textarea
-                className="markdown-editor dataset-markdown-editor"
-                value={ragMarkdown}
-                onChange={(event) => setRagMarkdown(event.target.value)}
-                aria-label="대화 RAG Markdown"
-                placeholder="# 첫 번째 대화\n\n- A: ...\n- => NIA [SPEAK CHANNEL]: ...\n\n---\n\n# 두 번째 대화"
-                spellCheck={false}
-              />
+                <div className="rag-list-count">대화 {ragEntries.length}개</div>
+                <div className="rag-list-scroll">
+                  {ragEntries.map((entry) => (
+                    <button
+                      className={`rag-entry-row ${selectedRagEntryId === String(entry.id) ? "selected" : ""}`}
+                      key={entry.id}
+                      onClick={() => void selectRagEntry(entry.id)}
+                    >
+                      <strong>{entry.title}</strong>
+                      <span>{entry.messageCount}개 메시지 · {entry.expectedAction}</span>
+                      <small>{entry.indexed ? "색인됨" : "텍스트 검색"} · {formatTime(entry.updatedAt)}</small>
+                    </button>
+                  ))}
+                  {ragEntries.length === 0 ? <p className="empty-copy">저장된 대화가 없습니다.</p> : null}
+                </div>
+              </aside>
+
+              <section className="rag-entry-editor">
+                <div className="editor-heading">
+                  <div>
+                    <strong>{ragBulkMode ? "여러 대화 추가" : selectedRagEntryId ? "대화 편집" : "새 대화"}</strong>
+                    <span>
+                      {ragBulkMode
+                        ? `${ragSummary.exampleCount}개 대화를 기존 라이브러리에 추가`
+                        : `${ragSummary.messageCount}개 메시지 · 저장하면 즉시 검색 색인 갱신`}
+                    </span>
+                  </div>
+                  <div>
+                    {selectedRagEntryId ? (
+                      <button onClick={() => void removeRagEntry()} disabled={loading} aria-label="대화 삭제"><Trash2 size={16} /></button>
+                    ) : null}
+                    <button className="save-icon-button" onClick={() => void saveRagEntry()} disabled={loading} aria-label="대화 저장"><Save size={16} /></button>
+                  </div>
+                </div>
+                <MarkdownFormat />
+                <textarea
+                  className="markdown-editor rag-entry-markdown"
+                  value={ragMarkdown}
+                  onChange={(event) => setRagMarkdown(event.target.value)}
+                  aria-label="대화 RAG Markdown"
+                  placeholder={ragBulkMode ? "대화 여러 개를 --- 로 나눠 붙여넣기" : "대화 하나 입력"}
+                  spellCheck={false}
+                />
+              </section>
             </article>
 
             <article className="rag-search-panel">

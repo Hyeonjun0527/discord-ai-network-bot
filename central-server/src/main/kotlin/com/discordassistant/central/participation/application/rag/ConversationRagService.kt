@@ -1,5 +1,6 @@
 package com.discordassistant.central.participation.application.rag
 
+import com.discordassistant.central.global.error.NotFoundException
 import com.discordassistant.central.participation.application.port.out.ConversationEmbeddingPort
 import com.discordassistant.central.participation.application.port.out.ConversationRagStorePort
 import com.discordassistant.central.participation.application.port.out.ConversationRagStoredEntry
@@ -31,6 +32,76 @@ class ConversationRagService(
             indexedCount = entries.count { it.embedding != null },
             updatedAt = entries.maxOfOrNull { it.updatedAt },
         )
+    }
+
+    @Transactional(readOnly = true)
+    fun entry(entryId: Long): ConversationRagEntry = store.find(entryId) ?: missingEntry(entryId)
+
+    @Transactional(readOnly = true)
+    fun page(
+        query: String?,
+        offset: Int,
+        limit: Int,
+    ): ConversationRagPage {
+        require(offset >= 0) { "offset은 0 이상이어야 합니다" }
+        require(limit in 1..MAX_PAGE_SIZE) { "limit은 1 이상 $MAX_PAGE_SIZE 이하여야 합니다" }
+        val normalizedQuery = query?.trim()?.lowercase().orEmpty()
+        val filtered =
+            store
+                .list()
+                .filter { entry ->
+                    val title = entry.example.title.lowercase()
+                    val messagesContainQuery = entry.example.rawMessages.any { normalizedQuery in it.text.lowercase() }
+                    normalizedQuery.isBlank() ||
+                        normalizedQuery in title ||
+                        messagesContainQuery
+                }
+        return ConversationRagPage(
+            entries = filtered.drop(offset).take(limit),
+            total = filtered.size,
+            offset = offset,
+            limit = limit,
+        )
+    }
+
+    @Transactional
+    fun create(example: NiaFewShotExample): ConversationRagEntry {
+        require(store.list().size < MAX_ENTRIES) { "conversation_rag_too_many_examples" }
+        return store.save(index(example.copy(id = null), id = null, createdAt = null))
+    }
+
+    @Transactional
+    fun createAll(examples: List<NiaFewShotExample>): List<ConversationRagEntry> {
+        require(examples.isNotEmpty()) { "conversation_rag_requires_examples" }
+        require(store.list().size + examples.size <= MAX_ENTRIES) { "conversation_rag_too_many_examples" }
+        val searchTexts = examples.map(::canonicalScene)
+        val vectors = embedOrNull(searchTexts)
+        val now = Instant.now(clock)
+        return examples.mapIndexed { index, example ->
+            store.save(
+                ConversationRagStoredEntry(
+                    example = example.copy(id = null),
+                    searchText = searchTexts[index],
+                    embedding = vectors?.getOrNull(index),
+                    embeddingModel = vectors?.getOrNull(index)?.let { embeddings.model },
+                    indexedAt = now,
+                ),
+            )
+        }
+    }
+
+    @Transactional
+    fun update(
+        entryId: Long,
+        example: NiaFewShotExample,
+    ): ConversationRagEntry {
+        val existing = entry(entryId)
+        return store.save(index(example.copy(id = null), id = entryId, createdAt = existing.createdAt))
+    }
+
+    @Transactional
+    fun delete(entryId: Long) {
+        if (!store.delete(entryId)) throw NotFoundException("대화 RAG 항목을 찾을 수 없습니다: $entryId")
     }
 
     @Transactional
@@ -92,10 +163,31 @@ class ConversationRagService(
             ?.takeIf { it.size == texts.size }
     }
 
+    private fun index(
+        example: NiaFewShotExample,
+        id: Long?,
+        createdAt: Instant?,
+    ): ConversationRagStoredEntry {
+        val searchText = canonicalScene(example)
+        val vector = embedOrNull(listOf(searchText))?.singleOrNull()
+        return ConversationRagStoredEntry(
+            id = id,
+            example = example,
+            searchText = searchText,
+            embedding = vector,
+            embeddingModel = vector?.let { embeddings.model },
+            indexedAt = Instant.now(clock),
+            createdAt = createdAt,
+        )
+    }
+
+    private fun missingEntry(entryId: Long): Nothing = throw NotFoundException("대화 RAG 항목을 찾을 수 없습니다: $entryId")
+
     companion object {
         const val DEFAULT_MATCH_COUNT = 2
         const val MAX_MATCH_COUNT = 4
         const val MAX_ENTRIES = 500
+        const val MAX_PAGE_SIZE = 500
         private const val MAX_EMBEDDING_TEXT_CHARS = 12_000
 
         fun canonicalScene(example: NiaFewShotExample): String =
@@ -145,4 +237,11 @@ data class ConversationRagLibrary(
     val embeddingModel: String,
     val indexedCount: Int,
     val updatedAt: Instant?,
+)
+
+data class ConversationRagPage(
+    val entries: List<ConversationRagEntry>,
+    val total: Int,
+    val offset: Int,
+    val limit: Int,
 )

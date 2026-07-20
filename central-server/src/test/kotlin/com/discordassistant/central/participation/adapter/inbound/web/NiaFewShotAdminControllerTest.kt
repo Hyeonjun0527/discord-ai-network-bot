@@ -10,6 +10,7 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotScope
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotSet
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
+import com.discordassistant.central.platform.discord.nexa.NexaBuiltInFewShotCatalogAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Test
@@ -28,8 +29,12 @@ class NiaFewShotAdminControllerTest {
     private val mapper: ObjectMapper = jacksonObjectMapper()
     private val mockMvc: MockMvc =
         MockMvcBuilders
-            .standaloneSetup(NiaFewShotAdminController(NiaFewShotService(store, NiaFewShotEvalService())))
-            .setControllerAdvice(GlobalExceptionHandler())
+            .standaloneSetup(
+                NiaFewShotAdminController(
+                    NiaFewShotService(store, NiaFewShotEvalService()),
+                    NexaBuiltInFewShotCatalogAdapter(),
+                ),
+            ).setControllerAdvice(GlobalExceptionHandler())
             .build()
 
     @Test
@@ -156,6 +161,20 @@ class NiaFewShotAdminControllerTest {
             .perform(get("/api/admin/nia/few-shot/sets"))
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.error.code").value("INVALID_SERVER_STATE"))
+    }
+
+    @Test
+    fun `effective endpoint exposes runtime built in examples when no managed global set exists`() {
+        mockMvc
+            .perform(
+                get("/api/admin/nia/few-shot/effective")
+                    .requestAttr(DashboardActor.REQUEST_ATTRIBUTE, DashboardActor(userId = 123, systemToken = false)),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.judgeSource").value("BUILT_IN_FALLBACK"))
+            .andExpect(jsonPath("$.builtInJudgeSetId").value(9_000_000_000_001L))
+            .andExpect(jsonPath("$.builtInJudgeExamples.length()").value(11))
+            .andExpect(jsonPath("$.builtInSpeechExamples.length()").value(4))
+            .andExpect(jsonPath("$.managedGlobalExamples.length()").value(0))
     }
 
     private fun draftBody(examplesJson: String): String =

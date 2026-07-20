@@ -85,6 +85,24 @@ export type NiaFewShotSet = {
   updatedAt: string;
 };
 
+export type NiaBuiltInSpeechExample = {
+  title: string;
+  messages: string[];
+  goodReplies: string[];
+  badReplies: string[];
+};
+
+export type NiaEffectiveFewShot = {
+  judgeSource: "BUILT_IN_FALLBACK" | "MANAGED_GLOBAL";
+  builtInJudgeSetId?: number | null;
+  builtInJudgeVersion?: number | null;
+  builtInJudgeExamples: NiaFewShotExample[];
+  builtInSpeechExamples: NiaBuiltInSpeechExample[];
+  managedGlobalSetId?: number | null;
+  managedGlobalVersion?: number | null;
+  managedGlobalExamples: NiaFewShotExample[];
+};
+
 export type NiaFewShotEval = {
   status: "PASS" | "FAIL";
   readyForPublish: boolean;
@@ -150,11 +168,34 @@ export type ConversationRagLibrary = {
   updatedAt?: string | null;
 };
 
+export type ConversationRagStats = {
+  totalCount: number;
+  indexedCount: number;
+  embeddingModel: string;
+  updatedAt?: string | null;
+};
+
 export type ConversationRagMatch = {
   id?: number | null;
   score: number;
   scoringMethod: "EMBEDDING" | "TEXT_FALLBACK";
   example: NiaFewShotExample;
+};
+
+export type ConversationRagEntrySummary = {
+  id: number;
+  title: string;
+  messageCount: number;
+  expectedAction: string;
+  indexed: boolean;
+  updatedAt: string;
+};
+
+export type ConversationRagPage = {
+  entries: ConversationRagEntrySummary[];
+  total: number;
+  offset: number;
+  limit: number;
 };
 function createRequestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -316,8 +357,16 @@ export async function loadFewShotSets(): Promise<NiaFewShotSet[]> {
   return requestJson<NiaFewShotSet[]>("/api/admin/nia/few-shot/sets");
 }
 
+export async function loadEffectiveFewShot(): Promise<NiaEffectiveFewShot> {
+  return requestJson<NiaEffectiveFewShot>("/api/admin/nia/few-shot/effective");
+}
+
 export async function loadConversationRag(): Promise<ConversationRagLibrary> {
   return requestJson<ConversationRagLibrary>("/api/admin/nia/conversation-rag");
+}
+
+export async function loadConversationRagStats(): Promise<ConversationRagStats> {
+  return requestJson<ConversationRagStats>("/api/admin/nia/conversation-rag/stats");
 }
 
 export async function replaceConversationRag(examples: NiaFewShotExample[]): Promise<ConversationRagLibrary> {
@@ -325,6 +374,43 @@ export async function replaceConversationRag(examples: NiaFewShotExample[]): Pro
     method: "PUT",
     body: { examples },
   });
+}
+
+export async function loadConversationRagEntries(query = ""): Promise<ConversationRagPage> {
+  const encoded = encodeURIComponent(query.trim());
+  return requestJson<ConversationRagPage>(`/api/admin/nia/conversation-rag/entries?query=${encoded}&offset=0&limit=500`);
+}
+
+export async function loadConversationRagEntry(entryId: number): Promise<ConversationRagEntry> {
+  return requestJson<ConversationRagEntry>(`/api/admin/nia/conversation-rag/entries/${entryId}`);
+}
+
+export async function createConversationRagEntry(example: NiaFewShotExample): Promise<ConversationRagEntry> {
+  return requestJson<ConversationRagEntry>("/api/admin/nia/conversation-rag/entries", {
+    method: "POST",
+    body: { example },
+  });
+}
+
+export async function createConversationRagEntries(examples: NiaFewShotExample[]): Promise<ConversationRagEntry[]> {
+  return requestJson<ConversationRagEntry[]>("/api/admin/nia/conversation-rag/entries/batch", {
+    method: "POST",
+    body: { examples },
+  });
+}
+
+export async function updateConversationRagEntry(
+  entryId: number,
+  example: NiaFewShotExample,
+): Promise<ConversationRagEntry> {
+  return requestJson<ConversationRagEntry>(`/api/admin/nia/conversation-rag/entries/${entryId}`, {
+    method: "PUT",
+    body: { example },
+  });
+}
+
+export async function deleteConversationRagEntry(entryId: number): Promise<void> {
+  await requestJson<unknown>(`/api/admin/nia/conversation-rag/entries/${entryId}`, { method: "DELETE" });
 }
 
 export async function searchConversationRag(sceneText: string): Promise<ConversationRagMatch[]> {

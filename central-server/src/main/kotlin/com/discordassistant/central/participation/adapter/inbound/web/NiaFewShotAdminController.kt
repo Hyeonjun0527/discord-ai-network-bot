@@ -4,6 +4,7 @@ import com.discordassistant.central.global.security.DashboardActor
 import com.discordassistant.central.participation.application.fewshot.ArchiveNiaFewShotVersionCommand
 import com.discordassistant.central.participation.application.fewshot.CreateNiaFewShotDraftCommand
 import com.discordassistant.central.participation.application.fewshot.CreateNiaFewShotDraftForSetCommand
+import com.discordassistant.central.participation.application.fewshot.NiaBuiltInFewShotCatalogPort
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotEvalResult
 import com.discordassistant.central.participation.application.fewshot.NiaFewShotService
 import com.discordassistant.central.participation.application.fewshot.PublishNiaFewShotVersionCommand
@@ -35,7 +36,37 @@ import java.time.Instant
 @RequestMapping("/api/admin/nia/few-shot")
 class NiaFewShotAdminController(
     private val service: NiaFewShotService,
+    private val builtInCatalog: NiaBuiltInFewShotCatalogPort? = null,
 ) {
+    @GetMapping("/effective")
+    fun effective(httpRequest: HttpServletRequest): NiaEffectiveFewShotDto {
+        DashboardActor.from(httpRequest)
+        val builtIn = builtInCatalog?.catalog()
+        val managedGlobal = service.exactScope(NiaFewShotScope.global())
+        val managedActive = managedGlobal?.active
+        return NiaEffectiveFewShotDto(
+            judgeSource = if (managedActive == null) "BUILT_IN_FALLBACK" else "MANAGED_GLOBAL",
+            builtInJudgeSetId = builtIn?.judgeSetId,
+            builtInJudgeVersion = builtIn?.judgeVersion,
+            builtInJudgeExamples = builtIn?.judgeExamples.orEmpty().map { it.toDto(redactRawText = false) },
+            builtInSpeechExamples =
+                builtIn
+                    ?.speechExamples
+                    .orEmpty()
+                    .map { example ->
+                        NiaBuiltInSpeechExampleDto(
+                            title = example.title,
+                            messages = example.messages,
+                            goodReplies = example.goodReplies,
+                            badReplies = example.badReplies,
+                        )
+                    },
+            managedGlobalSetId = managedGlobal?.id,
+            managedGlobalVersion = managedActive?.version,
+            managedGlobalExamples = managedActive?.examples.orEmpty().map { it.toDto(redactRawText = false) },
+        )
+    }
+
     @GetMapping("/sets")
     fun sets(
         @RequestParam(required = false) scopeType: String?,
@@ -301,6 +332,24 @@ data class NiaFewShotSetDto(
     val versions: List<NiaFewShotVersionDto>,
     val createdAt: Instant,
     val updatedAt: Instant,
+)
+
+data class NiaEffectiveFewShotDto(
+    val judgeSource: String,
+    val builtInJudgeSetId: Long?,
+    val builtInJudgeVersion: Int?,
+    val builtInJudgeExamples: List<NiaFewShotExampleDto>,
+    val builtInSpeechExamples: List<NiaBuiltInSpeechExampleDto>,
+    val managedGlobalSetId: Long?,
+    val managedGlobalVersion: Int?,
+    val managedGlobalExamples: List<NiaFewShotExampleDto>,
+)
+
+data class NiaBuiltInSpeechExampleDto(
+    val title: String,
+    val messages: List<String>,
+    val goodReplies: List<String>,
+    val badReplies: List<String>,
 )
 
 data class NiaFewShotVersionDto(

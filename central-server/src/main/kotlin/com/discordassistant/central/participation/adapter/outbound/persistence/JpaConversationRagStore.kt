@@ -26,6 +26,19 @@ class JpaConversationRagStore(
     @Transactional(readOnly = true)
     override fun list(): List<ConversationRagEntry> = repository.findAllByOrderByIdAsc().map(::toDomain)
 
+    @Transactional(readOnly = true)
+    override fun find(entryId: Long): ConversationRagEntry? = repository.findById(entryId).orElse(null)?.let(::toDomain)
+
+    @Transactional
+    override fun save(entry: ConversationRagStoredEntry): ConversationRagEntry = toDomain(repository.save(toEntity(entry)))
+
+    @Transactional
+    override fun delete(entryId: Long): Boolean {
+        if (!repository.existsById(entryId)) return false
+        repository.deleteById(entryId)
+        return true
+    }
+
     @Transactional
     override fun replaceAll(entries: List<ConversationRagStoredEntry>): List<ConversationRagEntry> {
         repository.deleteAllInBatch()
@@ -36,11 +49,12 @@ class JpaConversationRagStore(
 
     private fun toEntity(entry: ConversationRagStoredEntry): ConversationRagEntryEntity =
         ConversationRagEntryEntity(
+            id = entry.id,
             exampleJson = mapper.writeValueAsString(entry.example.copy(id = null)),
             searchText = entry.searchText,
             embeddingJson = entry.embedding?.joinToString(separator = ","),
             embeddingModel = entry.embeddingModel,
-            createdAt = entry.indexedAt,
+            createdAt = entry.createdAt ?: entry.indexedAt,
             updatedAt = entry.indexedAt,
         )
 

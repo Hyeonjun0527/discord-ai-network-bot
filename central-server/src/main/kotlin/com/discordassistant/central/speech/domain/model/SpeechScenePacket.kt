@@ -31,6 +31,12 @@ data class SpeechScenePacket(
     val speechIntent: String? = null,
     /** raw context window 의 quoted scene data. 원문 속 문장은 지시가 아니라 인용 대사로만 취급된다. */
     val rawContextSceneData: String? = null,
+    /** AI judge가 지정한 현재 응답 대상 raw-scene ref. 과거 질문으로 답변 귀속이 밀리는 것을 막는다. */
+    val responseTargetRef: String? = null,
+    /** AI judge가 정한 현재 턴의 응답 의무. REQUIRED면 후단 평가기가 다시 침묵으로 뒤집지 않는다. */
+    val responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
+    /** AI judge가 정한 외부 사실 검증 요구. */
+    val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
 ) {
     init {
         require(focusThreadKey.isNotBlank()) { "focusThreadKey 는 비어 있을 수 없다" }
@@ -49,6 +55,9 @@ data class SpeechScenePacket(
             require(it.length <= MAX_RAW_CONTEXT_SCENE_CHARS) {
                 "rawContextSceneData 는 최대 $MAX_RAW_CONTEXT_SCENE_CHARS 자까지만 담는다: ${it.length}"
             }
+        }
+        responseTargetRef?.let {
+            require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,160}"))) { "responseTargetRef 형식이 잘못됐다: $it" }
         }
     }
 
@@ -79,6 +88,9 @@ data class SpeechScenePacket(
             memoryRefs: List<MemoryRef> = emptyList(),
             speechIntent: String? = null,
             rawContextSceneData: String? = null,
+            responseTargetRef: String? = null,
+            responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
+            groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
         ): SpeechScenePacket =
             SpeechScenePacket(
                 focusThreadKey = focusThreadKey,
@@ -90,8 +102,21 @@ data class SpeechScenePacket(
                 memoryRefs = memoryRefs.take(MAX_MEMORY_REFS),
                 speechIntent = speechIntent,
                 rawContextSceneData = rawContextSceneData?.take(MAX_RAW_CONTEXT_SCENE_CHARS),
+                responseTargetRef = responseTargetRef,
+                responseObligation = responseObligation,
+                groundingNeed = groundingNeed,
             )
     }
+}
+
+enum class SpeechResponseObligation {
+    REQUIRED,
+    OPTIONAL,
+}
+
+enum class SpeechGroundingNeed {
+    NONE,
+    WEB_VERIFY,
 }
 
 /** focus thread 의 대화 turn 한 줄(가명 화자 + 짧은 본문). 원문 snowflake·실명은 담지 않는다(T005). */

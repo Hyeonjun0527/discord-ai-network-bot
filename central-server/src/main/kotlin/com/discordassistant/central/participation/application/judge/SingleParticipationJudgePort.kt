@@ -540,6 +540,9 @@ data class JudgeSpeechIntent(
     val interactionReading: String = intentSummary,
     val informationDepth: String = sceneDirection,
     val continuityRefs: Set<String> = emptySet(),
+    val responseTargetRef: String? = null,
+    val responseObligation: JudgeResponseObligation = JudgeResponseObligation.OPTIONAL,
+    val groundingNeed: JudgeGroundingNeed = JudgeGroundingNeed.NONE,
 ) {
     init {
         require(intentSummary.isNotBlank()) { "intentSummary 는 비어 있을 수 없다" }
@@ -548,6 +551,7 @@ data class JudgeSpeechIntent(
         require(informationDepth.isNotBlank()) { "informationDepth 는 비어 있을 수 없다" }
         actHint?.let { require(it.isNotBlank()) { "actHint 는 비어 있을 수 없다" } }
         continuityRefs.forEach { require(it.isStableRef()) { "continuityRef 는 안정 ref 여야 한다: $it" } }
+        responseTargetRef?.let { require(it.isStableRef()) { "responseTargetRef 는 안정 ref 여야 한다: $it" } }
         require(bubbleCount in MIN_BUBBLE_COUNT..MAX_BUBBLE_COUNT) {
             "bubbleCount 는 $MIN_BUBBLE_COUNT..$MAX_BUBBLE_COUNT 범위여야 한다: $bubbleCount"
         }
@@ -563,6 +567,18 @@ data class JudgeSpeechIntent(
         const val MAX_MAX_BUBBLE_CHARS: Int = 1_800
         const val DEFAULT_MAX_BUBBLE_CHARS: Int = 280
     }
+}
+
+/** 최종 행동 평가기가 잠정 SPEAK를 다시 침묵으로 바꿔도 되는지 AI judge가 정한 대화 의무다. */
+enum class JudgeResponseObligation {
+    REQUIRED,
+    OPTIONAL,
+}
+
+/** 외부 사실 확인이 필요한지 AI judge가 장면 전체를 보고 정한 근거 요구다. */
+enum class JudgeGroundingNeed {
+    NONE,
+    WEB_VERIFY,
 }
 
 data class JudgeToneAxes(

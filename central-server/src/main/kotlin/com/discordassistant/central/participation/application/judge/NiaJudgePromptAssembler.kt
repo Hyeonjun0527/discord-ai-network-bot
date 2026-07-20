@@ -94,6 +94,13 @@ class NiaJudgePromptAssembler(
         topic-family questions and NIA's own uniform previous answers are evidence that the social meaning may have changed.
         In that case the best contribution can acknowledge the pattern, vary the conversational move, and give only the
         amount of information the current scene calls for. Do not force every surface request into a complete textbook answer.
+        The current response target is always rawScene.latestMessageRef. Older unanswered turns can inform continuity, but
+        must never silently replace the latest turn. Put rawScene.latestMessageRef in speechIntent.responseTargetRef.
+        Decide responseObligation as REQUIRED only when leaving this current turn unanswered would break an active direct
+        exchange, repair, or explicit response expectation; otherwise use OPTIONAL. This is a social judgment, not keyword matching.
+        Decide groundingNeed as WEB_VERIFY when the intended reply would rely on current, niche, disputed, or externally
+        checkable facts. Use NONE for conversational/meta responses that need no external fact. If verification is needed,
+        do not substitute invented personal experience or unverified specifics.
         Conversely, when the member genuinely asks to learn or explicitly requests detail, do not dodge the requested content
         merely to sound casual. The speech intent must state the inferred interaction, the intended information depth, and
         which prior turns the utterance should visibly connect to.
@@ -121,7 +128,10 @@ class NiaJudgePromptAssembler(
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
         REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `bubbleCount`,
-        `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, and optional `actHint`. `interactionReading` is the
+        `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, `responseTargetRef`,
+        `responseObligation`, `groundingNeed`, and optional `actHint`. `responseTargetRef` must equal
+        rawScene.latestMessageRef. `responseObligation` is `REQUIRED|OPTIONAL`; `groundingNeed` is `NONE|WEB_VERIFY`.
+        `interactionReading` is the
         judge's short whole-scene interpretation, not a paraphrase of the last message. `informationDepth` describes how much
         literal content belongs in this turn. `continuityRefs` names the raw message refs the speech should visibly build on.
         `actHint` is the judge's chosen social move and, when present, must be exactly one of
@@ -280,7 +290,7 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v9"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v10"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
     }

@@ -7,6 +7,7 @@ import com.discordassistant.central.speech.application.port.out.CompleteActionEv
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
+import com.discordassistant.central.speech.domain.model.SpeechResponseObligation
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
@@ -71,5 +72,40 @@ class CompleteActionSelectorTest {
 
         assertThat(selector.select(listOf(SpeechCandidate("send_1", listOf("응"))), packet))
             .isEqualTo(CompleteActionSelection.Ignore)
+    }
+
+    @Test
+    fun `AI judge가 현재 응답을 REQUIRED로 정하면 후단 평가기에 IGNORE와 REACT를 제공하지 않는다`() {
+        var offeredKinds = emptyList<com.discordassistant.central.speech.application.port.out.CompleteActionKind>()
+        val selector =
+            CompleteActionSelector(
+                CompleteActionEvaluationPort { request ->
+                    offeredKinds = request.candidates.map { it.kind }
+                    CompleteActionEvaluation("send_1", "최신 질문에 답한다", "CURRENT_TURN_ANSWERED", 0.9)
+                },
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected = selector.select(listOf(SpeechCandidate("send_1", listOf("지금 질문에 답할게"))), required)
+
+        assertThat(offeredKinds).containsExactly(com.discordassistant.central.speech.application.port.out.CompleteActionKind.SEND)
+        assertThat(selected).isInstanceOf(CompleteActionSelection.Send::class.java)
+    }
+
+    @Test
+    fun `REQUIRED 응답은 평가기 장애로 다시 장기 침묵하지 않고 가장 확실한 생존 후보를 보낸다`() {
+        val selector = CompleteActionSelector(CompleteActionEvaluationPort.Noop)
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected =
+            selector.select(
+                listOf(
+                    SpeechCandidate("uncertain", listOf("아마"), uncertainty = 0.7),
+                    SpeechCandidate("certain", listOf("응답"), uncertainty = 0.1),
+                ),
+                required,
+            )
+
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("certain")
     }
 }

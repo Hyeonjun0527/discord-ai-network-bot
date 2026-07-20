@@ -3,6 +3,7 @@ package com.discordassistant.central.speech.application
 import com.discordassistant.central.global.privacy.ConsentGate
 import com.discordassistant.central.global.privacy.ProcessingStage
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
+import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
@@ -19,6 +20,7 @@ import com.discordassistant.central.speech.application.prompt.SocialActPromptCom
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
+import com.discordassistant.central.speech.domain.model.SpeechResponseObligation
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
@@ -65,6 +67,7 @@ class NexaSpeechPipelineServiceTest {
         burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
         speechIntent: String? = null,
         rawContextSceneData: String? = null,
+        responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
     ): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
@@ -75,6 +78,7 @@ class NexaSpeechPipelineServiceTest {
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
             speechIntent = speechIntent,
             rawContextSceneData = rawContextSceneData,
+            responseObligation = responseObligation,
         )
 
     private fun pipeline(
@@ -123,6 +127,41 @@ class NexaSpeechPipelineServiceTest {
         assertThat(last.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
         assertThat(last.decisionId).isEqualTo("participation:thread_1:1")
         assertThat(last.selectedContentRef).isEqualTo("c1")
+    }
+
+    @Test
+    fun `현재 턴 응답이 REQUIRED면 후단 평가기 장애가 직접 질문을 장기 침묵으로 바꾸지 않는다`() {
+        val gate = ConsentGate().apply { grant("user_1") }
+        val generationPort = FakePort(listOf(SpeechCandidate("current", listOf("지금 질문에 답할게"))))
+        val generationService =
+            CandidateGenerationService(
+                generationPort = generationPort,
+                socialActCompiler = SocialActPromptCompiler(),
+                burstCompiler = BurstPromptCompiler(),
+                reasoningModeSelector = ReasoningModeSelector(),
+            )
+        val pipeline =
+            NexaSpeechPipelineService(
+                consentGate = gate,
+                generationGate = SpeechGenerationGate(generationService),
+                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                completeActionSelector =
+                    CompleteActionSelector(com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort.Noop),
+            )
+
+        val result =
+            pipeline.run(
+                "user_1",
+                SpeechTrigger.SPEAK,
+                packet(
+                    turns = listOf(ConversationTurn("user_1", "토큰없냐")),
+                    responseObligation = SpeechResponseObligation.REQUIRED,
+                ),
+                seed = 1L,
+            )
+
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(result.selected?.candidateId).isEqualTo("current")
     }
 
     @Test

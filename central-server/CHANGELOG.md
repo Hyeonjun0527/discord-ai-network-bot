@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- NIA가 응답 의무가 있는 장면에서도 후속 후보 평가에서 침묵으로 뒤집히던 문제를 막고, 현재 메시지를 응답 대상으로
+  끝까지 보존해 새 질문 대신 이전 질문에 뒤늦게 답하지 않도록 수정했다.
+- 외부 검증이 필요한 사실은 AI 판단 결과에 따라 운영 SearXNG 근거를 발화 생성에 연결하고, 근거를 얻지 못했을 때
+  경험이나 세부 사실을 지어내지 않도록 수정했다.
+
 ### Security
 - central-server 운영 시크릿을 host `.env`/평문 컨테이너 환경변수에서 GitHub `production` Environment와
   Docker secret files(Spring configtree/Postgres `_FILE`)로 이전하고, 배포·정기 감사에서 드리프트를 차단한다.

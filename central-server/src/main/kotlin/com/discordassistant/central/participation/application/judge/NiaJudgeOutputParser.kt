@@ -159,6 +159,15 @@ class NiaJudgeOutputParser(
                         speechIntent.optionalText("informationDepth")
                             ?: speechIntent.requiredText("sceneDirection"),
                     continuityRefs = speechIntent.optionalTextArray("continuityRefs").toSet(),
+                    responseTargetRef = speechIntent.requiredText("responseTargetRef"),
+                    responseObligation =
+                        JudgeResponseObligation.valueOf(
+                            speechIntent.requiredText("responseObligation").uppercase(Locale.ROOT),
+                        ),
+                    groundingNeed =
+                        JudgeGroundingNeed.valueOf(
+                            speechIntent.requiredText("groundingNeed").uppercase(Locale.ROOT),
+                        ),
                 )
             }
             else -> null
@@ -349,6 +358,9 @@ class NiaJudgeOutputParser(
                 "interactionReading",
                 "informationDepth",
                 "continuityRefs",
+                "responseTargetRef",
+                "responseObligation",
+                "groundingNeed",
             )
         private val TONE_AXIS_FIELDS = setOf("warmth", "playfulness", "directness", "emotionalIntensity")
         private val BELIEF_UPDATE_FIELDS = setOf("commonGround", "intentHypotheses", "commitments")

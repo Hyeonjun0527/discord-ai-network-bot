@@ -15,6 +15,7 @@ import com.discordassistant.central.speech.application.generation.ReasoningModeS
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
+import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
@@ -64,13 +65,17 @@ class NexaSpeechEmitConfig {
     /** 발화 생성 게이트(SPEAK·not stale 일 때만 [SpeechGenerationPort] 호출). */
     @Bean
     @ConditionalOnMissingBean(SpeechGenerationGate::class)
-    fun nexaSpeechGenerationGate(generationPort: SpeechGenerationPort): SpeechGenerationGate =
+    fun nexaSpeechGenerationGate(
+        generationPort: SpeechGenerationPort,
+        factualGrounding: SpeechFactualGroundingPort,
+    ): SpeechGenerationGate =
         SpeechGenerationGate(
             CandidateGenerationService(
                 generationPort = generationPort,
                 socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
+                factualGrounding = factualGrounding,
             ),
         )
 

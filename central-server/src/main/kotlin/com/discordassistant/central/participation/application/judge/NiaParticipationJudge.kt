@@ -115,6 +115,11 @@ class NiaParticipationJudge(
                     intentSummary = "acknowledge the current direct address",
                     sceneDirection = "one short natural reply; if asked to stop or yield, acknowledge and yield",
                     actHint = "acknowledge",
+                    responseTargetRef =
+                        request.rawContextWindow.messages
+                            .lastOrNull()
+                            ?.ref,
+                    responseObligation = JudgeResponseObligation.REQUIRED,
                 ),
             toneAxes = JudgeToneAxes.NEUTRAL,
             reasonCode = JudgeReasonCode("judge_output.degraded.direct_address.${rejection.code}"),
@@ -150,6 +155,11 @@ class NiaParticipationJudge(
                     intentSummary = "answer the current conversational follow-up",
                     sceneDirection = "one short natural reply that continues NIA's immediately preceding turn",
                     actHint = "reply",
+                    responseTargetRef =
+                        request.rawContextWindow.messages
+                            .lastOrNull()
+                            ?.ref,
+                    responseObligation = JudgeResponseObligation.REQUIRED,
                 ),
             toneAxes = JudgeToneAxes.NEUTRAL,
             reasonCode = JudgeReasonCode("judge_output.degraded.contextual_follow_up.${rejection.code}"),

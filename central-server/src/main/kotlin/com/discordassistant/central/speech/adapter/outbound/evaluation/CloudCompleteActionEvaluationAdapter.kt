@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
-/** 모호한 장면의 완전 행동 후보를 Cloud LLM으로 비교한다. 활성 평가기의 실패·저신뢰 출력은 침묵으로 닫힌다. */
+/** 모호한 장면의 완전 행동 후보를 Cloud LLM으로 비교한다. 실행 가능 후보의 범위는 앞선 AI judge 계약을 따른다. */
 @Component
 class CloudCompleteActionEvaluationAdapter(
     private val cloudLlm: CloudLlm,
@@ -36,6 +36,8 @@ class CloudCompleteActionEvaluationAdapter(
         buildString {
             appendLine("너는 Discord 사회 행동 선택기다. 문장을 새로 쓰지 말고 후보 하나만 고른다.")
             appendLine("실제 문구와 침묵·리액션이 낳을 다음 결과를 비교한다.")
+            appendLine("response_obligation=REQUIRED인 장면에서는 현재 턴을 버리는 IGNORE·REACT 후보가 제공되지 않는다.")
+            appendLine("response_target_ref가 가리키는 최신 턴을 먼저 수행해야 하며, 오래된 미응답 질문으로 대상을 바꾸지 않는다.")
             appendLine("상대 의도 수행, 새로운 기여, 공통 기반 중복 방지, 미완료 약속 해결, 끼어들기 비용을 함께 본다.")
             appendLine("단지 짧거나 무난하다는 이유로 SEND를 고르지 말고, 이미 알려진 안내 반복은 낮게 평가한다.")
             appendLine(

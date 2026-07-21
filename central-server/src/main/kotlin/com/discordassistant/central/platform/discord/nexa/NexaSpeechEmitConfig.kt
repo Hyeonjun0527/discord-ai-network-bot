@@ -8,6 +8,7 @@ import com.discordassistant.central.global.privacy.ConsentGate
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.CompleteActionSelector
@@ -19,6 +20,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechFactualGro
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechInputTracePort
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
+import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
@@ -70,15 +72,18 @@ class NexaSpeechEmitConfig {
         generationPort: SpeechGenerationPort,
         factualGrounding: SpeechFactualGroundingPort,
         inputTrace: SpeechInputTracePort,
+        promptSource: NiaPromptSource,
     ): SpeechGenerationGate =
         SpeechGenerationGate(
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(),
-                burstCompiler = BurstPromptCompiler(),
+                socialActCompiler = SocialActPromptCompiler(promptSource),
+                burstCompiler = BurstPromptCompiler(promptSource),
                 reasoningModeSelector = ReasoningModeSelector(),
+                contentIsolator = ConversationContentIsolator(promptSource),
                 factualGrounding = factualGrounding,
                 inputTrace = inputTrace,
+                promptSource = promptSource,
             ),
         )
 

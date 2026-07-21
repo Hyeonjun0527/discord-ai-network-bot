@@ -1,5 +1,8 @@
 package com.discordassistant.central.speech.application.prompt
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 
 /**
@@ -13,22 +16,20 @@ import com.discordassistant.central.speech.domain.model.SpeechSocialAct
  * 작성되며, [containsAssistantBoilerplate] 가 금칙 문구 포함을 self-check 한다(테스트가 이 보증을 검증).
  * 미지 act([SpeechSocialAct.UNKNOWN])는 가장 보수적인 짧은 반응 지침으로 폴백한다.
  */
-class SocialActPromptCompiler {
+class SocialActPromptCompiler(
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
+) {
     /** [act] 를 장면 지침 문장으로 컴파일한다(assistant 명령문 금지). */
-    fun compile(act: SpeechSocialAct): String =
-        when (act) {
-            SpeechSocialAct.ACKNOWLEDGE -> "상대 말을 가볍게 받아 주는 결이에요. 짧게 맞장구치듯, 길게 설명하지 말고."
-            SpeechSocialAct.AGREE -> "공감하며 동의하는 결이에요. 같은 편이라는 느낌이 들도록 짧고 따뜻하게."
-            SpeechSocialAct.DISAGREE -> "조심스럽게 다른 생각을 비추는 결이에요. 단정 짓지 말고 부드럽게, 상대를 누르지 않게."
-            SpeechSocialAct.TEASE -> "친한 사이의 가벼운 장난 결이에요. 선을 넘지 않고, 상대가 웃을 만큼만 살짝."
-            SpeechSocialAct.ASK -> "궁금해서 되묻는 결이에요. 심문이 아니라 대화를 잇는 한 가지 질문만."
-            SpeechSocialAct.ANSWER ->
-                "상대가 요청한 내용을 현재 장면에 필요한 깊이로 답하는 결이에요. 대화 흐름을 잇되 강의문처럼 굳히지 않게."
-            SpeechSocialAct.CORRECT -> "사실을 조용히 바로잡는 결이에요. 잘난 척 없이, 핵심만 담백하게 짚어요."
-            SpeechSocialAct.SELF_DISCLOSE -> "자기 생각·상태를 슬쩍 내비치는 결이에요. 과하지 않게, 한두 마디로."
-            SpeechSocialAct.CHANGE_TOPIC -> "흐름을 자연스럽게 다른 화제로 돌리는 결이에요. 끊는 느낌 없이 부드럽게."
-            SpeechSocialAct.UNKNOWN -> "상황이 분명치 않으면 짧고 안전하게 반응해요. 길게 늘어놓지 말고 한 박자만."
-        }
+    fun compile(act: SpeechSocialAct): String = instructionMap()[act.name] ?: instructionMap().getValue("UNKNOWN")
+
+    private fun instructionMap(): Map<String, String> =
+        promptSource
+            .text(NiaPromptKey.SOCIAL_ACT_INSTRUCTIONS)
+            .lineSequence()
+            .mapNotNull { line ->
+                val split = line.split('=', limit = 2)
+                if (split.size == 2) split[0].trim() to split[1].trim() else null
+            }.toMap()
 
     /**
      * self-check(acceptance T009): 컴파일된 지침에 assistant 기본문이 섞이지 않았는지 검증한다. 테스트가 모든 act

@@ -23,28 +23,22 @@ class NiaFewShotSpeechPromptRendererTest {
                 ),
             )
 
-        assertThat(prompt).contains(
-            "서연아 내 고민 좀 들어줘",
-            "좋은 니아 답변: 그건 서연이한테 말해",
-            "피해야 할 니아 답변: 뭐가 궁금한데 ㅋㅋ",
-            "알고리즘 질문이 구술시험처럼 이어진 장면",
-        )
+        assertThat(prompt)
+            .contains(
+                "서연아 내 고민 좀 들어줘",
+                "좋은 니아 답변: 그건 서연이한테 말해",
+                "피해야 할 니아 답변: 뭐가 궁금한데 ㅋㅋ",
+            ).doesNotContain("알고리즘 질문이 구술시험처럼 이어진 장면")
     }
 
     @Test
-    fun `participation-only managed examples leave baseline trajectory examples active`() {
+    fun `participation-only managed examples do not silently restore code speech examples`() {
         val prompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(version(example(expectedReplies = emptyList())))
 
         assertThat(prompt)
             .doesNotContain("서연아 내 고민 좀 들어줘")
-            .contains(
-                "다익스트라 알고리즘 말해봐",
-                "다음은 이거 물어볼 줄 알았음",
-                "세 문제 연속으로 시험 보듯 물어놓고 그 결론이냐",
-                "아니 따봉 얘기하다가 갑자기 홀로코스트냐 ㅋㅋ",
-                "야야야 갑자기 홀로코스트는 ㅋㅋㅋㅋㅋ",
-                "근데 왜 V-1번 도는지 코드랑 같이 진짜 설명해줘",
-            )
+            .doesNotContain("다익스트라 알고리즘 말해봐")
+            .contains("니아 대화 대조 예시")
     }
 
     @Test

@@ -987,7 +987,7 @@ class CommandServiceTest
                 assertTrue(prompt.contains("[채널 지식 컨텍스트]"))
                 assertTrue(prompt.contains("Kotlin Spring 운영 가이드"))
                 assertTrue(prompt.contains("[질문 실행 입력]"))
-                assertTrue(prompt.contains("[사용자 질문]\nKotlin Spring 설정 알려줘"), prompt)
+                assertTrue(prompt.contains("[상대 발화]\nKotlin Spring 설정 알려줘"), prompt)
             } finally {
                 registry.unregister(s)
             }

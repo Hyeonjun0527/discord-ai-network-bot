@@ -1,5 +1,9 @@
 package com.discordassistant.central.speech.application.prompt
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
 /**
@@ -18,24 +22,26 @@ import com.discordassistant.central.speech.domain.model.SpeechScenePacket
  *
  * 순수성 경계: application 레이어. Spring/JPA/JDA 미참조. speech 도메인 타입만.
  */
-class ConversationContentIsolator {
+class ConversationContentIsolator(
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
+) {
     /**
      * 패킷의 최근 turn 을 **인용된 장면 데이터**로 직렬화한다. system/identity/policy section 은 이 함수가
      * 만들지 않는다 — 오직 따옴표로 격리된 대사 블록만 만든다(호출자가 자기 system section 을 별도로 둔다).
      */
-    fun serializeAsQuotedScene(packet: SpeechScenePacket): String =
-        buildString {
-            appendLine(SCENE_HEADER)
-            if (packet.recentTurns.isEmpty()) {
-                appendLine("(대사 없음)")
-            } else {
-                packet.recentTurns.forEach { turn ->
-                    appendLine("${quoteLabel(turn.speakerLabel)}: ${quote(turn.text)}")
+    fun serializeAsQuotedScene(packet: SpeechScenePacket): String {
+        val turns =
+            buildString {
+                if (packet.recentTurns.isEmpty()) {
+                    appendLine("(대사 없음)")
+                } else {
+                    packet.recentTurns.forEach { turn ->
+                        appendLine("${quoteLabel(turn.speakerLabel)}: ${quote(turn.text)}")
+                    }
                 }
-            }
-            appendLine()
-            append(reasserts())
-        }.trim()
+            }.trim()
+        return NiaPromptTemplate.render(promptSource.text(NiaPromptKey.SCENE_ISOLATION_TEMPLATE), mapOf("turns" to turns))
+    }
 
     /**
      * 한 화자 라벨을 안전한 식별자로 만든다(개행·구분자 제거). 라벨이 새 section 헤더를 위조하지 못하게 한다.

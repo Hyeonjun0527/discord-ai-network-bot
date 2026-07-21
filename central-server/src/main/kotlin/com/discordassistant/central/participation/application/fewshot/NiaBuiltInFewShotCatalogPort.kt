@@ -11,4 +11,5 @@ data class NiaBuiltInFewShotCatalog(
     val judgeVersion: Int,
     val judgeExamples: List<NiaFewShotExample>,
     val speechExamples: List<NiaBuiltInSpeechExample>,
+    val editableExamples: List<NiaFewShotExample>,
 )

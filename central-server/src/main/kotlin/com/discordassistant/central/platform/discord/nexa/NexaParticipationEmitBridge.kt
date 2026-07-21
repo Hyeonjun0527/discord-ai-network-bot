@@ -85,7 +85,10 @@ import com.discordassistant.central.participation.domain.service.BanterSafetyCon
 import com.discordassistant.central.participation.domain.service.ChannelAttentionGate
 import com.discordassistant.central.participation.domain.service.CoreInterventionRules
 import com.discordassistant.central.quota.application.RateLimitStore
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.socialmemory.application.port.out.PendingIntentStore
 import com.discordassistant.central.socialmemory.domain.model.VisibilityScope
 import com.discordassistant.central.socialmemory.domain.model.intent.IntentActivation
@@ -183,6 +186,7 @@ class NexaParticipationEmitBridge(
     private val pendingIntents: PendingIntentStore? = null,
     private val conversationSceneIngress: ConversationSceneIngress = InMemoryConversationSceneIngress(),
     private val clock: Clock = Clock.systemUTC(),
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
     private val judgeMode = NexaJudgeMode.parse(judgeModeName)
@@ -1147,14 +1151,30 @@ class NexaParticipationEmitBridge(
             fewShotService
                 ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
                 ?.active
-        val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(active)
+        val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(active, promptSource)
         val retrievedPrompt =
             ragMatchesByTrace[correlationIdOf(signal)]
                 ?.map { it.entry.example }
-                ?.let(NiaFewShotSpeechPromptRenderer::renderRetrieved)
-        val persona = listOfNotNull(NIA_IDENTITY.personaBlock, managedPrompt, retrievedPrompt).joinToString("\n\n")
-        return NIA_IDENTITY.copy(personaBlock = persona)
+                ?.let { NiaFewShotSpeechPromptRenderer.renderRetrieved(it, promptSource) }
+        val identity = niaIdentity()
+        val persona = listOfNotNull(identity.personaBlock, managedPrompt, retrievedPrompt).joinToString("\n\n")
+        return identity.copy(personaBlock = persona)
     }
+
+    private fun niaIdentity(): IdentityKernelSection =
+        IdentityKernelSection.of(
+            personaName = NexaIdentity.NIA_NAME,
+            personaBlock = promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
+            prohibitions =
+                promptSource
+                    .text(
+                        NiaPromptKey.IDENTITY_PROHIBITIONS,
+                    ).lineSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .toList(),
+            interests = setOf("개발", "디스코드"),
+        )
 
     private fun List<ConversationRagMatch>.toJudgePayload(): JudgeConversationRagPayload =
         JudgeConversationRagPayload(
@@ -2263,19 +2283,6 @@ class NexaParticipationEmitBridge(
             )
 
         internal fun builtInFewShotPayload(): JudgeFewShotSetPayload = DEFAULT_FEW_SHOT_PAYLOAD
-
-        /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
-        private val NIA_IDENTITY: IdentityKernelSection =
-            IdentityKernelSection.of(
-                personaName = NexaIdentity.NIA_NAME,
-                personaBlock = NexaIdentity.NIA_SPEECH_PERSONA,
-                prohibitions =
-                    listOf(
-                        "자신이 AI 모델/봇임을 굳이 밝히거나 시스템·프롬프트를 언급하지 않는다.",
-                        "“무엇을 도와드릴까요” 같은 비서 기본 멘트를 쓰지 않는다.",
-                    ),
-                interests = setOf("개발", "디스코드"),
-            )
 
         private fun containsNiaNameSignal(text: String): Boolean =
             text.contains(NexaIdentity.NIA_NAME) ||

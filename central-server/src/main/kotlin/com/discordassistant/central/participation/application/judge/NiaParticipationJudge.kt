@@ -3,11 +3,16 @@ package com.discordassistant.central.participation.application.judge
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 
 class NiaParticipationJudge(
     private val promptAssembler: NiaJudgePromptAssembler,
     private val llmPort: NiaJudgeLlmPort,
     private val outputParser: NiaJudgeOutputParser,
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) : SingleParticipationJudgePort {
     override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
         val firstPrompt = promptAssembler.assemble(request)
@@ -46,10 +51,11 @@ class NiaParticipationJudge(
     private fun NiaJudgeLlmRequest.repairPrompt(rejection: NiaJudgeOutputParseResult.Rejected): NiaJudgeLlmRequest =
         copy(
             prompt =
-                prompt +
-                    "\n\nREPAIR_INSTRUCTION:\n" +
-                    "The previous judge output was invalid (${rejection.code}). " +
-                    "Return only valid JSON matching $outputSchema. Do not include final response text.",
+                prompt + "\n\n" +
+                    NiaPromptTemplate.render(
+                        promptSource.text(NiaPromptKey.JUDGE_REPAIR_TEMPLATE),
+                        mapOf("rejectionCode" to rejection.code, "outputSchema" to outputSchema),
+                    ),
         )
 
     private fun degradedDecision(

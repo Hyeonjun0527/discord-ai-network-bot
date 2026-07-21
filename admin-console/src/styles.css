@@ -682,6 +682,19 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   font-size: 12px;
 }
 
+.prompt-config-workspace { display: grid; gap: 12px; }
+.prompt-editor-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 720px; border: 1px solid var(--line); background: var(--paper); }
+.prompt-document-list { overflow: auto; max-height: 820px; border-right: 1px solid var(--line); padding: 14px 0; }
+.prompt-document-list h2 { margin: 18px 18px 8px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.prompt-document-list button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-left: 2px solid transparent; padding: 12px 18px; background: transparent; text-align: left; }
+.prompt-document-list button.selected { border-left-color: var(--ink); background: #efefeb; }
+.prompt-document-list button strong { font-size: 12px; }
+.prompt-document-list button span { color: var(--muted); font-size: 9px; }
+.prompt-document-editor { min-width: 0; padding: 28px 32px; }
+.prompt-document-editor textarea { width: 100%; min-height: 540px; resize: vertical; border: 1px solid var(--line); padding: 18px; background: #fbfbf8; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.prompt-document-editor .editor-heading code { color: var(--muted); font-size: 10px; }
+.placeholder-copy { margin: 0 0 10px; color: var(--muted); font: 10px/1.6 ui-monospace, monospace; }
+
 .episode-list > .empty-copy,
 .execution-list > .empty-copy { padding: 18px; }
 
@@ -695,12 +708,14 @@ textarea { padding: 10px; line-height: 1.55; resize: vertical; }
   .console-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; padding: 16px; }
   .brand-lockup { padding-bottom: 14px; }
-  .sidebar nav { grid-template-columns: repeat(3, 1fr); margin-top: 12px; }
+  .sidebar nav { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; }
   .workspace { padding: 24px 18px 56px; }
   .data-layout,
   .execution-layout { grid-template-columns: 1fr; }
   .built-in-columns,
-  .rag-library-workspace { grid-template-columns: 1fr; }
+  .rag-library-workspace,
+  .prompt-editor-layout { grid-template-columns: 1fr; }
+  .prompt-document-list { max-height: 280px; border-right: 0; border-bottom: 1px solid var(--line); }
   .built-in-columns > section + section { border-top: 1px solid var(--line); border-left: 0; }
   .rag-entry-list { border-right: 0; border-bottom: 1px solid var(--line); }
   .rag-list-scroll { max-height: 280px; }

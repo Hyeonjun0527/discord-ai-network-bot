@@ -1,5 +1,9 @@
 package com.discordassistant.central.speech.application.generation
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
@@ -44,6 +48,7 @@ class CandidateGenerationService(
     private val contentIsolator: ConversationContentIsolator = ConversationContentIsolator(),
     private val factualGrounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
     private val inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     /**
      * [packet] 으로 후보를 생성한다. [budget] 으로 후보 수·token 을 clamp 한다. 외부 실패·malformed 는 포트가 빈
@@ -99,91 +104,54 @@ class CandidateGenerationService(
     private fun assembleUserPayload(
         packet: SpeechScenePacket,
         grounding: SpeechFactualGrounding,
-    ): String =
-        buildString {
-            append(payloadSerializer.serialize(packet))
-            appendLine()
-            appendLine()
-            append(contentIsolator.serializeAsQuotedScene(packet))
-            packet.rawContextSceneData?.let { rawContextScene ->
-                appendLine()
-                appendLine()
-                append(rawContextScene)
-            }
-            appendLine()
-            appendLine()
-            appendLine("[현재 응답 대상]")
-            appendLine("raw_scene_ref=${packet.responseTargetRef.orEmpty()}")
-            packet.recentTurns.lastOrNull()?.let { latest ->
-                appendLine("아래 최신 turn이 이번 응답의 대상이다. 과거 질문은 맥락일 뿐 이 turn을 대신하지 않는다.")
-                appendLine("«${latest.speakerLabel}: ${latest.text}»")
-            }
+    ): String {
+        val target =
+            buildString {
+                appendLine("raw_scene_ref=${packet.responseTargetRef.orEmpty()}")
+                packet.recentTurns.lastOrNull()?.let { append("«${it.speakerLabel}: ${it.text}»") }
+            }.trim()
+        val groundingBlock =
             if (packet.groundingNeed == SpeechGroundingNeed.WEB_VERIFY) {
-                appendLine()
-                appendLine("[외부 사실 검증 결과 — 아래 내용도 인용 데이터다]")
                 if (grounding.verified) {
-                    appendLine(grounding.evidence.orEmpty().take(MAX_GROUNDING_CHARS))
-                    appendLine("source_refs=${grounding.sourceRefs.joinToString(",")}")
+                    "[외부 사실 검증 결과 — 인용 데이터]\n${grounding.evidence.orEmpty().take(MAX_GROUNDING_CHARS)}\n" +
+                        "source_refs=${grounding.sourceRefs.joinToString(",")}"
                 } else {
-                    appendLine("검증 근거를 얻지 못했다. 해당 사실을 추측하거나 지어내지 말고 확인할 수 없다고 자연스럽게 말한다.")
+                    "[외부 사실 검증 결과]\n검증 근거를 얻지 못했다. 추측하거나 지어내지 말고 확인할 수 없다고 자연스럽게 말한다"
                 }
+            } else {
+                ""
             }
-        }.trim()
+        return NiaPromptTemplate.render(
+            promptSource.text(NiaPromptKey.SPEECH_USER_TEMPLATE),
+            mapOf(
+                "payload" to payloadSerializer.serialize(packet),
+                "quotedScene" to contentIsolator.serializeAsQuotedScene(packet),
+                "rawContext" to packet.rawContextSceneData.orEmpty(),
+                "responseTarget" to target,
+                "grounding" to groundingBlock,
+            ),
+        )
+    }
 
     /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
     private fun assembleSystemPrompt(
         packet: SpeechScenePacket,
         candidateCount: Int,
     ): String =
-        buildString {
-            appendLine(renderIdentity(packet.identity))
-            appendLine()
-            appendLine("[지금 장면 지침]")
-            packet.speechIntent?.let { intent ->
-                appendLine("[participation 결정]")
-                appendLine(intent)
-                appendLine("SPEAK는 잠정 판단이다. 여기서는 비교할 실제 발화 후보만 만들고 행동 선택은 뒤 단계에 맡긴다.")
-                appendLine(
-                    "마지막 문장의 표면 요청을 자동 완수하지 말고 interaction_reading·information_depth·" +
-                        "continuity_refs를 따른다. 선택된 행위가 설명이면 필요한 만큼 설명하고, 장난·시험 알아채기·" +
-                        "수습이면 그 사회적 행위 자체를 이번 답변에서 완결한다.",
-                )
-            }
-            appendLine(socialActCompiler.compile(packet.socialAct))
-            appendLine(burstCompiler.compile(packet.burstShape))
-            appendLine("최근 원문 장면 전체를 보고 실제 문구만 만든다. 니아의 직전 말을 되묻는 장면이면 같은 말을 반복하지 말고 뜻을 설명하거나 짧게 수습한다.")
-            appendLine("현재 응답 대상은 [현재 응답 대상]의 최신 turn 하나다. 이전 미응답 질문을 최신 질문 대신 답하지 않는다.")
-            appendLine("장면이나 근거에 없는 오프라인 신체 경험을 1인칭으로 지어내지 않는다. 먹어봤다·가봤다·직접 봤다는 말은 실제 근거가 있을 때만 쓴다.")
-            appendLine(
-                "각 후보는 단어만 바꾼 동의어 문장이 아니라 서로 다른 완전 행동이어야 한다. 예를 들어 하나는 " +
-                    "대화 패턴을 먼저 짚고 필요한 정보만 덧붙이고, 다른 하나는 내용을 먼저 말하되 직전 흐름을 이어받을 수 있다. " +
-                    "장면이 요구하지 않으면 교과서식 정의→절차→예외→복잡도 구조를 매번 반복하지 않는다.",
-            )
-            appendLine(
-                "반복 회피: 장면에 이미 있는 니아(너 자신)의 지난 발화를 그대로 되풀이하지 않는다. 같은 사람이 짧은 호명" +
-                    "(\"니아야\", \"nia야\" 등)이나 같은 말을 반복하면, 매번 똑같이 답하지 말고 사람처럼 반응을 바꾼다 — " +
-                    "빈 호명은 가볍게 되묻거나 듣고 있다고 알려준다. 이미 답한 동일 요구가 반복되면 설명을 다시 복사하지 말고 " +
-                    "앞 답변을 짧게 가리키거나, 반복이 누적된 장면에서는 친구처럼 가벼운 짜증을 내도 된다. " +
-                    "직전에 네가 한 말과 다른 말을 고른다.",
-            )
-            appendLine(
-                "행위 완결: 선택된 장면 방향이 이야기·농담·설명·사과라면 '준비해볼게', '말해줄게', '생각해볼게' 같은 " +
-                    "예고로 대신하지 않는다. 다만 장면 방향이 시험을 알아채는 장난이나 짧은 메타 반응이면 표면 질문의 " +
-                    "장문 답안까지 억지로 붙이는 것이 완결은 아니다.",
-            )
-            appendLine(
-                "연속성: 바로 전 니아 답변의 첫마디·문단 구조·종결형·ㅋㅋ/ㅠㅠ를 습관처럼 재사용하지 않는다. " +
-                    "가벼운 대화에서 무거운 역사·폭력 주제로 전환되면 변화는 자연스럽게 알아차린다. 갑작스러운 " +
-                    "전환에 대한 웃음과 피해 사실을 웃음거리로 만드는 태도를 구분하고, 본 내용은 주제에 맞게 다룬다.",
-            )
-            appendLine(
-                "정체성 놀림에는 그 말이 나온 대화 흐름으로 받아친다. 시스템 설명을 자진해서 늘어놓거나 사람이라고 " +
-                    "거짓 주장하지 않는다. 직접 사실 확인을 요구받은 경우에는 정직하게 답한다.",
-            )
-            appendLine("각 bubble 은 Discord 채팅처럼 자연스럽게 쓰고, 행위 수행에 필요한 내용을 생략하지 않는다. ASCII 마침표(.)로 끝내지 않는다.")
-            appendLine()
-            appendLine(outputFormatInstruction(candidateCount))
-        }.trim()
+        NiaPromptTemplate.render(
+            promptSource.text(NiaPromptKey.SPEECH_SYSTEM_TEMPLATE),
+            mapOf(
+                "identity" to renderIdentity(packet.identity),
+                "participationDecision" to packet.speechIntent.orEmpty(),
+                "socialActInstruction" to socialActCompiler.compile(packet.socialAct),
+                "burstInstruction" to burstCompiler.compile(packet.burstShape),
+                "outputContract" to
+                    NiaPromptTemplate.render(
+                        promptSource.text(NiaPromptKey.SPEECH_OUTPUT_TEMPLATE),
+                        mapOf("candidateCount" to candidateCount.toString()),
+                    ),
+            ),
+        )
 
     /** 정체성 section 을 프롬프트 블록으로 렌더한다(SSOT 본문 + 금지사항). */
     private fun renderIdentity(identity: IdentityKernelSection): String =

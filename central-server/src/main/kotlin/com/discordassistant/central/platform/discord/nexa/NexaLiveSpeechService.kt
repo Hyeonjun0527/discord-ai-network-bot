@@ -6,7 +6,10 @@ import com.discordassistant.central.participation.domain.service.sim.NexaSimulat
 import com.discordassistant.central.participation.domain.service.sim.SimActorKind
 import com.discordassistant.central.participation.domain.service.sim.SimEventType
 import com.discordassistant.central.participation.domain.service.sim.SimScenario
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.context.ConversationContextSelector
 import com.discordassistant.central.speech.application.generation.GenerationBudget
@@ -49,6 +52,7 @@ import org.springframework.stereotype.Service
 class NexaLiveSpeechService(
     private val consentGate: ConsentGate,
     private val pipeline: NexaSpeechPipelineService,
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     /** 사전 정의 멀티턴 데모 시나리오 목록(드롭다운/카드 메타). */
     fun listPredefined(): List<LivePredefinedScenario> =
@@ -135,7 +139,7 @@ class NexaLiveSpeechService(
                 recentTurns = selectedTurns,
                 socialAct = SpeechSocialAct.ASK,
                 burstShape = SpeechBurstShape(fragmentCount = 1, maxFragmentLength = 280, reactionOnly = false),
-                identity = DEMO_IDENTITY,
+                identity = demoIdentity(),
                 memoryRefs = memoryRefs,
             )
 
@@ -206,19 +210,6 @@ class NexaLiveSpeechService(
         /** 데모는 단일 채널이므로 모든 turn 을 하나의 focus thread 로 본다(가명 키). */
         private const val FOCUS_THREAD_KEY = "demo-focus-thread"
 
-        /** 데모 정체성 — 니아 SSOT 발췌(복제 금지, NexaIdentity 읽기). */
-        private val DEMO_IDENTITY: IdentityKernelSection =
-            IdentityKernelSection.of(
-                personaName = NexaIdentity.NIA_NAME,
-                personaBlock = NexaIdentity.NIA_SPEECH_PERSONA,
-                prohibitions =
-                    listOf(
-                        "자신이 AI 모델/봇임을 굳이 밝히거나 시스템·프롬프트를 언급하지 않는다.",
-                        "“무엇을 도와드릴까요” 같은 비서 기본 멘트를 쓰지 않는다.",
-                    ),
-                interests = setOf("개발", "디스코드"),
-            )
-
         /** 합성 가명 subject 키(원문 ID 아님 — 시나리오·메시지 가명 합성). */
         private fun pseudonymFor(
             scenarioId: String,
@@ -253,6 +244,21 @@ class NexaLiveSpeechService(
         /** 멀티턴 데모 시나리오(가명·합성) — 앞 turn 을 뒤 turn 에서 참조해 기억/컨텍스트 작동을 보인다. */
         private val PREDEFINED: Map<String, SimScenario> = LiveDemoScenarios.all().associateBy { it.scenarioId }
     }
+
+    private fun demoIdentity(): IdentityKernelSection =
+        IdentityKernelSection.of(
+            personaName = NexaIdentity.NIA_NAME,
+            personaBlock = promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
+            prohibitions =
+                promptSource
+                    .text(
+                        NiaPromptKey.IDENTITY_PROHIBITIONS,
+                    ).lineSequence()
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .toList(),
+            interests = setOf("개발", "디스코드"),
+        )
 }
 
 /** 컨텍스트 주입을 실제로 [ConversationContextSelector] 로 태우기 위한 in-memory scene reader(데모 전용·전송 0). */

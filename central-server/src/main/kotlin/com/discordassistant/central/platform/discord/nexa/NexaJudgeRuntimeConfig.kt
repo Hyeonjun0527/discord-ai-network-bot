@@ -7,6 +7,7 @@ import com.discordassistant.central.participation.application.judge.SinglePartic
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.ShadowPredictionStorePort
 import com.discordassistant.central.participation.application.shadow.NiaJudgeShadowService
+import com.discordassistant.central.shared.NiaPromptSource
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
@@ -18,7 +19,8 @@ import java.time.Clock
 class NexaJudgeRuntimeConfig {
     @Bean
     @ConditionalOnMissingBean(NiaJudgePromptAssembler::class)
-    fun niaJudgePromptAssembler(): NiaJudgePromptAssembler = NiaJudgePromptAssembler()
+    fun niaJudgePromptAssembler(promptSource: NiaPromptSource): NiaJudgePromptAssembler =
+        NiaJudgePromptAssembler(promptSource = promptSource)
 
     @Bean
     @ConditionalOnBean(NiaJudgeLlmPort::class)
@@ -26,11 +28,13 @@ class NexaJudgeRuntimeConfig {
     fun niaSingleParticipationJudge(
         llmPort: NiaJudgeLlmPort,
         promptAssembler: NiaJudgePromptAssembler,
+        promptSource: NiaPromptSource,
     ): SingleParticipationJudgePort =
         NiaParticipationJudge(
             promptAssembler = promptAssembler,
             llmPort = llmPort,
             outputParser = NiaJudgeOutputParser(),
+            promptSource = promptSource,
         )
 
     @Bean

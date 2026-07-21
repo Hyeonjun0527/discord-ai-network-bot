@@ -1,6 +1,8 @@
 package com.discordassistant.central.speech.context
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.speech.application.context.IdentityKernelAssembler
 import com.discordassistant.central.speech.application.port.out.IdentityKernelBridgePort
 import com.discordassistant.central.speech.application.port.out.IdentityKernelMeta
@@ -17,11 +19,13 @@ class IdentityKernelAssemblerTest {
         )
 
     @Test
-    fun `default nia speech persona reuses NexaIdentity SSOT verbatim (no duplication)`() {
+    fun `default nia speech persona is assembled from the administrator prompt source`() {
         val section =
             assembler(IdentityKernelMeta.of("니아", emptySet(), administratorApproved = false)).assemble(1L)
-        // SSOT 본문을 그대로 읽어 넣는다 — assembler 가 다시 정의하지 않는다.
-        assertThat(section.personaBlock).isEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
+        assertThat(section.personaBlock).isEqualTo(
+            CodeNiaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" +
+                CodeNiaPromptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
+        )
         assertThat(section.personaBlock).contains("실제 내용을 그 턴에 완결한다")
         assertThat(section.personaBlock).contains("미래 행동만 약속하고 끝내지 않는다")
         assertThat(section.personaBlock).contains("조사와 어순이 자연스러운 한국어 구어체")

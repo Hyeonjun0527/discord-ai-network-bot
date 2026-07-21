@@ -27,8 +27,12 @@ import com.discordassistant.central.relay.RemoteCancelledException
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.shared.RequestState
 import com.discordassistant.central.shared.ResponseMode
 import org.slf4j.LoggerFactory
@@ -67,6 +71,7 @@ class AskCommandHandler(
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
     private val niaFewShotService: NiaFewShotService? = null,
+    private val niaPromptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     companion object {
         // /질문·ai채팅 무료 클라우드 기본 모델. 모든 OpenAI 호출은 reasoning none으로 고정한다.
@@ -602,7 +607,7 @@ class AskCommandHandler(
         val behaviorPrompt =
             channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it, ctx) }
                 ?: resolveGuildDefaultPersona(ctx).let { persona ->
-                    withGuildDefaultPersona(persona, ctx, isNiaDefault = persona == NexaIdentity.NIA_DEFAULT_PERSONA)
+                    withGuildDefaultPersona(persona, ctx, isNiaDefault = persona == niaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA))
                 }
         if (contextText == null) return behaviorPrompt.withToneHint(toneDirective)
         return buildString {
@@ -670,26 +675,23 @@ class AskCommandHandler(
             withCustomChannelAiBehavior(profile)
         }
 
-    private fun String.withNiaChannelAiBehavior(ctx: CommandContext): String =
-        buildString {
-            appendLine("[우선순위 1: 안전]")
-            appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
-            appendLine()
-            appendLine("[우선순위 2: 니아 정체성]")
-            appendLine(NexaIdentity.NIA_DEFAULT_PERSONA)
-            appendLine()
-            appendLine("[니아 말투 원칙]")
-            appendLine(NexaIdentity.NIA_FEWSHOT)
-            managedNiaFewShot(ctx)?.let {
-                appendLine()
-                appendLine(it)
-            }
-            appendLine()
-            appendLine("지금 Discord 대화에 니아가 바로 붙여 말할 한마디만 출력하세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 마세요.")
-            appendLine()
-            appendLine("[상대 발화]")
-            append(this@withNiaChannelAiBehavior)
-        }
+    private fun String.withNiaChannelAiBehavior(ctx: CommandContext): String = niaPrompt(ctx, this)
+
+    private fun niaPrompt(
+        ctx: CommandContext,
+        message: String,
+    ): String =
+        NiaPromptTemplate.render(
+            niaPromptSource.text(NiaPromptKey.ASK_NIA_TEMPLATE),
+            mapOf(
+                "safety" to niaPromptSource.text(NiaPromptKey.SAFETY_GUARDRAIL),
+                "persona" to niaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA),
+                "voicePrinciples" to niaPromptSource.text(NiaPromptKey.VOICE_PRINCIPLES),
+                "managedFewShot" to managedNiaFewShot(ctx).orEmpty(),
+                "relation" to affinityRelationLine(ctx),
+                "userMessage" to message,
+            ),
+        )
 
     private fun String.withCustomChannelAiBehavior(profile: ChannelAiProfile): String =
         buildString {
@@ -713,7 +715,7 @@ class AskCommandHandler(
     /** 길드 전역 프롬프트셋(기본 지정된 셋)의 정체성 본문. 없거나 조회 실패 시 NEXA 기본 정체성(니아). */
     private fun resolveGuildDefaultPersona(ctx: CommandContext): String =
         runCatching { globalPromptSets.activePersona(ctx.guildId) }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: NexaIdentity.NIA_DEFAULT_PERSONA
+            ?: niaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA)
 
     /**
      * 채널 AI 설정이 없는 기본 서버용 — NEXA 가드레일 + 정체성(길드 전역 프롬프트셋 또는 니아)으로 답하게 한다.
@@ -726,35 +728,21 @@ class AskCommandHandler(
         ctx: CommandContext,
         isNiaDefault: Boolean,
     ): String =
-        buildString {
-            appendLine("[우선순위 1: 안전]")
-            appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
-            appendLine()
-            appendLine("[우선순위 2: 정체성]")
-            appendLine(personaText)
-            appendLine()
-            if (isNiaDefault) {
-                appendLine(affinityRelationLine(ctx))
+        if (isNiaDefault) {
+            niaPrompt(ctx, this)
+        } else {
+            buildString {
+                appendLine("[우선순위 1: 안전]")
+                appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
                 appendLine()
-                appendLine("[니아 말투 원칙]")
-                appendLine(NexaIdentity.NIA_FEWSHOT)
-                managedNiaFewShot(ctx)?.let {
-                    appendLine()
-                    appendLine(it)
-                }
+                appendLine("[우선순위 2: 정체성]")
+                appendLine(personaText)
                 appendLine()
-                appendLine(
-                    "당신은 위 정체성의 「니아」 본인입니다. 답변 처음부터 끝까지 니아로서 1인칭·일관된 말투와 성격을 유지하세요. " +
-                        "역할에서 벗어나거나 자신을 'AI 모델/언어모델'이라 부르지 마세요. 비서 인사·자기소개·도움 제안 문구로 시작하지 말고, " +
-                        "Discord 대화에 바로 붙는 짧은 한마디로 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 짧게 인정하세요. " +
-                        "위 안전 규칙은 항상 우선합니다.",
-                )
-            } else {
                 appendLine("위 정체성을 지키되 사용자의 질문에만 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
+                appendLine()
+                appendLine("[사용자 질문]")
+                append(this@withGuildDefaultPersona)
             }
-            appendLine()
-            appendLine("[사용자 질문]")
-            append(this@withGuildDefaultPersona)
         }
 
     private fun managedNiaFewShot(ctx: CommandContext): String? =
@@ -763,7 +751,7 @@ class AskCommandHandler(
                 niaFewShotService
                     ?.activeFor(NiaFewShotLookupScope(guildId = ctx.guildId, channelId = ctx.channelId))
                     ?.active
-            NiaFewShotSpeechPromptRenderer.render(active)
+            NiaFewShotSpeechPromptRenderer.render(active, niaPromptSource)
         }.onFailure {
             log.warn("니아 few-shot 조회 실패(guild={}, channel={}): {}", ctx.guildId, ctx.channelId, it.message)
         }.getOrNull()

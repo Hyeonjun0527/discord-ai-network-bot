@@ -101,6 +101,7 @@ export type NiaEffectiveFewShot = {
   managedGlobalSetId?: number | null;
   managedGlobalVersion?: number | null;
   managedGlobalExamples: NiaFewShotExample[];
+  editableDefaultExamples: NiaFewShotExample[];
 };
 
 export type NiaFewShotEval = {
@@ -196,6 +197,26 @@ export type ConversationRagPage = {
   total: number;
   offset: number;
   limit: number;
+};
+
+export type NiaPromptDocument = {
+  key: string;
+  group: string;
+  title: string;
+  description: string;
+  requiredPlaceholders: string[];
+  defaultContent: string;
+  activeContent: string;
+  draftContent: string;
+};
+
+export type NiaPromptConfiguration = {
+  activeVersion: number;
+  source: "CODE_DEFAULT" | "MANAGED";
+  dirty: boolean;
+  updatedAt?: string | null;
+  appliedAt?: string | null;
+  documents: NiaPromptDocument[];
 };
 function createRequestId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -359,6 +380,22 @@ export async function loadFewShotSets(): Promise<NiaFewShotSet[]> {
 
 export async function loadEffectiveFewShot(): Promise<NiaEffectiveFewShot> {
   return requestJson<NiaEffectiveFewShot>("/api/admin/nia/few-shot/effective");
+}
+
+export async function loadNiaPromptConfiguration(): Promise<NiaPromptConfiguration> {
+  return requestJson<NiaPromptConfiguration>("/api/admin/nia/prompts");
+}
+
+export async function saveNiaPromptConfiguration(documents: Record<string, string>): Promise<NiaPromptConfiguration> {
+  return requestJson<NiaPromptConfiguration>("/api/admin/nia/prompts", { method: "PUT", body: { documents } });
+}
+
+export async function applyNiaPromptConfiguration(): Promise<NiaPromptConfiguration> {
+  return requestJson<NiaPromptConfiguration>("/api/admin/nia/prompts/apply", { method: "POST" });
+}
+
+export async function resetNiaPromptDraft(): Promise<NiaPromptConfiguration> {
+  return requestJson<NiaPromptConfiguration>("/api/admin/nia/prompts/reset-draft", { method: "POST" });
 }
 
 export async function loadConversationRag(): Promise<ConversationRagLibrary> {

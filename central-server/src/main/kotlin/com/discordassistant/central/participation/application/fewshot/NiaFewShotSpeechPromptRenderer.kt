@@ -1,18 +1,34 @@
 package com.discordassistant.central.participation.application.fewshot
 
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotExample
+import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotRawMessage
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotVersion
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 
 object NiaFewShotSpeechPromptRenderer {
-    fun render(version: NiaFewShotVersion?): String? =
+    fun render(
+        version: NiaFewShotVersion?,
+        promptSource: NiaPromptSource = CodeNiaPromptSource,
+    ): String? =
         managedExamples(version)
             .takeIf { it.isNotEmpty() }
-            ?.let(::renderExamples)
+            ?.let { renderExamples(it, promptSource = promptSource) }
 
-    fun renderForParticipation(version: NiaFewShotVersion?): String = renderExamples(managedExamples(version) + BASELINE_EXAMPLES)
+    fun renderForParticipation(
+        version: NiaFewShotVersion?,
+        promptSource: NiaPromptSource = CodeNiaPromptSource,
+    ): String = renderExamples(if (version == null) BASELINE_EXAMPLES else managedExamples(version), promptSource = promptSource)
 
-    fun renderRetrieved(examples: List<NiaFewShotExample>): String? =
+    fun renderRetrieved(
+        examples: List<NiaFewShotExample>,
+        promptSource: NiaPromptSource = CodeNiaPromptSource,
+    ): String? =
         examples
             .asSequence()
             .filter { it.expectedAction == NiaFewShotAction.SPEAK && it.expectedReplies.isNotEmpty() }
@@ -20,7 +36,7 @@ object NiaFewShotSpeechPromptRenderer {
             .map(SpeechPromptExample::from)
             .toList()
             .takeIf { it.isNotEmpty() }
-            ?.let { renderExamples(it, "현재 장면과 가까운 대화 RAG") }
+            ?.let { renderExamples(it, promptSource, "현재 장면과 가까운 대화 RAG") }
 
     fun builtInExamples(): List<NiaBuiltInSpeechExample> =
         BASELINE_EXAMPLES.map { example ->
@@ -29,6 +45,30 @@ object NiaFewShotSpeechPromptRenderer {
                 messages = example.messages,
                 goodReplies = example.goodReplies,
                 badReplies = example.badReplies,
+            )
+        }
+
+    fun builtInEditableExamples(): List<NiaFewShotExample> =
+        BASELINE_EXAMPLES.map { example ->
+            val messages =
+                example.messages.mapIndexed { index, value ->
+                    val separator = value.indexOf(':')
+                    val role = if (separator > 0) value.substring(0, separator).trim() else "member"
+                    val text = if (separator > 0) value.substring(separator + 1).trim() else value
+                    NiaFewShotRawMessage("m${index + 1}", role, index * 1_000L, text)
+                }
+            NiaFewShotExample(
+                title = example.title,
+                rawMessages = messages,
+                expectedAction = NiaFewShotAction.SPEAK,
+                expectedDeliveryMode = NiaFewShotDeliveryMode.CHANNEL,
+                expectedReplies = example.goodReplies,
+                badReplies = example.badReplies,
+                reason = "전체 대화 흐름을 이어받아 자연스럽게 답한다",
+                evidenceRefs = setOf(messages.last().ref),
+                badAlternative = NiaFewShotBadAlternative(NiaFewShotAction.IGNORE, "현재 대화가 니아의 답을 기대하고 있다"),
+                tags = setOf("speech-style"),
+                priority = 100,
             )
         }
 
@@ -45,20 +85,24 @@ object NiaFewShotSpeechPromptRenderer {
 
     private fun renderExamples(
         examples: List<SpeechPromptExample>,
+        promptSource: NiaPromptSource = CodeNiaPromptSource,
         heading: String = "니아 대화 대조 예시",
-    ): String =
-        buildString {
-            appendLine("[$heading]")
-            appendLine("문장을 복사하지 말고, 여러 턴이 만든 사회적 장면과 좋은 답변·나쁜 답변의 차이를 적용한다.")
-            appendLine("관리자 예시는 해당 서버의 말투와 밈에 우선하고, 기본 예시는 반복·전환 회귀를 막는 기준이다.")
-            examples.forEachIndexed { index, example ->
-                appendLine()
-                appendLine("예시 ${index + 1}: ${example.title}")
-                example.messages.forEach { message -> appendLine(message) }
-                example.goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
-                example.badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
-            }
-        }.trim().take(MAX_PROMPT_CHARS)
+    ): String {
+        val content =
+            buildString {
+                examples.forEachIndexed { index, example ->
+                    appendLine("예시 ${index + 1}: ${example.title}")
+                    example.messages.forEach { message -> appendLine(message) }
+                    example.goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
+                    example.badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
+                }
+            }.trim()
+        return NiaPromptTemplate
+            .render(
+                promptSource.text(NiaPromptKey.FEW_SHOT_TEMPLATE),
+                mapOf("heading" to heading, "examples" to content),
+            ).take(MAX_PROMPT_CHARS)
+    }
 
     private data class SpeechPromptExample(
         val title: String,

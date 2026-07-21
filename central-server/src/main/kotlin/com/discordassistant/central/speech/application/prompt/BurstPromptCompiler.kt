@@ -1,5 +1,9 @@
 package com.discordassistant.central.speech.application.prompt
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 
 /**
@@ -12,24 +16,38 @@ import com.discordassistant.central.speech.domain.model.SpeechBurstShape
  * 1이면 "정확히 1개", 4이면 "정확히 4개". 모델이 형태를 늘리거나 줄일 여지를 주지 않는다. reaction-only 면 발화
  * 대신 짧은 리액션으로 끝내라고 지시한다.
  */
-class BurstPromptCompiler {
+class BurstPromptCompiler(
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
+) {
     /** [shape] 를 발화 형태 지침으로 컴파일한다(조각 수는 정확히 강제). */
     fun compile(shape: SpeechBurstShape): String {
         if (shape.reactionOnly) {
-            return "말을 길게 만들지 말고, 짧은 한마디나 가벼운 리액션 정도로만 반응해요(혹은 무발화)."
+            return render("REACTION_ONLY", shape)
         }
         val n = shape.fragmentCount
-        val structure =
-            if (n == 1) {
-                "메시지는 정확히 1개로, 한 호흡에 담아요."
-            } else {
-                "메시지를 정확히 ${n}개로 나눠 보내요. 첫 조각은 즉각적인 반응, 이어지는 조각은 자연스러운 후속이에요."
-            }
-        return buildString {
-            append(structure)
-            append(" 각 조각은 ${shape.maxFragmentLength}자 이내에서 맡은 행위를 수행할 만큼 쓰고, 채팅하듯 담백하게.")
-            append(" 조각 수를 임의로 늘리거나 줄이지 말고 정확히 ${n}개를 지켜요.")
-        }
+        return render(if (n == 1) "SINGLE" else "MULTI", shape) + " " + render("TAIL", shape)
+    }
+
+    private fun render(
+        key: String,
+        shape: SpeechBurstShape,
+    ): String {
+        val template =
+            promptSource
+                .text(NiaPromptKey.BURST_INSTRUCTIONS)
+                .lineSequence()
+                .mapNotNull { line ->
+                    val split = line.split('=', limit = 2)
+                    if (split.size == 2) split[0].trim() to split[1].trim() else null
+                }.toMap()
+                .getValue(key)
+        return NiaPromptTemplate.render(
+            template,
+            mapOf(
+                "count" to shape.fragmentCount.toString(),
+                "maxChars" to shape.maxFragmentLength.toString(),
+            ),
+        )
     }
 
     /** 이 형태가 강제하는 조각 수(acceptance T010 — 모델이 바꿀 수 없는 확정값). reaction-only 면 0. */

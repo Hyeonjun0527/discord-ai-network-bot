@@ -64,6 +64,7 @@ class NiaFewShotAdminController(
             managedGlobalSetId = managedGlobal?.id,
             managedGlobalVersion = managedActive?.version,
             managedGlobalExamples = managedActive?.examples.orEmpty().map { it.toDto(redactRawText = false) },
+            editableDefaultExamples = builtIn?.editableExamples.orEmpty().map { it.toDto(redactRawText = false) },
         )
     }
 
@@ -343,6 +344,7 @@ data class NiaEffectiveFewShotDto(
     val managedGlobalSetId: Long?,
     val managedGlobalVersion: Int?,
     val managedGlobalExamples: List<NiaFewShotExampleDto>,
+    val editableDefaultExamples: List<NiaFewShotExampleDto>,
 )
 
 data class NiaBuiltInSpeechExampleDto(

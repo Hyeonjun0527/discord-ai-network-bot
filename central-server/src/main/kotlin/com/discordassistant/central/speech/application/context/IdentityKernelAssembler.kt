@@ -1,6 +1,9 @@
 package com.discordassistant.central.speech.application.context
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.application.port.out.IdentityKernelBridgePort
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 
@@ -17,6 +20,7 @@ import com.discordassistant.central.speech.domain.model.IdentityKernelSection
  */
 class IdentityKernelAssembler(
     private val bridge: IdentityKernelBridgePort,
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     /**
      * [guildId] 의 정체성 메타를 읽어 [IdentityKernelSection] 으로 조립한다. persona 본문은 NexaIdentity SSOT 발췌,
@@ -28,7 +32,7 @@ class IdentityKernelAssembler(
         return IdentityKernelSection.of(
             personaName = personaName,
             personaBlock = personaBlockFor(personaName),
-            prohibitions = DEFAULT_PROHIBITIONS,
+            prohibitions = prohibitionsFor(personaName),
             interests = meta.interestTags,
         )
     }
@@ -39,10 +43,22 @@ class IdentityKernelAssembler(
      */
     private fun personaBlockFor(personaName: String): String =
         if (personaName == NexaIdentity.NIA_NAME) {
-            NexaIdentity.NIA_SPEECH_PERSONA
+            promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES)
         } else {
             // 길드 지정 정체성: SSOT 전문을 강제하지 않고 이름·상징 문장만 짧게 둔다(니아 전문 복제 금지).
             "당신은 「$personaName」 입니다. 이 정체성으로, 1인칭으로, 처음부터 끝까지 일관되게 말하세요."
+        }
+
+    private fun prohibitionsFor(personaName: String): List<String> =
+        if (personaName == NexaIdentity.NIA_NAME) {
+            promptSource
+                .text(NiaPromptKey.IDENTITY_PROHIBITIONS)
+                .lineSequence()
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .toList()
+        } else {
+            DEFAULT_PROHIBITIONS
         }
 
     companion object {

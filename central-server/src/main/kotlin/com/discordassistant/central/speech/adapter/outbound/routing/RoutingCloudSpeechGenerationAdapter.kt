@@ -2,6 +2,10 @@ package com.discordassistant.central.speech.adapter.outbound.routing
 
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmResult
+import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -42,6 +46,7 @@ class RoutingCloudSpeechGenerationAdapter(
     private val usageRecorder: com.discordassistant.central.speech.application.port.out.SpeechUsageRecorderPort =
         com.discordassistant.central.speech.application.port.out.SpeechUsageRecorderPort.Noop,
     private val clock: Clock = Clock.systemUTC(),
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) : SpeechGenerationPort {
     private val log = LoggerFactory.getLogger(RoutingCloudSpeechGenerationAdapter::class.java)
     private val mapper = ObjectMapper()
@@ -133,17 +138,14 @@ class RoutingCloudSpeechGenerationAdapter(
 
     /** system + user 를 단일 prompt 로 합친다(CloudLlm.generate 는 단일 prompt·model 계약). */
     private fun combinePrompt(request: SpeechGenerationRequest): String =
-        buildString {
-            appendLine(request.systemPrompt)
-            // 감정 톤 힌트(D2) — 있을 때만 *약하게* 얹는다(기본 "" 면 평소 니아 그대로, 무영향).
-            if (request.toneDirective.isNotBlank()) {
-                appendLine()
-                appendLine(request.toneDirective)
-            }
-            appendLine()
-            appendLine("[맥락]")
-            append(request.userPrompt)
-        }
+        NiaPromptTemplate.render(
+            promptSource.text(NiaPromptKey.SPEECH_COMBINE_TEMPLATE),
+            mapOf(
+                "systemPrompt" to request.systemPrompt,
+                "toneDirective" to request.toneDirective,
+                "userPrompt" to request.userPrompt,
+            ),
+        )
 
     companion object {
         /** perCallTimeout 을 강제하는 bounded daemon 풀(전 인스턴스 공유). 매달린 호출로부터 벽시계 상한을 지킨다. */

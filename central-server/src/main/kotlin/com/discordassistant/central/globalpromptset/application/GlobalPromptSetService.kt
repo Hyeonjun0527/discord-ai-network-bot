@@ -2,7 +2,10 @@ package com.discordassistant.central.globalpromptset.application
 
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetEntity
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -22,6 +25,7 @@ import java.time.Instant
 class GlobalPromptSetService(
     private val sets: GlobalPromptSetRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
     /**
      * 이 길드의 `/ask` 기본 정체성으로 쓸 프롬프트 본문. 기본 지정된 사용자 셋이 있으면 그 content,
@@ -30,7 +34,7 @@ class GlobalPromptSetService(
     @Transactional(readOnly = true)
     fun activePersona(guildId: Long): String =
         sets.findFirstByGuildIdAndIsDefaultTrueOrderByIdAsc(guildId)?.content?.takeIf { it.isNotBlank() }
-            ?: NexaIdentity.NIA_DEFAULT_PERSONA
+            ?: promptSource.text(NiaPromptKey.IDENTITY_PERSONA)
 
     /** 목록 — builtin 니아(preview 만) + 사용자 셋(content 전문). 기본 지정된 사용자 셋이 없으면 니아가 기본. */
     @Transactional(readOnly = true)

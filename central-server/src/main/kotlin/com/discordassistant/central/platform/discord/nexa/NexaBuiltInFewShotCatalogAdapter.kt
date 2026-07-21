@@ -18,6 +18,8 @@ class NexaBuiltInFewShotCatalogAdapter : NiaBuiltInFewShotCatalogPort {
             judgeVersion = requireNotNull(judge.version),
             judgeExamples = judge.examples.map(JudgeFewShotExamplePayload::toDomain),
             speechExamples = NiaFewShotSpeechPromptRenderer.builtInExamples(),
+            editableExamples =
+                judge.examples.map(JudgeFewShotExamplePayload::toDomain) + NiaFewShotSpeechPromptRenderer.builtInEditableExamples(),
         )
     }
 }

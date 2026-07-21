@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  SlidersHorizontal,
   ShieldAlert,
   Trash2,
   Upload,
@@ -39,6 +40,10 @@ import {
   replaceFewShotDraft,
   searchConversationRag,
   updateConversationRagEntry,
+  loadNiaPromptConfiguration,
+  saveNiaPromptConfiguration,
+  applyNiaPromptConfiguration,
+  resetNiaPromptDraft,
   type ChannelSummary,
   type DashboardState,
   type ConversationRagStats,
@@ -50,11 +55,13 @@ import {
   type NiaEffectiveFewShot,
   type NiaFewShotSet,
   type NiaFewShotVersion,
+  type NiaPromptConfiguration,
 } from "./api";
 
-type AdminView = "GLOBAL_FEWSHOT" | "CONVERSATION_RAG" | "EXECUTIONS";
+type AdminView = "PROMPTS" | "GLOBAL_FEWSHOT" | "CONVERSATION_RAG" | "EXECUTIONS";
 
 const VIEW_META: Record<AdminView, { hash: string; title: string }> = {
+  PROMPTS: { hash: "prompts", title: "기본 프롬프트" },
   GLOBAL_FEWSHOT: { hash: "global-fewshot", title: "전역 Few-shot" },
   CONVERSATION_RAG: { hash: "conversation-rag", title: "대화 RAG" },
   EXECUTIONS: { hash: "executions", title: "실행 기록" },
@@ -66,6 +73,7 @@ function viewFromHash(hash: string): AdminView {
   const value = hash.replace(/^#/, "");
   if (value === VIEW_META.EXECUTIONS.hash) return "EXECUTIONS";
   if (value === VIEW_META.CONVERSATION_RAG.hash) return "CONVERSATION_RAG";
+  if (value === VIEW_META.PROMPTS.hash) return "PROMPTS";
   return "GLOBAL_FEWSHOT";
 }
 
@@ -272,7 +280,7 @@ function BuiltInSpeechExamples({ examples }: { examples: NonNullable<NiaEffectiv
           <summary>
             <span>{index + 1}</span>
             <strong>{example.title}</strong>
-            <small>항상 포함</small>
+            <small>관리자 세트가 없을 때 사용</small>
           </summary>
           <div className="built-in-detail">
             <Conversation messages={example.messages.map((message) => {
@@ -294,6 +302,8 @@ function App() {
   const [activeView, setActiveView] = useState<AdminView>(() => viewFromHash(window.location.hash));
   const [sets, setSets] = useState<NiaFewShotSet[]>([]);
   const [effectiveFewShot, setEffectiveFewShot] = useState<NiaEffectiveFewShot | null>(null);
+  const [promptConfig, setPromptConfig] = useState<NiaPromptConfiguration | null>(null);
+  const [selectedPromptKey, setSelectedPromptKey] = useState("");
   const [selectedSetId, setSelectedSetId] = useState("");
   const [examples, setExamples] = useState<NiaFewShotExample[]>([newConversation()]);
   const [datasetMarkdown, setDatasetMarkdown] = useState(() => serializeConversationDataset([newConversation()]));
@@ -336,17 +346,19 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeView === "GLOBAL_FEWSHOT") void refreshFewShotData();
+    if (activeView === "PROMPTS") void refreshPromptData();
+    else if (activeView === "GLOBAL_FEWSHOT") void refreshFewShotData();
     else if (activeView === "CONVERSATION_RAG") void refreshRagData();
     else void refreshExecutionScope();
   }, [activeView]);
 
   useEffect(() => {
     const source = draft?.examples ?? active?.examples;
-    const nextExamples = source?.length ? cloneExamples(source) : [newConversation()];
+    const defaults = effectiveFewShot?.editableDefaultExamples;
+    const nextExamples = source?.length ? cloneExamples(source) : defaults?.length ? cloneExamples(defaults) : [newConversation()];
     setExamples(nextExamples);
     setDatasetMarkdown(serializeConversationDataset(nextExamples));
-  }, [selectedSet?.id, draft?.version, draft?.updatedAt, active?.version, active?.updatedAt]);
+  }, [selectedSet?.id, draft?.version, draft?.updatedAt, active?.version, active?.updatedAt, effectiveFewShot]);
 
   async function run(task: () => Promise<void>) {
     setLoading(true);
@@ -368,6 +380,38 @@ function App() {
       setEffectiveFewShot(effective);
       setSelectedSetId((current) => current || String(nextSets[0]?.id ?? ""));
     });
+  }
+
+  async function refreshPromptData() {
+    await run(async () => {
+      const next = await loadNiaPromptConfiguration();
+      setPromptConfig(next);
+      setSelectedPromptKey((current) => current || next.documents[0]?.key || "");
+    });
+  }
+
+  function updatePromptDraft(key: string, content: string) {
+    setPromptConfig((current) => current && ({
+      ...current,
+      dirty: true,
+      documents: current.documents.map((document) => document.key === key ? { ...document, draftContent: content } : document),
+    }));
+  }
+
+  async function savePromptDraft() {
+    await run(async () => {
+      if (!promptConfig) return;
+      const documents = Object.fromEntries(promptConfig.documents.map((document) => [document.key, document.draftContent]));
+      setPromptConfig(await saveNiaPromptConfiguration(documents));
+    });
+  }
+
+  async function applyPromptDraft() {
+    await run(async () => setPromptConfig(await applyNiaPromptConfiguration()));
+  }
+
+  async function resetPromptDraft() {
+    await run(async () => setPromptConfig(await resetNiaPromptDraft()));
   }
 
   async function loadRagState(preferredEntryId?: string) {
@@ -518,7 +562,8 @@ function App() {
   }
 
   function refreshCurrentView() {
-    if (activeView === "GLOBAL_FEWSHOT") void refreshFewShotData();
+    if (activeView === "PROMPTS") void refreshPromptData();
+    else if (activeView === "GLOBAL_FEWSHOT") void refreshFewShotData();
     else if (activeView === "CONVERSATION_RAG") void refreshRagData();
     else void refreshExecutionScope();
   }
@@ -534,6 +579,9 @@ function App() {
           </div>
         </div>
         <nav aria-label="관리 영역">
+          <a href="#prompts" className={activeView === "PROMPTS" ? "active" : ""}>
+            <SlidersHorizontal size={18} /> 기본 프롬프트
+          </a>
           <a href="#global-fewshot" className={activeView === "GLOBAL_FEWSHOT" ? "active" : ""}>
             <BookOpen size={18} /> 전역 Few-shot
           </a>
@@ -567,13 +615,54 @@ function App() {
           </div>
         ) : null}
 
-        {activeView === "GLOBAL_FEWSHOT" ? (
+        {activeView === "PROMPTS" ? (
+          <section className="prompt-config-workspace">
+            <div className="data-toolbar">
+              <div className="version-status">
+                <span>적용 버전 v{promptConfig?.activeVersion ?? 0}</span>
+                <span>{promptConfig?.source === "MANAGED" ? "관리자 설정 사용 중" : "배포 기본값 사용 중"}</span>
+                <span>{promptConfig?.dirty ? "저장된 초안 있음" : "적용본과 동일"}</span>
+              </div>
+              <div className="toolbar-actions">
+                <button className="secondary-action" onClick={() => void resetPromptDraft()} disabled={loading}>기본값 불러오기</button>
+                <button className="secondary-action" onClick={() => void savePromptDraft()} disabled={loading}><Save size={16} /> 초안 저장</button>
+                <button className="primary-action" onClick={() => void applyPromptDraft()} disabled={loading || !promptConfig?.dirty}><Check size={16} /> 니아에 적용</button>
+              </div>
+            </div>
+            <article className="prompt-editor-layout">
+              <aside className="prompt-document-list">
+                {Array.from(new Set(promptConfig?.documents.map((document) => document.group) ?? [])).map((group) => (
+                  <section key={group}>
+                    <h2>{group}</h2>
+                    {promptConfig?.documents.filter((document) => document.group === group).map((document) => (
+                      <button key={document.key} className={selectedPromptKey === document.key ? "selected" : ""} onClick={() => setSelectedPromptKey(document.key)}>
+                        <strong>{document.title}</strong>
+                        <span>{document.activeContent === document.draftContent ? "적용본" : "수정됨"}</span>
+                      </button>
+                    ))}
+                  </section>
+                ))}
+              </aside>
+              {promptConfig?.documents.filter((document) => document.key === selectedPromptKey).map((document) => (
+                <section className="prompt-document-editor" key={document.key}>
+                  <div className="editor-heading">
+                    <div><strong>{document.title}</strong><span>{document.description}</span></div>
+                    <code>{document.key}</code>
+                  </div>
+                  {document.requiredPlaceholders.length ? <p className="placeholder-copy">유지할 변수 · {document.requiredPlaceholders.map((item) => `{{${item}}}`).join(" · ")}</p> : null}
+                  <textarea value={document.draftContent} onChange={(event) => updatePromptDraft(document.key, event.target.value)} spellCheck={false} aria-label={document.title} />
+                  <details className="prompt-details"><summary>현재 적용본 비교</summary><pre>{document.activeContent}</pre></details>
+                </section>
+              ))}
+            </article>
+          </section>
+        ) : activeView === "GLOBAL_FEWSHOT" ? (
           <section className="data-workspace">
             <article className="effective-fewshot">
               <div className="effective-heading">
                 <div>
                   <span>현재 판단 입력</span>
-                  <strong>{effectiveFewShot?.judgeSource === "MANAGED_GLOBAL" ? "관리자 전역 Few-shot 사용 중" : "코드 기본 판단 예시 사용 중"}</strong>
+                  <strong>{effectiveFewShot?.judgeSource === "MANAGED_GLOBAL" ? "관리자 전역 Few-shot 사용 중" : "기본 판단 예시 사용 중"}</strong>
                 </div>
                 <div className="effective-counts">
                   <span>판단 기본 <strong>{effectiveFewShot?.builtInJudgeExamples.length ?? 0}</strong></span>
@@ -584,15 +673,15 @@ function App() {
               <div className="built-in-columns">
                 <section>
                   <div className="section-title">
-                    <strong>코드 기본 판단 예시</strong>
+                    <strong>기본 판단 예시</strong>
                     <span>{effectiveFewShot?.judgeSource === "BUILT_IN_FALLBACK" ? "현재 사용 중" : "관리자 세트가 없을 때 사용"}</span>
                   </div>
                   <BuiltInJudgeExamples examples={effectiveFewShot?.builtInJudgeExamples ?? []} />
                 </section>
                 <section>
                   <div className="section-title">
-                    <strong>코드 기본 발화 예시</strong>
-                    <span>항상 사용</span>
+                    <strong>기본 발화 예시</strong>
+                    <span>관리자 세트가 없을 때 사용</span>
                   </div>
                   <BuiltInSpeechExamples examples={effectiveFewShot?.builtInSpeechExamples ?? []} />
                 </section>

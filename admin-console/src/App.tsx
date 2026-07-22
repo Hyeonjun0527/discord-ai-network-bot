@@ -44,6 +44,7 @@ import {
   saveNiaPromptConfiguration,
   applyNiaPromptConfiguration,
   resetNiaPromptDraft,
+  isAuthenticationRequired,
   type ChannelSummary,
   type DashboardState,
   type ConversationRagStats,
@@ -370,6 +371,10 @@ function App() {
     try {
       await task();
     } catch (cause) {
+      if (isAuthenticationRequired(cause)) {
+        window.location.reload();
+        return;
+      }
       if (!wasBugsinkReported(cause)) captureConsoleError(cause);
       setError(cause instanceof Error ? cause.message : "요청을 처리하지 못했습니다.");
     } finally {

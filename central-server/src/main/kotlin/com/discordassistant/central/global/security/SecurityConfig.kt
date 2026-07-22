@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer
 import org.springframework.security.config.annotation.web.invoke
@@ -13,6 +14,10 @@ import org.springframework.security.oauth2.client.registration.InMemoryClientReg
 import org.springframework.security.oauth2.core.AuthorizationGrantType
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.authentication.HttpStatusEntryPoint
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.AnyRequestMatcher
 
 /**
  * 대시보드 관리자 인증(차수 14 #196 / #197, Discord OAuth2).
@@ -113,6 +118,16 @@ class SecurityConfig(
                     authorize("/oauth2/**", permitAll)
                     // 그 외(대시보드 데이터/쓰기 API)는 인증 필요.
                     authorize(anyRequest, authenticated)
+                }
+                exceptionHandling {
+                    defaultAuthenticationEntryPointFor(
+                        HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                        PathPatternRequestMatcher.withDefaults().matcher("/api/**"),
+                    )
+                    defaultAuthenticationEntryPointFor(
+                        LoginUrlAuthenticationEntryPoint("/oauth2/authorization/discord"),
+                        AnyRequestMatcher.INSTANCE,
+                    )
                 }
                 oauth2Login { }
             } else {

@@ -57,6 +57,10 @@ import {
   type NiaFewShotVersion,
   type NiaPromptConfiguration,
 } from "./api";
+import {
+  rememberExecutionChannelId,
+  restoreExecutionChannelId,
+} from "./execution-filter-storage";
 
 type AdminView = "PROMPTS" | "GLOBAL_FEWSHOT" | "CONVERSATION_RAG" | "EXECUTIONS";
 
@@ -468,18 +472,24 @@ function App() {
     await run(async () => {
       const nextDashboard = await loadDashboard(nextGuildId);
       const selectedGuildId = nextDashboard.selectedGuildId;
+      const nextChannels = await loadGuildChannels(selectedGuildId);
+      const restoredChannelId = restoreExecutionChannelId(selectedGuildId, nextChannels, window.localStorage);
+      const nextExecutions = restoredChannelId
+        ? await loadNiaExecutions(selectedGuildId, restoredChannelId)
+        : [];
       setDashboard(nextDashboard);
       setGuildId(selectedGuildId);
       window.localStorage.setItem(GUILD_ID_STORAGE_KEY, selectedGuildId);
-      setChannels(await loadGuildChannels(selectedGuildId));
-      setChannelId("");
-      setExecutions([]);
-      setSelectedExecutionId("");
+      setChannels(nextChannels);
+      setChannelId(restoredChannelId);
+      setExecutions(nextExecutions);
+      setSelectedExecutionId(nextExecutions[0]?.correlationId ?? "");
     });
   }
 
   async function selectChannel(nextChannelId: string) {
     setChannelId(nextChannelId);
+    rememberExecutionChannelId(guildId, nextChannelId, window.localStorage);
     setExecutions([]);
     setSelectedExecutionId("");
     if (!nextChannelId) return;

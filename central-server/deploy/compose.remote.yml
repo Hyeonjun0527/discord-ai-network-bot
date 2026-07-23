@@ -150,8 +150,8 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=30d
-      - --storage.tsdb.retention.size=1GB
+      # 용량 상한은 365일 전에 데이터를 지울 수 있으므로 시간 기준 보존만 적용한다.
+      - --storage.tsdb.retention.time=365d
     secrets:
       - METRICS_SCRAPE_TOKEN
     volumes:

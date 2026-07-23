@@ -56,7 +56,7 @@ Micrometer 컴포넌트가 존재하거나 0 gauge가 노출되는 것을 "수�
 - `central_openai_cache_policy_requests_total{model,purpose,policy}` — 실제 요청에 적용된 정책. policy는 `disabled` 또는 `explicit_prefix`다.
 - `central_openai_tokens_total{model,purpose,category}` — API usage 기반 누적 token. category는 `input_total`, `uncached_input`, `cached_input`, `cache_write`, `output`이다. `input_total`은 provider 원본 합계이고, 가격 성격별 비교에는 겹치지 않는 나머지인 `uncached_input`을 사용한다.
 - purpose는 `nia_judge`, `nia_judge_repair`, `nia_speech`, `nia_action_evaluator`, `nia_rag_embedding` 등 고정 enum이다. 원문·길드·채널·사용자 식별자는 넣지 않는다.
-- 이 값은 **central-server 프로세스 안의 누적 카운터**다. 운영 compose의 Prometheus가 bearer token으로 15초마다 scrape하고 named volume에 30일/최대 1GB까지 보존한다. 배포 검증은 collector ready뿐 아니라 `central-server` target의 `health=up`까지 확인한다.
+- 이 값은 **central-server 프로세스 안의 누적 카운터**다. 운영 compose의 Prometheus가 bearer token으로 15초마다 scrape하고 named volume에 365일 동안 보존한다. 365일 전에 삭제될 수 있는 용량 상한은 두지 않으므로 운영 호스트의 디스크 사용량을 함께 감시한다. 배포 검증은 collector ready뿐 아니라 `central-server` target의 `health=up`까지 확인한다.
 - 수집 경계는 central-server의 `/responses`·`/embeddings` HTTP 어댑터다. 별도 프로세스인
   `scripts/nexa-human-likeness-eval.py`와 `rag/build_index.py --with-vector`의 수동 유료 호출은 이 metric에 포함되지 않는다.
   전자는 `--confirm-paid-openai`, 후자는 `--with-vector`를 명시해야만 실행된다.

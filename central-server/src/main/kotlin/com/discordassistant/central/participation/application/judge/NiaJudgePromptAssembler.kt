@@ -8,6 +8,7 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Duration
@@ -17,18 +18,24 @@ class NiaJudgePromptAssembler(
     private val timeoutMillis: Long = DEFAULT_TIMEOUT_MILLIS,
     private val promptSource: NiaPromptSource = CodeNiaPromptSource,
 ) {
+    private val promptMapper = mapper.copy().setSerializationInclusion(JsonInclude.Include.NON_NULL)
+
     init {
         require(timeoutMillis > 0) { "judge prompt timeoutMillis 는 양수여야 한다: $timeoutMillis" }
     }
 
     fun assemble(request: SingleJudgeDecisionRequest): NiaJudgeLlmRequest {
         val promptPayload = request.toPromptPayload()
-        val payloadJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(promptPayload)
+        val payloadJson = promptMapper.writeValueAsString(promptPayload)
+        val prompt = buildManagedPrompt(payloadJson)
+        val stablePromptPrefixChars = prompt.indexOf(RAW_SCENE_FIELD)
+        check(stablePromptPrefixChars > 0) { "judge prompt에서 rawScene 경계를 찾지 못했다" }
         return NiaJudgeLlmRequest(
-            prompt = buildManagedPrompt(payloadJson),
+            prompt = prompt,
             promptVersion = PROMPT_VERSION,
             seed = request.seed,
             timeoutMillis = timeoutMillis,
+            stablePromptPrefixChars = stablePromptPrefixChars,
             metadata =
                 mapOf(
                     "input_schema" to INPUT_SCHEMA,
@@ -36,6 +43,7 @@ class NiaJudgePromptAssembler(
                     "scene_seq" to "${request.sceneSnapshot.ref.sceneSeq}",
                     "context_version" to "${request.sceneSnapshot.ref.contextVersion}",
                     "reasoning_mode" to if (request.requiresDeliberation()) "deliberate" else "fast",
+                    EXECUTION_PURPOSE_METADATA_KEY to request.executionPurpose.wireName,
                 ),
         )
     }
@@ -72,30 +80,14 @@ class NiaJudgePromptAssembler(
             outputSchema = NiaJudgeLlmRequest.OUTPUT_SCHEMA,
             rawScene =
                 PromptRawScene(
-                    scopeFingerprint = rawContextWindow.scopeFingerprint,
-                    maxChars = rawContextWindow.maxChars,
                     omittedOldestCount = rawContextWindow.omittedOldestCount,
-                    quotedSceneData = rawContextWindow.quotedSceneData,
                     latestMessageRef = rawContextWindow.messages.lastOrNull()?.ref,
                     messages = rawContextWindow.messages.toPromptMessages(),
                 ),
             fewShotSet = fewShotSet.toPromptFewShotSet(),
             conversationRag = conversationRag.toPromptConversationRag(),
             socialMemory = memoryRefs.map { it.toPromptMemory() },
-            metadata =
-                PromptMetadata(
-                    sceneSeq = sceneSnapshot.ref.sceneSeq,
-                    contextVersion = sceneSnapshot.ref.contextVersion,
-                    schemaVersion = schemaVersion,
-                    featureVectorVersion = featureVector.version,
-                    seed = seed,
-                ),
             sceneState = sceneSnapshot.toPromptSceneState(),
-            featureVector =
-                featureVector.features
-                    .toSortedMap(compareBy { it.id })
-                    .mapKeys { it.key.id }
-                    .mapValues { (_, feature) -> PromptFeatureValue(feature.value, feature.missing) },
             constraints =
                 PromptConstraints(
                     allowedActions = constraints.allowedActions.map { it.toJudgeWireAction() }.sorted(),
@@ -121,8 +113,7 @@ class NiaJudgePromptAssembler(
             is JudgeContextContent.Available ->
                 PromptRawMessage(
                     ref = ref,
-                    authorRole = authorRole,
-                    createdAt = createdAt.toString(),
+                    speakerLabel = speakerLabel,
                     elapsedSincePreviousMs = elapsedSincePreviousMs,
                     replyToRef = replyToRef,
                     text = value.text,
@@ -131,8 +122,7 @@ class NiaJudgePromptAssembler(
             is JudgeContextContent.Unavailable ->
                 PromptRawMessage(
                     ref = ref,
-                    authorRole = authorRole,
-                    createdAt = createdAt.toString(),
+                    speakerLabel = speakerLabel,
                     elapsedSincePreviousMs = elapsedSincePreviousMs,
                     replyToRef = replyToRef,
                     text = null,
@@ -142,12 +132,9 @@ class NiaJudgePromptAssembler(
 
     private fun JudgeFewShotSetPayload.toPromptFewShotSet(): PromptFewShotSet =
         PromptFewShotSet(
-            setId = setId,
-            version = version,
             examples =
                 examples.map { example ->
                     PromptFewShotExample(
-                        exampleId = example.exampleId,
                         title = example.title,
                         rawMessages =
                             example.rawMessages.map { message ->
@@ -171,9 +158,6 @@ class NiaJudgePromptAssembler(
                                 deliveryMode = example.badAlternative.deliveryMode?.name,
                                 whyBad = example.badAlternative.whyBad,
                             ),
-                        tags = example.tags.sorted(),
-                        priority = example.priority,
-                        privacyClass = example.privacyClass.name,
                     )
                 },
         )
@@ -186,7 +170,6 @@ class NiaJudgePromptAssembler(
             matches =
                 matches.map { match ->
                     PromptConversationRagMatch(
-                        entryId = match.entryId,
                         score = match.score,
                         scoringMethod = match.scoringMethod,
                         example = match.example.toPromptFewShotExample(),
@@ -196,7 +179,6 @@ class NiaJudgePromptAssembler(
 
     private fun JudgeFewShotExamplePayload.toPromptFewShotExample(): PromptFewShotExample =
         PromptFewShotExample(
-            exampleId = exampleId,
             title = title,
             rawMessages =
                 rawMessages.map { message ->
@@ -215,9 +197,6 @@ class NiaJudgePromptAssembler(
                     deliveryMode = badAlternative.deliveryMode?.name,
                     whyBad = badAlternative.whyBad,
                 ),
-            tags = tags.sorted(),
-            priority = priority,
-            privacyClass = privacyClass.name,
         )
 
     private fun SingleJudgeSceneSnapshot.toPromptSceneState(): PromptSceneState =
@@ -225,7 +204,6 @@ class NiaJudgePromptAssembler(
             directAddressed = directAddressed,
             replyToNia = replyToNia,
             conversationMentionsNia = conversationMentionsNia,
-            recentAgentBurstCount = recentAgentBurstCount,
             silenceMillis = silenceMillis,
             pendingActionIds = pendingActionIds.sorted(),
             textSignals = textSignals,
@@ -245,22 +223,22 @@ class NiaJudgePromptAssembler(
         }
 
     companion object {
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v13"
-        const val INPUT_SCHEMA: String = "nia.participation-judge-input.v1"
+        const val EXECUTION_PURPOSE_METADATA_KEY: String = "execution_purpose"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v17"
+        const val INPUT_SCHEMA: String = "nia.participation-judge-input.v3"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
+        private const val RAW_SCENE_FIELD: String = "\"rawScene\":"
     }
 }
 
 private data class JudgePromptPayload(
     val schema: String,
     val outputSchema: String,
-    val rawScene: PromptRawScene,
     val fewShotSet: PromptFewShotSet,
+    val rawScene: PromptRawScene,
     val conversationRag: PromptConversationRag,
     val socialMemory: List<PromptMemoryRef>,
-    val metadata: PromptMetadata,
     val sceneState: PromptSceneState,
-    val featureVector: Map<String, PromptFeatureValue>,
     val constraints: PromptConstraints,
 )
 
@@ -269,25 +247,20 @@ private data class PromptConversationRag(
 )
 
 private data class PromptConversationRagMatch(
-    val entryId: Long,
     val score: Double,
     val scoringMethod: String,
     val example: PromptFewShotExample,
 )
 
 private data class PromptRawScene(
-    val scopeFingerprint: String,
-    val maxChars: Int,
     val omittedOldestCount: Int,
-    val quotedSceneData: String,
     val latestMessageRef: String?,
     val messages: List<PromptRawMessage>,
 )
 
 private data class PromptRawMessage(
     val ref: String,
-    val authorRole: String,
-    val createdAt: String,
+    val speakerLabel: String,
     val elapsedSincePreviousMs: Long?,
     val replyToRef: String?,
     val text: String?,
@@ -295,13 +268,10 @@ private data class PromptRawMessage(
 )
 
 private data class PromptFewShotSet(
-    val setId: Long?,
-    val version: Int?,
     val examples: List<PromptFewShotExample>,
 )
 
 private data class PromptFewShotExample(
-    val exampleId: String,
     val title: String,
     val rawMessages: List<PromptFewShotRawMessage>,
     val expectedAction: String,
@@ -312,9 +282,6 @@ private data class PromptFewShotExample(
     val reason: String,
     val evidenceRefs: List<String>,
     val badAlternative: PromptFewShotBadAlternative,
-    val tags: List<String>,
-    val priority: Int,
-    val privacyClass: String,
 )
 
 private data class PromptFewShotRawMessage(
@@ -337,19 +304,10 @@ private data class PromptMemoryRef(
     val confidence: Double,
 )
 
-private data class PromptMetadata(
-    val sceneSeq: Long,
-    val contextVersion: Long,
-    val schemaVersion: Int,
-    val featureVectorVersion: Int,
-    val seed: Long,
-)
-
 private data class PromptSceneState(
     val directAddressed: Boolean,
     val replyToNia: Boolean,
     val conversationMentionsNia: Boolean,
-    val recentAgentBurstCount: Int,
     val silenceMillis: Long?,
     val pendingActionIds: List<String>,
     val textSignals: JudgeSceneTextSignals,
@@ -360,11 +318,6 @@ private data class PromptSceneState(
     val relationshipState: JudgeRelationshipSceneState,
     val memoryState: JudgeMemorySceneState,
     val socialBeliefState: JudgeSocialBeliefState,
-)
-
-private data class PromptFeatureValue(
-    val value: Double,
-    val missing: Boolean,
 )
 
 private data class PromptConstraints(

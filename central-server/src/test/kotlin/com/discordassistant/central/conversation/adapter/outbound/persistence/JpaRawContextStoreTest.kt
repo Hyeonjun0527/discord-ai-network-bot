@@ -22,7 +22,12 @@ import java.time.Instant
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JpaRawContextStore::class)
-@TestPropertySource(properties = ["nexa.raw-context.max-raw-chars-per-scope=8"])
+@TestPropertySource(
+    properties = [
+        "nexa.raw-context.max-raw-chars-per-scope=8",
+        "nexa.raw-context.max-entries-per-scope=2",
+    ],
+)
 class JpaRawContextStoreTest
     @Autowired
     constructor(
@@ -127,6 +132,23 @@ class JpaRawContextStoreTest
                     .single()
                     .content
             assertThat(content).isEqualTo(RawContextContent.Unavailable(RawContextUnavailableReason.INTENT_MISSING))
+        }
+
+        @Test
+        fun `zero-char unavailable rows are bounded by configured entry count`() {
+            fun unavailable(messageId: Long) =
+                entry(
+                    messageId = messageId,
+                    content = RawContextContent.Unavailable(RawContextUnavailableReason.EMPTY),
+                    occurredAt = t0.plusSeconds(messageId),
+                )
+
+            store.append(unavailable(20))
+            store.append(unavailable(21))
+            val result = store.append(unavailable(22))
+
+            assertThat(result.evictedMessageIds).containsExactly(20)
+            assertThat(store.readRecent(scope).entries.map { it.messageId }).containsExactly(21, 22)
         }
 
         @Test

@@ -1,6 +1,8 @@
 package com.discordassistant.central.speech.evaluation
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.CloudToolResponse
@@ -35,6 +37,47 @@ class CloudCompleteActionEvaluationAdapterTest {
             "다음은 이거 물어볼 줄 알았음",
         )
         assertThat(cloud.thinking).isEqualTo(CloudThinking.DISABLED)
+        assertThat(cloud.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_ACTION_EVALUATOR)
+        assertThat(cloud.options!!.maxOutputTokens).isEqualTo(512)
+        assertThat(cloud.options!!.maxRetries).isZero()
+        assertThat(cloud.prompt.take(cloud.options!!.cachePolicy!!.stablePrefixChars))
+            .doesNotContain("speech_intent=")
+        assertThat(cloud.prompt)
+            .doesNotContain(
+                "context_version=",
+                "seed=",
+                "trigger_message_ref=",
+                "state_refs=",
+                "enforcement=",
+                "response_obligation",
+                "response_target_ref",
+            )
+    }
+
+    @Test
+    fun `raw scene이 있으면 같은 recent turns를 두 번 보내지 않는다`() {
+        val cloud = CapturingCloudLlm()
+        val rawScene = "[judge 원문 장면]\nmember: «현재 질문»"
+
+        CloudCompleteActionEvaluationAdapter(cloud, "test-model").select(
+            request().copy(
+                rawContextSceneData = rawScene,
+                recentTurns = listOf(ConversationTurn("member", "이 문장은 raw scene에 이미 있는 대화라고 가정")),
+            ),
+        )
+
+        assertThat(cloud.prompt).contains("[judge 원문 장면]", "member: ‹현재 질문›")
+        assertThat(cloud.prompt).doesNotContain("이 문장은 raw scene에 이미 있는 대화라고 가정")
+    }
+
+    @Test
+    fun `raw scene 상한은 오래된 앞부분 대신 최신 응답 대상을 보존한다`() {
+        val cloud = CapturingCloudLlm()
+        val rawScene = "oldest-marker" + "x".repeat(16_000) + "latest-marker"
+
+        CloudCompleteActionEvaluationAdapter(cloud, "test-model").select(request().copy(rawContextSceneData = rawScene))
+
+        assertThat(cloud.prompt).contains("latest-marker").doesNotContain("oldest-marker")
     }
 
     private fun request() =
@@ -79,6 +122,7 @@ class CloudCompleteActionEvaluationAdapterTest {
     private class CapturingCloudLlm : CloudLlm {
         lateinit var prompt: String
         var thinking: CloudThinking? = null
+        var options: CloudLlmRequestOptions? = null
 
         override fun isEnabled(): Boolean = true
 
@@ -98,6 +142,17 @@ class CloudCompleteActionEvaluationAdapterTest {
             return CloudLlmResult(
                 """{"selected_candidate_id":"social_answer","predicted_outcome":"recognizes the test and stays useful","reason_code":"TRAJECTORY_COHERENT","confidence":0.91}""",
             )
+        }
+
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+            options: CloudLlmRequestOptions,
+        ): CloudLlmResult {
+            this.options = options
+            return generate(prompt, model, history, thinking)
         }
 
         override fun generateWithTools(

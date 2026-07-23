@@ -2,6 +2,8 @@ package com.discordassistant.central.platform.discord.admin
 
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudToolCall
 import com.discordassistant.central.routing.application.CloudToolResponse
@@ -21,6 +23,8 @@ class AdminAssistantServiceTest {
         private val throws: Boolean = false,
     ) : CloudLlm {
         var toolsAttached = false
+        var options: CloudLlmRequestOptions? = null
+        var toolCalls = 0
 
         override fun isEnabled() = enabled
 
@@ -35,9 +39,21 @@ class AdminAssistantServiceTest {
             toolsJson: String,
             model: String,
         ): CloudToolResponse {
+            toolCalls++
             toolsAttached = toolsJson.isNotBlank()
             if (throws) throw CloudLlmException("upstream")
             return response
+        }
+
+        override fun generateWithTools(
+            systemPrompt: String,
+            userPrompt: String,
+            toolsJson: String,
+            model: String,
+            options: CloudLlmRequestOptions,
+        ): CloudToolResponse {
+            this.options = options
+            return generateWithTools(systemPrompt, userPrompt, toolsJson, model)
         }
 
         override fun reviewImagePrompt(
@@ -66,7 +82,7 @@ class AdminAssistantServiceTest {
 
     @Test
     fun `도구를 호출하지 않으면 일반 질문으로 폴백한다`() {
-        val decision = service(FakeCloudLlm(response = CloudToolResponse(text = "안녕"))).plan(1L, 9L, "오늘 날씨 어때")
+        val decision = service(FakeCloudLlm(response = CloudToolResponse(text = "안녕"))).plan(1L, 9L, "채널을 생성하는 방법이 뭐야")
         assertTrue(decision is AdminAssistantDecision.NotAdminAction)
     }
 
@@ -94,8 +110,11 @@ class AdminAssistantServiceTest {
     fun `tools 는 어드민 경로에서만 첨부된다(서비스 호출 시 항상 전달)`() {
         // 서비스는 ctx.isAdmin 일 때만 DiscordBot 이 호출한다. 호출되면 tools 가 비어있지 않게 전달됨을 확인.
         val cloud = FakeCloudLlm(response = CloudToolResponse(text = "x"))
-        service(cloud).plan(1L, 9L, "안녕")
+        service(cloud).plan(1L, 9L, "잡담 채널 하나 만들어줘")
         assertTrue(cloud.toolsAttached)
+        assertEquals(CloudLlmPurpose.ADMIN_ACTION_ROUTER, cloud.options?.purpose)
+        assertEquals(1_024, cloud.options?.maxOutputTokens)
+        assertEquals(0, cloud.options?.maxRetries)
     }
 
     @Test

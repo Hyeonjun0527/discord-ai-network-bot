@@ -23,13 +23,19 @@ class NiaSceneWindowBuilder(
 
     fun build(snapshot: RawContextSnapshot): NiaSceneWindow {
         val chronological = snapshot.entries.sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
-        val selected = selectNewestWithinBudget(chronological)
-        val refByMessageId = selected.mapIndexed { index, entry -> entry.messageId to messageRef(index) }.toMap()
+        val indexed = chronological.withIndex().toList()
+        val selected = selectNewestWithinBudget(indexed)
+        val refByMessageId = selected.associate { indexedEntry -> indexedEntry.value.messageId to messageRef(indexedEntry.index) }
+        // 원본 pseudonym 자체를 외부 payload에 싣지 않으면서도 A/B 화자를 잃지 않는다. 전체 snapshot에서 먼저
+        // 번호를 부여하므로 char budget이 바뀌어도 같은 snapshot의 화자 라벨은 흔들리지 않는다.
+        val speakerLabels = speakerLabels(chronological)
         val messages =
-            selected.mapIndexed { index, entry ->
+            selected.map { indexedEntry ->
+                val entry = indexedEntry.value
                 NiaSceneMessage(
-                    ref = messageRef(index),
+                    ref = messageRef(indexedEntry.index),
                     authorRole = entry.authorRole(),
+                    speakerLabel = speakerLabels.getValue(entry.speakerKey()),
                     createdAt = entry.occurredAt,
                     replyToRef = entry.replyToMessageId?.let(refByMessageId::get),
                     content = entry.content.toSceneContent(),
@@ -43,13 +49,13 @@ class NiaSceneWindowBuilder(
         )
     }
 
-    private fun selectNewestWithinBudget(entries: List<RawContextEntry>): List<RawContextEntry> {
-        val selectedNewestFirst = mutableListOf<RawContextEntry>()
+    private fun selectNewestWithinBudget(entries: List<IndexedValue<RawContextEntry>>): List<IndexedValue<RawContextEntry>> {
+        val selectedNewestFirst = mutableListOf<IndexedValue<RawContextEntry>>()
         var used = 0
-        for (entry in entries.asReversed()) {
-            val next = entry.contentLength
+        for (indexedEntry in entries.asReversed()) {
+            val next = indexedEntry.value.contentLength
             if (used + next > maxRawChars) break
-            selectedNewestFirst += entry
+            selectedNewestFirst += indexedEntry
             used += next
         }
         return selectedNewestFirst.asReversed()
@@ -63,6 +69,30 @@ class NiaSceneWindowBuilder(
             RawContextSourceType.SYSTEM -> NiaSceneAuthorRole.SYSTEM
         }
 
+    private fun speakerLabels(entries: List<RawContextEntry>): Map<SpeakerKey, String> {
+        val nextIndexByRole = mutableMapOf<NiaSceneAuthorRole, Int>()
+        return buildMap {
+            entries.forEach { entry ->
+                val key = entry.speakerKey()
+                getOrPut(key) {
+                    when (key.role) {
+                        NiaSceneAuthorRole.NIA -> "nia"
+                        NiaSceneAuthorRole.SYSTEM -> "system"
+                        NiaSceneAuthorRole.MEMBER,
+                        NiaSceneAuthorRole.BOT,
+                        -> {
+                            val index = nextIndexByRole.getOrDefault(key.role, 0) + 1
+                            nextIndexByRole[key.role] = index
+                            "${key.role.wireName}_$index"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun RawContextEntry.speakerKey(): SpeakerKey = SpeakerKey(authorRole(), authorPseudonym)
+
     private fun RawContextContent.toSceneContent(): NiaSceneContent =
         when (this) {
             is RawContextContent.Available -> NiaSceneContent.Available(text)
@@ -75,4 +105,9 @@ class NiaSceneWindowBuilder(
         val digest = MessageDigest.getInstance("SHA-256").digest("nia-scene-window:$value".toByteArray(Charsets.UTF_8))
         return HexFormat.of().formatHex(digest)
     }
+
+    private data class SpeakerKey(
+        val role: NiaSceneAuthorRole,
+        val pseudonym: String,
+    )
 }

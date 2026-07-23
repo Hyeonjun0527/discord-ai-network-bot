@@ -1,15 +1,21 @@
 package com.discordassistant.central.participation.adapter.outbound.judge
 
+import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
+import com.discordassistant.central.participation.application.judge.NiaParticipationJudge
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmResponse
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmCachePolicy
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudThinking
 import jakarta.annotation.PreDestroy
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.Duration
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
@@ -60,6 +66,33 @@ class CloudLlmNiaJudgeAdapter(
                             model = model,
                             history = emptyList(),
                             thinking = CloudThinking.DISABLED,
+                            options =
+                                CloudLlmRequestOptions(
+                                    purpose =
+                                        when {
+                                            request.metadata[NiaJudgePromptAssembler.EXECUTION_PURPOSE_METADATA_KEY] == "shadow" &&
+                                                request.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY] == "true" ->
+                                                CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR
+                                            request.metadata[NiaJudgePromptAssembler.EXECUTION_PURPOSE_METADATA_KEY] == "shadow" ->
+                                                CloudLlmPurpose.NIA_SHADOW_JUDGE
+                                            request.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY] == "true" ->
+                                                CloudLlmPurpose.NIA_JUDGE_REPAIR
+                                            else -> CloudLlmPurpose.NIA_JUDGE
+                                        },
+                                    maxOutputTokens = MAX_OUTPUT_TOKENS,
+                                    requestTimeout = upstreamTimeout(request.timeoutMillis),
+                                    maxRetries = 0,
+                                    cachePolicy =
+                                        if (request.stablePromptPrefixChars > 0) {
+                                            CloudLlmCachePolicy.stablePrefix(
+                                                namespace = "nia-judge:${request.promptVersion}",
+                                                prompt = request.prompt,
+                                                stablePrefixChars = request.stablePromptPrefixChars,
+                                            )
+                                        } else {
+                                            CloudLlmCachePolicy.disabled()
+                                        },
+                                ),
                         )
                     },
                 )
@@ -82,6 +115,9 @@ class CloudLlmNiaJudgeAdapter(
         }
     }
 
+    private fun upstreamTimeout(totalTimeoutMillis: Long): Duration =
+        Duration.ofMillis((totalTimeoutMillis - OUTER_TIMEOUT_MARGIN_MILLIS).coerceAtLeast(1L))
+
     @PreDestroy
     fun close() {
         callExecutor.shutdownNow()
@@ -92,6 +128,8 @@ class CloudLlmNiaJudgeAdapter(
         const val FINISH_REASON_COMPLETED: String = "completed"
         private const val CALL_THREADS: Int = 8
         private const val CALL_QUEUE_CAPACITY: Int = 16
+        private const val OUTER_TIMEOUT_MARGIN_MILLIS: Long = 250L
+        private const val MAX_OUTPUT_TOKENS: Int = 2_048
         private val THREAD_SEQUENCE = AtomicInteger()
 
         private fun newCallExecutor(): ThreadPoolExecutor =

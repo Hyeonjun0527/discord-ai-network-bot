@@ -97,6 +97,15 @@ class AskCommandHandler(
                 ?.ifBlank { null }
                 ?: fallbackModel
 
+        internal fun selectConversationHistory(
+            ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn>?,
+            storedHistory: () -> List<com.discordassistant.central.routing.application.CloudTurn>,
+        ): List<com.discordassistant.central.routing.application.CloudTurn> = ambientHistory ?: storedHistory()
+
+        internal fun shouldPersistConversationMemory(
+            ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn>?,
+        ): Boolean = ambientHistory == null
+
         // ── 이미지 정책(central 소유; OpenAI가 심사·번역하고 에이전트는 정제된 프롬프트만 실행) ──
         // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
         // '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
@@ -145,8 +154,9 @@ class AskCommandHandler(
         // 니아 사회기억/감정 톤 힌트(채널AI 발화 경로에서만 주입). 기본 "" 면 평소 니아 그대로(무영향·하위호환).
         // 정체성·답변 길이·이름 불변(I11) — 반응 온도만 약하게 얹는다(일반 텍스트 응답 system prompt 한정).
         toneDirective: String = "",
-        // 메시지 기반 니아 응답에서만 주입하는 이번 호출용 주변 대화. askMemory 에 저장하지 않아 누적 오염을 막는다.
-        ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
+        // 메시지 기반 니아 응답에서만 주입하는 이번 호출용 주변 대화. null 은 /ask 전용 기억을 사용한다는 뜻이고,
+        // non-null(빈 목록 포함)은 채널 문맥을 단일 SSOT 로 사용해 같은 대화를 askMemory 와 중복 전송·저장하지 않는다.
+        ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn>? = null,
         // 짧은 호명 같은 즉답형 메시지는 실제 AI 호출을 유지하되 빠른 클라우드 모델/thinking off 로 보낸다.
         fastResponse: Boolean = false,
     ): Reply {
@@ -216,8 +226,12 @@ class AskCommandHandler(
                 ?: if (fastResponse) resolveFastCloudModel(fastCloudModel, configuredFreeCloudModel) else configuredFreeCloudModel
         // Luna는 모든 경로에서 reasoning effort none으로 고정한다.
         val thinking = CloudThinking.DISABLED
-        // 멀티턴 단기 기억(채널+유저)을 OpenAI input 앞에 붙인다("방금 뭐라고 했지?" 맥락).
-        val history = askMemory.history(ctx.channelId, ctx.userId) + ambientHistory
+        // /ask 는 채널+유저 전용 기억을, 메시지 응답은 채널 최근 문맥을 쓴다. 둘을 합치면 같은 이전 질문·답이
+        // 표현만 달라진 채 두 번 들어가므로 품질 이득 없이 입력 토큰과 문맥 충돌만 늘어난다.
+        val history =
+            selectConversationHistory(ambientHistory) {
+                askMemory.history(ctx.channelId, ctx.userId)
+            }
         val cloud =
             runOrchestrator(
                 ctx,
@@ -236,8 +250,10 @@ class AskCommandHandler(
         return when (cloud.state) {
             RequestState.COMPLETED -> {
                 val answer = cloud.text.orEmpty()
-                // 이번 turn(원문 질문 + 원문 답)을 기억에 append — 다음 질문이 맥락을 이어가게.
-                askMemory.append(ctx.channelId, ctx.userId, prompt, answer)
+                // /ask turn 만 /ask 전용 기억에 남긴다. 메시지 응답은 Discord 최근 채널 버퍼가 다음 문맥을 소유한다.
+                if (shouldPersistConversationMemory(ambientHistory)) {
+                    askMemory.append(ctx.channelId, ctx.userId, prompt, answer)
+                }
                 completedAskReply(answer.withWebSources(cloud.sources), modelChoice, usedCloud = true)
             }
             RequestState.REJECTED -> Replies.reject(cloud.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))

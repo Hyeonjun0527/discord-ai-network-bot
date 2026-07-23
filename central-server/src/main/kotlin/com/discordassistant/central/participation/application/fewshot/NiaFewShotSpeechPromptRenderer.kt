@@ -23,7 +23,15 @@ object NiaFewShotSpeechPromptRenderer {
     fun renderForParticipation(
         version: NiaFewShotVersion?,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
-    ): String = renderExamples(if (version == null) BASELINE_EXAMPLES else managedExamples(version), promptSource = promptSource)
+    ): String {
+        if (version == null) return renderExamples(BASELINE_EXAMPLES, promptSource = promptSource)
+        val managed = managedExamples(version)
+        return renderExamples(
+            examples = managed,
+            promptSource = promptSource,
+            fallbackWhenNoneFit = if (managed.isEmpty()) emptyList() else BASELINE_EXAMPLES,
+        )
+    }
 
     fun renderRetrieved(
         examples: List<NiaFewShotExample>,
@@ -87,22 +95,39 @@ object NiaFewShotSpeechPromptRenderer {
         examples: List<SpeechPromptExample>,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
         heading: String = "니아 대화 대조 예시",
+        fallbackWhenNoneFit: List<SpeechPromptExample> = emptyList(),
     ): String {
-        val content =
-            buildString {
-                examples.forEachIndexed { index, example ->
-                    appendLine("예시 ${index + 1}: ${example.title}")
-                    example.messages.forEach { message -> appendLine(message) }
-                    example.goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
-                    example.badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
-                }
-            }.trim()
-        return NiaPromptTemplate
-            .render(
-                promptSource.text(NiaPromptKey.FEW_SHOT_TEMPLATE),
-                mapOf("heading" to heading, "examples" to content),
-            ).take(MAX_PROMPT_CHARS)
+        val template = promptSource.text(NiaPromptKey.FEW_SHOT_TEMPLATE)
+        val includedBlocks = mutableListOf<String>()
+        var prompt = NiaPromptTemplate.render(template, mapOf("heading" to heading, "examples" to ""))
+        var included = 0
+        examples.forEach { example ->
+            val block = example.render(included + 1)
+            val candidateBlocks = includedBlocks + block
+            val candidate =
+                NiaPromptTemplate.render(
+                    template,
+                    mapOf("heading" to heading, "examples" to candidateBlocks.joinToString("\n")),
+                )
+            if (candidate.length <= MAX_PROMPT_CHARS) {
+                includedBlocks += block
+                prompt = candidate
+                included++
+            }
+        }
+        if (included == 0 && fallbackWhenNoneFit.isNotEmpty()) {
+            return renderExamples(fallbackWhenNoneFit, promptSource, heading)
+        }
+        return prompt.trim()
     }
+
+    private fun SpeechPromptExample.render(index: Int): String =
+        buildString {
+            appendLine("예시 $index: $title")
+            messages.forEach(::appendLine)
+            goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
+            badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
+        }.trim()
 
     private data class SpeechPromptExample(
         val title: String,

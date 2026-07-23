@@ -47,7 +47,7 @@ data class CloudCallBudget(
             now: Instant,
             deadline: Instant,
             defaultTimeout: Duration = Duration.ofSeconds(8),
-            maxRetries: Int = 1,
+            maxRetries: Int = 0,
         ): CloudCallBudget {
             val remaining = Duration.between(now, deadline)
             val timeout =

@@ -51,6 +51,13 @@
       </div>
     </div>
 
+    <h2>비용 흐름 분모(수신 → 판단 → 생성)</h2>
+    <p class="muted">메시지 유입·큐 유실·stale 생략·목적별 모델 호출을 같은 프로세스 누적으로 비교합니다.</p>
+    <table id="runtimeCostFlowTable">
+      <thead><tr><th>단계</th><th>건수</th></tr></thead>
+      <tbody><tr><td colspan="2" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+
     <h2>action 분포(raw / 제약 후 final)</h2>
     <table id="actionTable">
       <thead><tr><th>action</th><th>raw</th><th>final(제약 후)</th></tr></thead>
@@ -59,24 +66,27 @@
     <p class="muted" id="constraintOverride">제약 override: —</p>
 
     <h2>채팅 점유율(NEXA share)</h2>
+    <p class="muted">현재 runtime 미배선 — 아래 값은 비용 해결 완료 판정에 사용하지 않습니다.</p>
     <table id="shareTable">
       <thead><tr><th>창</th><th>burst share</th><th>token/char share</th></tr></thead>
       <tbody><tr><td colspan="3" class="muted">불러오는 중…</td></tr></tbody>
     </table>
 
     <h2>latency(단계별, 평균 ms)</h2>
+    <p class="muted">현재 runtime 미배선 — 0 표본은 실제 지연 수집 결과가 아닙니다.</p>
     <table id="latencyTable">
       <thead><tr><th>단계</th><th>평균</th><th>표본</th></tr></thead>
       <tbody><tr><td colspan="3" class="muted">불러오는 중…</td></tr></tbody>
     </table>
 
-    <h2>비용·token(GLM)</h2>
+    <h2>OpenAI 요청·token</h2>
     <table id="costTable">
-      <thead><tr><th>지표</th><th>합계</th></tr></thead>
-      <tbody><tr><td colspan="2" class="muted">불러오는 중…</td></tr></tbody>
+      <thead><tr><th>목적</th><th>요청</th><th>평균 payload 문자</th><th>비캐시 input</th><th>cache read</th><th>cache write</th><th>output</th><th>명시 cache 요청</th></tr></thead>
+      <tbody><tr><td colspan="8" class="muted">불러오는 중…</td></tr></tbody>
     </table>
 
     <h2>오류·fallback / FIR·MIR proxy</h2>
+    <p class="muted">현재 runtime 미배선 — `—` 표시는 정상 수집이나 0%를 뜻하지 않습니다.</p>
     <table id="errorTable">
       <thead><tr><th>지표</th><th>값</th></tr></thead>
       <tbody><tr><td colspan="2" class="muted">불러오는 중…</td></tr></tbody>
@@ -88,12 +98,12 @@
     const PROM = "/actuator/prometheus";
     const SHADOW = "/api/ai-network/shadow";
 
-    // ── prometheus text 파싱(최소 — nexa_* 시리즈만). { name, labels{}, value } 목록. ──
+    // ── prometheus text 파싱(최소 — NEXA 정책 + central OpenAI 비용 시리즈). { name, labels{}, value } 목록. ──
     function parseProm(text) {
       const out = [];
       for (const line of text.split("\n")) {
         if (!line || line.startsWith("#")) continue;
-        if (!line.startsWith("nexa_")) continue;
+        if (!line.startsWith("nexa_") && !line.startsWith("central_openai_")) continue;
         const m = line.match(/^([a-zA-Z0-9_:]+)(\{([^}]*)\})?\s+(.+)$/);
         if (!m) continue;
         const labels = {};
@@ -145,18 +155,71 @@
         return;
       }
 
+      // 비용 흐름 분모. 메시지마다 judge가 호출되는지와 큐 유실을 직접 대조한다.
+      const ingressMessages = sumOf(s, "nexa_event_ingested_total", (l) => l.source === "message");
+      const receiveRejected = sumOf(
+        s,
+        "nexa_discord_event_admission_total",
+        (l) => l.event === "receive_evaluation" && l.outcome === "rejected",
+      );
+      const rawContextRejected = sumOf(
+        s,
+        "nexa_discord_event_admission_total",
+        (l) => l.event === "receive_context" && l.outcome === "rejected",
+      );
+      const turnTotal = sumOf(s, "nexa_turn_outcome_total");
+      const beforeJudgeSkipped = sumOf(
+        s,
+        "nexa_turn_outcome_total",
+        (l) => l.outcome === "superseded" && l.stage === "before_judge",
+      );
+      const afterJudgeDiscarded = sumOf(
+        s,
+        "nexa_turn_outcome_total",
+        (l) => l.outcome === "superseded" && l.stage === "after_judge",
+      );
+      const supersededByAddressing = (stage, addressing) => sumOf(
+        s,
+        "nexa_turn_outcome_total",
+        (l) => l.outcome === "superseded" && l.stage === stage && l.addressing === addressing,
+      );
+      const purposeRequests = (purpose) => sumOf(
+        s,
+        "central_openai_requests_total",
+        (l) => l.purpose === purpose,
+      );
+      document.querySelector("#runtimeCostFlowTable tbody").innerHTML = `
+        <tr><td>Discord message 유입</td><td>${ingressMessages}</td></tr>
+        <tr><td>raw context admission 거절</td><td>${rawContextRejected}</td></tr>
+        <tr><td>평가 admission 거절</td><td>${receiveRejected}</td></tr>
+        <tr><td>NIA turn 종결</td><td>${turnTotal}</td></tr>
+        <tr><td>judge 전 stale 생략</td><td>${beforeJudgeSkipped}</td></tr>
+        <tr><td>└ 직접 호출</td><td>${supersededByAddressing("before_judge", "explicit")}</td></tr>
+        <tr><td>└ ambient 대화</td><td>${supersededByAddressing("before_judge", "ambient")}</td></tr>
+        <tr><td>judge 후 새 메시지로 폐기</td><td>${afterJudgeDiscarded}</td></tr>
+        <tr><td>└ 직접 호출</td><td>${supersededByAddressing("after_judge", "explicit")}</td></tr>
+        <tr><td>└ ambient 대화</td><td>${supersededByAddressing("after_judge", "ambient")}</td></tr>
+        <tr><td>judge provider 요청</td><td>${purposeRequests("nia_judge")}</td></tr>
+        <tr><td>judge repair 요청</td><td>${purposeRequests("nia_judge_repair")}</td></tr>
+        <tr><td>speech provider 요청</td><td>${purposeRequests("nia_speech")}</td></tr>
+        <tr><td>action evaluator 요청</td><td>${purposeRequests("nia_action_evaluator")}</td></tr>`;
+
       // action 분포(raw / final).
       const kinds = ["ignore", "wait", "react", "speak", "cancel_pending"];
-      const rawTotal = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw") || 1;
-      document.querySelector("#actionTable tbody").innerHTML = kinds.map((k) => {
-        const raw = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw" && l.kind === k);
-        const fin = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "final" && l.kind === k);
-        const pct = Math.round((raw / rawTotal) * 100);
-        return `<tr><td>${k}</td><td><span class="dist-bar" style="width:${Math.max(2, pct)}px"></span> ${raw}</td><td>${fin}</td></tr>`;
-      }).join("");
+      const rawTotal = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw");
+      document.querySelector("#actionTable tbody").innerHTML = rawTotal > 0
+        ? kinds.map((k) => {
+          const raw = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw" && l.kind === k);
+          const fin = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "final" && l.kind === k);
+          const pct = Math.round((raw / rawTotal) * 100);
+          return `<tr><td>${k}</td><td><span class="dist-bar" style="width:${Math.max(2, pct)}px"></span> ${raw}</td><td>${fin}</td></tr>`;
+        }).join("")
+        : `<tr><td colspan="3" class="muted">현재 runtime 호출 경로에 연결되지 않은 지표입니다.</td></tr>`;
       const overridden = sumOf(s, "nexa_policy_constraint_overridden_total");
       document.getElementById("constraintOverride").textContent =
-        `제약 override: ${overridden} / raw ${rawTotal} = ${Math.round((overridden / rawTotal) * 1000) / 10}%`;
+        rawTotal > 0
+          ? `제약 override: ${overridden} / raw ${rawTotal} = ${Math.round((overridden / rawTotal) * 1000) / 10}%`
+          : "제약 override: runtime 미배선";
 
       // 점유율.
       document.querySelector("#shareTable tbody").innerHTML = ["5m", "1h"].map((w) => {
@@ -182,14 +245,32 @@
         return `<tr><td>${label}</td><td>${avg == null ? "—" : avg + " ms"}</td><td>${cnt}</td></tr>`;
       }).join("");
 
-      // 비용·token.
-      const prompt = sumOf(s, "nexa_glm_tokens_total", (l) => l.direction === "prompt");
-      const completion = sumOf(s, "nexa_glm_tokens_total", (l) => l.direction === "completion");
-      const costMicros = sumOf(s, "nexa_glm_cost_micros_total");
-      document.querySelector("#costTable tbody").innerHTML = `
-        <tr><td>prompt token</td><td>${prompt}</td></tr>
-        <tr><td>completion token</td><td>${completion}</td></tr>
-        <tr><td>추정 비용(USD)</td><td>$${(costMicros / 1e6).toFixed(4)}</td></tr>`;
+      // OpenAI 비용 원인 분리. 가격은 바뀔 수 있으므로 서버가 받은 실제 request/token만 표시한다.
+      const openAiPurposes = [...new Set(
+        s.filter((x) => x.name === "central_openai_requests_total").map((x) => x.labels.purpose).filter(Boolean),
+      )].sort();
+      const openAiRows = openAiPurposes.map((purpose) => {
+        const requests = sumOf(s, "central_openai_requests_total", (l) => l.purpose === purpose);
+        const tokens = (category) => sumOf(
+          s,
+          "central_openai_tokens_total",
+          (l) => l.purpose === purpose && l.category === category,
+        );
+        const payloadSum = sumOf(s, "central_openai_request_payload_chars_sum", (l) => l.purpose === purpose);
+        const payloadCount = sumOf(s, "central_openai_request_payload_chars_count", (l) => l.purpose === purpose);
+        const avgPayload = payloadCount > 0 ? Math.round(payloadSum / payloadCount) : "—";
+        const explicitCacheRequests = sumOf(
+          s,
+          "central_openai_cache_policy_requests_total",
+          (l) => l.purpose === purpose && l.policy === "explicit_prefix",
+        );
+        return `<tr><td>${purpose}</td><td>${requests}</td><td>${avgPayload}</td>` +
+          `<td>${tokens("uncached_input")}</td><td>${tokens("cached_input")}</td>` +
+          `<td>${tokens("cache_write")}</td><td>${tokens("output")}</td><td>${explicitCacheRequests}</td></tr>`;
+      });
+      document.querySelector("#costTable tbody").innerHTML = openAiRows.length
+        ? openAiRows.join("")
+        : `<tr><td colspan="8" class="muted">이 프로세스에서 아직 OpenAI 요청이 없습니다.</td></tr>`;
 
       // 오류·fallback / FIR·MIR proxy.
       const fir = oneOf(s, "nexa_fir_proxy_rate");

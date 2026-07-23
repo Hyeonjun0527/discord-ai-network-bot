@@ -1,6 +1,9 @@
 package com.discordassistant.central.speech.adapter.outbound.routing
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmCachePolicy
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NiaPromptKey
@@ -79,7 +82,7 @@ class RoutingCloudSpeechGenerationAdapter(
             if (budget.isStale(clock.instant())) return SpeechGenerationResult.EMPTY // 호출 전 deadline 초과.
             val result =
                 try {
-                    generateBounded(prompt, budget.perCallTimeout)
+                    generateBounded(request, prompt, budget.perCallTimeout)
                 } catch (e: Exception) {
                     // 상세는 로그로만 — 사용자/도메인에 업스트림 노출 금지(예외 원칙). 재시도 가능하면 계속.
                     log.warn("발화 생성 호출 실패(attempt {}/{}): {}", attempt, budget.maxAttempts, e.javaClass.simpleName)
@@ -109,11 +112,37 @@ class RoutingCloudSpeechGenerationAdapter(
      * 재시도/EMPTY fail-safe 로 흡수시킨다(호출 실패와 동일 취급).
      */
     private fun generateBounded(
+        generationRequest: SpeechGenerationRequest,
         prompt: String,
         timeout: Duration,
     ): CloudLlmResult {
+        val cachePolicy =
+            if (generationRequest.stableSystemPromptChars > 0) {
+                CloudLlmCachePolicy.stablePrefix(
+                    namespace = SPEECH_CACHE_NAMESPACE,
+                    prompt = prompt,
+                    stablePrefixChars = generationRequest.stableSystemPromptChars,
+                )
+            } else {
+                CloudLlmCachePolicy.disabled()
+            }
         val future: Future<CloudLlmResult> =
-            CALL_EXECUTOR.submit(Callable { cloudLlm.generateSampled(prompt, modelConfig.model, modelConfig.temperature) })
+            CALL_EXECUTOR.submit(
+                Callable {
+                    cloudLlm.generateSampled(
+                        prompt,
+                        modelConfig.model,
+                        modelConfig.temperature,
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.NIA_SPEECH,
+                            maxOutputTokens = generationRequest.maxOutputTokens,
+                            cachePolicy = cachePolicy,
+                            requestTimeout = upstreamTimeout(timeout),
+                            maxRetries = 0,
+                        ),
+                    )
+                },
+            )
         return try {
             future.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
@@ -136,6 +165,9 @@ class RoutingCloudSpeechGenerationAdapter(
         }
     }
 
+    private fun upstreamTimeout(totalTimeout: Duration): Duration =
+        Duration.ofMillis((totalTimeout.toMillis() - OUTER_TIMEOUT_MARGIN_MILLIS).coerceAtLeast(1L))
+
     /** system + user 를 단일 prompt 로 합친다(CloudLlm.generate 는 단일 prompt·model 계약). */
     private fun combinePrompt(request: SpeechGenerationRequest): String =
         NiaPromptTemplate.render(
@@ -150,6 +182,8 @@ class RoutingCloudSpeechGenerationAdapter(
     companion object {
         /** perCallTimeout 을 강제하는 bounded daemon 풀(전 인스턴스 공유). 매달린 호출로부터 벽시계 상한을 지킨다. */
         private const val CALL_THREADS: Int = 8
+        private const val SPEECH_CACHE_NAMESPACE: String = "nia-speech-v1"
+        private const val OUTER_TIMEOUT_MARGIN_MILLIS: Long = 250L
         private val CALL_EXECUTOR: ExecutorService =
             Executors.newFixedThreadPool(
                 CALL_THREADS,

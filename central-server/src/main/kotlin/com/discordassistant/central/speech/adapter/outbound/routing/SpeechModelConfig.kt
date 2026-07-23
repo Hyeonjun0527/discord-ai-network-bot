@@ -21,7 +21,7 @@ import java.time.Duration
 class SpeechModelConfig(
     @param:Value("\${central.speech.model:gpt-5.6-luna}") val model: String,
     @param:Value("\${central.speech.timeout-seconds:8}") private val timeoutSeconds: Long,
-    @param:Value("\${central.speech.max-retries:1}") val maxRetries: Int,
+    @param:Value("\${central.speech.max-retries:0}") val maxRetries: Int,
     // 발화 샘플링 randomness. 후보 2개 안에서 다양성을 확보하되 페르소나 이탈은 줄이는 보수적 기본값이다.
     @param:Value("\${central.speech.temperature:0.5}") val temperature: Double,
 ) {

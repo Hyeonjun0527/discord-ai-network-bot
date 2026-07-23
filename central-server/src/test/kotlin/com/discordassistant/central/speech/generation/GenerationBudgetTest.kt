@@ -9,11 +9,11 @@ import org.junit.jupiter.api.Test
 class GenerationBudgetTest {
     @Test
     fun `clampCandidateCount never exceeds budget or contract ceiling`() {
-        val budget = GenerationBudget(maxCandidates = 4, maxOutputTokens = 256, maxContextTokens = 512)
+        val budget = GenerationBudget(maxCandidates = 4, maxOutputTokens = 256)
         assertThat(budget.clampCandidateCount(10)).isEqualTo(3)
         assertThat(budget.clampCandidateCount(3)).isEqualTo(3)
         // 계약 상한(MAX_CANDIDATES)을 못 넘는다.
-        val wide = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256, maxContextTokens = 512)
+        val wide = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256)
         assertThat(wide.clampCandidateCount(99)).isEqualTo(SpeechGenerationRequest.MAX_CANDIDATES)
     }
 
@@ -25,7 +25,7 @@ class GenerationBudgetTest {
 
     @Test
     fun `clampOutputTokens respects ceiling`() {
-        val budget = GenerationBudget(maxCandidates = 1, maxOutputTokens = 100, maxContextTokens = 200)
+        val budget = GenerationBudget(maxCandidates = 1, maxOutputTokens = 100)
         assertThat(budget.clampOutputTokens(500)).isEqualTo(100)
         assertThat(budget.clampOutputTokens(50)).isEqualTo(50)
     }

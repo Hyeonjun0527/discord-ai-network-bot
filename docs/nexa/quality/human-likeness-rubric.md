@@ -50,8 +50,10 @@ NEXA 구현의 목표치를 정한다.
 ## 재현
 
 ```bash
-# .env 의 ZAI_API_KEY 로 GLM 생성, claude CLI 로 채점
-python3 scripts/nexa-human-likeness-eval.py --out docs/nexa/quality/baseline-report.md
+# .env 또는 환경변수의 OPENAI_API_KEY 로 Luna 생성, claude CLI 로 채점
+python3 scripts/nexa-human-likeness-eval.py \
+  --confirm-paid-openai \
+  --out docs/nexa/quality/baseline-report.md
 ```
 
 원문 사용자 데이터·실제 토큰을 시나리오에 넣지 않는다(합성 대화만). 점수·근거만 리포트에 남기고

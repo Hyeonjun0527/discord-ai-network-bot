@@ -128,7 +128,7 @@ class NexaLiveSpeechService(
         // ConversationContextSelector 로 token budget 안에서 최근 turn 을 고른다(멀티턴 컨텍스트 주입 경로).
         val sceneReader = InMemorySceneReader(rawTurns)
         val selectedTurns =
-            ConversationContextSelector(sceneReader).select(FOCUS_THREAD_KEY, budget.maxContextTokens)
+            ConversationContextSelector(sceneReader).select(FOCUS_THREAD_KEY, DEMO_CONTEXT_TOKEN_BUDGET)
         val memoryRefs = scenarioMemory(scenario.scenarioId)
         val lastSpeaker =
             rawTurns.lastOrNull { it.speakerLabel != NexaIdentity.NIA_NAME }?.speakerLabel
@@ -207,6 +207,9 @@ class NexaLiveSpeechService(
     }
 
     companion object {
+        /** 어드민 데모에 주입하는 최근 turn 전용 상한. 운영 participation raw context 예산과 섞지 않는다. */
+        private const val DEMO_CONTEXT_TOKEN_BUDGET: Int = 1_024
+
         /** 데모는 단일 채널이므로 모든 turn 을 하나의 focus thread 로 본다(가명 키). */
         private const val FOCUS_THREAD_KEY = "demo-focus-thread"
 

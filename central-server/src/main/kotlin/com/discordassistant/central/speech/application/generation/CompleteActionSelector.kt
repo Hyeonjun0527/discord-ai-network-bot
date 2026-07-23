@@ -22,9 +22,14 @@ class CompleteActionSelector(
         offerReaction: Boolean = true,
     ): CompleteActionSelection {
         val responseRequired = packet.responseObligation == SpeechResponseObligation.REQUIRED
+        val uniqueSpeechCandidates =
+            speechCandidates
+                .groupBy(SpeechCandidate::bubbles)
+                .values
+                .map { duplicates -> duplicates.minBy(SpeechCandidate::uncertainty) }
         val candidates =
             buildList {
-                speechCandidates.forEach { candidate ->
+                uniqueSpeechCandidates.forEach { candidate ->
                     add(
                         CompleteActionCandidate(
                             candidateId = candidate.candidateId,
@@ -46,6 +51,8 @@ class CompleteActionSelector(
                     add(CompleteActionCandidate(IGNORE_CANDIDATE_ID, CompleteActionKind.IGNORE))
                 }
             }
+        if (candidates.isEmpty()) return fallbackSelection(uniqueSpeechCandidates, responseRequired)
+        if (candidates.size == 1) return candidates.single().toSelection(uniqueSpeechCandidates)
         val evaluation =
             evaluator.select(
                 CompleteActionEvaluationRequest(
@@ -63,19 +70,22 @@ class CompleteActionSelector(
                     enforcementConstraints = ENFORCEMENT_CONSTRAINTS,
                     candidates = candidates,
                 ),
-            ) ?: return fallbackSelection(speechCandidates, responseRequired)
-        if (evaluation.confidence < MIN_CONFIDENCE) return fallbackSelection(speechCandidates, responseRequired)
+            ) ?: return fallbackSelection(uniqueSpeechCandidates, responseRequired)
+        if (evaluation.confidence < MIN_CONFIDENCE) return fallbackSelection(uniqueSpeechCandidates, responseRequired)
         val selected =
             candidates.firstOrNull { it.candidateId == evaluation.selectedCandidateId }
-                ?: return fallbackSelection(speechCandidates, responseRequired)
-        return when (selected.kind) {
+                ?: return fallbackSelection(uniqueSpeechCandidates, responseRequired)
+        return selected.toSelection(uniqueSpeechCandidates)
+    }
+
+    private fun CompleteActionCandidate.toSelection(speechCandidates: List<SpeechCandidate>): CompleteActionSelection =
+        when (kind) {
             CompleteActionKind.SEND ->
-                speechCandidates.firstOrNull { it.candidateId == selected.candidateId }?.let(CompleteActionSelection::Send)
+                speechCandidates.firstOrNull { it.candidateId == candidateId }?.let(CompleteActionSelection::Send)
                     ?: CompleteActionSelection.Ignore
-            CompleteActionKind.REACT -> CompleteActionSelection.React(selected.reactionCode!!)
+            CompleteActionKind.REACT -> CompleteActionSelection.React(requireNotNull(reactionCode))
             CompleteActionKind.IGNORE -> CompleteActionSelection.Ignore
         }
-    }
 
     private fun fallbackSelection(
         speechCandidates: List<SpeechCandidate>,

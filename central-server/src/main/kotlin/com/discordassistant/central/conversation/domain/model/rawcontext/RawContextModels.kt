@@ -74,9 +74,11 @@ enum class RawContextUnavailableReason(
 
 data class RawContextRetentionPolicy(
     val maxRawChars: Int = DEFAULT_MAX_RAW_CHARS,
+    val maxEntries: Int = DEFAULT_MAX_ENTRIES,
 ) {
     init {
         require(maxRawChars > 0) { "maxRawChars 는 양수여야 한다: $maxRawChars" }
+        require(maxEntries > 0) { "maxEntries 는 양수여야 한다: $maxEntries" }
     }
 
     fun ensureFits(entry: RawContextEntry) {
@@ -88,6 +90,7 @@ data class RawContextRetentionPolicy(
 
     companion object {
         const val DEFAULT_MAX_RAW_CHARS = 200_000
+        const val DEFAULT_MAX_ENTRIES = 2_000
     }
 }
 

@@ -55,7 +55,19 @@ class ConversationRagServiceTest {
     }
 
     @Test
-    fun `text fallback still retrieves the closest conversations when embeddings are unavailable`() {
+    fun `완전히 같은 장면 검색은 query embedding을 다시 호출하지 않는다`() {
+        val store = FakeStore(mutableListOf(entry(1, "피곤", "피곤하다", floatArrayOf(1f, 0f))))
+        val embeddings = FakeEmbeddings { listOf(floatArrayOf(1f, 0f)) }
+        val service = ConversationRagService(store, embeddings)
+
+        service.search("오늘 너무 피곤해")
+        service.search("오늘 너무 피곤해")
+
+        assertThat(embeddings.inputs).containsExactly(listOf("오늘 너무 피곤해"))
+    }
+
+    @Test
+    fun `text fallback excludes unrelated zero score conversations when embeddings are unavailable`() {
         val store =
             FakeStore(
                 mutableListOf(
@@ -68,9 +80,70 @@ class ConversationRagServiceTest {
 
         val matches = service.search("오늘 피곤하다", limit = 2)
 
-        assertThat(matches).hasSize(2)
+        assertThat(matches.map { it.entry.id }).containsExactly(1)
+        assertThat(matches).allMatch { it.scoringMethod == ConversationRagScoringMethod.TEXT_FALLBACK }
+    }
+
+    @Test
+    fun `stored vectors가 하나도 없으면 configured embedding도 query 호출하지 않는다`() {
+        val store =
+            FakeStore(
+                mutableListOf(
+                    entry(1, "피곤", "a: 오늘 너무 피곤하다", null),
+                    entry(2, "게임", "a: 스타크래프트 하자", null),
+                ),
+            )
+        val embeddings = FakeEmbeddings(configured = true) { error("비교 vector가 없으므로 호출되면 안 된다") }
+        val service = ConversationRagService(store, embeddings)
+
+        val matches = service.search("오늘 피곤하다")
+
+        assertThat(embeddings.inputs).isEmpty()
         assertThat(matches.first().entry.id).isEqualTo(1)
         assertThat(matches).allMatch { it.scoringMethod == ConversationRagScoringMethod.TEXT_FALLBACK }
+    }
+
+    @Test
+    fun `global few-shot과 같은 장면만 있으면 RAG embedding과 중복 삽입을 모두 생략한다`() {
+        val duplicate = example("피곤한 대화", "오늘 너무 피곤해", "얼른 자")
+        val canonical = ConversationRagService.canonicalScene(duplicate)
+        val stored =
+            ConversationRagEntry(
+                id = 1,
+                example = duplicate.copy(id = 1),
+                searchText = canonical,
+                embedding = floatArrayOf(1f, 0f),
+                embeddingModel = "test-embedding",
+                createdAt = now,
+                updatedAt = now,
+            )
+        val store = FakeStore(mutableListOf(stored))
+        val embeddings = FakeEmbeddings { error("중복 장면뿐이면 query embedding을 호출하면 안 된다") }
+        val service = ConversationRagService(store, embeddings)
+
+        val matches =
+            service.search(
+                sceneText = "오늘 너무 피곤해",
+                excludedCanonicalScenes = setOf(canonical),
+            )
+
+        assertThat(matches).isEmpty()
+        assertThat(embeddings.inputs).isEmpty()
+    }
+
+    @Test
+    fun `긴 대화 RAG 질의는 최신 장면을 embedding하고 오래된 앞부분을 버린다`() {
+        val store = FakeStore(mutableListOf(entry(1, "최신 질문", "a: 최신 질문", floatArrayOf(1f, 0f))))
+        val embeddings = FakeEmbeddings { listOf(floatArrayOf(1f, 0f)) }
+        val service = ConversationRagService(store, embeddings)
+        val oldScene = "오래된 장면".repeat(2_000)
+        val latestScene = "최신 질문"
+
+        service.search(oldScene + latestScene)
+
+        val embedded = embeddings.inputs.single().single()
+        assertThat(embedded).hasSize(12_000)
+        assertThat(embedded).endsWith(latestScene).doesNotStartWith("오래된 장면")
     }
 
     @Test

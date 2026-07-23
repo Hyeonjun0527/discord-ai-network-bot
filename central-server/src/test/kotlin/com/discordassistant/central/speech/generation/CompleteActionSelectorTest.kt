@@ -75,12 +75,12 @@ class CompleteActionSelectorTest {
     }
 
     @Test
-    fun `AI judge가 현재 응답을 REQUIRED로 정하면 후단 평가기에 IGNORE와 REACT를 제공하지 않는다`() {
-        var offeredKinds = emptyList<com.discordassistant.central.speech.application.port.out.CompleteActionKind>()
+    fun `AI judge가 현재 응답을 REQUIRED로 정했고 후보가 하나면 결과가 같은 후단 평가를 생략한다`() {
+        var evaluationCalls = 0
         val selector =
             CompleteActionSelector(
-                CompleteActionEvaluationPort { request ->
-                    offeredKinds = request.candidates.map { it.kind }
+                CompleteActionEvaluationPort {
+                    evaluationCalls++
                     CompleteActionEvaluation("send_1", "최신 질문에 답한다", "CURRENT_TURN_ANSWERED", 0.9)
                 },
             )
@@ -88,8 +88,93 @@ class CompleteActionSelectorTest {
 
         val selected = selector.select(listOf(SpeechCandidate("send_1", listOf("지금 질문에 답할게"))), required)
 
-        assertThat(offeredKinds).containsExactly(com.discordassistant.central.speech.application.port.out.CompleteActionKind.SEND)
+        assertThat(evaluationCalls).isZero()
         assertThat(selected).isInstanceOf(CompleteActionSelection.Send::class.java)
+    }
+
+    @Test
+    fun `REQUIRED 응답의 완전히 같은 문구 후보는 하나로 줄여 평가기를 호출하지 않는다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                CompleteActionEvaluationPort {
+                    evaluationCalls++
+                    error("같은 문구 후보를 다시 평가하면 안 된다")
+                },
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected =
+            selector.select(
+                listOf(
+                    SpeechCandidate("duplicate_uncertain", listOf("응 같은 답"), uncertainty = 0.7),
+                    SpeechCandidate("duplicate_certain", listOf("응 같은 답"), uncertainty = 0.1),
+                ),
+                required,
+            )
+
+        assertThat(evaluationCalls).isZero()
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("duplicate_certain")
+    }
+
+    @Test
+    fun `REQUIRED 응답의 서로 다른 후보 둘은 평가기를 정확히 한 번 호출한다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                CompleteActionEvaluationPort {
+                    evaluationCalls++
+                    CompleteActionEvaluation("send_2", "장면에 더 자연스럽다", "BEST_COMPLETE_ACTION", 0.9)
+                },
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected =
+            selector.select(
+                listOf(
+                    SpeechCandidate("send_1", listOf("첫 후보")),
+                    SpeechCandidate("send_2", listOf("둘째 후보")),
+                ),
+                required,
+            )
+
+        assertThat(evaluationCalls).isEqualTo(1)
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("send_2")
+    }
+
+    @Test
+    fun `생성 후보와 reaction이 없어서 IGNORE만 가능하면 평가기를 호출하지 않는다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                CompleteActionEvaluationPort {
+                    evaluationCalls++
+                    CompleteActionEvaluation("action_ignore", "침묵한다", "ONLY_ACTION", 1.0)
+                },
+            )
+
+        val selected = selector.select(emptyList(), packet, offerReaction = false)
+
+        assertThat(evaluationCalls).isZero()
+        assertThat(selected).isEqualTo(CompleteActionSelection.Ignore)
+    }
+
+    @Test
+    fun `REQUIRED인데 생성 후보가 없으면 빈 후보 평가를 호출하지 않고 안전하게 침묵한다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                CompleteActionEvaluationPort {
+                    evaluationCalls++
+                    error("빈 후보를 평가하면 안 된다")
+                },
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected = selector.select(emptyList(), required)
+
+        assertThat(evaluationCalls).isZero()
+        assertThat(selected).isEqualTo(CompleteActionSelection.Ignore)
     }
 
     @Test

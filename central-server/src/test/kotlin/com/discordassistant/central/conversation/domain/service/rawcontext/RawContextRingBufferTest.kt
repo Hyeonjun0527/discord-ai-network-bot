@@ -20,6 +20,7 @@ class RawContextRingBufferTest {
     @Test
     fun `기본 raw context 보존 예산은 20만자다`() {
         assertEquals(200_000, RawContextRetentionPolicy().maxRawChars)
+        assertEquals(2_000, RawContextRetentionPolicy().maxEntries)
     }
 
     @Test
@@ -60,6 +61,29 @@ class RawContextRingBufferTest {
                 .last()
                 .content
         assertTrue(lastContent is RawContextContent.Unavailable)
+    }
+
+    @Test
+    fun `문자 수가 0인 unavailable 메시지도 entry 상한을 넘어 무제한 쌓이지 않는다`() {
+        val buffer = RawContextRingBuffer(scope, RawContextRetentionPolicy(maxRawChars = 100, maxEntries = 2))
+
+        fun unavailable(messageId: Long) =
+            RawContextEntry(
+                scope = scope,
+                messageId = messageId,
+                authorPseudonym = "user_b",
+                occurredAt = t0.plusSeconds(messageId),
+                replyToMessageId = null,
+                sourceType = RawContextSourceType.HUMAN,
+                content = RawContextContent.Unavailable(RawContextUnavailableReason.EMPTY),
+            )
+
+        buffer.append(unavailable(1L))
+        buffer.append(unavailable(2L))
+        val result = buffer.append(unavailable(3L))
+
+        assertEquals(listOf(1L), result.evictedMessageIds)
+        assertEquals(listOf(2L, 3L), result.snapshot.entries.map { it.messageId })
     }
 
     @Test

@@ -37,5 +37,6 @@ class CloudCallBudgetTest {
     fun `until falls back to default timeout when deadline already passed`() {
         val budget = CloudCallBudget.until(now, now.minusSeconds(5), defaultTimeout = Duration.ofSeconds(8))
         assertThat(budget.perCallTimeout).isEqualTo(Duration.ofSeconds(8))
+        assertThat(budget.maxRetries).isZero()
     }
 }

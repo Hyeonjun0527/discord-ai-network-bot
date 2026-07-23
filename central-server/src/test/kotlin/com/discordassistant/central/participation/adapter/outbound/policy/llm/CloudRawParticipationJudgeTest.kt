@@ -55,6 +55,17 @@ class CloudRawParticipationJudgeTest {
         assertThat(cloud.calls).isEqualTo(0)
     }
 
+    @Test
+    fun `legacy raw judge scene cap keeps the latest trigger context`() {
+        val cloud = FakeCloudLlm()
+        val judge = CloudRawParticipationJudge(cloud, model = "judge-model")
+        val longScene = "oldest-marker" + "x".repeat(160_000) + "latest-marker"
+
+        judge.decide(request().copy(quotedSceneData = longScene))
+
+        assertThat(cloud.lastPrompt).contains("latest-marker").doesNotContain("oldest-marker")
+    }
+
     private fun request(): RawParticipationJudgeRequest =
         RawParticipationJudgeRequest(
             guildPseudonym = "guild_pseudo",

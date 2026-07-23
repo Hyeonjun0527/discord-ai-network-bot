@@ -259,7 +259,19 @@ class RequestOrchestrator(
         if (directCloudModel != null && cloudLlm.isEnabled()) {
             return try {
                 // 멀티턴 기억과 호환용 thinking 힌트를 전달한다. OpenAI 어댑터는 reasoning none을 강제한다.
-                val cloud = cloudLlm.generate(effectivePrompt, directCloudModel, history, thinking)
+                val cloud =
+                    cloudLlm.generate(
+                        prompt = effectivePrompt,
+                        model = directCloudModel,
+                        history = history,
+                        thinking = thinking,
+                        options =
+                            CloudLlmRequestOptions(
+                                purpose = CloudLlmPurpose.GENERAL,
+                                maxOutputTokens = ctx.maxOutputTokens,
+                                maxRetries = 0,
+                            ),
+                    )
                 recorder.recordSuccess(input.guildId, input.userId, CLOUD_PROVIDER_ID, requestId = routingRequestId)
                 OrchestrationResult(
                     RequestState.COMPLETED,

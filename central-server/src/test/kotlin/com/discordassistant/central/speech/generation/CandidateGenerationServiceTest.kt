@@ -1,5 +1,6 @@
 package com.discordassistant.central.speech.generation
 
+import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -15,6 +16,7 @@ import com.discordassistant.central.speech.application.privacy.ExternalPayloadAl
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
@@ -68,7 +70,7 @@ class CandidateGenerationServiceTest {
     @Test
     fun `ambiguous budget requests up to three candidates`() {
         val port = CapturingPort()
-        val budget = GenerationBudget(maxCandidates = 3, maxOutputTokens = 256, maxContextTokens = 512)
+        val budget = GenerationBudget(maxCandidates = 3, maxOutputTokens = 256)
         val result = service(port).generate(SpeechGenerationFixtures.packet(), budget)
         assertThat(result.candidates).hasSize(3)
         assertThat(port.lastRequest!!.candidateCount).isEqualTo(3)
@@ -79,7 +81,7 @@ class CandidateGenerationServiceTest {
     @Test
     fun `wider budget still capped by contract max`() {
         val port = CapturingPort()
-        val budget = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256, maxContextTokens = 512)
+        val budget = GenerationBudget(maxCandidates = 99, maxOutputTokens = 256)
         service(port).generate(SpeechGenerationFixtures.packet(), budget)
         assertThat(port.lastRequest!!.candidateCount).isEqualTo(SpeechGenerationRequest.MAX_CANDIDATES)
     }
@@ -112,8 +114,93 @@ class CandidateGenerationServiceTest {
         assertThat(req.systemPrompt).doesNotContain("니아 기능채널 ai채팅")
         assertThat(req.maxOutputTokens).isEqualTo(1024)
         assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
-        // user prompt는 최소화된 장면.
-        assertThat(req.userPrompt).contains("focus_thread")
+        val cachePrefix = req.systemPrompt.take(req.stableSystemPromptChars)
+        assertThat(cachePrefix)
+            .contains("니아", "[participation 결정]")
+            .doesNotContain("질문 연타가 시험으로 바뀜")
+        assertThat(req.systemPrompt.drop(req.stableSystemPromptChars))
+            .startsWith("interaction_reading=질문 연타가 시험으로 바뀜")
+        // user prompt에는 생성 규칙과 중복되는 내부 thread/social-act 메타를 싣지 않는다.
+        assertThat(req.userPrompt).contains("target=")
+        assertThat(req.userPrompt).doesNotContain("focus_thread=", "social_act=")
+    }
+
+    @Test
+    fun `니아 speech persona와 생성 규칙은 중복·출력 형식 충돌 없이 한 번씩 조립된다`() {
+        val port = CapturingPort()
+        val identity =
+            IdentityKernelSection.of(
+                personaName = NexaIdentity.NIA_NAME,
+                personaBlock = NexaIdentity.NIA_SPEECH_PERSONA,
+            )
+
+        service(port).generate(SpeechGenerationFixtures.packet(identity = identity), GenerationBudget.DEFAULT)
+
+        val prompt = port.lastRequest!!.systemPrompt
+        assertThat(prompt).contains(
+            "친구 단톡방의 한 사람",
+            "최근 원문 장면 전체",
+            "준비해볼게",
+            "출력은 JSON 하나로만",
+        )
+        assertThat(prompt).doesNotContain("니아가 지금 할 말 자체만 말한다")
+        assertThat(prompt.split("최근 원문 장면 전체").size - 1).isEqualTo(1)
+        assertThat(prompt.split("준비해볼게").size - 1).isEqualTo(1)
+        assertThat(prompt.split("ASCII 마침표(.)로 끝내지 않는다").size - 1).isEqualTo(1)
+        assertThat(NexaIdentity.NIA_SPEECH_PERSONA.length).isLessThan(500)
+        println(
+            "NIA_SPEECH_COST_FIXTURE personaChars=${NexaIdentity.NIA_SPEECH_PERSONA.length} " +
+                "systemPromptChars=${prompt.length}",
+        )
+    }
+
+    @Test
+    fun `다른 발화 의도를 replay해도 speech cache prefix는 같다`() {
+        val port = CapturingPort()
+        val candidateService = service(port)
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(speechIntent = "intent=짧게 답하기"),
+            GenerationBudget.DEFAULT,
+        )
+        val first = port.lastRequest!!
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(speechIntent = "intent=조금 더 자세히 설명하기"),
+            GenerationBudget.DEFAULT,
+        )
+        val second = port.lastRequest!!
+
+        assertThat(second.stableSystemPromptChars).isEqualTo(first.stableSystemPromptChars)
+        assertThat(second.systemPrompt.take(second.stableSystemPromptChars))
+            .isEqualTo(first.systemPrompt.take(first.stableSystemPromptChars))
+        assertThat(second.systemPrompt.drop(second.stableSystemPromptChars))
+            .isNotEqualTo(first.systemPrompt.drop(first.stableSystemPromptChars))
+            .contains("조금 더 자세히 설명하기")
+    }
+
+    @Test
+    fun `장면별 RAG 예시가 달라도 speech cache key용 prefix는 같다`() {
+        val port = CapturingPort()
+        val candidateService = service(port)
+        val stablePersona = "당신은 「니아」 예요.\n\n[관리자 고정 예시]\n좋은 답변을 따른다"
+
+        fun identity(retrieved: String) =
+            IdentityKernelSection.of(
+                personaName = "니아",
+                personaBlock = "$stablePersona\n\n[현재 장면과 가까운 대화 RAG]\n$retrieved",
+                stablePersonaBlockChars = stablePersona.length,
+            )
+
+        candidateService.generate(SpeechGenerationFixtures.packet(identity = identity("장면 A 예시")), GenerationBudget.DEFAULT)
+        val first = port.lastRequest!!
+        candidateService.generate(SpeechGenerationFixtures.packet(identity = identity("장면 B 예시")), GenerationBudget.DEFAULT)
+        val second = port.lastRequest!!
+
+        assertThat(first.stableSystemPromptChars).isEqualTo(stablePersona.length)
+        assertThat(second.stableSystemPromptChars).isEqualTo(first.stableSystemPromptChars)
+        assertThat(second.systemPrompt.take(second.stableSystemPromptChars))
+            .isEqualTo(first.systemPrompt.take(first.stableSystemPromptChars))
+        assertThat(first.systemPrompt).contains("장면 A 예시")
+        assertThat(second.systemPrompt).contains("장면 B 예시")
     }
 
     @Test
@@ -129,8 +216,8 @@ class CandidateGenerationServiceTest {
         )
         val userPrompt = port.lastRequest!!.userPrompt
         // allowlist 직렬화 필드가 등장(deny-by-default serializer 가 실제 경로에 연결됨).
-        assertThat(userPrompt).contains("focus_thread=")
-        assertThat(userPrompt).contains("social_act=")
+        assertThat(userPrompt).contains("target=")
+        assertThat(userPrompt).doesNotContain("focus_thread=", "social_act=")
         // content 격리: injection 본문이 인용 장면 블록 안 따옴표(« »)로 격리되고 재확인 문구가 붙는다.
         assertThat(userPrompt).contains("[장면 대사")
         assertThat(userPrompt).contains("«")
@@ -231,9 +318,9 @@ class CandidateGenerationServiceTest {
         assertThat(request.userPrompt).contains(
             "[현재 응답 대상]",
             "raw_scene_ref=msg_3",
-            "«member: 토큰없냐»",
-            "과거 질문은 맥락일 뿐 이 turn을 대신하지 않는다",
+            "위 장면의 최신 turn이 이번 응답 대상이다",
         )
+        assertThat(request.userPrompt.split("토큰없냐")).hasSize(2)
         assertThat(request.systemPrompt).contains("이전 미응답 질문을 최신 질문 대신 답하지 않는다")
     }
 

@@ -9,7 +9,7 @@ claude CLI(judge)가 rubric(docs/nexa/quality/human-likeness-rubric.md)으로 �
 - 채점: `claude -p` 에 rubric+응답을 주고 JSON 점수 수신.
 - 합성 시나리오(test-fixtures/nexa/quality/scenarios.yaml)만 사용 — 실제 사용자 데이터/키를 리포트에 남기지 않는다.
 
-사용:  python3 scripts/nexa-human-likeness-eval.py [--out <report.md>] [--limit N]
+사용:  python3 scripts/nexa-human-likeness-eval.py --confirm-paid-openai [--out <report.md>] [--limit N]
 """
 from __future__ import annotations
 
@@ -70,6 +70,8 @@ def luna(messages: list[dict], key: str, max_tokens: int = 1200) -> str:
         "input": inputs,
         "max_output_tokens": max_tokens,
         "reasoning": {"effort": "none"},
+        # 합성 eval은 시나리오마다 동적 prefix라 재사용률이 낮다. explicit/no-breakpoint로 유료 cache write를 막는다.
+        "prompt_cache_options": {"mode": "explicit"},
         "store": False,
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -207,9 +209,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(REPO / "docs/nexa/quality/baseline-report.md"))
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument(
+        "--confirm-paid-openai",
+        action="store_true",
+        help="시나리오당 participation 1회와 SPEAK 시 speech 1회의 유료 OpenAI 호출을 승인합니다.",
+    )
     args = ap.parse_args()
 
-    key = load_openai_key()
     persona, fewshot = extract_persona()
     if not persona:
         sys.exit("NexaIdentity.kt 에서 NIA_DEFAULT_PERSONA 를 추출하지 못했습니다.")
@@ -217,6 +223,17 @@ def main() -> None:
     scenarios = data["scenarios"]
     if args.limit:
         scenarios = scenarios[: args.limit]
+    max_openai_calls = len(scenarios) * 2
+    if not args.confirm_paid_openai:
+        sys.exit(
+            f"유료 OpenAI 실행을 중단했습니다: {len(scenarios)}개 시나리오, 최대 {max_openai_calls}회 호출. "
+            "비용을 확인한 뒤 --confirm-paid-openai 를 명시하세요."
+        )
+    print(
+        f"유료 OpenAI 실행 승인: {len(scenarios)}개 시나리오, 최대 {max_openai_calls}회 호출",
+        file=sys.stderr,
+    )
+    key = load_openai_key()
 
     rows = []
     timing_hits = 0

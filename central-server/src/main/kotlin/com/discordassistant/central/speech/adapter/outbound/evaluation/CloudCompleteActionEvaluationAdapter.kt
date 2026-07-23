@@ -1,6 +1,9 @@
 package com.discordassistant.central.speech.adapter.outbound.evaluation
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmCachePolicy
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NiaPromptKey
@@ -27,9 +30,27 @@ class CloudCompleteActionEvaluationAdapter(
 
     override fun select(request: CompleteActionEvaluationRequest): CompleteActionEvaluation? {
         if (!cloudLlm.isEnabled()) return null
+        val prompt = prompt(request)
         val result =
             runCatching {
-                cloudLlm.generate(prompt(request), model, history = emptyList(), thinking = CloudThinking.DISABLED)
+                cloudLlm.generate(
+                    prompt = prompt.text,
+                    model = model,
+                    history = emptyList(),
+                    thinking = CloudThinking.DISABLED,
+                    options =
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.NIA_ACTION_EVALUATOR,
+                            maxOutputTokens = MAX_OUTPUT_TOKENS,
+                            maxRetries = 0,
+                            cachePolicy =
+                                CloudLlmCachePolicy.stablePrefix(
+                                    namespace = ACTION_EVALUATOR_CACHE_NAMESPACE,
+                                    prompt = prompt.text,
+                                    stablePrefixChars = prompt.stablePrefixChars,
+                                ),
+                        ),
+                )
             }.getOrElse { error ->
                 log.warn("완전 행동 평가 실패(focus={}): {}", request.focusThreadKey, error::class.simpleName)
                 return failedEvaluation("EVALUATOR_REQUEST_FAILED")
@@ -37,33 +58,44 @@ class CloudCompleteActionEvaluationAdapter(
         return parse(result.text, request) ?: failedEvaluation("EVALUATOR_OUTPUT_INVALID")
     }
 
-    private fun prompt(request: CompleteActionEvaluationRequest): String {
+    private fun prompt(request: CompleteActionEvaluationRequest): CompleteActionPrompt {
         val recentScene =
-            request.recentTurns.takeLast(MAX_TURNS).joinToString("\n") {
-                "«${quoteData(it.speakerLabel, 120)}: ${quoteData(it.text, MAX_TURN_CHARS)}»"
+            if (request.rawContextSceneData == null) {
+                request.recentTurns.takeLast(MAX_TURNS).joinToString("\n") {
+                    "«${quoteData(it.speakerLabel, 120)}: ${quoteData(it.text, MAX_TURN_CHARS)}»"
+                }
+            } else {
+                ""
             }
         val candidates =
             request.candidates.joinToString("\n") { candidate ->
                 "id=${candidate.candidateId}; kind=${candidate.kind}; reaction=${candidate.reactionCode.orEmpty()}\n" +
                     candidate.bubbles.joinToString("\n") { "  bubble=«${it.take(MAX_BUBBLE_CHARS)}»" }
             }
-        return NiaPromptTemplate.render(
-            promptSource.text(NiaPromptKey.ACTION_EVALUATOR_TEMPLATE),
-            mapOf(
-                "speechIntent" to request.speechIntent.orEmpty().take(MAX_INTENT_CHARS),
-                "socialAct" to request.socialAct.wireName,
-                "provisionalDecision" to request.provisionalDecision,
-                "provisionalConfidence" to request.provisionalConfidence.toString(),
-                "contextVersion" to request.contextVersion.toString(),
-                "seed" to request.seed.toString(),
-                "triggerMessageRef" to request.triggerMessageRef.orEmpty(),
-                "stateRefs" to request.stateRefs.joinToString(","),
-                "enforcement" to request.enforcementConstraints.sorted().joinToString(","),
-                "recentScene" to recentScene,
-                "rawContext" to request.rawContextSceneData?.let { "«${quoteData(it, MAX_RAW_SCENE_CHARS)}»" }.orEmpty(),
-                "candidates" to candidates,
-            ),
-        )
+        val text =
+            NiaPromptTemplate.render(
+                promptSource.text(NiaPromptKey.ACTION_EVALUATOR_TEMPLATE),
+                mapOf(
+                    "speechIntent" to request.speechIntent.orEmpty().take(MAX_INTENT_CHARS),
+                    "socialAct" to request.socialAct.wireName,
+                    "provisionalDecision" to request.provisionalDecision,
+                    "provisionalConfidence" to request.provisionalConfidence.toString(),
+                    "contextVersion" to request.contextVersion.toString(),
+                    "seed" to request.seed.toString(),
+                    "triggerMessageRef" to request.triggerMessageRef.orEmpty(),
+                    "stateRefs" to request.stateRefs.joinToString(","),
+                    "enforcement" to request.enforcementConstraints.sorted().joinToString(","),
+                    "recentScene" to recentScene,
+                    "rawContext" to
+                        request.rawContextSceneData
+                            ?.let { "«${quoteLatestData(it, MAX_RAW_SCENE_CHARS)}»" }
+                            .orEmpty(),
+                    "candidates" to candidates,
+                ),
+            )
+        val stablePrefixChars = text.indexOf(DYNAMIC_PROMPT_START)
+        check(stablePrefixChars > 0) { "action evaluator prompt의 동적 경계를 찾지 못했다" }
+        return CompleteActionPrompt(text, stablePrefixChars)
     }
 
     private fun parse(
@@ -103,12 +135,18 @@ class CloudCompleteActionEvaluationAdapter(
     private fun quoteData(
         value: String,
         limit: Int,
-    ): String =
+    ): String = sanitizeData(value).take(limit)
+
+    private fun quoteLatestData(
+        value: String,
+        limit: Int,
+    ): String = sanitizeData(value).takeLast(limit)
+
+    private fun sanitizeData(value: String): String =
         value
             .replace('«', '‹')
             .replace('»', '›')
             .replace(Regex("[\\p{Cc}&&[^\\n\\t]]"), " ")
-            .take(limit)
 
     private companion object {
         const val MAX_INTENT_CHARS: Int = 1_000
@@ -116,5 +154,13 @@ class CloudCompleteActionEvaluationAdapter(
         const val MAX_TURN_CHARS: Int = 1_000
         const val MAX_RAW_SCENE_CHARS: Int = 16_000
         const val MAX_BUBBLE_CHARS: Int = 2_000
+        const val MAX_OUTPUT_TOKENS: Int = 512
+        const val DYNAMIC_PROMPT_START: String = "speech_intent="
+        const val ACTION_EVALUATOR_CACHE_NAMESPACE: String = "nia-action-evaluator-v1"
     }
 }
+
+private data class CompleteActionPrompt(
+    val text: String,
+    val stablePrefixChars: Int,
+)

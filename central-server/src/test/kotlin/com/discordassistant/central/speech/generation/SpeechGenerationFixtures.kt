@@ -23,6 +23,7 @@ internal object SpeechGenerationFixtures {
         responseTargetRef: String? = null,
         responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
         groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
+        identity: IdentityKernelSection = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
     ): SpeechScenePacket =
         SpeechScenePacket.of(
             inputTraceId = inputTraceId,
@@ -31,7 +32,7 @@ internal object SpeechGenerationFixtures {
             recentTurns = turns,
             socialAct = socialAct,
             burstShape = burstShape,
-            identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요.", listOf("비서 멘트 금지")),
+            identity = identity,
             memoryRefs = memoryRefs,
             speechIntent = speechIntent,
             rawContextSceneData = rawContextSceneData,

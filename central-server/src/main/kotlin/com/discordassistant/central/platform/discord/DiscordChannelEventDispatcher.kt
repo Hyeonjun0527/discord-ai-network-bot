@@ -21,7 +21,8 @@ internal enum class DiscordChannelEventAdmission {
 /**
  * Keeps Discord message receive/edit/delete work FIFO within a channel without blocking JDA's calling thread.
  * Different channels can progress on different stripes. Ordinary message admission is deliberately smaller than the
- * physical queue so edit/delete mutations retain capacity. When that queue is completely full, a mutation may evict one
+ * physical queue so raw-context receive/edit/delete mutations retain capacity. The defaults retain a complete 100-message
+ * Discord burst while remaining bounded. When that queue is completely full, a mutation may evict one
  * pending ordinary event; if it contains only mutations, the mutation enters a per-stripe overflow instead of being
  * rejected. The worker drains that overflow after every already-admitted event, preserving channel order and ensuring
  * a raw-context redaction is not lost under load.
@@ -280,8 +281,8 @@ internal class DiscordChannelEventDispatcher(
 
     companion object {
         private const val DEFAULT_STRIPE_COUNT = 8
-        private const val DEFAULT_QUEUE_CAPACITY = 32
-        private const val DEFAULT_ORDINARY_QUEUE_CAPACITY = 8
+        private const val DEFAULT_QUEUE_CAPACITY = 256
+        private const val DEFAULT_ORDINARY_QUEUE_CAPACITY = 128
         private const val CLOSE_GRACE_MILLIS = 20_000L
         private const val FORCED_CLOSE_GRACE_MILLIS = 2_000L
         private val LOG = LoggerFactory.getLogger(DiscordChannelEventDispatcher::class.java)

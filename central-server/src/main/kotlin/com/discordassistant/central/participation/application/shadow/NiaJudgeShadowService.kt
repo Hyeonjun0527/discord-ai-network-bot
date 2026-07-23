@@ -1,5 +1,6 @@
 package com.discordassistant.central.participation.application.shadow
 
+import com.discordassistant.central.participation.application.judge.NiaJudgeExecutionPurpose
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
 import com.discordassistant.central.participation.application.judge.SingleParticipationJudgePort
@@ -22,9 +23,10 @@ class NiaJudgeShadowService(
 ) {
     fun record(request: SingleJudgeDecisionRequest): NiaJudgeShadowResult =
         runCatching {
-            val decision = judge.decide(request)
+            val shadowRequest = request.copy(executionPurpose = NiaJudgeExecutionPurpose.SHADOW)
+            val decision = judge.decide(shadowRequest)
             val now = Instant.now(clock)
-            val record = request.toShadowRecord(decision, now)
+            val record = shadowRequest.toShadowRecord(decision, now)
             predictionStore.append(record)
             NiaJudgeShadowResult.Recorded(record)
         }.getOrElse { error ->

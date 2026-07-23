@@ -1,13 +1,90 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.platform.discord.nexa.NiaTurnGenerationTracker
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class DiscordChannelEventDispatcherTest {
+    @Test
+    fun `default bounds retain raw context and evaluation work for a 100-message burst`() {
+        val dispatcher = DiscordChannelEventDispatcher(stripeCount = 1)
+        dispatcher.use {
+            val firstStarted = CountDownLatch(1)
+            val releaseFirst = CountDownLatch(1)
+            val completed = CountDownLatch(199)
+
+            assertThat(
+                dispatcher.submit(1L) {
+                    firstStarted.countDown()
+                    releaseFirst.await()
+                    completed.countDown()
+                },
+            ).isEqualTo(DiscordChannelEventAdmission.ACCEPTED)
+            assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue()
+
+            val admissions =
+                (2..100).flatMap {
+                    listOf(
+                        dispatcher.submitMutation(1L) { completed.countDown() },
+                        dispatcher.submit(1L) { completed.countDown() },
+                    )
+                }
+            assertThat(admissions).allMatch { it.accepted }
+
+            releaseFirst.countDown()
+            assertThat(completed.await(2, TimeUnit.SECONDS)).isTrue()
+        }
+    }
+
+    @Test
+    fun `100 ambient-message burst pays only the in-flight and latest judge evaluations`() {
+        val dispatcher = DiscordChannelEventDispatcher(stripeCount = 1)
+        val generations = NiaTurnGenerationTracker()
+        dispatcher.use {
+            val firstJudgeStarted = CountDownLatch(1)
+            val releaseFirstJudge = CountDownLatch(1)
+            val evaluationsCompleted = CountDownLatch(100)
+            val paidJudgeAttempts = AtomicInteger()
+            generations.observe(channelId = 1L, generation = 1L)
+
+            assertThat(
+                dispatcher.submit(1L) {
+                    if (generations.isLatest(channelId = 1L, generation = 1L)) {
+                        paidJudgeAttempts.incrementAndGet()
+                        firstJudgeStarted.countDown()
+                        releaseFirstJudge.await()
+                    }
+                    evaluationsCompleted.countDown()
+                },
+            ).isEqualTo(DiscordChannelEventAdmission.ACCEPTED)
+            assertThat(firstJudgeStarted.await(1, TimeUnit.SECONDS)).isTrue()
+
+            val admissions =
+                (2L..100L).flatMap { generation ->
+                    generations.observe(channelId = 1L, generation = generation)
+                    listOf(
+                        dispatcher.submitMutation(1L) {},
+                        dispatcher.submit(1L) {
+                            if (generations.isLatest(channelId = 1L, generation = generation)) {
+                                paidJudgeAttempts.incrementAndGet()
+                            }
+                            evaluationsCompleted.countDown()
+                        },
+                    )
+                }
+            assertThat(admissions).allMatch { it.accepted }
+
+            releaseFirstJudge.countDown()
+            assertThat(evaluationsCompleted.await(2, TimeUnit.SECONDS)).isTrue()
+            assertThat(paidJudgeAttempts.get()).isEqualTo(2)
+        }
+    }
+
     @Test
     fun `same channel stays FIFO while another stripe progresses`() {
         val dispatcher = DiscordChannelEventDispatcher(stripeCount = 2, queueCapacityPerStripe = 4, ordinaryQueueCapacityPerStripe = 4)

@@ -311,6 +311,40 @@ class NiaMessageContextTest {
         assertThat(joined).doesNotContain("CURRENT")
     }
 
+    @Test
+    fun `합성 니아 답변 뒤 실제 Discord echo가 오면 같은 답변을 두 번 보관하지 않는다`() {
+        val buffer = ArrayDeque<DiscordRecentPromptMessage>()
+        appendRecentPromptMessage(
+            buffer,
+            msg(
+                id = -1_000L,
+                authorId = 99L,
+                authorLabel = "니아",
+                content = "응 여기 있어",
+                bot = true,
+                replyToMessageId = 10L,
+                createdAtEpochMillis = 1_000L,
+            ),
+            limit = 20,
+        )
+
+        appendRecentPromptMessage(
+            buffer,
+            msg(
+                id = 11L,
+                authorId = 99L,
+                authorLabel = "니아",
+                content = "응 여기 있어",
+                bot = true,
+                replyToMessageId = 10L,
+                createdAtEpochMillis = 1_500L,
+            ),
+            limit = 20,
+        )
+
+        assertThat(buffer.map { it.id }).containsExactly(11L)
+    }
+
     private fun msg(
         id: Long,
         authorId: Long,

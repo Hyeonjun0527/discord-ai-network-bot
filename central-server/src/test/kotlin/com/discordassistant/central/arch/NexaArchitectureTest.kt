@@ -216,14 +216,19 @@ class NexaArchitectureTest {
             )
 
         val onMessageReceived = source.substringBetween("override fun onMessageReceived", "private fun forwardToParticipation")
-        val botFilter = onMessageReceived.indexOf("if (event.author.isBot) return")
-        val participationForward = onMessageReceived.indexOf("forwardToParticipation(event, mentioned || directlyAddressed)")
+        val botFilter = onMessageReceived.indexOf("if (event.author.isBot) {")
+        val participationForward =
+            onMessageReceived.indexOf(
+                "forwardToParticipation(event, mentioned || directlyAddressed, rawContextPreCaptured)",
+            )
+        val participationOwnershipReturn = onMessageReceived.indexOf("if (participationTurn.ownsTurn) return")
         val mentionResponse = onMessageReceived.indexOf("if (mentioned)")
         val autoRespond = onMessageReceived.indexOf("handleAutoRespond(event)")
 
         assertThat(participationForward).isGreaterThan(botFilter)
-        assertThat(participationForward).isLessThan(mentionResponse)
-        assertThat(participationForward).isLessThan(autoRespond)
+        assertThat(participationOwnershipReturn).isGreaterThan(participationForward)
+        assertThat(participationOwnershipReturn).isLessThan(mentionResponse)
+        assertThat(participationOwnershipReturn).isLessThan(autoRespond)
 
         val forwardToParticipation = source.substringBetween("private fun forwardToParticipation", "private fun participationSourceTypeOf")
         val bridgeCall = forwardToParticipation.indexOf("participationEmitBridge.onMessageTurn(")

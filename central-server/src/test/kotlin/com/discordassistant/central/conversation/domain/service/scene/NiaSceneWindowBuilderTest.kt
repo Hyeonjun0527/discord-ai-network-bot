@@ -46,6 +46,8 @@ class NiaSceneWindowBuilderTest {
                 NiaSceneAuthorRole.BOT,
                 NiaSceneAuthorRole.SYSTEM,
             )
+        assertThat(window.messages.map { it.speakerLabel })
+            .containsExactly("member_1", "nia", "bot_1", "system")
         assertThat(window.messages[1].replyToRef).isEqualTo("msg_1")
         assertThat((window.messages[0].content as NiaSceneContent.Available).text).isEqualTo("야 니아?")
 
@@ -56,23 +58,43 @@ class NiaSceneWindowBuilderTest {
     }
 
     @Test
-    fun `char budget 을 넘으면 오래된 원문부터 생략하고 ref 를 다시 결정론적으로 부여한다`() {
+    fun `같은 사람은 같은 local label을 쓰고 다른 사람은 분리한다`() {
+        val snapshot =
+            RawContextSnapshot(
+                scope,
+                listOf(
+                    entry(1L, "private-a", t0, RawContextSourceType.HUMAN, "a1"),
+                    entry(2L, "private-b", t0.plusSeconds(1), RawContextSourceType.HUMAN, "b1"),
+                    entry(3L, "private-a", t0.plusSeconds(2), RawContextSourceType.HUMAN, "a2"),
+                ),
+            )
+
+        val messages = NiaSceneWindowBuilder(maxRawChars = 100).build(snapshot).messages
+
+        assertThat(messages.map { it.speakerLabel }).containsExactly("member_1", "member_2", "member_1")
+        assertThat(messages.toString()).doesNotContain("private-a", "private-b")
+    }
+
+    @Test
+    fun `char budget 을 넘겨도 같은 snapshot 의 message ref 는 다른 window 에서 바뀌지 않는다`() {
+        val snapshot =
+            RawContextSnapshot(
+                scope,
+                listOf(
+                    entry(10L, "a", t0, RawContextSourceType.HUMAN, "old1"),
+                    entry(11L, "b", t0.plusSeconds(1), RawContextSourceType.HUMAN, "new2"),
+                    entry(12L, "c", t0.plusSeconds(2), RawContextSourceType.HUMAN, "new3"),
+                ),
+            )
         val window =
             NiaSceneWindowBuilder(maxRawChars = 8)
-                .build(
-                    RawContextSnapshot(
-                        scope,
-                        listOf(
-                            entry(10L, "a", t0, RawContextSourceType.HUMAN, "old1"),
-                            entry(11L, "b", t0.plusSeconds(1), RawContextSourceType.HUMAN, "new2"),
-                            entry(12L, "c", t0.plusSeconds(2), RawContextSourceType.HUMAN, "new3"),
-                        ),
-                    ),
-                )
+                .build(snapshot)
+        val fullWindow = NiaSceneWindowBuilder(maxRawChars = 100).build(snapshot)
 
         assertThat(window.omittedOldestCount).isEqualTo(1)
-        assertThat(window.messages.map { it.ref }).containsExactly("msg_1", "msg_2")
+        assertThat(window.messages.map { it.ref }).containsExactly("msg_2", "msg_3")
         assertThat(window.messages.map { (it.content as NiaSceneContent.Available).text }).containsExactly("new2", "new3")
+        assertThat(window.messages.last().ref).isEqualTo(fullWindow.messages.last().ref)
     }
 
     @Test
@@ -90,7 +112,7 @@ class NiaSceneWindowBuilderTest {
                 )
 
         assertThat(window.messages).hasSize(1)
-        assertThat(window.messages.single().ref).isEqualTo("msg_1")
+        assertThat(window.messages.single().ref).isEqualTo("msg_2")
         assertThat(window.messages.single().replyToRef).isNull()
     }
 

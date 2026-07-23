@@ -21,7 +21,7 @@ class RawContextRingBuffer(
         entries.add(entry)
         entries.sortWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
 
-        val evicted = trimOldestRaw()
+        val evicted = trimOldest()
         return RawContextAppendResult(snapshot(), evicted)
     }
 
@@ -33,9 +33,9 @@ class RawContextRingBuffer(
 
     fun snapshot(): RawContextSnapshot = RawContextSnapshot(scope, entries.toList())
 
-    private fun trimOldestRaw(): List<Long> {
+    private fun trimOldest(): List<Long> {
         val evicted = mutableListOf<Long>()
-        while (snapshot().retainedRawChars > retention.maxRawChars) {
+        while (snapshot().retainedRawChars > retention.maxRawChars || entries.size > retention.maxEntries) {
             val removed = entries.removeFirstOrNull() ?: break
             evicted += removed.messageId
         }

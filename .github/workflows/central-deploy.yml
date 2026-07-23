@@ -137,6 +137,7 @@ jobs:
           CONNECT_DISCORD_CLIENT_SECRET: ${{ secrets.CONNECT_DISCORD_CLIENT_SECRET }}
           CENTRAL_OAUTH_ENABLED: ${{ secrets.CENTRAL_OAUTH_ENABLED }}
           CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${{ secrets.CENTRAL_DASHBOARD_ADMIN_USER_IDS }}
+          CENTRAL_METRICS_SCRAPE_TOKEN: ${{ secrets.CENTRAL_METRICS_SCRAPE_TOKEN }}
         run: |
           set -euo pipefail
           DEST="$HOME/deploy/central-server"
@@ -148,6 +149,8 @@ jobs:
           legacy_env="$DEST/.rollback-env-${GITHUB_RUN_ID}"
           legacy_durable="$DEST/.rollback-durable-secret-${GITHUB_RUN_ID}"
           install -m 640 central-server/deploy/compose.remote.yml "$candidate_compose"
+          mkdir -p "$DEST/prometheus"
+          install -m 644 central-server/deploy/prometheus.yml "$DEST/prometheus/prometheus.yml"
           cp central-server/scripts/ops_healthcheck.sh "$DEST/ops_healthcheck.sh"
           cp central-server/scripts/ops_policy_audit.sh "$DEST/ops_policy_audit.sh"
           cp central-server/scripts/ops_runtime_secret_audit.sh "$DEST/ops_runtime_secret_audit.sh"
@@ -182,6 +185,7 @@ jobs:
             NEXA_FIELD_ENC_KEY OPENAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
             DISCORD_ENABLED RELAY_PUBLIC_URL CONNECT_DISCORD_CLIENT_ID
             CENTRAL_OAUTH_ENABLED CENTRAL_DASHBOARD_ADMIN_USER_IDS
+            CENTRAL_METRICS_SCRAPE_TOKEN
           )
           for key in "${required_production_values[@]}"; do
             if [ -z "${!key:-}" ]; then
@@ -214,9 +218,11 @@ jobs:
               "CONNECT_DISCORD_CLIENT_SECRET": "central.connect.discord-client-secret",
               "CENTRAL_OAUTH_ENABLED": "central.oauth.enabled",
               "CENTRAL_DASHBOARD_ADMIN_USER_IDS": "central.dashboard.admin-user-ids",
+              "METRICS_SCRAPE_TOKEN": "central.metrics.scrape-token",
           }
           expected_sources = {name: name for name in expected_targets}
           expected_sources["DB_PASSWORD"] = "CENTRAL_DB_PASSWORD"
+          expected_sources["METRICS_SCRAPE_TOKEN"] = "CENTRAL_METRICS_SCRAPE_TOKEN"
 
           app = rendered["services"]["central-server"]
           app_targets = {item["source"]: item["target"] for item in app.get("secrets", [])}
@@ -243,7 +249,7 @@ jobs:
 
           high_entropy_secrets=(
             CENTRAL_DB_PASSWORD DISCORD_BOT_TOKEN CENTRAL_DURABLE_SECRET
-            NEXA_FIELD_ENC_KEY OPENAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET
+            NEXA_FIELD_ENC_KEY OPENAI_API_KEY CONNECT_DISCORD_CLIENT_SECRET CENTRAL_METRICS_SCRAPE_TOKEN
           )
           rendered_content="$(cat "$rendered_compose")"
           for key in "${high_entropy_secrets[@]}"; do
@@ -298,6 +304,14 @@ jobs:
             echo "❌ 헬스 실패 — 로그:"; "${compose[@]}" logs --tail=80 central-server; exit 1
           fi
           echo "✅ 배포 완료 + 헬스 UP (image ${CENTRAL_IMAGE})"
+
+          echo "▶ Prometheus 수집기 ready/target 감사"
+          retry "Prometheus ready" "${compose[@]}" exec -T prometheus wget -qO- http://localhost:9090/-/ready
+          prometheus_target_up() {
+            target_json="$("${compose[@]}" exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets)"
+            printf '%s' "$target_json" | grep -q '"health":"up"'
+          }
+          retry "Prometheus central-server target UP" prometheus_target_up
 
           # 새 secret-file 런타임이 정상 기동한 뒤에만 legacy host secret 파일을 제거한다.
           [ ! -f .env ] || mv -f .env "$legacy_env"

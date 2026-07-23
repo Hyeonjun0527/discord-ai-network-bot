@@ -1,6 +1,8 @@
 package com.discordassistant.central.platform.discord.admin
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
@@ -41,6 +43,12 @@ class AdminAssistantService(
                     userPrompt = prompt,
                     toolsJson = AdminToolCatalog.toolsJson,
                     model = ADMIN_TOOL_MODEL,
+                    options =
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.ADMIN_ACTION_ROUTER,
+                            maxOutputTokens = ADMIN_TOOL_MAX_OUTPUT_TOKENS,
+                            maxRetries = 0,
+                        ),
                 )
             }.getOrElse {
                 log.warn("관리 비서 GLM 호출 실패(guild={}): {}", guildId, it.message)
@@ -112,6 +120,7 @@ class AdminAssistantService(
 
     companion object {
         const val ADMIN_TOOL_MODEL = "gpt-5.6-luna"
+        private const val ADMIN_TOOL_MAX_OUTPUT_TOKENS = 1_024
     }
 }
 

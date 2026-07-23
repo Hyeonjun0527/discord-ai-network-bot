@@ -12,8 +12,9 @@ import org.slf4j.LoggerFactory
  * **작은 batch·lease(deliverable T017)**: [runOnce] 는 [MemoryExtractionQueuePort.drain] 으로 최대 [batchSize] 개만
  * 꺼낸다 — drain 이 꺼낸 요청을 처리 중으로 표시(lease)해 동시/중복 실행에서 같은 요청을 두 번 선점하지 않는다.
  *
- * **retry(deliverable T017)**: 추출이 빈 후보를 돌려주는 transient 상황은 최대 [maxAttempts] 번 재시도한다(추출기는
- * 실패를 빈 리스트로 흡수하므로, job 은 후보가 나올 때까지 제한적으로 다시 시도한다).
+ * **retry(deliverable T017)**: 호출자가 명시적으로 [maxAttempts]를 늘린 경우에만 빈 후보를 제한적으로 재시도한다.
+ * 기본값은 총 1회다. 추출기는 정상적인 "기억 후보 없음"과 공급자 실패를 모두 빈 리스트로 표현하므로, 기본 재시도는
+ * 정상적인 빈 장면까지 이중 과금할 수 있다.
  *
  * **중복 생성 없음(acceptance T017)**: 저장은 [MemoryConsolidationService] → [PromotedMemoryStorePort.storeIfAbsent]
  * 의 멱등 저장이라, job 재시작·중복 실행·재시도에도 같은 기억이 두 번 만들어지지 않는다.
@@ -73,7 +74,7 @@ class MemoryConsolidationJob(
 
     companion object {
         const val DEFAULT_BATCH_SIZE = 16
-        const val DEFAULT_MAX_ATTEMPTS = 2
+        const val DEFAULT_MAX_ATTEMPTS = 1
     }
 }
 

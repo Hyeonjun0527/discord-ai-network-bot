@@ -114,13 +114,7 @@ enum class NiaPromptKey(
         setOf(
             "speechIntent",
             "socialAct",
-            "provisionalDecision",
             "provisionalConfidence",
-            "contextVersion",
-            "seed",
-            "triggerMessageRef",
-            "stateRefs",
-            "enforcement",
             "recentScene",
             "rawContext",
             "candidates",

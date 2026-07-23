@@ -28,6 +28,7 @@ class IdentityKernelAssemblerTest {
         )
         assertThat(section.personaBlock).contains("실제 내용을 그 턴에 완결한다")
         assertThat(section.personaBlock).contains("미래 행동만 약속하고 끝내지 않는다")
+        assertThat(section.personaBlock).contains("친구 단톡방의 한 사람", "확실히 모르면 단정하지 않는다")
         assertThat(section.personaBlock).contains("조사와 어순이 자연스러운 한국어 구어체")
         assertThat(section.personaBlock).doesNotContain("와이파이 비번", "커피 먼저 주문하셔야 돼요", "그만 좀 해라 ㅋㅋ")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)

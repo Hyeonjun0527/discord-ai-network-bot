@@ -5,7 +5,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 /**
  * token·cost budget(NEXA-P14-T015, application 값 객체·불변).
  *
- * 길드/행동별 context·output token 상한과 후보 수 상한을 적용한다(폭주 방지).
+ * 길드/행동별 output token 상한과 후보 수 상한을 적용한다(폭주 방지).
  *
  * **acceptance(T015) — 침묵 판단에 token 이 차감되지 않고 후보 과생성이 차단된다**:
  * - 침묵(IGNORE/REACT): speech 자체가 호출되지 않으므로 budget 도 적용되지 않는다(token 0). 즉 발화 결정이
@@ -19,15 +19,12 @@ data class GenerationBudget(
     val maxCandidates: Int,
     /** 후보 1개당 출력 token 상한. */
     val maxOutputTokens: Int,
-    /** 입력(context) token 상한 — context selector 가 이 안에서 turn 을 고른다(T007 연동). */
-    val maxContextTokens: Int,
 ) {
     init {
         require(maxCandidates >= SpeechGenerationRequest.MIN_CANDIDATES) {
             "maxCandidates 는 ${SpeechGenerationRequest.MIN_CANDIDATES} 이상이어야 한다: $maxCandidates"
         }
         require(maxOutputTokens > 0) { "maxOutputTokens 는 양수여야 한다: $maxOutputTokens" }
-        require(maxContextTokens > 0) { "maxContextTokens 는 양수여야 한다: $maxContextTokens" }
     }
 
     /**
@@ -48,7 +45,6 @@ data class GenerationBudget(
             GenerationBudget(
                 maxCandidates = 2,
                 maxOutputTokens = 1024,
-                maxContextTokens = 1024,
             )
 
         /** 모호한 잠정 발화에 사용하는 제한된 다중 후보 budget. */

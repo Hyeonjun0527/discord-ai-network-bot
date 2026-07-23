@@ -65,9 +65,9 @@ class ExternalPayloadAllowlistSerializerTest {
 
     @Test
     fun `allowlist is the single source of truth for exported fields`() {
-        // acceptance: allowlist 가 SSOT — 명시된 키만(현재 5개), 늘리려면 명시 등록이 필요(테스트가 감지).
+        // acceptance: allowlist 가 SSOT — 대화 원문은 별도 quoted scene 한 곳에서만 보내며 여기서 중복하지 않는다.
         assertThat(serializer.allowedFields())
-            .containsExactlyInAnyOrder("focus_thread", "target", "social_act", "recent_turns", "memory_refs")
+            .containsExactlyInAnyOrder("target", "memory_refs")
     }
 
     @Test

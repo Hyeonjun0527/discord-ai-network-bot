@@ -11,8 +11,11 @@ import com.discordassistant.central.participation.domain.model.rag.ConversationR
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.sqrt
 
 @Service
@@ -22,6 +25,8 @@ class ConversationRagService(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(ConversationRagService::class.java)
+    private val queryEmbeddingCache = ConcurrentHashMap<String, FloatArray>()
+    private val queryEmbeddingCacheOrder = ConcurrentLinkedQueue<String>()
 
     @Transactional(readOnly = true)
     fun library(): ConversationRagLibrary {
@@ -130,17 +135,54 @@ class ConversationRagService(
     fun search(
         sceneText: String,
         limit: Int = DEFAULT_MATCH_COUNT,
+        excludedCanonicalScenes: Set<String> = emptySet(),
     ): List<ConversationRagMatch> {
         val query = sceneText.trim()
         if (query.isBlank()) return emptyList()
-        val entries = store.list()
+        val entries = store.list().filterNot { canonicalScene(it.example) in excludedCanonicalScenes }
         if (entries.isEmpty()) return emptyList()
-        val queryVector = embedOrNull(listOf(query))?.singleOrNull()
+        // 비교할 동일 모델 vector가 하나도 없으면 query embedding은 어떤 점수에도 쓰이지 않는다. 이 경우 유료
+        // embedding 호출을 만들지 않고 그대로 text fallback 한다.
+        val comparableVectorSize =
+            entries
+                .firstOrNull { it.embedding != null && it.embeddingModel == embeddings.model }
+                ?.embedding
+                ?.size
+        val queryVector =
+            if (comparableVectorSize != null) {
+                // 대화 장면은 시간순 문자열이다. 입력 상한을 넘으면 오래된 앞부분이 아니라 현재 turn이 있는 끝부분을 보존한다.
+                cachedQueryEmbedding(query.takeLast(MAX_EMBEDDING_TEXT_CHARS), comparableVectorSize)
+            } else {
+                null
+            }
         return entries
             .map { entry -> score(entry, query, queryVector) }
+            .filter { match -> match.score > 0.0 }
             .sortedWith(compareByDescending<ConversationRagMatch> { it.score }.thenBy { it.entry.id ?: Long.MAX_VALUE })
             .take(limit.coerceIn(1, MAX_MATCH_COUNT))
     }
+
+    private fun cachedQueryEmbedding(
+        query: String,
+        comparableVectorSize: Int,
+    ): FloatArray? {
+        val key = "$QUERY_CACHE_VERSION:${embeddings.model}:$comparableVectorSize:${sha256Hex(query)}"
+        queryEmbeddingCache[key]?.let { return it }
+        val computed = embedOrNull(listOf(query))?.singleOrNull() ?: return null
+        val cached = queryEmbeddingCache.putIfAbsent(key, computed)
+        if (cached != null) return cached
+        queryEmbeddingCacheOrder.add(key)
+        while (queryEmbeddingCache.size > MAX_QUERY_EMBEDDING_CACHE_ENTRIES) {
+            queryEmbeddingCacheOrder.poll()?.let(queryEmbeddingCache::remove) ?: break
+        }
+        return computed
+    }
+
+    private fun sha256Hex(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun score(
         entry: ConversationRagEntry,
@@ -148,7 +190,12 @@ class ConversationRagService(
         queryVector: FloatArray?,
     ): ConversationRagMatch {
         val entryVector = entry.embedding
-        return if (queryVector != null && entryVector != null && queryVector.size == entryVector.size) {
+        return if (
+            queryVector != null &&
+            entryVector != null &&
+            entry.embeddingModel == embeddings.model &&
+            queryVector.size == entryVector.size
+        ) {
             ConversationRagMatch(entry, cosine(queryVector, entryVector).coerceIn(0.0, 1.0), ConversationRagScoringMethod.EMBEDDING)
         } else {
             ConversationRagMatch(entry, textSimilarity(query, entry.searchText), ConversationRagScoringMethod.TEXT_FALLBACK)
@@ -189,6 +236,8 @@ class ConversationRagService(
         const val MAX_ENTRIES = 500
         const val MAX_PAGE_SIZE = 500
         private const val MAX_EMBEDDING_TEXT_CHARS = 12_000
+        private const val MAX_QUERY_EMBEDDING_CACHE_ENTRIES = 1_000
+        private const val QUERY_CACHE_VERSION = "conversation-rag-query-v1"
 
         fun canonicalScene(example: NiaFewShotExample): String =
             buildString {

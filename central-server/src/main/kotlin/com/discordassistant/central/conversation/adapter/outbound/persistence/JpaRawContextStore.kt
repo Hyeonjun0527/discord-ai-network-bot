@@ -37,9 +37,11 @@ class JpaRawContextStore(
     private val tombstones: NexaRawContextTombstoneRepository,
     @Value("\${nexa.raw-context.max-raw-chars-per-scope:200000}")
     maxRawCharsPerScope: Int = RawContextRetentionPolicy.DEFAULT_MAX_RAW_CHARS,
+    @Value("\${nexa.raw-context.max-entries-per-scope:2000}")
+    maxEntriesPerScope: Int = RawContextRetentionPolicy.DEFAULT_MAX_ENTRIES,
     private val clock: Clock = Clock.systemUTC(),
 ) : RawContextStorePort {
-    private val retention = RawContextRetentionPolicy(maxRawCharsPerScope)
+    private val retention = RawContextRetentionPolicy(maxRawCharsPerScope, maxEntriesPerScope)
 
     @Transactional
     override fun append(entry: RawContextEntry): RawContextAppendResult {
@@ -145,7 +147,7 @@ class JpaRawContextStore(
         var retainedRawChars = ordered.sumOf { it.contentLength }
         val now = Instant.now(clock)
 
-        while (retainedRawChars > retention.maxRawChars && ordered.isNotEmpty()) {
+        while ((retainedRawChars > retention.maxRawChars || ordered.size > retention.maxEntries) && ordered.isNotEmpty()) {
             val oldest = ordered.removeAt(0)
             retainedRawChars -= oldest.contentLength
             evicted += oldest.messageId

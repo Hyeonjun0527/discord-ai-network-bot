@@ -92,7 +92,24 @@ class CandidateGenerationService(
             candidateCount = candidateCount,
             reasoningMode = reasoningModeSelector.select(packet),
             maxOutputTokens = budget.clampOutputTokens(budget.maxOutputTokens),
+            stableSystemPromptChars = stableSystemPromptChars(systemPrompt, packet.identity),
         )
+    }
+
+    private fun stableSystemPromptChars(
+        systemPrompt: String,
+        identity: IdentityKernelSection,
+    ): Int {
+        if (identity.stablePersonaBlockChars < identity.personaBlock.length) {
+            check(systemPrompt.startsWith(identity.personaBlock)) { "speech system prompt가 identity block으로 시작하지 않는다" }
+            return identity.stablePersonaBlockChars
+        }
+        val dynamicStart = systemPrompt.indexOf(PARTICIPATION_DECISION_MARKER)
+        return if (dynamicStart >= 0) {
+            dynamicStart + PARTICIPATION_DECISION_MARKER.length
+        } else {
+            systemPrompt.length
+        }
     }
 
     /**
@@ -108,8 +125,14 @@ class CandidateGenerationService(
         val target =
             buildString {
                 appendLine("raw_scene_ref=${packet.responseTargetRef.orEmpty()}")
-                packet.recentTurns.lastOrNull()?.let { append("«${it.speakerLabel}: ${it.text}»") }
+                append("위 장면의 최신 turn이 이번 응답 대상이다")
             }.trim()
+        val quotedScene =
+            if (packet.rawContextSceneData == null) {
+                contentIsolator.serializeAsQuotedScene(packet)
+            } else {
+                ""
+            }
         val groundingBlock =
             if (packet.groundingNeed == SpeechGroundingNeed.WEB_VERIFY) {
                 if (grounding.verified) {
@@ -125,7 +148,7 @@ class CandidateGenerationService(
             promptSource.text(NiaPromptKey.SPEECH_USER_TEMPLATE),
             mapOf(
                 "payload" to payloadSerializer.serialize(packet),
-                "quotedScene" to contentIsolator.serializeAsQuotedScene(packet),
+                "quotedScene" to quotedScene,
                 "rawContext" to packet.rawContextSceneData.orEmpty(),
                 "responseTarget" to target,
                 "grounding" to groundingBlock,
@@ -169,6 +192,7 @@ class CandidateGenerationService(
 
     companion object {
         private const val MAX_GROUNDING_CHARS: Int = 16_000
+        private const val PARTICIPATION_DECISION_MARKER: String = "[participation 결정]\n"
 
         /** GLM 이 후보 버블 배열·style tag·uncertainty 를 JSON 으로 돌려주게 하는 출력 지시(T012 파서와 짝). */
         fun outputFormatInstruction(candidateCount: Int): String =

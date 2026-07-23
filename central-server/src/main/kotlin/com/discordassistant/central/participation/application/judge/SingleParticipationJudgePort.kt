@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.application.judge
 
 import com.discordassistant.central.participation.application.context.JudgeContextWindow
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
+import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
@@ -22,6 +23,9 @@ data class SingleJudgeDecisionRequest(
     val constraints: JudgeDecisionConstraints,
     val schemaVersion: Int,
     val seed: Long,
+    val executionPurpose: NiaJudgeExecutionPurpose = NiaJudgeExecutionPurpose.FINAL,
+    /** 디버그 trace와 실제 provider 호출이 공유하는 단일 조립 결과. 외부 호출자는 보통 null을 둔다. */
+    val preparedLlmRequest: NiaJudgeLlmRequest? = null,
 ) {
     init {
         require(schemaVersion >= 1) { "schemaVersion 은 1 이상이어야 한다: $schemaVersion" }
@@ -32,6 +36,13 @@ data class SingleJudgeDecisionRequest(
         const val CURRENT_SCHEMA_VERSION: Int = 1
         const val MAX_MEMORY_REFS: Int = 8
     }
+}
+
+enum class NiaJudgeExecutionPurpose(
+    val wireName: String,
+) {
+    FINAL("final"),
+    SHADOW("shadow"),
 }
 
 data class JudgeConversationRagPayload(

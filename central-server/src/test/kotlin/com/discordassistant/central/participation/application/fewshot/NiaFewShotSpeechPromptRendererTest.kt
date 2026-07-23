@@ -77,6 +77,26 @@ class NiaFewShotSpeechPromptRendererTest {
             .doesNotContain("셋째 장면 답변", "다익스트라 알고리즘 말해봐")
     }
 
+    @Test
+    fun `prompt budget skips an oversized complete example instead of cutting it mid sentence`() {
+        val oversized =
+            example(expectedReplies = listOf("관리자 답변")).copy(
+                title = "oversized-managed-example",
+                rawMessages =
+                    (1..8).map { index ->
+                        NiaFewShotRawMessage("m$index", "member", index.toLong(), "x".repeat(4_000))
+                    },
+                evidenceRefs = setOf("m1"),
+            )
+
+        val prompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(version(oversized))
+
+        assertThat(prompt)
+            .hasSizeLessThanOrEqualTo(16_000)
+            .doesNotContain("oversized-managed-example")
+            .contains("알고리즘 질문이 구술시험처럼 이어진 장면")
+    }
+
     private fun example(
         expectedReplies: List<String>,
         badReplies: List<String> = emptyList(),

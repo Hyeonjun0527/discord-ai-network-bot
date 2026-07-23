@@ -31,7 +31,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v13")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v17")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -75,10 +75,14 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload["schema"].asText()).isEqualTo(NiaJudgePromptAssembler.INPUT_SCHEMA)
         assertThat(payload["outputSchema"].asText()).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(payload.at("/rawScene/messages/1/text").asText()).isEqualTo("야 이럴땐 위로해줘")
+        assertThat(payload.at("/rawScene/messages/1/speakerLabel").asText()).isEqualTo("member_1")
+        assertThat(payload.at("/rawScene/quotedSceneData").isMissingNode).isTrue()
         assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_2")
-        assertThat(payload.at("/rawScene/messages/0/elapsedSincePreviousMs").isNull).isTrue()
+        assertThat(payload.at("/rawScene/messages/0/elapsedSincePreviousMs").isMissingNode).isTrue()
+        assertThat(payload.at("/rawScene/messages/0/createdAt").isMissingNode).isTrue()
         assertThat(payload.at("/rawScene/messages/1/elapsedSincePreviousMs").asLong()).isEqualTo(1_000L)
-        assertThat(payload.at("/fewShotSet/version").asInt()).isEqualTo(3)
+        assertThat(payload.at("/fewShotSet/version").isMissingNode).isTrue()
+        assertThat(payload.at("/fewShotSet/setId").isMissingNode).isTrue()
         assertThat(payload.at("/fewShotSet/examples/0/expectedAction").asText()).isEqualTo("SPEAK")
         assertThat(payload.at("/fewShotSet/examples/0/expectedDeliveryMode").asText()).isEqualTo("CHANNEL")
         assertThat(payload.at("/fewShotSet/examples/0/currentState").asText()).isEqualTo("Direct consolation is expected.")
@@ -86,7 +90,88 @@ class NiaJudgePromptAssemblerTest {
         assertThat(payload.at("/conversationRag/matches").size()).isZero()
         assertThat(payload.at("/socialMemory/0/refId").asText()).isEqualTo("mem-1")
         assertThat(payload.at("/constraints/allowedActions").map { it.asText() }).contains("CANCEL", "SPEAK")
-        assertThat(payload.at("/featureVector/turn.direct_pressure/value").asDouble()).isEqualTo(0.8)
+        assertThat(payload.at("/featureVector").isMissingNode).isTrue()
+        assertThat(payload.at("/sceneState/directAddressed").asBoolean()).isTrue()
+        assertThat(payload.at("/sceneState/recentAgentBurstCount").isMissingNode).isTrue()
+        assertThat(payload.at("/sceneState/agentState/recentSpeechCount").asInt()).isZero()
+    }
+
+    @Test
+    fun `cache prefix는 고정 judge 규칙과 global few-shot까지만 포함한다`() {
+        val llmRequest = NiaJudgePromptAssembler().assemble(sampleRequest())
+        val stablePrefix = llmRequest.prompt.take(llmRequest.stablePromptPrefixChars)
+        val dynamicSuffix = llmRequest.prompt.drop(llmRequest.stablePromptPrefixChars)
+
+        assertThat(stablePrefix)
+            .contains("NIA is one participant in a multi-person conversation", "direct reply request")
+            .doesNotContain("\"rawScene\":")
+        assertThat(dynamicSuffix)
+            .startsWith("\"rawScene\":")
+            .contains("야 이럴땐 위로해줘")
+        assertThat(mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n")))
+            .isEqualTo(mapper.readTree(stablePrefix.substringAfter("INPUT_JSON:\n") + dynamicSuffix))
+    }
+
+    @Test
+    fun `다른 대화를 replay해도 고정 cache prefix는 같고 원문 suffix만 바뀐다`() {
+        val first = NiaJudgePromptAssembler().assemble(sampleRequest())
+        val changedWindow =
+            JudgeContextWindowBuilder(maxRawChars = 1_000)
+                .build(
+                    RawContextSnapshot(
+                        scope = scope,
+                        entries =
+                            listOf(
+                                rawEntry(30L, RawContextSourceType.HUMAN, "니아야 지금 있어?"),
+                                rawEntry(
+                                    messageId = 31L,
+                                    sourceType = RawContextSourceType.HUMAN,
+                                    text = "응답해봐",
+                                    occurredAt = now.plusSeconds(2),
+                                ),
+                            ),
+                    ),
+                )
+        val second = NiaJudgePromptAssembler().assemble(sampleRequest().copy(rawContextWindow = changedWindow))
+
+        assertThat(second.stablePromptPrefixChars).isEqualTo(first.stablePromptPrefixChars)
+        assertThat(second.prompt.take(second.stablePromptPrefixChars))
+            .isEqualTo(first.prompt.take(first.stablePromptPrefixChars))
+        assertThat(second.prompt.drop(second.stablePromptPrefixChars))
+            .isNotEqualTo(first.prompt.drop(first.stablePromptPrefixChars))
+            .contains("니아야 지금 있어?", "응답해봐")
+    }
+
+    @Test
+    fun `100개 원문은 각각 한 번만 들어가고 per-message payload overhead는 bounded다`() {
+        val entries =
+            (1L..100L).map { index ->
+                rawEntry(
+                    messageId = index,
+                    sourceType = RawContextSourceType.HUMAN,
+                    text = "RAW_COST_${index.toString().padStart(3, '0')}_${"가".repeat(80)}",
+                    occurredAt = now.plusMillis(index),
+                    authorPseudonym = if (index % 2L == 0L) "private-b" else "private-a",
+                )
+            }
+        val rawChars = entries.sumOf { it.contentLength }
+        val request =
+            sampleRequest().copy(
+                rawContextWindow =
+                    JudgeContextWindowBuilder(maxRawChars = 200_000)
+                        .build(RawContextSnapshot(scope, entries)),
+            )
+
+        val assembled = NiaJudgePromptAssembler().assemble(request)
+        val payloadJson = assembled.prompt.substringAfter("INPUT_JSON:\n")
+
+        entries.forEach { entry ->
+            val text = (entry.content as RawContextContent.Available).text
+            assertThat(payloadJson.split(text).size - 1).isEqualTo(1)
+        }
+        assertThat(mapper.readTree(payloadJson).at("/rawScene/messages").size()).isEqualTo(100)
+        assertThat(payloadJson.length).isLessThan(rawChars + 45_000)
+        println("NIA_JUDGE_COST_FIXTURE rawChars=$rawChars payloadChars=${payloadJson.length} promptChars=${assembled.prompt.length}")
     }
 
     @Test
@@ -110,8 +195,9 @@ class NiaJudgePromptAssemblerTest {
         val assembled = NiaJudgePromptAssembler().assemble(request)
         val payload = mapper.readTree(assembled.prompt.substringAfter("INPUT_JSON:\n"))
 
-        assertThat(payload.at("/fewShotSet/examples/0/exampleId").asText()).isEqualTo("fs_direct_reply")
-        assertThat(payload.at("/conversationRag/matches/0/entryId").asLong()).isEqualTo(41)
+        assertThat(payload.at("/fewShotSet/examples/0/exampleId").isMissingNode).isTrue()
+        assertThat(payload.at("/fewShotSet/examples/0/title").asText()).isEqualTo("direct reply request")
+        assertThat(payload.at("/conversationRag/matches/0/entryId").isMissingNode).isTrue()
         assertThat(payload.at("/conversationRag/matches/0/score").asDouble()).isEqualTo(0.91)
         assertThat(payload.at("/conversationRag/matches/0/example/title").asText()).isEqualTo("비슷한 대화")
         assertThat(assembled.prompt).contains(
@@ -193,20 +279,21 @@ class NiaJudgePromptAssemblerTest {
             )
 
         assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_4")
-        assertThat(payload.at("/rawScene/messages/1/authorRole").asText()).isEqualTo("nia")
+        assertThat(payload.at("/rawScene/messages/1/speakerLabel").asText()).isEqualTo("nia")
         assertThat(payload.at("/rawScene/messages/3/text").asText()).isEqualTo("니아야 왜 계속하냐고")
         assertThat(payload.at("/rawScene/messages/3/elapsedSincePreviousMs").asLong())
             .isEqualTo(13 * 60 * 60 * 1_000L)
     }
 
     @Test
-    fun `prompt metadata avoids raw guild and channel ids outside the raw scene source`() {
+    fun `prompt excludes operational metadata and raw scope identifiers`() {
         val llmRequest = NiaJudgePromptAssembler().assemble(sampleRequest())
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.timeoutMillis).isEqualTo(18_000)
-        assertThat(payload.at("/metadata/sceneSeq").asLong()).isEqualTo(7L)
-        assertThat(payload.at("/metadata/contextVersion").asLong()).isEqualTo(3L)
+        assertThat(payload.at("/metadata").isMissingNode).isTrue()
+        assertThat(payload.at("/rawScene/scopeFingerprint").isMissingNode).isTrue()
+        assertThat(payload.at("/rawScene/maxChars").isMissingNode).isTrue()
         assertThat(payload.toString()).doesNotContain("guild_a", "channel_a")
         assertThat(llmRequest.toString()).doesNotContain("야 이럴땐 위로해줘")
     }
@@ -225,6 +312,7 @@ class NiaJudgePromptAssemblerTest {
         val llmRequest = NiaJudgePromptAssembler().assemble(request)
 
         assertThat(llmRequest.metadata["reasoning_mode"]).isEqualTo("deliberate")
+        assertThat(llmRequest.metadata["execution_purpose"]).isEqualTo("final")
     }
 
     private fun sampleRequest(): SingleJudgeDecisionRequest =
@@ -296,11 +384,12 @@ class NiaJudgePromptAssemblerTest {
         text: String,
         occurredAt: Instant = now,
         replyToMessageId: Long? = null,
+        authorPseudonym: String = if (sourceType == RawContextSourceType.BOT) "nia_bot" else "user_a",
     ): RawContextEntry =
         RawContextEntry(
             scope = scope,
             messageId = messageId,
-            authorPseudonym = if (sourceType == RawContextSourceType.BOT) "nia_bot" else "user_a",
+            authorPseudonym = authorPseudonym,
             occurredAt = occurredAt,
             replyToMessageId = replyToMessageId,
             sourceType = sourceType,

@@ -67,7 +67,11 @@ services:
       # 빠른 채팅/무료질문/니아 speech 기본 모델.
       OPENAI_FREE_MODEL: ${OPENAI_FREE_MODEL:-gpt-5.6-luna}
       OPENAI_FAST_MODEL: ${OPENAI_FAST_MODEL:-gpt-5.6-luna}
+      # provider timeout 뒤 같은 요청을 다시 과금하지 않는다. 코드 기본값과 운영 compose를 이중 고정한다.
+      OPENAI_LLM_MAX_RETRIES: "0"
+      OPENAI_PROMPT_CACHE_WRITES_ENABLED: "false"
       NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-gpt-5.6-luna}
+      NEXA_SPEECH_MAX_RETRIES: "0"
       NEXA_PARTICIPATION_JUDGE_MODEL: ${NEXA_PARTICIPATION_JUDGE_MODEL:-gpt-5.6-luna}
       # 클라우드 이미지 생성(/그림)은 현재 운영 secret-file 계약에 Stability 키가 없어 비활성이다.
       # 필요하면 평문 env를 복구하지 말고 production Environment + configtree target을 함께 추가한다.
@@ -81,11 +85,12 @@ services:
       # <공개주소>/login/oauth2/code/discord 추가 등록 필요. user-id 는 콤마 구분.
       CENTRAL_OAUTH_ENABLED_FILE: /run/secrets/central.oauth.enabled
       CENTRAL_DASHBOARD_ADMIN_USER_IDS_FILE: /run/secrets/central.dashboard.admin-user-ids
+      CENTRAL_METRICS_SCRAPE_TOKEN_FILE: /run/secrets/central.metrics.scrape-token
       # NEXA participation 글로벌 기본 lane. LIVE = 모든(+미래) 길드가 길드별 설정 없이도 자발발화를 **실제 Discord
-      # 로 전송**(allowsRealSend=true). 과발화·토큰 폭주는 NexaParticipationEmitBridge 의 rate limit 안전망(채널별
-      # central.nexa.participation.rate-limit.per-channel-per-min 기본 6 + 전역 global-per-min 기본 30, 분당)이
-      # emit(GLM 발화) 호출 직전 이중 게이트로 막는다(한도 초과 시 토큰 0). 길드가 명시적으로 다른 lane 을 가지면 그게
-      # 우선. 코드 기본값(@Value)은 OFF 라 테스트/로컬은 회귀 0 — 실서버만 이 줄로 LIVE 활성.
+      # 로 전송**(allowsRealSend=true). 채널별 6/분·전역 30/분 execution permit은 실제 SEND/REACT를 hard cap하지만,
+      # 그 전에 끝난 judge/speech 호출 비용까지 되돌리지는 않는다. 이 비용은 central_openai_* 목적별 지표로 별도 관측한다.
+      # 길드가 명시적으로 다른 lane 을 가지면 그게 우선. 코드 기본값(@Value)은 OFF 라 테스트/로컬은 회귀 0 —
+      # 실서버만 이 줄로 LIVE 활성.
       CENTRAL_NEXA_PARTICIPATION_GLOBAL_DEFAULT_LANE: LIVE
     secrets:
       - source: DB_PASSWORD
@@ -110,6 +115,8 @@ services:
         target: central.oauth.enabled
       - source: CENTRAL_DASHBOARD_ADMIN_USER_IDS
         target: central.dashboard.admin-user-ids
+      - source: METRICS_SCRAPE_TOKEN
+        target: central.metrics.scrape-token
     networks:
       default: {}
       yeon-edge:
@@ -132,6 +139,24 @@ services:
       SEARXNG_BASE_URL: "http://searxng:8080/"
     volumes:
       - ./searxng:/etc/searxng:rw
+
+  # 중앙 서버의 process-local Micrometer counter를 영속 수집한다. 호스트/공개 포트는 열지 않는다.
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    restart: unless-stopped
+    depends_on:
+      central-server:
+        condition: service_started
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=1GB
+    secrets:
+      - METRICS_SCRAPE_TOKEN
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - central-prometheus:/prometheus
 
 networks:
   # yeon 스택의 외부 네트워크(yeon-cloudflared-1 과 공유). 컨테이너명/alias 로 터널 라우팅.
@@ -161,6 +186,9 @@ secrets:
     environment: CENTRAL_OAUTH_ENABLED
   CENTRAL_DASHBOARD_ADMIN_USER_IDS:
     environment: CENTRAL_DASHBOARD_ADMIN_USER_IDS
+  METRICS_SCRAPE_TOKEN:
+    environment: CENTRAL_METRICS_SCRAPE_TOKEN
 
 volumes:
   central-db:
+  central-prometheus:

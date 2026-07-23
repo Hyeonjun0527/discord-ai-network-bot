@@ -1,6 +1,8 @@
 package com.discordassistant.central.socialmemory.adapter.outbound.appraisal
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.socialmemory.domain.model.appraisal.Appraisal
 import com.discordassistant.central.socialmemory.domain.model.appraisal.RelationshipLens
@@ -35,7 +37,19 @@ class CloudLlmAppraiserProvider(
             SocialAppraiser.SYSTEM_PROMPT + "\n\n" +
                 SocialAppraiser.buildUserPrompt(messages, speakerPersonId, lens, candidatePersonIds)
         return try {
-            val result = cloudLlm.generate(prompt, APPRAISER_MODEL, history = emptyList(), thinking = CloudThinking.DISABLED)
+            val result =
+                cloudLlm.generate(
+                    prompt = prompt,
+                    model = APPRAISER_MODEL,
+                    history = emptyList(),
+                    thinking = CloudThinking.DISABLED,
+                    options =
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.SOCIAL_APPRAISAL,
+                            maxOutputTokens = MAX_OUTPUT_TOKENS,
+                            maxRetries = 0,
+                        ),
+                )
             SocialAppraiser.parse(result.text)
         } catch (e: Exception) {
             Appraisal.conservativeDefault(error = "${e.javaClass.simpleName}: ${e.message}")
@@ -44,5 +58,6 @@ class CloudLlmAppraiserProvider(
 
     companion object {
         const val APPRAISER_MODEL: String = "gpt-5.6-luna"
+        private const val MAX_OUTPUT_TOKENS: Int = 512
     }
 }

@@ -97,7 +97,7 @@ class CommandService(
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
         toneDirective: String = "",
-        ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
+        ambientHistory: List<com.discordassistant.central.routing.application.CloudTurn>? = null,
         fastResponse: Boolean = false,
     ): Reply =
         askCommands.ask(

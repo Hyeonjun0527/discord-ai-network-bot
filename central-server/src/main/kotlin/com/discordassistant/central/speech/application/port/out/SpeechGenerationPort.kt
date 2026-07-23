@@ -38,6 +38,8 @@ data class SpeechGenerationRequest(
     val reasoningMode: ReasoningMode,
     /** 출력 token 상한(T015 — 후보 1개당). */
     val maxOutputTokens: Int,
+    /** [systemPrompt] 앞부분 중 장면마다 변하지 않아 explicit prompt cache에 넣을 수 있는 문자 수. */
+    val stableSystemPromptChars: Int = 0,
     /**
      * 니아 감정 톤 힌트(D2 EmotionRenderer)의 *아주 약한* 미세 지시 — 기본 "" = 평소 니아(무영향·하위호환).
      * 비어 있지 않으면 생성 프롬프트에 약하게 얹는다. 정체성·답변 길이는 안 건드린다(I11 — 반응 온도만).
@@ -51,6 +53,9 @@ data class SpeechGenerationRequest(
             "candidateCount 는 [$MIN_CANDIDATES,$MAX_CANDIDATES] 범위여야 한다: $candidateCount"
         }
         require(maxOutputTokens > 0) { "maxOutputTokens 는 양수여야 한다: $maxOutputTokens" }
+        require(stableSystemPromptChars in 0..systemPrompt.length) {
+            "stableSystemPromptChars 는 systemPrompt 길이 안이어야 한다: $stableSystemPromptChars/${systemPrompt.length}"
+        }
     }
 
     companion object {

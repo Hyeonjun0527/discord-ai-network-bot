@@ -46,6 +46,10 @@ management:
 
 # 중앙 서버 고유 설정 (ADR 0003/0004). 환경변수로 오버라이드.
 central:
+  metrics:
+    # 운영 Prometheus collector 전용 bearer token. 로컬 OAuth OFF + 미설정은 직접 조회 가능하지만,
+    # 운영 OAuth ON에서는 반드시 설정해야 하며 미설정 시 scrape endpoint가 fail-closed(503)한다.
+    scrape-token: ${CENTRAL_METRICS_SCRAPE_TOKEN:}
   discord:
     # Discord 봇 토큰. 절대 커밋 금지 — 환경변수 DISCORD_BOT_TOKEN 로 주입.
     bot-token: ${DISCORD_BOT_TOKEN:}
@@ -103,7 +107,11 @@ central:
     openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout-seconds: ${OPENAI_TIMEOUT_SECONDS:120}
     llm-timeout-seconds: ${OPENAI_LLM_TIMEOUT_SECONDS:20}
-    llm-max-retries: ${OPENAI_LLM_MAX_RETRIES:2}
+    # 동일 생성의 숨은 재호출은 timeout 뒤에도 과금될 수 있다. 기본 0; 의미 있는 복구는 각 상위 유스케이스가 명시한다.
+    llm-max-retries: ${OPENAI_LLM_MAX_RETRIES:0}
+    # GPT-5.6 explicit cache write는 uncached input의 1.25배다. 낮은 재사용률에서는 write 비용이 더 크므로 기본 OFF.
+    # OFF여도 explicit/no-breakpoint를 보내 implicit write를 막는다. 목적별 cache_write/cached_input 실측 후에만 켠다.
+    prompt-cache-writes-enabled: ${OPENAI_PROMPT_CACHE_WRITES_ENABLED:false}
     # 모든 Luna 호출은 OpenAiCloudLlm에서 reasoning effort none으로 고정한다.
     free-model: ${OPENAI_FREE_MODEL:gpt-5.6-luna}
     # 짧은 니아 호명(예: "니아야?") 전용 즉답 모델. 실제 AI 호출이며, env 로 즉시 rollback 가능.
@@ -124,7 +132,8 @@ central:
     # 모델 업데이트·rollback 은 코드 수정 없이 이 값(또는 환경변수)만 바꾸면 된다.
     model: ${NEXA_SPEECH_MODEL:gpt-5.6-luna}
     timeout-seconds: ${NEXA_SPEECH_TIMEOUT_SECONDS:8}
-    max-retries: ${NEXA_SPEECH_MAX_RETRIES:1}
+    # 후보 생성도 기본 1회만. malformed/timeout 재호출은 같은 장면을 다시 과금하므로 운영자가 명시할 때만 켠다.
+    max-retries: ${NEXA_SPEECH_MAX_RETRIES:0}
     # 기존 설정 호환값. Luna Responses 요청에는 temperature를 전송하지 않는다(ADR 0006).
     temperature: ${NEXA_SPEECH_TEMPERATURE:0.5}
   ai-network:
@@ -183,6 +192,20 @@ central:
       judge:
         # 니아 participation 판단 모델. 발화와 같은 Luna none 경로를 사용한다.
         model: ${NEXA_PARTICIPATION_JUDGE_MODEL:gpt-5.6-luna}
+        raw-context:
+          # 저장 보존 한도(20만 자)와 모델 입력 한도를 분리한다. 기본값은 기존 판단 품질을 보존하고,
+          # 목적별 input token 실측 뒤 운영에서만 낮춘다.
+          max-chars: ${NEXA_PARTICIPATION_JUDGE_RAW_CONTEXT_MAX_CHARS:200000}
+      speech:
+        raw-context:
+          max-chars: ${NEXA_PARTICIPATION_SPEECH_RAW_CONTEXT_MAX_CHARS:12000}
+
+# 원문 문자 수가 0인 첨부/삭제 메시지도 행과 직렬화 메타데이터를 소비하므로 개수 상한을 별도로 둔다.
+# 100개 burst 원문은 그대로 보존하면서 비어 있는 행이 무한히 쌓여 judge 입력 상한을 우회하는 것만 막는다.
+nexa:
+  raw-context:
+    max-raw-chars-per-scope: ${NEXA_RAW_CONTEXT_MAX_RAW_CHARS_PER_SCOPE:200000}
+    max-entries-per-scope: ${NEXA_RAW_CONTEXT_MAX_ENTRIES_PER_SCOPE:2000}
 
 # Bugsink 오류 수집. Bugsink는 Sentry SDK 호환이므로 Sentry Java SDK를 사용한다.
 # DSN 미설정(기본)이면 완전 no-op. BUGSINK_DSN 또는 SENTRY_DSN 주입 시 활성.

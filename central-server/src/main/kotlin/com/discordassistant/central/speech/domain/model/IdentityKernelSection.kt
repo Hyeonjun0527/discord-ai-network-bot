@@ -16,6 +16,11 @@ data class IdentityKernelSection(
     val personaName: String,
     /** 프롬프트에 주입할 정체성 본문(니아 페르소나 SSOT 발췌 — 짧게 조립). */
     val personaBlock: String,
+    /**
+     * [personaBlock] 앞부분 중 장면마다 바뀌지 않는 문자 수. 기본은 전체 본문이다. 대화 RAG처럼 장면별
+     * 보조 예시를 뒤에 붙일 때만 그 직전 경계를 기록해, 동적 suffix가 prompt-cache key를 매번 바꾸지 않게 한다.
+     */
+    val stablePersonaBlockChars: Int = personaBlock.length,
     /** 절대 하지 않을 것(금지사항). 읽기용·불변. */
     val prohibitions: List<String>,
     /** 승인된 관심·정체성 tag. 읽기용·불변. */
@@ -24,6 +29,9 @@ data class IdentityKernelSection(
     init {
         require(personaName.isNotBlank()) { "personaName 은 비어 있을 수 없다" }
         require(personaBlock.isNotBlank()) { "personaBlock 은 비어 있을 수 없다" }
+        require(stablePersonaBlockChars in 1..personaBlock.length) {
+            "stablePersonaBlockChars 는 personaBlock 길이 안이어야 한다: $stablePersonaBlockChars/${personaBlock.length}"
+        }
     }
 
     companion object {
@@ -33,10 +41,12 @@ data class IdentityKernelSection(
             personaBlock: String,
             prohibitions: Collection<String> = emptyList(),
             interests: Collection<String> = emptySet(),
+            stablePersonaBlockChars: Int = personaBlock.length,
         ): IdentityKernelSection =
             IdentityKernelSection(
                 personaName = personaName,
                 personaBlock = personaBlock,
+                stablePersonaBlockChars = stablePersonaBlockChars,
                 prohibitions = prohibitions.toList(),
                 interests = interests.toSet(),
             )

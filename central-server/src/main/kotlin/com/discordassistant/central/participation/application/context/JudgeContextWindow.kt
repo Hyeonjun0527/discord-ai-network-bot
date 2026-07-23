@@ -23,6 +23,7 @@ class JudgeContextWindowBuilder(
             messages = messages,
             omittedOldestCount = sceneWindow.omittedOldestCount,
             quotedSceneData = serializeAsQuotedScene(messages),
+            retrievalSceneData = serializeForRetrieval(messages),
         )
     }
 
@@ -30,6 +31,7 @@ class JudgeContextWindowBuilder(
         JudgeContextMessage(
             ref = ref,
             authorRole = authorRole.wireName,
+            speakerLabel = speakerLabel,
             createdAt = createdAt,
             replyToRef = replyToRef,
             content =
@@ -47,12 +49,28 @@ class JudgeContextWindowBuilder(
             } else {
                 messages.forEach { message ->
                     val reply = message.replyToRef?.let { " reply_to=$it" }.orEmpty()
-                    appendLine("${message.ref} ${message.authorRole}$reply: ${message.content.render()}")
+                    appendLine("${message.ref} ${message.speakerLabel}$reply: ${message.content.render()}")
                 }
             }
             appendLine()
             append(REASSERT)
         }.trim()
+
+    /**
+     * RAG 검색은 명령을 실행하지 않는 embedding/text-similarity 입력이다. LLM용 injection 경계 문구와 message ref를
+     * 다시 embedding하면 비용과 검색 잡음만 늘어나므로, 같은 원문을 화자/답글 관계와 함께 간결하게 직렬화한다.
+     */
+    private fun serializeForRetrieval(messages: List<JudgeContextMessage>): String =
+        messages.joinToString("\n") { message ->
+            val reply = message.replyToRef?.let { " reply_to=$it" }.orEmpty()
+            "${message.speakerLabel}$reply: ${message.content.renderForRetrieval()}"
+        }
+
+    private fun JudgeContextContent.renderForRetrieval(): String =
+        when (this) {
+            is JudgeContextContent.Available -> text
+            is JudgeContextContent.Unavailable -> "[content_unavailable:$reason]"
+        }
 
     private fun JudgeContextContent.render(): String =
         when (this) {
@@ -83,6 +101,7 @@ data class JudgeContextWindow(
     val messages: List<JudgeContextMessage>,
     val omittedOldestCount: Int,
     val quotedSceneData: String,
+    val retrievalSceneData: String,
 ) {
     init {
         require(scopeFingerprint.isNotBlank()) { "scopeFingerprint 는 비어 있을 수 없다" }
@@ -94,6 +113,7 @@ data class JudgeContextWindow(
 data class JudgeContextMessage(
     val ref: String,
     val authorRole: String,
+    val speakerLabel: String,
     val createdAt: Instant,
     val replyToRef: String?,
     val content: JudgeContextContent,
@@ -101,6 +121,7 @@ data class JudgeContextMessage(
     init {
         require(ref.isNotBlank()) { "ref 는 비어 있을 수 없다" }
         require(authorRole.isNotBlank()) { "authorRole 은 비어 있을 수 없다" }
+        require(speakerLabel.isNotBlank()) { "speakerLabel 은 비어 있을 수 없다" }
         replyToRef?.let {
             require(it.isNotBlank()) { "replyToRef 는 공백일 수 없다" }
             require(it != ref) { "replyToRef 는 자기 자신을 가리킬 수 없다: $ref" }

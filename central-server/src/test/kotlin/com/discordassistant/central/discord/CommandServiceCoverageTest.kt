@@ -3,6 +3,7 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.CommandService
 import com.discordassistant.central.platform.discord.command.AskCommandHandler
+import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -39,6 +40,33 @@ class CommandServiceCoverageTest
             assertEquals(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL, AskCommandHandler.resolveFreeCloudModel(""))
             assertEquals(AskCommandHandler.DEFAULT_FREE_CLOUD_MODEL, AskCommandHandler.resolveFreeCloudModel("   "))
             assertEquals("glm-5.1", AskCommandHandler.resolveFreeCloudModel(" glm-5.1 "))
+        }
+
+        @Test
+        fun `메시지 채널 문맥과 ask 전용 기억을 중복 결합하지 않는다`() {
+            val stored = listOf(CloudTurn("user", "slash question"), CloudTurn("assistant", "slash answer"))
+            val ambient = listOf(CloudTurn("user", "channel message"), CloudTurn("assistant", "channel answer"))
+            var storedHistoryRead = false
+
+            val messageHistory =
+                AskCommandHandler.selectConversationHistory(ambient) {
+                    storedHistoryRead = true
+                    stored
+                }
+            assertEquals(ambient, messageHistory)
+            assertFalse(storedHistoryRead, "메시지 응답은 ask 전용 기억을 읽지 않아야 함")
+            assertFalse(AskCommandHandler.shouldPersistConversationMemory(ambient))
+
+            val emptyAmbientHistory =
+                AskCommandHandler.selectConversationHistory(emptyList()) {
+                    storedHistoryRead = true
+                    stored
+                }
+            assertTrue(emptyAmbientHistory.isEmpty(), "첫 메시지도 과거 /ask 기억을 섞지 않아야 함")
+
+            val slashHistory = AskCommandHandler.selectConversationHistory(null) { stored }
+            assertEquals(stored, slashHistory)
+            assertTrue(AskCommandHandler.shouldPersistConversationMemory(null))
         }
 
         @Test

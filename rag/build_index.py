@@ -144,7 +144,16 @@ def build_vectors(
     from llama_index.vector_stores.qdrant import QdrantVectorStore
     from qdrant_helper import make_qdrant_client
 
-    embed_model = OpenAIEmbedding(model=embedding_model, api_key=api_key)
+    client = make_qdrant_client(qdrant_url)
+    collection_exists = client.collection_exists(collection)
+    if collection_exists and not force:
+        raise SystemExit(f"collection already exists: {collection}. Use --force to rebuild it.")
+
+    embed_model = OpenAIEmbedding(
+        model=embedding_model,
+        api_key=api_key,
+        max_retries=0,
+    )
     nodes = []
     for idx, chunk in enumerate(chunks, 1):
         node = TextNode(
@@ -162,10 +171,7 @@ def build_vectors(
     for node, vector in zip(nodes, vectors):
         node.embedding = vector
 
-    client = make_qdrant_client(qdrant_url)
-    if client.collection_exists(collection):
-        if not force:
-            raise SystemExit(f"collection already exists: {collection}. Use --force to rebuild it.")
+    if collection_exists:
         client.delete_collection(collection)
     vector_store = QdrantVectorStore(client=client, collection_name=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)

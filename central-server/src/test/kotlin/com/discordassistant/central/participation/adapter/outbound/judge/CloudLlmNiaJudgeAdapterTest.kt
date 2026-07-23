@@ -3,6 +3,8 @@ package com.discordassistant.central.participation.adapter.outbound.judge
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudLlmUsage
 import com.discordassistant.central.routing.application.CloudThinking
@@ -12,6 +14,7 @@ import com.discordassistant.central.routing.application.ImageReview
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.Duration
 
 class CloudLlmNiaJudgeAdapterTest {
     @Test
@@ -26,6 +29,11 @@ class CloudLlmNiaJudgeAdapterTest {
         assertThat(cloudLlm.model).isEqualTo("gpt-5.6-luna")
         assertThat(cloudLlm.history).isEmpty()
         assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.DISABLED)
+        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_JUDGE)
+        assertThat(cloudLlm.options!!.maxOutputTokens).isEqualTo(2_048)
+        assertThat(cloudLlm.options!!.cachePolicy!!.stablePrefixChars).isEqualTo(request.stablePromptPrefixChars)
+        assertThat(cloudLlm.options!!.requestTimeout).isEqualTo(Duration.ofMillis(750))
+        assertThat(cloudLlm.options!!.maxRetries).isZero()
         assertThat(response.content).isEqualTo(JUDGE_JSON)
         assertThat(response.modelVersion).isEqualTo("gpt-5.6-luna")
         assertThat(response.finishReason).isEqualTo(CloudLlmNiaJudgeAdapter.FINISH_REASON_COMPLETED)
@@ -55,6 +63,25 @@ class CloudLlmNiaJudgeAdapterTest {
     }
 
     @Test
+    fun `shadow와 repair 호출은 운영 비용 목적이 따로 기록된다`() {
+        val cloudLlm = RecordingCloudLlm()
+        val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "gpt-5.6-luna")
+
+        adapter.complete(request().copy(metadata = mapOf("execution_purpose" to "shadow")))
+        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SHADOW_JUDGE)
+
+        adapter.complete(
+            request().copy(
+                metadata = mapOf("execution_purpose" to "shadow", "repair_attempt" to "true"),
+            ),
+        )
+        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR)
+
+        adapter.complete(request().copy(metadata = mapOf("repair_attempt" to "true")))
+        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_JUDGE_REPAIR)
+    }
+
+    @Test
     fun `request timeout cancels slow cloud call`() {
         val cloudLlm =
             RecordingCloudLlm {
@@ -70,10 +97,11 @@ class CloudLlmNiaJudgeAdapterTest {
 
     private fun request(timeoutMillis: Long = 1_000): NiaJudgeLlmRequest =
         NiaJudgeLlmRequest(
-            prompt = "judge this scene",
+            prompt = "fixed judge rules\ndynamic scene",
             promptVersion = "nia-judge-prompt-v1",
             seed = 42L,
             timeoutMillis = timeoutMillis,
+            stablePromptPrefixChars = "fixed judge rules\n".length,
         )
 
     private class RecordingCloudLlm(
@@ -85,6 +113,7 @@ class CloudLlmNiaJudgeAdapterTest {
         var model: String? = null
         var history: List<CloudTurn>? = null
         var thinking: CloudThinking? = null
+        var options: CloudLlmRequestOptions? = null
 
         override fun isEnabled(): Boolean = enabled
 
@@ -105,6 +134,17 @@ class CloudLlmNiaJudgeAdapterTest {
             this.history = history
             this.thinking = thinking
             return completion()
+        }
+
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+            options: CloudLlmRequestOptions,
+        ): CloudLlmResult {
+            this.options = options
+            return generate(prompt, model, history, thinking)
         }
 
         override fun generateWithTools(

@@ -10,6 +10,7 @@ import com.discordassistant.central.participation.application.fewshot.NiaFewShot
 import com.discordassistant.central.participation.application.fewshot.PublishNiaFewShotVersionCommand
 import com.discordassistant.central.participation.application.fewshot.ReplaceNiaFewShotDraftCommand
 import com.discordassistant.central.participation.application.fewshot.RollbackNiaFewShotVersionCommand
+import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotBadAlternative
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
@@ -381,7 +382,7 @@ data class NiaFewShotPromptPreviewDto(
             redactRawText: Boolean,
         ): NiaFewShotPromptPreviewDto =
             NiaFewShotPromptPreviewDto(
-                schema = "nia.participation-judge-input.v1",
+                schema = NiaJudgePromptAssembler.INPUT_SCHEMA,
                 sceneWindow = NiaPromptSceneWindowDto(maxChars = 200_000, messages = emptyList()),
                 fewShotSet =
                     NiaPromptFewShotSetDto(

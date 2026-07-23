@@ -5,6 +5,8 @@ import com.discordassistant.central.participation.application.judge.RawParticipa
 import com.discordassistant.central.participation.application.judge.RawParticipationJudgeRequest
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.shared.NexaIdentity
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -30,7 +32,18 @@ class CloudRawParticipationJudge(
         val prompt = buildPrompt(request)
         val result =
             try {
-                cloudLlm.generate(prompt, model, history = emptyList(), thinking = CloudThinking.DISABLED)
+                cloudLlm.generate(
+                    prompt = prompt,
+                    model = model,
+                    history = emptyList(),
+                    thinking = CloudThinking.DISABLED,
+                    options =
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.LEGACY_PARTICIPATION_JUDGE,
+                            maxOutputTokens = MAX_OUTPUT_TOKENS,
+                            maxRetries = 0,
+                        ),
+                )
             } catch (e: Exception) {
                 log.warn("raw participation judge 호출 실패(channel={}): {}", request.channelId, e.javaClass.simpleName)
                 return null
@@ -54,7 +67,8 @@ class CloudRawParticipationJudge(
             appendLine("omitted_oldest_messages=${request.omittedOldestCount}")
             appendLine("trigger_text=«${sanitizeInline(request.triggerText)}»")
             appendLine()
-            appendLine(request.quotedSceneData.take(MAX_QUOTED_SCENE_CHARS))
+            // 장면은 시간순이므로 길이 상한에서는 현재 trigger가 있는 최신 끝부분을 보존한다.
+            appendLine(request.quotedSceneData.takeLast(MAX_QUOTED_SCENE_CHARS))
             appendLine()
             append(OUTPUT_INSTRUCTION)
         }
@@ -137,6 +151,7 @@ class CloudRawParticipationJudge(
     }
 
     companion object {
+        private const val MAX_OUTPUT_TOKENS = 1_024
         private const val DEFAULT_CONFIDENCE = 0.6
         private const val MAX_REASON_CHARS = 80
         private const val MAX_QUOTED_SCENE_CHARS = 160_000

@@ -25,12 +25,16 @@ data class NiaSceneWindow(
 data class NiaSceneMessage(
     val ref: String,
     val authorRole: NiaSceneAuthorRole,
+    val speakerLabel: String,
     val createdAt: Instant,
     val replyToRef: String?,
     val content: NiaSceneContent,
 ) {
     init {
         require(ref.isNotBlank()) { "ref 는 비어 있을 수 없다" }
+        require(speakerLabel.matches(Regex("[a-z]+_[0-9]+|nia|system"))) {
+            "speakerLabel 은 window-local 가명이어야 한다: $speakerLabel"
+        }
         replyToRef?.let {
             require(it.isNotBlank()) { "replyToRef 는 공백일 수 없다" }
             require(it != ref) { "replyToRef 는 자기 자신을 가리킬 수 없다: $ref" }

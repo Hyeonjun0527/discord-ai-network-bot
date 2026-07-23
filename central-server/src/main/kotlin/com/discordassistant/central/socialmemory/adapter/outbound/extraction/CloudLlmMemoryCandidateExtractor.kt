@@ -1,6 +1,9 @@
 package com.discordassistant.central.socialmemory.adapter.outbound.extraction
 
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
+import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.socialmemory.application.extraction.MemoryCandidateExtractorPort
 import com.discordassistant.central.socialmemory.application.extraction.MemoryExtractionRequest
 import com.discordassistant.central.socialmemory.domain.model.extraction.MemoryCandidate
@@ -34,7 +37,19 @@ class CloudLlmMemoryCandidateExtractor(
         if (!request.isExtractable) return emptyList()
         if (!cloudLlm.isEnabled()) return emptyList()
         return try {
-            val result = cloudLlm.generate(MemoryCandidateSchema.buildPrompt(request), EXTRACTION_MODEL)
+            val result =
+                cloudLlm.generate(
+                    prompt = MemoryCandidateSchema.buildPrompt(request),
+                    model = EXTRACTION_MODEL,
+                    history = emptyList(),
+                    thinking = CloudThinking.DISABLED,
+                    options =
+                        CloudLlmRequestOptions(
+                            purpose = CloudLlmPurpose.MEMORY_EXTRACTION,
+                            maxOutputTokens = MAX_OUTPUT_TOKENS,
+                            maxRetries = 0,
+                        ),
+                )
             MemoryCandidateSchema.parse(result.text, request, mapper, clock.instant())
         } catch (e: Exception) {
             // 추출 실패는 사실을 만들지 않는다 — 상세는 로그로만, 빈 후보로 흡수(consolidation 다음 batch 진행).
@@ -45,5 +60,6 @@ class CloudLlmMemoryCandidateExtractor(
 
     companion object {
         const val EXTRACTION_MODEL = "gpt-5.6-luna"
+        private const val MAX_OUTPUT_TOKENS = 2_048
     }
 }

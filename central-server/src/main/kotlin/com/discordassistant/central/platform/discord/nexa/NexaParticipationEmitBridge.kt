@@ -10,14 +10,18 @@ import com.discordassistant.central.conversation.application.scene.ConversationS
 import com.discordassistant.central.conversation.application.scene.InMemoryConversationSceneIngress
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextContent
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextEntry
-import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextRetentionPolicy
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextUnavailableReason
 import com.discordassistant.central.global.crypto.ScopedPseudonymizer
+import com.discordassistant.central.global.observability.NiaRuntimeMetrics
+import com.discordassistant.central.global.observability.NiaSupersessionMetricStage
+import com.discordassistant.central.global.observability.NiaTurnAddressing
+import com.discordassistant.central.global.observability.NiaTurnMetricOutcome
 import com.discordassistant.central.participation.application.DecisionProvenance
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.context.JudgeContextContent
 import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
 import com.discordassistant.central.participation.application.context.NiaJudgeContextAssembler
 import com.discordassistant.central.participation.application.context.NiaJudgeContextInput
@@ -84,7 +88,6 @@ import com.discordassistant.central.participation.domain.service.AttentionGateCo
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.participation.domain.service.ChannelAttentionGate
 import com.discordassistant.central.participation.domain.service.CoreInterventionRules
-import com.discordassistant.central.quota.application.RateLimitStore
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
@@ -163,12 +166,12 @@ class NexaParticipationEmitBridge(
     // baseline 정책을 명시 선택한다(BaselineParticipationPolicyConfig.PARTICIPATION_EVAL_POLICY_BEAN).
     @param:Qualifier("participationEvalPolicy") private val policy: ParticipationPolicyPort,
     private val emit: NexaSpeechEmitService,
-    // 이전 생성 전 rate-limit 생성자 계약과의 호환용 의존성. 실제 SEND/REACT 제한은 emit의 ExecutionPermitPort가 소유한다.
-    @Suppress("UNUSED_PARAMETER") rateLimitStore: RateLimitStore,
     @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
     @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
     @param:Value("\${central.nexa.participation.speech.raw-context.max-chars:12000}")
     private val speechRawContextMaxChars: Int = 12_000,
+    @param:Value("\${central.nexa.participation.judge.raw-context.max-chars:200000}")
+    private val judgeRawContextMaxChars: Int = 200_000,
     @param:Value("\${central.nexa.judge.mode:final}") private val judgeModeName: String = NexaJudgeMode.FINAL.wireName,
     private val rawContextStore: RawContextStorePort? = null,
     private val decisionLog: ParticipationDecisionLogPort? = null,
@@ -187,6 +190,7 @@ class NexaParticipationEmitBridge(
     private val conversationSceneIngress: ConversationSceneIngress = InMemoryConversationSceneIngress(),
     private val clock: Clock = Clock.systemUTC(),
     private val promptSource: NiaPromptSource = CodeNiaPromptSource,
+    private val runtimeMetrics: NiaRuntimeMetrics? = null,
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
     private val judgeMode = NexaJudgeMode.parse(judgeModeName)
@@ -195,7 +199,7 @@ class NexaParticipationEmitBridge(
     private val judgeContextAssembler =
         NiaJudgeContextAssembler(
             JudgeContextWindowBuilder(
-                RawContextRetentionPolicy.DEFAULT_MAX_RAW_CHARS,
+                judgeRawContextMaxChars,
                 niaAuthorPseudonyms = setOf(NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM),
             ),
         )
@@ -253,12 +257,16 @@ class NexaParticipationEmitBridge(
                 ),
             )
         }
-        if (!signal.reevaluationWake && !captureRawContext(signal)) {
-            return turnOutcome(
-                mode,
-                recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed),
-            )
-        }
+        val rawContextSnapshot =
+            if (signal.reevaluationWake || signal.rawContextPreCaptured) {
+                loadRawContextSnapshot(signal)
+            } else {
+                captureRawContext(signal)
+                    ?: return turnOutcome(
+                        mode,
+                        recordTrace(signal = signal, mode = mode, outcome = ParticipationEmitOutcome.Failed),
+                    )
+            }
         if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return turnOutcome(
                 mode,
@@ -294,7 +302,11 @@ class NexaParticipationEmitBridge(
         }
         val outcome =
             try {
-                evaluateAndEmit(effectiveSignal, originRolloutMode = mode)
+                evaluateAndEmit(
+                    signal = effectiveSignal,
+                    originRolloutMode = mode,
+                    rawContextSnapshot = rawContextSnapshot,
+                )
             } catch (e: Exception) {
                 // 활성 participation 채널은 judge/안전 경계를 우회하지 않는다. 실패는 로그 후 비발화로 fail-closed한다.
                 log.warn(
@@ -310,6 +322,11 @@ class NexaParticipationEmitBridge(
     /** WAIT outbox가 마지막 사람 장면을 중복 저장하지 않고 최신 context version으로 다시 판단한다. */
     fun onWaitReevaluation(command: WaitReevaluationCommand): Boolean {
         if (!Instant.now(clock).isBefore(command.expiresAt) || command.wakeAttempt > MAX_WAIT_REEVALUATIONS) return true
+        val routingChannelId = command.routingChannelId?.toLongOrNull()
+        val targetGeneration = command.targetMessageId?.toLongOrNull()
+        if (routingChannelId != null && targetGeneration != null && !turnGenerations.isLatest(routingChannelId, targetGeneration)) {
+            return true
+        }
         val last = command.routingChannelId?.let(lastHumanSignals::get) ?: restoreWaitSignal(command)
         if (last == null) {
             log.warn("NEXA WAIT 장면 복원 실패(child={}) — 만료 전 다음 tick에서 재시도", command.childDecisionId)
@@ -505,6 +522,10 @@ class NexaParticipationEmitBridge(
         channelId: Long,
     ): ParticipationTurnOutcome {
         val mode = flags.effectiveMode(guildId = guildId, channelId = channelId)
+        runtimeMetrics?.recordTurn(
+            outcome = NiaTurnMetricOutcome.FAILED,
+            addressing = NiaTurnAddressing.UNCLASSIFIED,
+        )
         return turnOutcome(mode, ParticipationEmitOutcome.Failed)
     }
 
@@ -519,11 +540,13 @@ class NexaParticipationEmitBridge(
             ownsTurn = mode.allowsRealSend && outcome !== ParticipationEmitOutcome.Inactive,
         )
 
-    private fun captureRawContext(signal: ParticipationMessageSignal): Boolean {
-        val store = rawContextStore ?: return true
+    private fun captureRawContext(signal: ParticipationMessageSignal): RawContextSnapshot? {
+        val scope = signal.rawContextScope()
+        val store =
+            rawContextStore
+                ?: return mergeRawContext(signal, RawContextSnapshot(scope, emptyList()))
         return try {
-            store.append(signal.toRawContextEntry())
-            true
+            mergeRawContext(signal, store.append(signal.toRawContextEntry()).snapshot)
         } catch (e: Exception) {
             log.warn(
                 "NEXA raw context 저장 실패(channel={}, message={}) — participation 평가 중단: {}",
@@ -531,7 +554,56 @@ class NexaParticipationEmitBridge(
                 signal.messageId,
                 e.message,
             )
-            false
+            null
+        }
+    }
+
+    private fun loadRawContextSnapshot(signal: ParticipationMessageSignal): RawContextSnapshot {
+        val scope = signal.rawContextScope()
+        val stored =
+            try {
+                rawContextStore?.readRecent(scope) ?: RawContextSnapshot(scope, emptyList())
+            } catch (e: Exception) {
+                log.warn("NEXA judge raw context 조회 실패(sceneSeq={}) — {}", signal.sceneSeq, e.message)
+                RawContextSnapshot(scope, emptyList())
+            }
+        return mergeRawContext(signal, stored)
+    }
+
+    private fun mergeRawContext(
+        signal: ParticipationMessageSignal,
+        stored: RawContextSnapshot,
+    ): RawContextSnapshot {
+        val recentEntries = signal.recentRawMessages.mapNotNull { it.toRawContextEntry(stored.scope, signal.guildId) }
+        val merged =
+            (stored.entries + recentEntries)
+                .distinctBy { it.messageId }
+                .sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
+        return RawContextSnapshot(stored.scope, merged)
+    }
+
+    private fun ParticipationMessageSignal.rawContextScope(): RawContextScope =
+        RawContextScope(guildId = guildId, channelId = channelId, threadId = threadId)
+
+    /**
+     * Discord 수신 큐가 포화돼 평가 작업이 밀리더라도 원문 보존은 먼저 끝낸다. 같은 messageId append는 upsert라
+     * 재전달에도 중복되지 않으며, OFF 채널과 명령형 메시지는 기존처럼 저장하지 않는다.
+     */
+    fun onHumanMessageObserved(signal: ParticipationRawContextEditSignal): ParticipationRawContextMutationOutcome {
+        if (signal.sourceType != ParticipationMessageSourceType.HUMAN || signal.rawText.trimStart().startsWith(".")) {
+            return ParticipationRawContextMutationOutcome.Ignored
+        }
+        if (!flags.effectiveMode(signal.guildId, signal.channelId).evaluatesPolicy) {
+            return ParticipationRawContextMutationOutcome.Ignored
+        }
+        return mutateRawContext(
+            operation = "human_message",
+            guildId = signal.guildId,
+            channelId = signal.channelId,
+            messageId = signal.messageId,
+        ) { store ->
+            store.append(signal.toRawContextEntry())
+            ParticipationRawContextMutationOutcome.Upserted
         }
     }
 
@@ -560,6 +632,25 @@ class NexaParticipationEmitBridge(
         }
         return mutateRawContext(
             operation = "message_edit",
+            guildId = signal.guildId,
+            channelId = signal.channelId,
+            messageId = signal.messageId,
+        ) { store ->
+            store.append(signal.toRawContextEntry())
+            ParticipationRawContextMutationOutcome.Upserted
+        }
+    }
+
+    /** 실제 Discord에 관측된 니아 발화를 다음 턴의 canonical raw context에도 보존한다. 판단은 다시 실행하지 않는다. */
+    fun onAssistantMessageObserved(signal: ParticipationRawContextEditSignal): ParticipationRawContextMutationOutcome {
+        if (signal.sourceType != ParticipationMessageSourceType.BOT || signal.rawText.isBlank()) {
+            return ParticipationRawContextMutationOutcome.Ignored
+        }
+        if (!flags.effectiveMode(signal.guildId, signal.channelId).evaluatesPolicy) {
+            return ParticipationRawContextMutationOutcome.Ignored
+        }
+        return mutateRawContext(
+            operation = "assistant_message",
             guildId = signal.guildId,
             channelId = signal.channelId,
             messageId = signal.messageId,
@@ -641,7 +732,12 @@ class NexaParticipationEmitBridge(
         RawContextEntry(
             scope = scope(),
             messageId = messageId,
-            authorPseudonym = userPseudonym(guildId, userId),
+            authorPseudonym =
+                if (sourceType == ParticipationMessageSourceType.BOT) {
+                    NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM
+                } else {
+                    userPseudonym(guildId, userId)
+                },
             occurredAt = occurredAt,
             replyToMessageId = replyToMessageId,
             sourceType = sourceType.toRawContextSourceType(),
@@ -676,6 +772,7 @@ class NexaParticipationEmitBridge(
     private fun evaluateAndEmit(
         signal: ParticipationMessageSignal,
         originRolloutMode: ShadowMode,
+        rawContextSnapshot: RawContextSnapshot,
     ): ParticipationEmitOutcome {
         val guildPseudonym = guildPseudonym(signal.guildId)
         val userPseudonym = userPseudonym(signal.guildId, signal.userId)
@@ -695,8 +792,14 @@ class NexaParticipationEmitBridge(
                 schemaVersion = SCHEMA_VERSION,
                 seed = signal.seed,
             )
+        val fewShotContext =
+            if (judgeMode == NexaJudgeMode.OFF) {
+                null
+            } else {
+                activeFewShotContext(signal)
+            }
 
-        recordShadowJudge(signal, sceneBuild)
+        recordShadowJudge(signal, sceneBuild, rawContextSnapshot, fewShotContext)
 
         // FINAL 에서는 원문 장면과 few-shot 을 받은 single judge 만 의미를 판단한다. 아래 core/attention/baseline 은
         // 롤백용 OFF 및 비교용 SHADOW 경로에만 남겨, 키워드나 타이머가 생성형 판단보다 먼저 결론내리지 못하게 한다.
@@ -708,6 +811,8 @@ class NexaParticipationEmitBridge(
                 channelKey = channelKey,
                 sceneBuild = sceneBuild,
                 originRolloutMode = originRolloutMode,
+                rawContextSnapshot = rawContextSnapshot,
+                fewShotContext = checkNotNull(fewShotContext),
             )
         }
 
@@ -728,6 +833,7 @@ class NexaParticipationEmitBridge(
                     channelKey = channelKey,
                     actionKind = SocialActionKind.WAIT,
                     reasonCode = "ATTENTION_DEFERRED",
+                    rawContextSnapshot = rawContextSnapshot,
                 )
                 return ParticipationEmitOutcome.AttentionDeferred(channelKey)
             }
@@ -741,6 +847,7 @@ class NexaParticipationEmitBridge(
                     channelKey = channelKey,
                     actionKind = SocialActionKind.IGNORE,
                     reasonCode = verdict.reasonCode,
+                    rawContextSnapshot = rawContextSnapshot,
                 )
                 return ParticipationEmitOutcome.RuleSilent(verdict.reasonCode)
             }
@@ -751,6 +858,7 @@ class NexaParticipationEmitBridge(
                     channelKey = channelKey,
                     actionKind = SocialActionKind.WAIT,
                     reasonCode = verdict.reasonCode,
+                    rawContextSnapshot = rawContextSnapshot,
                 )
                 return ParticipationEmitOutcome.RuleWait(verdict.reasonCode)
             }
@@ -763,6 +871,8 @@ class NexaParticipationEmitBridge(
                     channelKey = channelKey,
                     response = ruleForcedSpeakResponse(),
                     originRolloutMode = originRolloutMode,
+                    rawContextSnapshot = rawContextSnapshot,
+                    speechFewShotContext = fewShotContext,
                 )
             }
             CoreInterventionRules.Verdict.Candidate -> Unit // 모호 → 아래 정책 분포로 위임.
@@ -785,6 +895,7 @@ class NexaParticipationEmitBridge(
                 actionKind = response.mostLikelyAction,
                 reasonCode = "POLICY_ARGMAX_${response.mostLikelyAction.name}",
                 featureVector = sceneBuild.featureVector,
+                rawContextSnapshot = rawContextSnapshot,
             )
             return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
         }
@@ -796,6 +907,8 @@ class NexaParticipationEmitBridge(
             response = response,
             featureVector = sceneBuild.featureVector,
             originRolloutMode = originRolloutMode,
+            rawContextSnapshot = rawContextSnapshot,
+            speechFewShotContext = fewShotContext,
         )
     }
 
@@ -852,10 +965,20 @@ class NexaParticipationEmitBridge(
     private fun recordShadowJudge(
         signal: ParticipationMessageSignal,
         sceneBuild: SingleJudgeSceneBuildResult,
+        rawContextSnapshot: RawContextSnapshot,
+        fewShotContext: ActiveFewShotContext?,
     ) {
         if (judgeMode != NexaJudgeMode.SHADOW) return
         val shadowService = judgeShadowService ?: return
-        val request = singleJudgeRequest(signal, guildPseudonym(signal.guildId), signal.channelId.toString(), sceneBuild)
+        val request =
+            singleJudgeRequest(
+                signal,
+                guildPseudonym(signal.guildId),
+                signal.channelId.toString(),
+                sceneBuild,
+                rawContextSnapshot,
+                checkNotNull(fewShotContext),
+            )
         when (val result = shadowService.record(request)) {
             is NiaJudgeShadowResult.Recorded -> Unit
             is NiaJudgeShadowResult.Failed ->
@@ -870,9 +993,11 @@ class NexaParticipationEmitBridge(
         channelKey: String,
         sceneBuild: SingleJudgeSceneBuildResult,
         originRolloutMode: ShadowMode,
+        rawContextSnapshot: RawContextSnapshot,
+        fewShotContext: ActiveFewShotContext,
     ): ParticipationEmitOutcome {
         val judge = singleJudge
-        val request = singleJudgeRequest(signal, guildPseudonym, channelKey, sceneBuild)
+        val request = singleJudgeRequest(signal, guildPseudonym, channelKey, sceneBuild, rawContextSnapshot, fewShotContext)
         if (judge == null) {
             logSingleJudgeDecision(
                 signal = signal,
@@ -884,6 +1009,7 @@ class NexaParticipationEmitBridge(
                 reasonCode = "SINGLE_JUDGE_UNAVAILABLE",
                 featureVector = sceneBuild.featureVector,
                 shadowBaselineAction = null,
+                rawContextSnapshot = rawContextSnapshot,
             )
             return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
         }
@@ -903,6 +1029,7 @@ class NexaParticipationEmitBridge(
                     reasonCode = "SINGLE_JUDGE_FAILED",
                     featureVector = sceneBuild.featureVector,
                     shadowBaselineAction = null,
+                    rawContextSnapshot = rawContextSnapshot,
                 )
                 return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
             }
@@ -918,6 +1045,7 @@ class NexaParticipationEmitBridge(
                 reasonCode = NiaTurnSupersessionStage.AFTER_JUDGE.reasonCode,
                 featureVector = sceneBuild.featureVector,
                 shadowBaselineAction = null,
+                rawContextSnapshot = rawContextSnapshot,
             )
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.AFTER_JUDGE)
         }
@@ -941,6 +1069,8 @@ class NexaParticipationEmitBridge(
                         shadowBaselineAction = null,
                     ),
                 originRolloutMode = originRolloutMode,
+                rawContextSnapshot = rawContextSnapshot,
+                speechFewShotContext = fewShotContext,
             )
         }
 
@@ -954,6 +1084,7 @@ class NexaParticipationEmitBridge(
             reasonCode = decision.reasonCode.code,
             featureVector = sceneBuild.featureVector,
             shadowBaselineAction = null,
+            rawContextSnapshot = rawContextSnapshot,
         )
         val routed = routeNonSpeechJudgeAction(signal, guildPseudonym, channelKey, decision, originRolloutMode)
         if (decision.action == SocialActionKind.IGNORE || routed) {
@@ -1063,50 +1194,46 @@ class NexaParticipationEmitBridge(
         guildPseudonym: String,
         channelKey: String,
         sceneBuild: SingleJudgeSceneBuildResult,
+        rawContextSnapshot: RawContextSnapshot,
+        fewShotContext: ActiveFewShotContext,
     ): SingleJudgeDecisionRequest {
         val base =
             judgeContextAssembler.assemble(
                 NiaJudgeContextInput(
-                    rawContextSnapshot = rawContextSnapshot(signal),
+                    rawContextSnapshot = rawContextSnapshot,
                     sceneObservation = sceneObservationOf(signal, guildPseudonym, channelKey),
                     sceneBuild = sceneBuild,
                     constraints = judgeConstraints(),
                     seed = signal.seed,
-                    fewShotSet = activeFewShotPayload(signal),
+                    fewShotSet = fewShotContext.judgePayload,
                 ),
             )
-        val query = base.rawContextWindow.quotedSceneData
-        val matches = conversationRag?.search(query, ConversationRagService.DEFAULT_MATCH_COUNT).orEmpty()
+        val query = base.rawContextWindow.retrievalSceneData
+        val globalFewShotScenes =
+            base.fewShotSet.examples
+                .map(::canonicalFewShotScene)
+                .toSet()
+        val matches =
+            conversationRag
+                ?.search(
+                    sceneText = query,
+                    limit = ConversationRagService.DEFAULT_MATCH_COUNT,
+                    excludedCanonicalScenes = globalFewShotScenes,
+                ).orEmpty()
         val traceId = correlationIdOf(signal)
         ragMatchesByTrace[traceId] = matches
         val request = base.copy(conversationRag = matches.toJudgePayload())
+        val preparedLlmRequest = judgePromptAssembler.assemble(request)
         inputTraceStore?.recordJudge(
             traceId = traceId,
-            judgePrompt = judgePromptAssembler.assemble(request).prompt,
+            judgePrompt = preparedLlmRequest.prompt,
             globalFewShotSetId = request.fewShotSet.setId,
             globalFewShotVersion = request.fewShotSet.version,
             globalFewShotExampleCount = request.fewShotSet.examples.size,
             ragQuery = query,
             ragMatches = matches.map { it.toTraceConversation() },
         )
-        return request
-    }
-
-    private fun rawContextSnapshot(signal: ParticipationMessageSignal): RawContextSnapshot {
-        val scope = RawContextScope(guildId = signal.guildId, channelId = signal.channelId, threadId = signal.threadId)
-        val recentEntries = signal.recentRawMessages.mapNotNull { it.toRawContextEntry(scope, signal.guildId) }
-        val stored =
-            try {
-                rawContextStore?.readRecent(scope) ?: RawContextSnapshot(scope, emptyList())
-            } catch (e: Exception) {
-                log.warn("NEXA judge raw context 조회 실패(sceneSeq={}) — {}", signal.sceneSeq, e.message)
-                RawContextSnapshot(scope, emptyList())
-            }
-        val merged =
-            (stored.entries + recentEntries)
-                .distinctBy { it.messageId }
-                .sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
-        return RawContextSnapshot(scope, merged)
+        return request.copy(preparedLlmRequest = preparedLlmRequest)
     }
 
     private fun ParticipationRawSceneMessage.toRawContextEntry(
@@ -1136,29 +1263,49 @@ class NexaParticipationEmitBridge(
             maxDelayMillis = 30_000,
         )
 
-    private fun activeFewShotPayload(signal: ParticipationMessageSignal): JudgeFewShotSetPayload {
+    private fun activeFewShotContext(signal: ParticipationMessageSignal): ActiveFewShotContext {
         val set =
             fewShotService
                 ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
-                ?: return DEFAULT_FEW_SHOT_PAYLOAD
-        val active = set.active ?: return DEFAULT_FEW_SHOT_PAYLOAD
-        val setId = set.id ?: return DEFAULT_FEW_SHOT_PAYLOAD
-        return active.toJudgePayload(setId)
+        val active = set?.active
+        val setId = set?.id
+        return if (active == null || setId == null) {
+            ActiveFewShotContext(
+                judgePayload = DEFAULT_FEW_SHOT_PAYLOAD,
+                speechVersion = null,
+            )
+        } else {
+            ActiveFewShotContext(
+                judgePayload = active.toJudgePayload(setId),
+                speechVersion = active,
+            )
+        }
     }
 
-    private fun speechIdentity(signal: ParticipationMessageSignal): IdentityKernelSection {
-        val active =
-            fewShotService
-                ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
-                ?.active
-        val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(active, promptSource)
+    private fun speechIdentity(
+        signal: ParticipationMessageSignal,
+        resolvedFewShotContext: ActiveFewShotContext?,
+    ): IdentityKernelSection {
+        val speechVersion =
+            if (resolvedFewShotContext != null) {
+                resolvedFewShotContext.speechVersion
+            } else {
+                fewShotService
+                    ?.activeFor(NiaFewShotLookupScope(guildId = signal.guildId, channelId = signal.channelId))
+                    ?.active
+            }
+        val managedPrompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(speechVersion, promptSource)
         val retrievedPrompt =
             ragMatchesByTrace[correlationIdOf(signal)]
                 ?.map { it.entry.example }
                 ?.let { NiaFewShotSpeechPromptRenderer.renderRetrieved(it, promptSource) }
         val identity = niaIdentity()
-        val persona = listOfNotNull(identity.personaBlock, managedPrompt, retrievedPrompt).joinToString("\n\n")
-        return identity.copy(personaBlock = persona)
+        val stablePersona = listOf(identity.personaBlock, managedPrompt).joinToString("\n\n")
+        val persona = listOfNotNull(stablePersona, retrievedPrompt).joinToString("\n\n")
+        return identity.copy(
+            personaBlock = persona,
+            stablePersonaBlockChars = if (retrievedPrompt == null) persona.length else stablePersona.length,
+        )
     }
 
     private fun niaIdentity(): IdentityKernelSection =
@@ -1243,6 +1390,13 @@ class NexaParticipationEmitBridge(
             privacyClass = privacyClass,
         )
 
+    private fun canonicalFewShotScene(example: JudgeFewShotExamplePayload): String =
+        buildString {
+            appendLine(example.title)
+            example.currentState?.let(::appendLine)
+            example.rawMessages.forEach { appendLine("${it.authorRole}: ${it.text}") }
+        }.trim()
+
     /**
      * 채널 attention 상태를 갱신하고 이 트리거의 깨움 action([AttentionGateConstants] WAKE_NOW/WAIT/WAKE_AFTER_IDLE)을 낸다.
      * core verdict 를 hard_policy 로 사상한다: SPEAK(호명/reply/continuation)→RESPOND_NOW(즉시 wake), Silent→DROP,
@@ -1310,6 +1464,8 @@ class NexaParticipationEmitBridge(
         featureVector: FeatureVectorView? = null,
         attribution: DecisionAttribution = response.defaultAttribution(),
         originRolloutMode: ShadowMode,
+        rawContextSnapshot: RawContextSnapshot,
+        speechFewShotContext: ActiveFewShotContext? = null,
     ): ParticipationEmitOutcome {
         if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SPEECH_GENERATION)
@@ -1323,7 +1479,12 @@ class NexaParticipationEmitBridge(
             reasonCode = attribution.reasonCode,
             featureVector = featureVector,
             attribution = attribution,
+            rawContextSnapshot = rawContextSnapshot,
+            consumedGenerationQuota = originRolloutMode.allowsRealSend,
         )
+        if (!originRolloutMode.allowsRealSend) {
+            return ParticipationEmitOutcome.ShadowPredicted(SocialActionKind.SPEAK)
+        }
 
         // 3) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
         //    PolicyBackedConsentGate 형식(guild:user:channel)으로 맞춘다.
@@ -1336,23 +1497,24 @@ class NexaParticipationEmitBridge(
                 } else {
                     ""
                 }
+        val speechContext = speechContext(signal, rawContextSnapshot)
         val packet =
             SpeechScenePacket.of(
                 inputTraceId = correlationIdOf(signal),
                 focusThreadKey = focusThreadKey(signal, guildPseudonym),
                 target = SpeechTarget.member(userPseudonym),
-                recentTurns = signal.recentTurns,
+                recentTurns = speechContext.recentTurns,
                 socialAct = response.selectedSpeechSocialAct(),
                 burstShape = response.toSpeechBurstShape(),
-                identity = speechIdentity(signal),
+                identity = speechIdentity(signal, speechFewShotContext),
                 speechIntent = effectiveSpeechIntent,
-                rawContextSceneData = rawContextSceneDataForSpeech(signal),
+                rawContextSceneData = speechContext.quotedSceneData,
                 responseTargetRef = attribution.responseTargetRef,
                 responseObligation = attribution.responseObligation,
                 groundingNeed = attribution.groundingNeed,
             )
         val emitRequest =
-            rawWindowTrace(signal).let { rawTrace ->
+            rawWindowTrace(signal, rawContextSnapshot).let { rawTrace ->
                 NexaSpeechEmitRequest(
                     provenance =
                         DecisionProvenance(
@@ -1437,6 +1599,11 @@ class NexaParticipationEmitBridge(
         mode: ShadowMode,
         outcome: ParticipationEmitOutcome,
     ): ParticipationEmitOutcome {
+        runtimeMetrics?.recordTurn(
+            outcome = outcome.metricOutcome,
+            supersessionStage = outcome.supersessionMetricStage,
+            addressing = signal.turnAddressing(),
+        )
         val traceId = correlationIdOf(signal)
         val retrieved = ragMatchesByTrace.remove(traceId).orEmpty().map { it.toTraceConversation() }
         val trace =
@@ -1538,14 +1705,7 @@ class NexaParticipationEmitBridge(
             reactionOnly = false,
         )
 
-    private fun PolicyDecisionResponse.speechIntent(reasonCode: String): String =
-        buildString {
-            append("participation_action=SPEAK; ")
-            append("reason_code=$reasonCode; ")
-            append("social_act=${selectedSpeechSocialAct().wireName}; ")
-            append("fragments=${burstProfile.mostLikelyFragmentCount}; ")
-            append("speech는 이 방향을 수행하는 실제 문구 후보를 만들고, 침묵·리액션과 결과를 비교해 최종 행동을 고른다.")
-        }
+    private fun PolicyDecisionResponse.speechIntent(reasonCode: String): String = "reason_code=$reasonCode"
 
     private fun logRuleDecision(
         signal: ParticipationMessageSignal,
@@ -1553,8 +1713,9 @@ class NexaParticipationEmitBridge(
         channelKey: String,
         actionKind: SocialActionKind,
         reasonCode: String,
+        rawContextSnapshot: RawContextSnapshot,
     ) {
-        val rawTrace = rawWindowTrace(signal)
+        val rawTrace = rawWindowTrace(signal, rawContextSnapshot)
         appendDecisionLog(
             DecisionLogRecord(
                 correlationId = correlationIdOf(signal),
@@ -1591,8 +1752,10 @@ class NexaParticipationEmitBridge(
         reasonCode: String,
         featureVector: FeatureVectorView? = null,
         attribution: DecisionAttribution = response.defaultAttribution(reasonCode = reasonCode),
+        rawContextSnapshot: RawContextSnapshot,
+        consumedGenerationQuota: Boolean = actionKind == SocialActionKind.SPEAK,
     ) {
-        val rawTrace = rawWindowTrace(signal)
+        val rawTrace = rawWindowTrace(signal, rawContextSnapshot)
         appendDecisionLog(
             DecisionLogRecord(
                 correlationId = correlationIdOf(signal),
@@ -1619,7 +1782,7 @@ class NexaParticipationEmitBridge(
                 evidenceRefs = signal.evidenceRefs(guildPseudonym),
                 shadowBaselineAction = attribution.shadowBaselineAction,
                 finalDecisionSource = attribution.finalDecisionSource,
-                consumedGenerationQuota = actionKind == SocialActionKind.SPEAK,
+                consumedGenerationQuota = consumedGenerationQuota,
                 decidedAt = recordedAtOf(signal),
             ),
         )
@@ -1635,8 +1798,9 @@ class NexaParticipationEmitBridge(
         reasonCode: String,
         featureVector: FeatureVectorView,
         shadowBaselineAction: SocialActionKind?,
+        rawContextSnapshot: RawContextSnapshot,
     ) {
-        val rawTrace = rawWindowTrace(signal)
+        val rawTrace = rawWindowTrace(signal, rawContextSnapshot)
         appendDecisionLog(
             DecisionLogRecord(
                 correlationId = correlationIdOf(signal),
@@ -1797,22 +1961,13 @@ class NexaParticipationEmitBridge(
 
     private fun com.discordassistant.central.participation.application.judge.JudgeSpeechIntent.toPromptIntent(reasonCode: String): String =
         buildString {
-            append("participation_action=SPEAK; ")
             append("reason_code=$reasonCode; ")
             append("intent_summary=$intentSummary; ")
             append("scene_direction=$sceneDirection; ")
-            append("interaction_reading=$interactionReading; ")
-            append("information_depth=$informationDepth; ")
-            append("continuity_refs=${continuityRefs.sorted().joinToString(",")}; ")
-            append("response_target_ref=${responseTargetRef.orEmpty()}; ")
-            append("response_obligation=${responseObligation.name}; ")
-            append("grounding_need=${groundingNeed.name}; ")
-            append("delivery_mode=${deliveryMode.name}; ")
-            append("bubble_count=$bubbleCount; ")
-            append("max_bubble_chars=$maxBubbleChars; ")
-            actHint?.let { append("act_hint=$it; ") }
-            append("speech는 이 방향을 수행하는 실제 문구 후보를 만들고, 침묵·리액션과 결과를 비교해 최종 행동을 고른다.")
-        }
+            if (interactionReading != intentSummary) append("interaction_reading=$interactionReading; ")
+            if (informationDepth != sceneDirection) append("information_depth=$informationDepth; ")
+            if (continuityRefs.isNotEmpty()) append("continuity_refs=${continuityRefs.sorted().joinToString(",")}; ")
+        }.trimEnd(' ', ';')
 
     private fun actionTarget(
         signal: ParticipationMessageSignal,
@@ -1850,6 +2005,14 @@ class NexaParticipationEmitBridge(
     private fun featureHashOf(signal: ParticipationMessageSignal): String =
         featureHashOf("mention=${signal.mentioned};recent=${signal.recentAgentBurstCount}")
 
+    private fun ParticipationMessageSignal.turnAddressing(): NiaTurnAddressing =
+        when {
+            reevaluationWake -> NiaTurnAddressing.REEVALUATION
+            mentioned || replyToNia || nicknameCall || directAddressPressure > 0.0 -> NiaTurnAddressing.EXPLICIT
+            niaTurnContinuationLikely -> NiaTurnAddressing.CONTINUATION
+            else -> NiaTurnAddressing.AMBIENT
+        }
+
     private fun featureHashOf(featureVector: FeatureVectorView): String =
         featureHashOf(
             featureVector.features.entries
@@ -1861,18 +2024,12 @@ class NexaParticipationEmitBridge(
 
     private fun featureHashOf(canonicalFeatures: String): String = "sha256=${sha256Hex(canonicalFeatures)}"
 
-    private fun rawWindowTrace(signal: ParticipationMessageSignal): RawWindowTrace {
-        val store = rawContextStore ?: return RawWindowTrace.EMPTY
-        return try {
-            val snapshot =
-                store.readRecent(
-                    RawContextScope(
-                        guildId = signal.guildId,
-                        channelId = signal.channelId,
-                        threadId = signal.threadId,
-                    ),
-                )
-            val entries = snapshot.entries.sortedWith(compareBy<RawContextEntry> { it.occurredAt }.thenBy { it.messageId })
+    private fun rawWindowTrace(
+        signal: ParticipationMessageSignal,
+        snapshot: RawContextSnapshot,
+    ): RawWindowTrace =
+        try {
+            val entries = snapshot.entries
             if (entries.isEmpty()) {
                 RawWindowTrace.EMPTY
             } else {
@@ -1900,7 +2057,6 @@ class NexaParticipationEmitBridge(
             log.warn("NEXA participation raw window trace 계산 실패(channel={}) — {}", signal.channelId, e.message)
             RawWindowTrace.EMPTY
         }
-    }
 
     private fun sha256Hex(value: String): String =
         MessageDigest
@@ -1957,15 +2113,28 @@ class NexaParticipationEmitBridge(
             "raw_context_message:${messagePseudonym(guildId, messageId)}",
         )
 
-    private fun rawContextSceneDataForSpeech(signal: ParticipationMessageSignal): String? =
+    private fun speechContext(
+        signal: ParticipationMessageSignal,
+        rawContextSnapshot: RawContextSnapshot,
+    ): SpeechContext =
         try {
-            speechRawContextWindowBuilder
-                .build(rawContextSnapshot(signal))
-                .quotedSceneData
-                .takeIf { it.isNotBlank() }
+            val window = speechRawContextWindowBuilder.build(rawContextSnapshot)
+            val canonicalTurns =
+                window.messages
+                    .mapNotNull { message ->
+                        val content = message.content as? JudgeContextContent.Available ?: return@mapNotNull null
+                        ConversationTurn(
+                            speakerLabel = message.speakerLabel,
+                            text = content.text.take(SPEECH_RECENT_TURN_MAX_CHARS),
+                        )
+                    }.takeLast(SpeechScenePacket.MAX_TURNS)
+            SpeechContext(
+                recentTurns = canonicalTurns.ifEmpty { signal.recentTurns },
+                quotedSceneData = window.quotedSceneData.takeIf { it.isNotBlank() },
+            )
         } catch (e: Exception) {
             log.warn("NEXA speech raw context window 읽기 실패(channel={}) — {}", signal.channelId, e.message)
-            null
+            SpeechContext(recentTurns = signal.recentTurns, quotedSceneData = null)
         }
 
     /**
@@ -2009,6 +2178,7 @@ class NexaParticipationEmitBridge(
         private const val DEFAULT_REACTION_CODE: String = "ack"
         private val COMMITMENT_TTL: Duration = Duration.ofDays(7)
         private const val NIA_RAW_CONTEXT_AUTHOR_PSEUDONYM: String = "nia_bot"
+        private const val SPEECH_RECENT_TURN_MAX_CHARS: Int = 500
         private const val DEFAULT_FEW_SHOT_SET_ID: Long = 9_000_000_000_001L
         private const val DEFAULT_FEW_SHOT_VERSION: Int = 9
         private val ROMANIZED_NIA_NAME_SIGNAL: Regex =
@@ -2291,6 +2461,16 @@ class NexaParticipationEmitBridge(
     }
 }
 
+private data class SpeechContext(
+    val recentTurns: List<ConversationTurn>,
+    val quotedSceneData: String?,
+)
+
+private data class ActiveFewShotContext(
+    val judgePayload: JudgeFewShotSetPayload,
+    val speechVersion: NiaFewShotVersion?,
+)
+
 private data class RawWindowTrace(
     val hash: String?,
     val messageRefs: Set<String>,
@@ -2418,6 +2598,8 @@ data class ParticipationMessageSignal(
     val seed: Long,
     /** Discord 수신 즉시 관찰한 채널 세대. 영속 scene contextVersion과 분리해 장기 judge 결과를 폐기한다. */
     val turnGeneration: Long = contextVersion,
+    /** Discord FIFO에서 이 메시지의 canonical raw context append를 평가보다 먼저 완료했는가. */
+    val rawContextPreCaptured: Boolean = false,
     /** WAIT outbox가 만든 재평가이면 raw context를 다시 append하지 않는다. */
     val reevaluationWake: Boolean = false,
     /** outbox 재전달에서도 같은 결정 identity를 쓰기 위한 override. */
@@ -2567,7 +2749,12 @@ sealed interface ParticipationEmitOutcome {
         val stage: NiaTurnSupersessionStage,
     ) : ParticipationEmitOutcome
 
-    /** SPEAK 분포 → emit 호출됨. 그 결과(예약/안전 하강 등). 실제 전송 여부는 ShadowMode 전송 경계가 별도 결정. */
+    /** Shadow lane의 SPEAK 예측. 판단·근거는 기록하지만 보이지 않을 speech 생성·평가·예약은 호출하지 않는다. */
+    data class ShadowPredicted(
+        val action: SocialActionKind,
+    ) : ParticipationEmitOutcome
+
+    /** 실제 전송 허용 lane에서 SPEAK 분포 → emit 호출됨. 그 결과(예약/안전 하강 등). */
     data class Emitted(
         val result: NexaSpeechEmitResult,
     ) : ParticipationEmitOutcome
@@ -2578,6 +2765,8 @@ sealed interface ParticipationEmitOutcome {
 
 sealed interface ParticipationRawContextMutationOutcome {
     data object NoStore : ParticipationRawContextMutationOutcome
+
+    data object Ignored : ParticipationRawContextMutationOutcome
 
     data object Upserted : ParticipationRawContextMutationOutcome
 
@@ -2602,8 +2791,34 @@ private val ParticipationEmitOutcome.traceOutcome: String
             is ParticipationEmitOutcome.SchedulingRejected -> "SCHEDULING_REJECTED"
             is ParticipationEmitOutcome.AttentionDeferred -> "ATTENTION_DEFERRED"
             is ParticipationEmitOutcome.Superseded -> "SUPERSEDED"
+            is ParticipationEmitOutcome.ShadowPredicted -> "SHADOW_PREDICTED"
             is ParticipationEmitOutcome.Emitted -> "EMITTED"
             ParticipationEmitOutcome.Failed -> "FAILED"
+        }
+
+private val ParticipationEmitOutcome.metricOutcome: NiaTurnMetricOutcome
+    get() =
+        when (this) {
+            ParticipationEmitOutcome.Inactive -> NiaTurnMetricOutcome.INACTIVE
+            is ParticipationEmitOutcome.NotSpeaking -> NiaTurnMetricOutcome.NOT_SPEAKING
+            is ParticipationEmitOutcome.RuleSilent -> NiaTurnMetricOutcome.RULE_SILENT
+            is ParticipationEmitOutcome.RuleWait -> NiaTurnMetricOutcome.RULE_WAIT
+            is ParticipationEmitOutcome.SchedulingRejected -> NiaTurnMetricOutcome.SCHEDULING_REJECTED
+            is ParticipationEmitOutcome.AttentionDeferred -> NiaTurnMetricOutcome.ATTENTION_DEFERRED
+            is ParticipationEmitOutcome.Superseded -> NiaTurnMetricOutcome.SUPERSEDED
+            is ParticipationEmitOutcome.ShadowPredicted -> NiaTurnMetricOutcome.SHADOW_PREDICTED
+            is ParticipationEmitOutcome.Emitted -> NiaTurnMetricOutcome.EMITTED
+            ParticipationEmitOutcome.Failed -> NiaTurnMetricOutcome.FAILED
+        }
+
+private val ParticipationEmitOutcome.supersessionMetricStage: NiaSupersessionMetricStage
+    get() =
+        when ((this as? ParticipationEmitOutcome.Superseded)?.stage) {
+            NiaTurnSupersessionStage.BEFORE_JUDGE -> NiaSupersessionMetricStage.BEFORE_JUDGE
+            NiaTurnSupersessionStage.AFTER_JUDGE -> NiaSupersessionMetricStage.AFTER_JUDGE
+            NiaTurnSupersessionStage.BEFORE_SPEECH_GENERATION -> NiaSupersessionMetricStage.BEFORE_SPEECH_GENERATION
+            NiaTurnSupersessionStage.BEFORE_SCHEDULE -> NiaSupersessionMetricStage.BEFORE_SCHEDULE
+            null -> NiaSupersessionMetricStage.NONE
         }
 
 private val ParticipationEmitOutcome.traceReasonCode: String?
@@ -2621,6 +2836,7 @@ private val ParticipationEmitOutcome.tracePolicyAction: String?
     get() =
         when (this) {
             is ParticipationEmitOutcome.NotSpeaking -> action.wireName
+            is ParticipationEmitOutcome.ShadowPredicted -> action.wireName
             is ParticipationEmitOutcome.Emitted -> SocialActionKind.SPEAK.wireName
             else -> null
         }
@@ -2650,7 +2866,12 @@ private val ParticipationEmitOutcome.traceConsentStage: String?
             ?.name
 
 private val ParticipationEmitOutcome.traceWillSpeak: Boolean?
-    get() = (this as? ParticipationEmitOutcome.Emitted)?.result?.willSpeak
+    get() =
+        when (this) {
+            is ParticipationEmitOutcome.ShadowPredicted -> false
+            is ParticipationEmitOutcome.Emitted -> result.willSpeak
+            else -> null
+        }
 
 enum class NiaTurnSupersessionStage(
     val reasonCode: String,

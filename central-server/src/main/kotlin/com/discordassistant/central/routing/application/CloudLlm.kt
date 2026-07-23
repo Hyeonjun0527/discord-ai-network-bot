@@ -9,6 +9,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -16,7 +17,108 @@ import java.util.concurrent.TimeUnit
 data class CloudLlmUsage(
     val promptTokens: Int = 0,
     val completionTokens: Int = 0,
+    val cachedPromptTokens: Int = 0,
+    val cacheWritePromptTokens: Int = 0,
 )
+
+/** 비용을 요청 종류별로 분리하기 위한 저카디널리티 라벨. 원문·guild/user 식별자는 절대 담지 않는다. */
+enum class CloudLlmPurpose {
+    GENERAL,
+    ADMIN_ACTION_ROUTER,
+    IMAGE_SAFETY,
+    IMAGE_TRANSLATION,
+    MEMORY_EXTRACTION,
+    SOCIAL_APPRAISAL,
+    LEGACY_PARTICIPATION_JUDGE,
+    NIA_JUDGE,
+    NIA_JUDGE_REPAIR,
+    NIA_SHADOW_JUDGE_REPAIR,
+    NIA_SPEECH,
+    NIA_ACTION_EVALUATOR,
+    NIA_SHADOW_JUDGE,
+}
+
+/**
+ * OpenAI prompt cache 정책. 모든 호출은 explicit 모드를 쓰며, 고정 prefix를 알는 호출만 cache write를 허용한다.
+ * [stablePrefixChars]가 0이면 cache write를 완전히 끄고, 양수면 그 prefix 하나만 재사용 대상으로 만든다.
+ */
+data class CloudLlmCachePolicy(
+    val stablePrefixChars: Int,
+    val key: String?,
+) {
+    init {
+        require(stablePrefixChars >= 0) { "stablePrefixChars 는 음수일 수 없다: $stablePrefixChars" }
+        require((stablePrefixChars == 0) == (key == null)) {
+            "stable prefix와 cache key는 함께 설정해야 한다"
+        }
+        key?.let {
+            require(it.matches(Regex("[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}"))) { "유효하지 않은 prompt cache key다" }
+        }
+    }
+
+    companion object {
+        fun disabled(): CloudLlmCachePolicy = CloudLlmCachePolicy(stablePrefixChars = 0, key = null)
+
+        fun stablePrefix(
+            namespace: String,
+            prompt: String,
+            stablePrefixChars: Int,
+        ): CloudLlmCachePolicy {
+            require(namespace.matches(Regex("[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}"))) { "유효하지 않은 cache namespace다" }
+            require(stablePrefixChars in 1..prompt.length) {
+                "stablePrefixChars 는 prompt 길이 안이어야 한다: $stablePrefixChars/${prompt.length}"
+            }
+            val digest =
+                MessageDigest
+                    .getInstance("SHA-256")
+                    .digest(prompt.take(stablePrefixChars).toByteArray(Charsets.UTF_8))
+                    .take(8)
+                    .joinToString("") { byte -> "%02x".format(byte) }
+            return CloudLlmCachePolicy(stablePrefixChars, "$namespace:$digest")
+        }
+    }
+}
+
+data class CloudLlmRequestOptions(
+    val purpose: CloudLlmPurpose = CloudLlmPurpose.GENERAL,
+    val maxOutputTokens: Int? = null,
+    val cachePolicy: CloudLlmCachePolicy = CloudLlmCachePolicy.disabled(),
+    val requestTimeout: Duration? = null,
+    val maxRetries: Int? = null,
+) {
+    init {
+        maxOutputTokens?.let { require(it > 0) { "maxOutputTokens 는 양수여야 한다: $it" } }
+        requestTimeout?.let { require(!it.isZero && !it.isNegative) { "requestTimeout 은 양수여야 한다: $it" } }
+        maxRetries?.let { require(it >= 0) { "maxRetries 는 음수일 수 없다: $it" } }
+    }
+}
+
+/** OpenAI 사용량 관측 포트. 관측 실패가 실제 답변을 막지 않도록 구현은 예외를 밖으로 내보내지 않는다. */
+fun interface CloudLlmUsageObserver {
+    /** 실제 provider HTTP 요청 직전에 호출한다. 실패·timeout도 요청 수에서 사라지지 않는다. */
+    fun recordAttempt(
+        model: String,
+        purpose: CloudLlmPurpose,
+    ) = Unit
+
+    /** 원문 없이 직렬화된 payload 크기와 실제 적용된 cache 정책까지 함께 기록한다. */
+    fun recordAttempt(
+        model: String,
+        purpose: CloudLlmPurpose,
+        requestPayloadChars: Int,
+        cacheWriteRequested: Boolean,
+    ) = recordAttempt(model, purpose)
+
+    fun record(
+        model: String,
+        purpose: CloudLlmPurpose,
+        usage: CloudLlmUsage,
+    )
+
+    companion object {
+        val NOOP = CloudLlmUsageObserver { _, _, _ -> }
+    }
+}
 
 /** 클라우드 LLM 추론 1건 결과: 답변 텍스트 + 선택적 사용량. */
 data class CloudLlmResult(
@@ -93,6 +195,15 @@ interface CloudLlm {
         thinking: CloudThinking?,
     ): CloudLlmResult = generate(prompt, model)
 
+    /** cache·출력 상한·관측 목적을 함께 전달하는 확장 호출. 기존 구현은 옵션 없이 동일 프롬프트를 처리한다. */
+    fun generate(
+        prompt: String,
+        model: String,
+        history: List<CloudTurn>,
+        thinking: CloudThinking?,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult = generate(prompt, model, history, thinking)
+
     /**
      * 발화 생성 전용 호환 경로. reasoning effort `none` 모델에서는 지원하지 않는 샘플링 파라미터를 보내지 않는다.
      */
@@ -101,6 +212,13 @@ interface CloudLlm {
         model: String,
         temperature: Double,
     ): CloudLlmResult = generate(prompt, model)
+
+    fun generateSampled(
+        prompt: String,
+        model: String,
+        temperature: Double,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult = generateSampled(prompt, model, temperature)
 
     /**
      * OpenAI 호환 tool calling 1회(AI 관리 비서). [systemPrompt]+[userPrompt] 로 대화를 만들고 [toolsJson]
@@ -113,6 +231,15 @@ interface CloudLlm {
         toolsJson: String,
         model: String,
     ): CloudToolResponse
+
+    /** tool calling에도 일반 생성과 같은 출력 상한·cache·사용량 목적을 적용한다. */
+    fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+        options: CloudLlmRequestOptions,
+    ): CloudToolResponse = generateWithTools(systemPrompt, userPrompt, toolsJson, model)
 
     /**
      * 이미지 프롬프트 안전 심사(ADR 0006 단계2). [systemPrompt] 는 central 소유 안전 정책(IMAGE_SAFETY).
@@ -182,14 +309,20 @@ object CloudLlmResponseParser {
         val content =
             outputTexts(root).joinToString("\n").trim().takeIf { it.isNotBlank() }
                 ?: throw CloudLlmException("클라우드 AI 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답).")
-        val usageNode = root.get("usage")
-        val usage =
-            CloudLlmUsage(
-                promptTokens = usageNode?.get("input_tokens")?.asInt(0) ?: 0,
-                completionTokens = usageNode?.get("output_tokens")?.asInt(0) ?: 0,
-            )
+        val usage = root.get("usage")?.takeIf { it.isObject }?.let(::usageOf) ?: CloudLlmUsage()
         return CloudLlmResult(content, usage)
     }
+
+    /** HTTP 성공 body에 usage가 있으면 후속 응답 의미 파싱 성공 여부와 무관하게 과금량을 복원한다. */
+    fun parseUsage(
+        body: String,
+        mapper: ObjectMapper,
+    ): CloudLlmUsage? =
+        runCatching { mapper.readTree(body) }
+            .getOrNull()
+            ?.get("usage")
+            ?.takeIf { it.isObject }
+            ?.let(::usageOf)
 
     /** OpenAI `error` 노드에서 code·message 를 한 줄로 요약(운영자 진단용 — 개행 제거·길이 캡). */
     fun errorReasonOf(errorNode: com.fasterxml.jackson.databind.JsonNode): String? {
@@ -265,15 +398,20 @@ object CloudLlmResponseParser {
         if (toolCalls.isEmpty() && content == null) {
             throw CloudLlmException("클라우드 AI 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답).")
         }
-        val usageNode = root.get("usage")
         return CloudToolResponse(
             text = content,
             toolCalls = toolCalls,
-            usage =
-                CloudLlmUsage(
-                    promptTokens = usageNode?.get("input_tokens")?.asInt(0) ?: 0,
-                    completionTokens = usageNode?.get("output_tokens")?.asInt(0) ?: 0,
-                ),
+            usage = root.get("usage")?.takeIf { it.isObject }?.let(::usageOf) ?: CloudLlmUsage(),
+        )
+    }
+
+    private fun usageOf(usageNode: com.fasterxml.jackson.databind.JsonNode): CloudLlmUsage {
+        val inputDetails = usageNode.get("input_tokens_details")
+        return CloudLlmUsage(
+            promptTokens = usageNode.get("input_tokens")?.asInt(0) ?: 0,
+            completionTokens = usageNode.get("output_tokens")?.asInt(0) ?: 0,
+            cachedPromptTokens = inputDetails?.get("cached_tokens")?.asInt(0) ?: 0,
+            cacheWritePromptTokens = inputDetails?.get("cache_write_tokens")?.asInt(0) ?: 0,
         )
     }
 
@@ -297,9 +435,13 @@ object CloudLlmResponseParser {
     fun parseImageReview(
         body: String,
         mapper: ObjectMapper,
+    ): ImageReview = parseImageReviewText(parse(body, mapper).text, mapper)
+
+    /** Responses 봉투에서 이미 꺼낸 이미지 심사 JSON 텍스트를 검증한다. */
+    fun parseImageReviewText(
+        content: String,
+        mapper: ObjectMapper,
     ): ImageReview {
-        // Responses 봉투에서 content 추출(error·빈 응답은 parse 가 일반화 예외로 던짐).
-        val content = parse(body, mapper).text
         val json =
             try {
                 mapper.readTree(extractFirstJsonObject(content))
@@ -355,20 +497,22 @@ class OpenAiCloudLlm(
     @param:Value("\${central.cloud.openai-api-key:}") private val apiKey: String,
     @param:Value("\${central.cloud.openai-base-url:https://api.openai.com/v1}") private val baseUrl: String,
     @param:Value("\${central.cloud.llm-timeout-seconds:20}") private val timeoutSeconds: Long,
-    @param:Value("\${central.cloud.llm-max-retries:2}") private val maxRetries: Int = 2,
+    @param:Value("\${central.cloud.llm-max-retries:0}") private val maxRetries: Int = 0,
+    @param:Value("\${central.cloud.prompt-cache-writes-enabled:false}")
+    private val promptCacheWritesEnabled: Boolean = false,
+    private val usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(OpenAiCloudLlm::class.java)
     private val mapper = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
     private val requestTimeout = Duration.ofSeconds(timeoutSeconds.coerceAtLeast(1))
-    private val requestMaxAttempts = 1 + maxRetries.coerceAtLeast(0)
 
     override fun isEnabled() = apiKey.isNotBlank()
 
     override fun generate(
         prompt: String,
         model: String,
-    ): CloudLlmResult = parse(postResponses(listOf("user" to prompt), model))
+    ): CloudLlmResult = generate(prompt, model, emptyList(), null, CloudLlmRequestOptions())
 
     override fun generateSampled(
         prompt: String,
@@ -376,74 +520,190 @@ class OpenAiCloudLlm(
         temperature: Double,
     ): CloudLlmResult = generate(prompt, model)
 
+    override fun generateSampled(
+        prompt: String,
+        model: String,
+        temperature: Double,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult = generate(prompt, model, emptyList(), null, options)
+
     override fun generate(
         prompt: String,
         model: String,
         history: List<CloudTurn>,
         thinking: CloudThinking?,
-    ): CloudLlmResult = parse(postResponses(history.map { it.role to it.content } + ("user" to prompt), model))
+    ): CloudLlmResult = generate(prompt, model, history, thinking, CloudLlmRequestOptions())
+
+    override fun generate(
+        prompt: String,
+        model: String,
+        history: List<CloudTurn>,
+        thinking: CloudThinking?,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult {
+        val effectiveModel = model.ifBlank { DEFAULT_MODEL }
+        return parse(
+            postResponses(
+                messages = history.map { it.role to it.content } + ("user" to prompt),
+                model = effectiveModel,
+                options = options,
+            ),
+        )
+    }
 
     override fun generateWithTools(
         systemPrompt: String,
         userPrompt: String,
         toolsJson: String,
         model: String,
-    ): CloudToolResponse =
-        CloudLlmResponseParser.parseToolResponse(
-            postResponses(listOf("user" to userPrompt), model, instructions = systemPrompt, toolsJson = toolsJson),
+    ): CloudToolResponse = generateWithTools(systemPrompt, userPrompt, toolsJson, model, CloudLlmRequestOptions())
+
+    override fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+        options: CloudLlmRequestOptions,
+    ): CloudToolResponse {
+        val effectiveModel = model.ifBlank { DEFAULT_MODEL }
+        return CloudLlmResponseParser.parseToolResponse(
+            postResponses(
+                listOf("user" to userPrompt),
+                effectiveModel,
+                instructions = systemPrompt,
+                toolsJson = toolsJson,
+                options = options,
+            ),
             mapper,
         )
+    }
 
     override fun reviewImagePrompt(
         prompt: String,
         systemPrompt: String,
-    ): ImageReview =
-        CloudLlmResponseParser.parseImageReview(
-            postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt),
-            mapper,
-        )
+    ): ImageReview {
+        val options =
+            CloudLlmRequestOptions(
+                purpose = CloudLlmPurpose.IMAGE_SAFETY,
+                maxOutputTokens = IMAGE_REVIEW_MAX_OUTPUT_TOKENS,
+                maxRetries = 0,
+            )
+        val body = postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt, options = options)
+        val result = parse(body)
+        return CloudLlmResponseParser.parseImageReviewText(result.text, mapper)
+    }
 
     override fun translateImagePrompt(
         prompt: String,
         systemPrompt: String,
-    ): String = parse(postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt)).text
+    ): String {
+        val options =
+            CloudLlmRequestOptions(
+                purpose = CloudLlmPurpose.IMAGE_TRANSLATION,
+                maxOutputTokens = IMAGE_TRANSLATION_MAX_OUTPUT_TOKENS,
+                maxRetries = 0,
+            )
+        val result = parse(postResponses(listOf("user" to prompt), DEFAULT_MODEL, instructions = systemPrompt, options = options))
+        return result.text
+    }
 
     private fun parse(body: String): CloudLlmResult = CloudLlmResponseParser.parse(body, mapper)
+
+    private fun recordUsage(
+        model: String,
+        purpose: CloudLlmPurpose,
+        usage: CloudLlmUsage,
+    ) {
+        runCatching { usageObserver.record(model, purpose, usage) }
+            .onFailure { error -> log.debug("OpenAI 사용량 관측 실패(무시): {}", error.javaClass.simpleName) }
+    }
+
+    private fun recordAttempt(
+        model: String,
+        purpose: CloudLlmPurpose,
+        requestPayloadChars: Int,
+        cacheWriteRequested: Boolean,
+    ) {
+        runCatching {
+            usageObserver.recordAttempt(
+                model = model,
+                purpose = purpose,
+                requestPayloadChars = requestPayloadChars,
+                cacheWriteRequested = cacheWriteRequested,
+            )
+        }.onFailure { error -> log.debug("OpenAI 요청 관측 실패(무시): {}", error.javaClass.simpleName) }
+    }
 
     private fun postResponses(
         messages: List<Pair<String, String>>,
         model: String,
         instructions: String? = null,
         toolsJson: String? = null,
+        options: CloudLlmRequestOptions = CloudLlmRequestOptions(),
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val startedAt = System.nanoTime()
+        val effectiveCachePolicy =
+            if (promptCacheWritesEnabled) options.cachePolicy else CloudLlmCachePolicy.disabled()
         val payload =
             mapper.createObjectNode().apply {
                 put("model", model.ifBlank { DEFAULT_MODEL })
                 put("store", false)
                 putObject("reasoning").put("effort", REASONING_EFFORT)
+                options.maxOutputTokens?.let { put("max_output_tokens", it) }
+                effectiveCachePolicy.let { cache ->
+                    putObject("prompt_cache_options").put("mode", "explicit")
+                    cache.key?.let { put("prompt_cache_key", it) }
+                }
                 instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
                 val input = putArray("input")
-                messages.forEach { (role, content) -> input.addObject().put("role", role).put("content", content) }
+                messages.forEachIndexed { index, (role, content) ->
+                    val message = input.addObject().put("role", role)
+                    val cache = effectiveCachePolicy.takeIf { index == messages.lastIndex && role == "user" }
+                    if (cache != null && cache.stablePrefixChars > 0) {
+                        require(cache.stablePrefixChars <= content.length) {
+                            "stablePrefixChars 가 최종 user prompt 길이를 초과한다: ${cache.stablePrefixChars}/${content.length}"
+                        }
+                        val blocks = message.putArray("content")
+                        blocks
+                            .addObject()
+                            .put("type", "input_text")
+                            .put("text", content.take(cache.stablePrefixChars))
+                            .putObject("prompt_cache_breakpoint")
+                            .put("mode", "explicit")
+                        content.drop(cache.stablePrefixChars).takeIf { it.isNotEmpty() }?.let { suffix ->
+                            blocks.addObject().put("type", "input_text").put("text", suffix)
+                        }
+                    } else {
+                        message.put("content", content)
+                    }
+                }
                 if (!toolsJson.isNullOrBlank()) {
                     set<com.fasterxml.jackson.databind.JsonNode>("tools", toResponsesTools(toolsJson))
                     put("tool_choice", "auto")
                 }
             }
         val requestBody = mapper.writeValueAsString(payload)
+        val effectiveRequestTimeout = options.requestTimeout ?: requestTimeout
+        val effectiveMaxAttempts = 1 + (options.maxRetries ?: maxRetries).coerceAtLeast(0)
         var lastTimeout: HttpTimeoutException? = null
-        for (attempt in 1..requestMaxAttempts) {
+        for (attempt in 1..effectiveMaxAttempts) {
             val request =
                 HttpRequest
                     .newBuilder(URI.create("${baseUrl.trimEnd('/')}/responses"))
-                    .timeout(requestTimeout)
+                    .timeout(effectiveRequestTimeout)
                     .header("Authorization", "Bearer $apiKey")
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build()
             val response =
                 try {
+                    recordAttempt(
+                        model = model.ifBlank { DEFAULT_MODEL },
+                        purpose = options.purpose,
+                        requestPayloadChars = requestBody.length,
+                        cacheWriteRequested = effectiveCachePolicy.stablePrefixChars > 0,
+                    )
                     http.send(request, HttpResponse.BodyHandlers.ofString())
                 } catch (e: HttpTimeoutException) {
                     lastTimeout = e
@@ -451,13 +711,13 @@ class OpenAiCloudLlm(
                         "OpenAI 호출 timeout model={} attempt={}/{} timeoutSeconds={} elapsedMs={}",
                         model.ifBlank { DEFAULT_MODEL },
                         attempt,
-                        requestMaxAttempts,
-                        requestTimeout.seconds,
+                        effectiveMaxAttempts,
+                        effectiveRequestTimeout.seconds,
                         elapsedMs(startedAt),
                     )
-                    if (attempt < requestMaxAttempts) continue
+                    if (attempt < effectiveMaxAttempts) continue
                     throw CloudLlmException(
-                        "클라우드 AI 시간 초과(${requestTimeout.seconds}초·${requestMaxAttempts}회)",
+                        "클라우드 AI 시간 초과(${effectiveRequestTimeout.seconds}초·${effectiveMaxAttempts}회)",
                         e,
                     )
                 } catch (e: Exception) {
@@ -465,8 +725,8 @@ class OpenAiCloudLlm(
                         "OpenAI 호출 실패 model={} attempt={}/{} timeoutSeconds={} elapsedMs={} error={}",
                         model.ifBlank { DEFAULT_MODEL },
                         attempt,
-                        requestMaxAttempts,
-                        requestTimeout.seconds,
+                        effectiveMaxAttempts,
+                        effectiveRequestTimeout.seconds,
                         elapsedMs(startedAt),
                         e.javaClass.simpleName,
                     )
@@ -478,7 +738,7 @@ class OpenAiCloudLlm(
                     response.statusCode(),
                     model.ifBlank { DEFAULT_MODEL },
                     attempt,
-                    requestMaxAttempts,
+                    effectiveMaxAttempts,
                     elapsedMs(startedAt),
                     response.body().take(500),
                 )
@@ -486,7 +746,11 @@ class OpenAiCloudLlm(
                 val category = CloudLlmResponseParser.statusCategory(response.statusCode())
                 throw CloudLlmException("클라우드 AI 오류($category)" + (reason?.let { ": $it" } ?: ""))
             }
-            return response.body()
+            val responseBody = response.body()
+            CloudLlmResponseParser.parseUsage(responseBody, mapper)?.let { usage ->
+                recordUsage(model.ifBlank { DEFAULT_MODEL }, options.purpose, usage)
+            }
+            return responseBody
         }
         throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, lastTimeout)
     }
@@ -516,6 +780,8 @@ class OpenAiCloudLlm(
 
     companion object {
         const val DEFAULT_MODEL = "gpt-5.6-luna"
+        private const val IMAGE_REVIEW_MAX_OUTPUT_TOKENS = 256
+        private const val IMAGE_TRANSLATION_MAX_OUTPUT_TOKENS = 2_048
         const val REASONING_EFFORT = "none"
     }
 }

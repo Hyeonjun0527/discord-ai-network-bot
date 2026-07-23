@@ -36,6 +36,22 @@ class NiaParticipationJudgeTest {
     }
 
     @Test
+    fun `bridge가 미리 조립한 prompt를 다시 조립하지 않고 그대로 호출한다`() {
+        val llm = FakeJudgeLlm(response(output("SPEAK")))
+        val prepared =
+            NiaJudgeLlmRequest(
+                prompt = "PREPARED_SINGLE_PROMPT",
+                promptVersion = NiaJudgePromptAssembler.PROMPT_VERSION,
+                seed = 42L,
+                timeoutMillis = 1_000,
+            )
+
+        judge(llm).decide(sampleRequest().copy(preparedLlmRequest = prepared))
+
+        assertThat(llm.requests).containsExactly(prepared)
+    }
+
+    @Test
     fun `judge retries once with repair instruction after malformed output`() {
         val llm = FakeJudgeLlm(response("{bad-json"), response(output("WAIT")))
         val judge = judge(llm)
@@ -44,7 +60,14 @@ class NiaParticipationJudgeTest {
 
         assertThat(decision.action).isEqualTo(SocialActionKind.WAIT)
         assertThat(llm.requests).hasSize(2)
-        assertThat(llm.requests[1].prompt).contains("REPAIR_INSTRUCTION")
+        val firstPrompt = llm.requests[0]
+        val repairPrompt = llm.requests[1]
+        assertThat(repairPrompt.prompt)
+            .contains("REPAIR_INSTRUCTION", "{bad-json", "valid_evidence_refs=msg_1", "latest_message_ref=msg_1")
+            .doesNotContain("야 이럴땐 위로해줘", "INPUT_JSON:")
+        assertThat(repairPrompt.prompt.length).isLessThan(firstPrompt.prompt.length)
+        assertThat(repairPrompt.stablePromptPrefixChars).isZero()
+        assertThat(repairPrompt.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY]).isEqualTo("true")
     }
 
     @Test

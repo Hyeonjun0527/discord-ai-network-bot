@@ -106,7 +106,8 @@ data class SpeechScenePacket(
                 identity = identity,
                 memoryRefs = memoryRefs.take(MAX_MEMORY_REFS),
                 speechIntent = speechIntent,
-                rawContextSceneData = rawContextSceneData?.take(MAX_RAW_CONTEXT_SCENE_CHARS),
+                // 장면은 시간순이다. 상한을 넘으면 오래된 앞부분보다 현재 응답 대상이 있는 끝부분을 보존한다.
+                rawContextSceneData = rawContextSceneData?.takeLast(MAX_RAW_CONTEXT_SCENE_CHARS),
                 responseTargetRef = responseTargetRef,
                 responseObligation = responseObligation,
                 groundingNeed = groundingNeed,

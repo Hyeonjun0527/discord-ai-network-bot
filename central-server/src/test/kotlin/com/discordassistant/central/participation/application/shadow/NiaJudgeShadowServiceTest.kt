@@ -12,6 +12,7 @@ import com.discordassistant.central.participation.application.judge.JudgeDecisio
 import com.discordassistant.central.participation.application.judge.JudgeReasonCode
 import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
 import com.discordassistant.central.participation.application.judge.JudgeToneAxes
+import com.discordassistant.central.participation.application.judge.NiaJudgeExecutionPurpose
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
 import com.discordassistant.central.participation.application.judge.SingleJudgeSceneSnapshot
@@ -37,7 +38,8 @@ class NiaJudgeShadowServiceTest {
     @Test
     fun `records judge result as shadow prediction without raw text`() {
         val store = FakePredictionStore()
-        val service = NiaJudgeShadowService(FixedJudge(speakDecision()), store, clock)
+        val judge = CapturingJudge(speakDecision())
+        val service = NiaJudgeShadowService(judge, store, clock)
 
         val result = service.record(sampleRequest())
 
@@ -50,6 +52,7 @@ class NiaJudgeShadowServiceTest {
         assertThat(record.expectedFireAt).isEqualTo(now)
         assertThat(record.featureHash).hasSize(64)
         assertThat(record.featureHash).doesNotContain("위로해줘")
+        assertThat(judge.request!!.executionPurpose).isEqualTo(NiaJudgeExecutionPurpose.SHADOW)
     }
 
     @Test
@@ -122,10 +125,15 @@ class NiaJudgeShadowServiceTest {
             reasonCode = JudgeReasonCode("judge.synthetic"),
         )
 
-    private class FixedJudge(
+    private class CapturingJudge(
         private val decision: SingleJudgeDecision,
     ) : SingleParticipationJudgePort {
-        override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision = decision
+        var request: SingleJudgeDecisionRequest? = null
+
+        override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
+            this.request = request
+            return decision
+        }
     }
 
     private class ThrowingJudge : SingleParticipationJudgePort {

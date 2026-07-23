@@ -102,6 +102,8 @@ class SecurityConfig(
                     authorize("/assets/**", permitAll) // Discord 임베드/브랜드 정적 이미지
                     authorize("/i18n/**", permitAll) // 웹 문구 i18n(공개 정적, 설치 랜딩 다국어)
                     authorize("/actuator/health", permitAll)
+                    // 전용 bearer token 또는 기존 OAuth 세션 검증은 PrometheusScrapeSecurityFilter가 맡는다.
+                    authorize(PrometheusScrapeSecurityFilter.PROMETHEUS_PATH, permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)
                     authorize("/provider/connect/**", permitAll) // 웹 ‘토큰 받기’ OAuth 온보딩

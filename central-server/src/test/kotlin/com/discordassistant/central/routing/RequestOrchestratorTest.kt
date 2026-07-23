@@ -11,6 +11,8 @@ import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.CloudTurn
@@ -489,6 +491,7 @@ class RequestOrchestratorTest {
         var lastModel: String? = null
         var lastHistory: List<CloudTurn> = emptyList()
         var lastThinking: CloudThinking? = null
+        var lastOptions: CloudLlmRequestOptions? = null
 
         override fun isEnabled() = enabled
 
@@ -512,6 +515,17 @@ class RequestOrchestratorTest {
             lastHistory = history
             lastThinking = thinking
             return generate(prompt, model)
+        }
+
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+            options: CloudLlmRequestOptions,
+        ): CloudLlmResult {
+            lastOptions = options
+            return generate(prompt, model, history, thinking)
         }
 
         override fun generateWithTools(
@@ -576,6 +590,10 @@ class RequestOrchestratorTest {
         assertNull(r.providerId) // 풀 프로바이더가 아니라 central 직결
         assertEquals(1, cloud.generateCalls)
         assertEquals("gpt-5.6-luna", cloud.lastModel)
+        assertEquals(512, cloud.lastOptions?.maxOutputTokens)
+        assertEquals(CloudLlmPurpose.GENERAL, cloud.lastOptions?.purpose)
+        assertEquals(0, cloud.lastOptions?.cachePolicy?.stablePrefixChars)
+        assertEquals(0, cloud.lastOptions?.maxRetries)
         // sendInfer 경로(에이전트)는 타지 않았다 — 세션에 추론 요청이 전달되지 않음.
         assertNull((session.connection as EchoConnection).lastInfer)
     }

@@ -66,6 +66,27 @@ class SpeechScenePacketTest {
     }
 
     @Test
+    fun `of caps raw scene keeping the latest response target`() {
+        val rawScene = "oldest-marker" + "x".repeat(SpeechScenePacket.MAX_RAW_CONTEXT_SCENE_CHARS) + "latest-marker"
+
+        val packet =
+            SpeechScenePacket.of(
+                focusThreadKey = "t",
+                target = SpeechTarget.NONE,
+                recentTurns = emptyList(),
+                socialAct = SpeechSocialAct.ANSWER,
+                burstShape = shape,
+                identity = identity,
+                rawContextSceneData = rawScene,
+            )
+
+        assertThat(packet.rawContextSceneData)
+            .hasSize(SpeechScenePacket.MAX_RAW_CONTEXT_SCENE_CHARS)
+            .endsWith("latest-marker")
+            .doesNotContain("oldest-marker")
+    }
+
+    @Test
     fun `target none cannot carry a pseudonym`() {
         assertThatThrownBy { SpeechTarget(SpeechTarget.Kind.NONE, "x") }
             .isInstanceOf(IllegalArgumentException::class.java)

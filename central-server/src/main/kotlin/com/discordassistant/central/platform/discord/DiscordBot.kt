@@ -4,6 +4,10 @@ import com.discordassistant.central.channelai.application.AutoRespondChannelRegi
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.global.i18n.Messages
+import com.discordassistant.central.global.observability.NiaDispatchEvent
+import com.discordassistant.central.global.observability.NiaDispatchOutcome
+import com.discordassistant.central.global.observability.NiaIngressSource
+import com.discordassistant.central.global.observability.NiaRuntimeMetrics
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
@@ -13,7 +17,6 @@ import com.discordassistant.central.platform.discord.nexa.NiaTurnGenerationTrack
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
-import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
@@ -209,6 +212,37 @@ internal data class DiscordRecentPromptMessage(
     val replyToMessageId: Long? = null,
 )
 
+internal fun appendRecentPromptMessage(
+    buffer: ArrayDeque<DiscordRecentPromptMessage>,
+    message: DiscordRecentPromptMessage,
+    limit: Int,
+) {
+    require(limit > 0) { "recent prompt message limit은 양수여야 한다" }
+    if (message.bot && message.id > 0) {
+        buffer.removeIf { prior ->
+            prior.bot &&
+                prior.id < 0 &&
+                prior.authorId == message.authorId &&
+                prior.content == message.content &&
+                prior.replyToMessageId == message.replyToMessageId &&
+                kotlin.math.abs(prior.createdAtEpochMillis - message.createdAtEpochMillis) <= SYNTHETIC_REPLY_ECHO_WINDOW_MILLIS
+        }
+    }
+    buffer.addLast(message)
+    while (buffer.size > limit) buffer.removeFirst()
+}
+
+private const val SYNTHETIC_REPLY_ECHO_WINDOW_MILLIS: Long = 60_000
+
+private val DiscordChannelEventAdmission.metricOutcome: NiaDispatchOutcome
+    get() =
+        when (this) {
+            DiscordChannelEventAdmission.ACCEPTED -> NiaDispatchOutcome.ACCEPTED
+            DiscordChannelEventAdmission.ACCEPTED_AFTER_EVICTION -> NiaDispatchOutcome.ACCEPTED_AFTER_EVICTION
+            DiscordChannelEventAdmission.ACCEPTED_TO_MUTATION_OVERFLOW -> NiaDispatchOutcome.ACCEPTED_TO_MUTATION_OVERFLOW
+            DiscordChannelEventAdmission.REJECTED -> NiaDispatchOutcome.REJECTED
+        }
+
 internal data class NiaTurnContinuation(
     val likely: Boolean,
     val lastNiaSpokeAgeSeconds: Double?,
@@ -351,6 +385,7 @@ interface BotGuildLister {
 class DiscordBot(
     private val commands: CommandService,
     private val metrics: CommandMetrics,
+    private val niaRuntimeMetrics: NiaRuntimeMetrics,
     private val channelProfiles: ChannelAiProfileService,
     private val autoRespondChannels: AutoRespondChannelRegistry,
     private val guildCleanup: GuildRemovalCleanupService,
@@ -367,8 +402,6 @@ class DiscordBot(
     private val pendingImagePosts: PendingImagePostStore,
     // AI 관리 비서: 어드민의 /질문 자연어 관리 명령을 GLM tool calling 으로 해석·실행(JDA 변경은 여기서 게이트웨이로).
     private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
-    // 니아 사회기억/감정 — 채널AI 발화 경로에서 한 메시지 관찰 → 발화 톤 힌트(D2). 발화 전 호출만 연결(신규 로직 없음).
-    private val niaSocialMind: NiaSocialMindService,
     // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
     private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
     private val niaTurnGenerations: NiaTurnGenerationTracker,
@@ -483,6 +516,7 @@ class DiscordBot(
             Listener(
                 commands,
                 metrics,
+                niaRuntimeMetrics,
                 channelProfiles,
                 autoRespondChannels,
                 guildCleanup,
@@ -495,7 +529,6 @@ class DiscordBot(
                 imaginePostConfirm,
                 pendingImagePosts,
                 adminAssistant,
-                niaSocialMind,
                 participationEmitBridge,
                 niaTurnGenerations,
                 participationFlags,
@@ -647,6 +680,7 @@ class DiscordBot(
     internal class Listener(
         private val commands: CommandService,
         private val metrics: CommandMetrics,
+        private val niaRuntimeMetrics: NiaRuntimeMetrics,
         private val channelProfiles: ChannelAiProfileService,
         private val autoRespondChannels: AutoRespondChannelRegistry,
         private val guildCleanup: GuildRemovalCleanupService,
@@ -659,7 +693,6 @@ class DiscordBot(
         private val imaginePostConfirm: ImaginePostConfirmService,
         private val pendingImagePosts: PendingImagePostStore,
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
-        private val niaSocialMind: NiaSocialMindService,
         private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
         private val niaTurnGenerations: NiaTurnGenerationTracker,
         private val participationFlags: NexaParticipationFlagService,
@@ -773,7 +806,10 @@ class DiscordBot(
             val isPublic = event.name in PUBLIC_COMMANDS
             // 어드민 /질문이 관리 액션 경로(AI 관리 비서)로 처리될 가능성이 있으면 반드시 ephemeral 로 defer 해야 한다.
             // 차단 대상·관리 행위 결과가 채널에 공개되는 것을 방지. 일반(비어드민) /질문은 isPublic 경로 그대로.
-            val isAdminAskPath = event.name == "ask" && ctx.isAdmin && adminAssistant.isAvailable()
+            val isAdminAskPath =
+                event.name == "ask" &&
+                    ctx.isAdmin &&
+                    adminAssistant.isAvailable()
             // /그림 게시 확인 게이트: confirm 옵션이 주어지면 먼저 유저 설정을 갱신한 뒤, 그 설정대로 이번 요청을 처리한다.
             // 게이트 ON 이면 전 과정을 본인만 보이게(ephemeral) 진행하고 완성 후 게시 확인 버튼을 띄운다(아래 work 에서 분기).
             val imagineGateOn =
@@ -1293,10 +1329,11 @@ class DiscordBot(
         /** 메시지 삭제 이벤트는 raw context 에서 해당 원문을 즉시 제거한다. */
         override fun onMessageDelete(event: MessageDeleteEvent) {
             if (!event.isFromGuild) return
+            niaRuntimeMetrics.recordIngress(NiaIngressSource.DELETE)
             val guildId = event.guild.idLong
             val channelId = event.channel.idLong
             val messageId = event.messageIdLong
-            submitRawContextMutation(eventType = "delete", channelId = channelId) {
+            submitRawContextMutation(event = NiaDispatchEvent.DELETE, channelId = channelId) {
                 participationEmitBridge.onMessageDeleted(
                     com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
                         guildId = guildId,
@@ -1310,6 +1347,7 @@ class DiscordBot(
         /** 메시지 수정 이벤트는 raw context 의 원문만 갱신하고, participation judge/emit 은 다시 실행하지 않는다. */
         override fun onMessageUpdate(event: MessageUpdateEvent) {
             if (!event.isFromGuild) return
+            niaRuntimeMetrics.recordIngress(NiaIngressSource.EDIT)
             val occurredAt =
                 (event.message.timeEdited ?: event.message.timeCreated)
                     .toInstant()
@@ -1325,7 +1363,7 @@ class DiscordBot(
                     rawText = event.message.contentRaw.trim(),
                     occurredAt = occurredAt,
                 )
-            submitRawContextMutation(eventType = "edit", channelId = signal.channelId) {
+            submitRawContextMutation(event = NiaDispatchEvent.EDIT, channelId = signal.channelId) {
                 participationEmitBridge.onMessageEdited(signal)
             }
         }
@@ -1336,15 +1374,16 @@ class DiscordBot(
          * fallback is safer than retaining raw context.
          */
         private fun submitRawContextMutation(
-            eventType: String,
+            event: NiaDispatchEvent,
             channelId: Long,
             mutation: () -> Unit,
         ) {
-            val task = { runChannelEvent(eventType, channelId, mutation) }
+            val task = { runChannelEvent(event.label, channelId, mutation) }
             val admission = channelEventDispatcher.submitMutation(channelId, task)
-            logMutationAdmission(eventType, channelId, admission)
+            niaRuntimeMetrics.recordAdmission(event, admission.metricOutcome)
+            logMutationAdmission(event.label, channelId, admission)
             if (admission == DiscordChannelEventAdmission.REJECTED) {
-                log.error("Discord message {} dispatcher rejected mutation; applying privacy fallback(channel={})", eventType, channelId)
+                log.error("Discord message {} dispatcher rejected mutation; applying privacy fallback(channel={})", event.label, channelId)
                 task()
             }
         }
@@ -1462,24 +1501,68 @@ class DiscordBot(
          */
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild) return
+            niaRuntimeMetrics.recordIngress(NiaIngressSource.MESSAGE)
             val channelId = event.channel.idLong
-            if (!event.author.isBot && !event.message.isWebhookMessage) {
+            val sourceType = participationSourceTypeOf(event)
+            val rawContextPreCaptured = AtomicBoolean(false)
+            if (sourceType == com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.HUMAN) {
                 // FIFO worker 밖에서 먼저 갱신해야, 이미 judge 중인 이전 메시지도 새 장면 도착을 감지해 결과를 버린다.
                 niaTurnGenerations.observe(channelId, event.messageIdLong)
+                val rawSignal =
+                    com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
+                        guildId = event.guild.idLong,
+                        channelId = channelId,
+                        messageId = event.messageIdLong,
+                        userId = event.author.idLong,
+                        threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
+                        replyToMessageId = event.message.referencedMessage?.idLong,
+                        sourceType = sourceType,
+                        rawText = event.message.contentRaw.trim(),
+                        occurredAt = event.message.timeCreated.toInstant(),
+                    )
+                submitRawContextMutation(event = NiaDispatchEvent.RECEIVE_CONTEXT, channelId = channelId) {
+                    rawContextPreCaptured.set(
+                        participationEmitBridge.onHumanMessageObserved(rawSignal) ==
+                            com.discordassistant.central.platform.discord.nexa.ParticipationRawContextMutationOutcome.Upserted,
+                    )
+                }
             }
             val admission =
                 channelEventDispatcher.submit(channelId) {
-                    runChannelEvent("receive", channelId) { processMessageReceived(event) }
+                    runChannelEvent("receive_evaluation", channelId) {
+                        processMessageReceived(event, rawContextPreCaptured.get())
+                    }
                 }
+            niaRuntimeMetrics.recordAdmission(NiaDispatchEvent.RECEIVE_EVALUATION, admission.metricOutcome)
             if (!admission.accepted) {
                 log.warn("Discord message admission rejected — fail closed(channel={})", channelId)
             }
         }
 
-        private fun processMessageReceived(event: MessageReceivedEvent) {
+        private fun processMessageReceived(
+            event: MessageReceivedEvent,
+            rawContextPreCaptured: Boolean,
+        ) {
             rememberRecentMessage(event)
-            if (event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
+            if (event.author.isBot) {
+                if (event.author.idLong == selfId && !event.message.isWebhookMessage) {
+                    participationEmitBridge.onAssistantMessageObserved(
+                        com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
+                            guildId = event.guild.idLong,
+                            channelId = event.channel.idLong,
+                            messageId = event.messageIdLong,
+                            userId = selfId,
+                            threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
+                            replyToMessageId = event.message.referencedMessage?.idLong,
+                            sourceType = com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.BOT,
+                            rawText = event.message.contentRaw.trim(),
+                            occurredAt = event.message.timeCreated.toInstant(),
+                        ),
+                    )
+                }
+                return
+            }
             val mentioned =
                 event.message.mentions.users
                     .any { it.idLong == selfId }
@@ -1488,7 +1571,7 @@ class DiscordBot(
             // The bridge captures rollout mode once with its social decision. Shadow preserves legacy behavior;
             // CANARY/LIVE owns the turn only through FINAL, and a non-final misconfiguration fails closed rather than
             // allowing an unjudged legacy response.
-            val participationTurn = forwardToParticipation(event, mentioned || directlyAddressed)
+            val participationTurn = forwardToParticipation(event, mentioned || directlyAddressed, rawContextPreCaptured)
             if (participationTurn.ownsTurn) return
 
             // OFF/SHADOW 및 final judge가 아직 real-send가 아닌 채널은 기존 명시 호출/자동응답 계약을 유지한다.
@@ -1517,6 +1600,7 @@ class DiscordBot(
         private fun forwardToParticipation(
             event: MessageReceivedEvent,
             mentioned: Boolean,
+            rawContextPreCaptured: Boolean,
         ): ParticipationTurnOutcome =
             try {
                 val messageId = event.messageIdLong
@@ -1609,6 +1693,7 @@ class DiscordBot(
                             contextVersion = 0,
                             seed = messageId,
                             turnGeneration = messageId,
+                            rawContextPreCaptured = rawContextPreCaptured,
                         ),
                     )
                 participationTurn
@@ -1893,8 +1978,7 @@ class DiscordBot(
         ) {
             val buffer = recentMessagesByChannel.computeIfAbsent(channelId) { ArrayDeque() }
             synchronized(buffer) {
-                buffer.addLast(message)
-                while (buffer.size > RECENT_CHANNEL_CONTEXT_FETCH_LIMIT) buffer.removeFirst()
+                appendRecentPromptMessage(buffer, message, RECENT_CHANNEL_CONTEXT_FETCH_LIMIT)
             }
             if (recentMessagesByChannel.size > RECENT_CHANNEL_CONTEXT_CHANNEL_CACHE_LIMIT) {
                 recentMessagesByChannel.keys.firstOrNull { it != channelId }?.let { recentMessagesByChannel.remove(it) }

@@ -121,6 +121,21 @@ class MemoryConsolidationJobTest {
     }
 
     @Test
+    fun `기본값은 빈 후보를 유료 추출기에 재요청하지 않는다`() {
+        var attempts = 0
+        val extractor =
+            MemoryCandidateExtractorPort {
+                attempts += 1
+                emptyList()
+            }
+        val job = MemoryConsolidationJob(LeasingQueue(listOf(req("s1"))), extractor, MemoryConsolidationService(IdempotentStore()))
+
+        job.runOnce()
+
+        assertEquals(1, attempts)
+    }
+
+    @Test
     fun `모든 consolidation 결과에 reason code 가 남는다`() {
         val store = IdempotentStore()
         val results = MemoryConsolidationService(store).consolidate(listOf(candidate("s1")))

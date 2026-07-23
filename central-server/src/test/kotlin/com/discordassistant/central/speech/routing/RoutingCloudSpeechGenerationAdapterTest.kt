@@ -2,6 +2,8 @@ package com.discordassistant.central.speech.routing
 
 import com.discordassistant.central.platform.discord.command.AskCommandHandler
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmPurpose
+import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudLlmUsage
 import com.discordassistant.central.routing.application.ImageReview
@@ -34,6 +36,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
             candidateCount = count,
             reasoningMode = ReasoningMode.NONE,
             maxOutputTokens = 256,
+            stableSystemPromptChars = "너는 니아야".length,
         )
 
     /** content 를 정해진 대로 돌려주는 fake CloudLlm(필요 메서드만 의미 있게). */
@@ -43,6 +46,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
         private val throwOnce: Boolean = false,
     ) : CloudLlm {
         var calls = 0
+        var lastOptions: CloudLlmRequestOptions? = null
 
         override fun isEnabled() = enabled
 
@@ -53,6 +57,16 @@ class RoutingCloudSpeechGenerationAdapterTest {
             calls++
             if (throwOnce && calls == 1) throw RuntimeException("transient")
             return CloudLlmResult(response, CloudLlmUsage(promptTokens = 10, completionTokens = 5))
+        }
+
+        override fun generateSampled(
+            prompt: String,
+            model: String,
+            temperature: Double,
+            options: CloudLlmRequestOptions,
+        ): CloudLlmResult {
+            lastOptions = options
+            return generate(prompt, model)
         }
 
         override fun generateWithTools(
@@ -94,12 +108,18 @@ class RoutingCloudSpeechGenerationAdapterTest {
                     assertThat(modelMetadata).isEqualTo("glm-5.1")
                 }
             }
-        val adapter = RoutingCloudSpeechGenerationAdapter(FakeCloudLlm(), config, recorder)
+        val cloud = FakeCloudLlm()
+        val adapter = RoutingCloudSpeechGenerationAdapter(cloud, config, recorder)
         val result = adapter.generate(request())
         assertThat(result.isEmpty).isFalse()
         assertThat(result.candidates).hasSize(1)
         assertThat(result.modelMetadata).isEqualTo("glm-5.1")
         assertThat(recorded).isTrue()
+        assertThat(cloud.lastOptions!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SPEECH)
+        assertThat(cloud.lastOptions!!.maxOutputTokens).isEqualTo(256)
+        assertThat(cloud.lastOptions!!.cachePolicy!!.stablePrefixChars).isEqualTo("너는 니아야".length)
+        assertThat(cloud.lastOptions!!.requestTimeout).isEqualTo(Duration.ofMillis(7_750))
+        assertThat(cloud.lastOptions!!.maxRetries).isZero()
     }
 
     @Test

@@ -17,6 +17,7 @@ data class NiaJudgeLlmRequest(
     val outputSchema: String = OUTPUT_SCHEMA,
     val seed: Long,
     val timeoutMillis: Long,
+    val stablePromptPrefixChars: Int = 0,
     val metadata: Map<String, String> = emptyMap(),
 ) {
     init {
@@ -25,6 +26,9 @@ data class NiaJudgeLlmRequest(
         require(outputSchema == OUTPUT_SCHEMA) { "지원하지 않는 judge output schema 다: $outputSchema" }
         require(seed >= 0) { "judge seed 는 음수일 수 없다: $seed" }
         require(timeoutMillis > 0) { "judge timeoutMillis 는 양수여야 한다: $timeoutMillis" }
+        require(stablePromptPrefixChars in 0..prompt.length) {
+            "judge stablePromptPrefixChars 는 prompt 길이 안이어야 한다: $stablePromptPrefixChars/${prompt.length}"
+        }
         require(metadata.size <= MAX_METADATA) { "judge metadata 는 최대 $MAX_METADATA 개까지만 담는다" }
         metadata.forEach { (key, value) ->
             require(key.isStableLabel()) { "judge metadata key 는 안정 label 이어야 한다: $key" }
@@ -37,7 +41,7 @@ data class NiaJudgeLlmRequest(
     override fun toString(): String =
         "NiaJudgeLlmRequest(promptVersion=$promptVersion, outputSchema=$outputSchema, seed=$seed, " +
             "timeoutMillis=$timeoutMillis, promptChars=${prompt.length}, promptHash=$promptHash, " +
-            "metadataKeys=${metadata.keys.sorted()})"
+            "stablePromptPrefixChars=$stablePromptPrefixChars, metadataKeys=${metadata.keys.sorted()})"
 
     companion object {
         const val OUTPUT_SCHEMA: String = "nia.participation-judge-output.v1"

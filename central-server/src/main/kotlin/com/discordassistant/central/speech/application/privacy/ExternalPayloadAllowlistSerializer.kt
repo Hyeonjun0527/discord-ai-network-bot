@@ -47,14 +47,7 @@ class ExternalPayloadAllowlistSerializer(
          */
         private val ALLOWED_FIELDS: List<AllowedField> =
             listOf(
-                AllowedField("focus_thread") { it.focusThreadKey },
                 AllowedField("target") { it.target.pseudonymKey },
-                AllowedField("social_act") { it.socialAct.name },
-                AllowedField("recent_turns") { packet ->
-                    packet.recentTurns
-                        .takeIf { it.isNotEmpty() }
-                        ?.joinToString(separator = " | ") { "${it.speakerLabel}: ${it.text}" }
-                },
                 AllowedField("memory_refs") { packet ->
                     packet.memoryRefs
                         .takeIf { it.isNotEmpty() }

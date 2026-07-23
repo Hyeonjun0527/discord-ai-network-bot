@@ -11,7 +11,7 @@
   최근 대화와 최종 선택 답변을 함께 확인할 수 있게 했다. 대화 에피소드 검색 결과는 런타임 연결 이후 최대 2개까지
   같은 실행 상세에 표시한다.
 - OpenAI 직접 호출을 `judge`·`speech`·`action evaluator`·RAG embedding 등 목적별 요청 수, payload 크기,
-  input/cache-write/cached/output token으로 집계하고 운영 Prometheus가 30일 동안 수집하도록 연결했다.
+  input/cache-write/cached/output token으로 집계하고 운영 Prometheus가 365일 동안 수집하도록 연결했다.
 
 ### Fixed
 - NIA가 응답 의무가 있는 장면에서도 후속 후보 평가에서 침묵으로 뒤집히던 문제를 막고, 현재 메시지를 응답 대상으로

@@ -69,8 +69,9 @@ services:
       OPENAI_FAST_MODEL: ${OPENAI_FAST_MODEL:-gpt-5.6-luna}
       # provider timeout 뒤 같은 요청을 다시 과금하지 않는다. 코드 기본값과 운영 compose를 이중 고정한다.
       OPENAI_LLM_MAX_RETRIES: "0"
-      # 목적별 canary 후 하나씩 켠다. 운영 환경변수만으로 즉시 OFF 할 수 있어야 한다.
-      OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED:-false}
+      # Judge의 고정 prefix만 캐시한다. raw scene/few-shot/RAG/상태는 breakpoint 뒤라 매 요청 새로 전달된다.
+      # 운영 환경변수로 즉시 OFF 할 수 있고, 짧은 speech/evaluator prefix는 기본 비활성으로 둔다.
+      OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED:-true}
       OPENAI_PROMPT_CACHE_NIA_SPEECH_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_SPEECH_ENABLED:-false}
       OPENAI_PROMPT_CACHE_NIA_ACTION_EVALUATOR_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_ACTION_EVALUATOR_ENABLED:-false}
       NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-gpt-5.6-luna}

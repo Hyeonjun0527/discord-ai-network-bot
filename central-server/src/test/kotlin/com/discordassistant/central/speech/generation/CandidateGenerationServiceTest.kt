@@ -1,6 +1,10 @@
 package com.discordassistant.central.speech.generation
 
+import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaPromptDefaults
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -17,6 +21,7 @@ import com.discordassistant.central.speech.application.prompt.BurstPromptCompile
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
+import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
@@ -40,6 +45,7 @@ class CandidateGenerationServiceTest {
         port: SpeechGenerationPort,
         grounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
         inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
+        promptSource: NiaPromptSource = CodeNiaPromptSource,
     ) = CandidateGenerationService(
         generationPort = port,
         socialActCompiler = SocialActPromptCompiler(),
@@ -49,6 +55,7 @@ class CandidateGenerationServiceTest {
         contentIsolator = ConversationContentIsolator(),
         factualGrounding = grounding,
         inputTrace = inputTrace,
+        promptSource = promptSource,
     )
 
     @Test
@@ -116,10 +123,10 @@ class CandidateGenerationServiceTest {
         assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
         val cachePrefix = req.systemPrompt.take(req.stableSystemPromptChars)
         assertThat(cachePrefix)
-            .contains("니아", "[participation 결정]")
-            .doesNotContain("질문 연타가 시험으로 바뀜")
+            .contains("니아", "[지금 장면 지침]")
+            .doesNotContain("[participation 결정]", "질문 연타가 시험으로 바뀜")
         assertThat(req.systemPrompt.drop(req.stableSystemPromptChars))
-            .startsWith("interaction_reading=질문 연타가 시험으로 바뀜")
+            .contains("[participation 결정]", "interaction_reading=질문 연타가 시험으로 바뀜")
         // user prompt에는 생성 규칙과 중복되는 내부 thread/social-act 메타를 싣지 않는다.
         assertThat(req.userPrompt).contains("target=")
         assertThat(req.userPrompt).doesNotContain("focus_thread=", "social_act=")
@@ -178,6 +185,111 @@ class CandidateGenerationServiceTest {
     }
 
     @Test
+    fun `social act와 burst와 후보 수가 달라도 고정 speech prefix만 cache 대상으로 남는다`() {
+        val port = CapturingPort()
+        val candidateService = service(port)
+        val identity =
+            IdentityKernelSection.of(
+                personaName = "니아",
+                personaBlock = "고정 정체성 ".repeat(80),
+                prohibitions = listOf("비서 멘트 금지"),
+            )
+
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(
+                identity = identity,
+                socialAct = SpeechSocialAct.ACKNOWLEDGE,
+                burstShape = SpeechBurstShape(1, 120, false),
+                speechIntent = "짧게 받아주기",
+            ),
+            GenerationBudget(maxCandidates = 1, maxOutputTokens = 256),
+        )
+        val first = port.lastRequest!!
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(
+                identity = identity,
+                socialAct = SpeechSocialAct.TEASE,
+                burstShape = SpeechBurstShape(3, 480, false),
+                speechIntent = "장난스럽게 패턴 짚기",
+            ),
+            GenerationBudget(maxCandidates = 3, maxOutputTokens = 768),
+        )
+        val second = port.lastRequest!!
+
+        val stablePrefix = first.systemPrompt.take(first.stableSystemPromptChars)
+        assertThat(second.stableSystemPromptChars).isEqualTo(first.stableSystemPromptChars)
+        assertThat(second.systemPrompt.take(second.stableSystemPromptChars)).isEqualTo(stablePrefix)
+        assertThat(stablePrefix)
+            .contains(
+                "고정 정체성",
+                "[지금 장면 지침]",
+            ).doesNotContain(
+                "최근 원문 장면 전체를 보고 실제 문구만 만든다",
+                "ASCII 마침표(.)로 끝내지 않는다",
+                "상대 말을 가볍게 받아 주는 결",
+                "친한 사이의 가벼운 장난 결",
+                "정확히 1개",
+                "정확히 3개",
+                "[participation 결정]",
+            )
+        assertThat(first.systemPrompt.drop(first.stableSystemPromptChars))
+            .contains(
+                "상대 말을 가볍게 받아 주는 결",
+                "최근 원문 장면 전체를 보고 실제 문구만 만든다",
+                "정확히 1개",
+                "짧게 받아주기",
+            )
+        assertThat(second.systemPrompt.drop(second.stableSystemPromptChars))
+            .contains("친한 사이의 가벼운 장난 결", "정확히 3개", "장난스럽게 패턴 짚기")
+    }
+
+    @Test
+    fun `관리형 speech 템플릿의 첫 동적 변수보다 뒤쪽은 cache하지 않는다`() {
+        val port = CapturingPort()
+        val managedTemplate =
+            """
+            {{identity}}
+
+            [participation 결정]
+            {{participationDecision}}
+
+            이 고정 문장은 동적 participation보다 뒤라 cache prefix가 될 수 없다.
+            {{socialActInstruction}}
+            {{burstInstruction}}
+            {{outputContract}}
+            """.trimIndent()
+        val promptSource =
+            NiaPromptSource {
+                NiaPromptDefaults.documents +
+                    (NiaPromptKey.SPEECH_SYSTEM_TEMPLATE to managedTemplate)
+            }
+        val candidateService = service(port, promptSource = promptSource)
+
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(speechIntent = "intent=이전 장면에 짧게 답하기"),
+            GenerationBudget.DEFAULT,
+        )
+        val first = port.lastRequest!!
+        candidateService.generate(
+            SpeechGenerationFixtures.packet(speechIntent = "intent=현재 장면만 짧게 답하기"),
+            GenerationBudget.DEFAULT,
+        )
+        val second = port.lastRequest!!
+
+        val firstPrefix = first.systemPrompt.take(first.stableSystemPromptChars)
+        val secondPrefix = second.systemPrompt.take(second.stableSystemPromptChars)
+        assertThat(secondPrefix).isEqualTo(firstPrefix)
+        assertThat(firstPrefix)
+            .contains("[participation 결정]")
+            .doesNotContain(
+                "이 고정 문장은 동적 participation보다 뒤",
+                "intent=현재 장면만 짧게 답하기",
+            )
+        assertThat(second.systemPrompt.drop(second.stableSystemPromptChars))
+            .startsWith("intent=현재 장면만 짧게 답하기")
+    }
+
+    @Test
     fun `장면별 RAG 예시가 달라도 speech cache key용 prefix는 같다`() {
         val port = CapturingPort()
         val candidateService = service(port)
@@ -195,10 +307,12 @@ class CandidateGenerationServiceTest {
         candidateService.generate(SpeechGenerationFixtures.packet(identity = identity("장면 B 예시")), GenerationBudget.DEFAULT)
         val second = port.lastRequest!!
 
-        assertThat(first.stableSystemPromptChars).isEqualTo(stablePersona.length)
         assertThat(second.stableSystemPromptChars).isEqualTo(first.stableSystemPromptChars)
         assertThat(second.systemPrompt.take(second.stableSystemPromptChars))
             .isEqualTo(first.systemPrompt.take(first.stableSystemPromptChars))
+        assertThat(first.systemPrompt.take(first.stableSystemPromptChars))
+            .contains(stablePersona)
+            .doesNotContain("장면 A 예시", "장면 B 예시")
         assertThat(first.systemPrompt).contains("장면 A 예시")
         assertThat(second.systemPrompt).contains("장면 B 예시")
     }

@@ -163,4 +163,52 @@ object NiaPromptTemplate {
     }
 
     fun placeholders(template: String): Set<String> = marker.findAll(template).map { it.groupValues[1] }.toSet()
+
+    /**
+     * 렌더링 결과의 처음부터 모든 값이 동일하다고 보장되는 문자 수를 계산한다.
+     * [stableValueChars]에 없는 값은 처음부터 동적이며, 있는 값은 지정한 길이까지만 고정이다.
+     */
+    fun stablePrefixChars(
+        template: String,
+        values: Map<String, String>,
+        stableValueChars: Map<String, Int>,
+    ): Int {
+        val unknownStableValues = stableValueChars.keys - values.keys
+        require(unknownStableValues.isEmpty()) {
+            "cache 고정 길이가 알 수 없는 변수에 지정되었다: ${unknownStableValues.sorted().joinToString()}"
+        }
+        stableValueChars.forEach { (key, stableChars) ->
+            val value = values.getValue(key)
+            require(stableChars in 0..value.length) {
+                "$key cache 고정 길이가 값 범위를 벗어난다: $stableChars/${value.length}"
+            }
+        }
+
+        val raw = StringBuilder(template.length + values.values.sumOf(String::length))
+        var cursor = 0
+        var dynamicBoundary: Int? = null
+        marker.findAll(template).forEach { match ->
+            raw.append(template, cursor, match.range.first)
+            val key = match.groupValues[1]
+            val value = values[key].orEmpty()
+            val stableChars = stableValueChars[key]
+            if (dynamicBoundary == null && (stableChars == null || stableChars < value.length)) {
+                dynamicBoundary = raw.length + (stableChars ?: 0)
+            }
+            raw.append(value)
+            cursor = match.range.last + 1
+        }
+        raw.append(template, cursor, template.length)
+
+        val untrimmed = raw.toString()
+        val rendered = untrimmed.trim()
+        val trimStart = untrimmed.length - untrimmed.trimStart().length
+        val trimEnd = trimStart + rendered.length
+        val boundary = dynamicBoundary ?: return rendered.length
+        return when {
+            boundary <= trimStart -> 0
+            boundary >= trimEnd -> rendered.length
+            else -> boundary - trimStart
+        }
+    }
 }

@@ -8,6 +8,9 @@ import com.discordassistant.central.routing.application.CloudThinking
 import com.discordassistant.central.routing.application.CloudToolResponse
 import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.routing.application.ImageReview
+import com.discordassistant.central.shared.NiaPromptDefaults
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.adapter.outbound.evaluation.CloudCompleteActionEvaluationAdapter
 import com.discordassistant.central.speech.application.port.out.CompleteActionCandidate
 import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationRequest
@@ -41,7 +44,8 @@ class CloudCompleteActionEvaluationAdapterTest {
         assertThat(cloud.options!!.maxOutputTokens).isEqualTo(512)
         assertThat(cloud.options!!.maxRetries).isZero()
         assertThat(cloud.prompt.take(cloud.options!!.cachePolicy!!.stablePrefixChars))
-            .doesNotContain("speech_intent=")
+            .contains("speech_intent=")
+            .doesNotContain("interaction_reading=알고리즘 구술시험처럼 이어짐")
         assertThat(cloud.prompt)
             .doesNotContain(
                 "context_version=",
@@ -78,6 +82,30 @@ class CloudCompleteActionEvaluationAdapterTest {
         CloudCompleteActionEvaluationAdapter(cloud, "test-model").select(request().copy(rawContextSceneData = rawScene))
 
         assertThat(cloud.prompt).contains("latest-marker").doesNotContain("oldest-marker")
+    }
+
+    @Test
+    fun `관리형 evaluator 템플릿이 동적 값을 앞에 두면 cache write를 끈다`() {
+        val managedTemplate =
+            """
+            {{socialAct}}
+            {{speechIntent}}
+            {{provisionalConfidence}}
+            {{recentScene}}
+            {{rawContext}}
+            {{candidates}}
+            """.trimIndent()
+        val promptSource =
+            NiaPromptSource {
+                NiaPromptDefaults.documents +
+                    (NiaPromptKey.ACTION_EVALUATOR_TEMPLATE to managedTemplate)
+            }
+        val cloud = CapturingCloudLlm()
+
+        CloudCompleteActionEvaluationAdapter(cloud, "test-model", promptSource).select(request())
+
+        assertThat(cloud.options!!.cachePolicy.stablePrefixChars).isZero()
+        assertThat(cloud.options!!.cachePolicy.key).isNull()
     }
 
     private fun request() =

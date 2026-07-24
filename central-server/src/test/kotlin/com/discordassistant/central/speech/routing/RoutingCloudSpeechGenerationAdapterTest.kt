@@ -7,6 +7,9 @@ import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.CloudLlmUsage
 import com.discordassistant.central.routing.application.ImageReview
+import com.discordassistant.central.shared.NiaPromptDefaults
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.speech.adapter.outbound.routing.CloudCallBudget
 import com.discordassistant.central.speech.adapter.outbound.routing.RoutingCloudSpeechGenerationAdapter
 import com.discordassistant.central.speech.adapter.outbound.routing.SpeechModelConfig
@@ -46,6 +49,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
         private val throwOnce: Boolean = false,
     ) : CloudLlm {
         var calls = 0
+        var lastPrompt: String? = null
         var lastOptions: CloudLlmRequestOptions? = null
 
         override fun isEnabled() = enabled
@@ -55,6 +59,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
             model: String,
         ): CloudLlmResult {
             calls++
+            lastPrompt = prompt
             if (throwOnce && calls == 1) throw RuntimeException("transient")
             return CloudLlmResult(response, CloudLlmUsage(promptTokens = 10, completionTokens = 5))
         }
@@ -117,9 +122,32 @@ class RoutingCloudSpeechGenerationAdapterTest {
         assertThat(recorded).isTrue()
         assertThat(cloud.lastOptions!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SPEECH)
         assertThat(cloud.lastOptions!!.maxOutputTokens).isEqualTo(256)
-        assertThat(cloud.lastOptions!!.cachePolicy!!.stablePrefixChars).isEqualTo("너는 니아야".length)
+        val cachePolicy = cloud.lastOptions!!.cachePolicy
+        assertThat(cloud.lastPrompt!!.take(cachePolicy.stablePrefixChars)).isEqualTo("너는 니아야\n\n")
         assertThat(cloud.lastOptions!!.requestTimeout).isEqualTo(Duration.ofMillis(7_750))
         assertThat(cloud.lastOptions!!.maxRetries).isZero()
+    }
+
+    @Test
+    fun `관리형 combine 템플릿이 동적 값을 앞에 두면 cache write를 끈다`() {
+        val managedTemplate =
+            """
+            {{toneDirective}}
+            {{systemPrompt}}
+            {{userPrompt}}
+            """.trimIndent()
+        val promptSource =
+            NiaPromptSource {
+                NiaPromptDefaults.documents +
+                    (NiaPromptKey.SPEECH_COMBINE_TEMPLATE to managedTemplate)
+            }
+        val cloud = FakeCloudLlm()
+        val adapter = RoutingCloudSpeechGenerationAdapter(cloud, config, promptSource = promptSource)
+
+        adapter.generate(request().copy(toneDirective = "이번 장면의 동적 톤"))
+
+        assertThat(cloud.lastOptions!!.cachePolicy.stablePrefixChars).isZero()
+        assertThat(cloud.lastOptions!!.cachePolicy.key).isNull()
     }
 
     @Test

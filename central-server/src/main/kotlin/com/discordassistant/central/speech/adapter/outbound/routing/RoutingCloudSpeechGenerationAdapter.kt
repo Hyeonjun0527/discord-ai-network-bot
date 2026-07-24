@@ -113,15 +113,15 @@ class RoutingCloudSpeechGenerationAdapter(
      */
     private fun generateBounded(
         generationRequest: SpeechGenerationRequest,
-        prompt: String,
+        prompt: CombinedPrompt,
         timeout: Duration,
     ): CloudLlmResult {
         val cachePolicy =
-            if (generationRequest.stableSystemPromptChars > 0) {
+            if (prompt.stablePrefixChars > 0) {
                 CloudLlmCachePolicy.stablePrefix(
                     namespace = SPEECH_CACHE_NAMESPACE,
-                    prompt = prompt,
-                    stablePrefixChars = generationRequest.stableSystemPromptChars,
+                    prompt = prompt.text,
+                    stablePrefixChars = prompt.stablePrefixChars,
                 )
             } else {
                 CloudLlmCachePolicy.disabled()
@@ -130,7 +130,7 @@ class RoutingCloudSpeechGenerationAdapter(
             CALL_EXECUTOR.submit(
                 Callable {
                     cloudLlm.generateSampled(
-                        prompt,
+                        prompt.text,
                         modelConfig.model,
                         modelConfig.temperature,
                         CloudLlmRequestOptions(
@@ -169,15 +169,24 @@ class RoutingCloudSpeechGenerationAdapter(
         Duration.ofMillis((totalTimeout.toMillis() - OUTER_TIMEOUT_MARGIN_MILLIS).coerceAtLeast(1L))
 
     /** system + user 를 단일 prompt 로 합친다(CloudLlm.generate 는 단일 prompt·model 계약). */
-    private fun combinePrompt(request: SpeechGenerationRequest): String =
-        NiaPromptTemplate.render(
-            promptSource.text(NiaPromptKey.SPEECH_COMBINE_TEMPLATE),
+    private fun combinePrompt(request: SpeechGenerationRequest): CombinedPrompt {
+        val template = promptSource.text(NiaPromptKey.SPEECH_COMBINE_TEMPLATE)
+        val values =
             mapOf(
                 "systemPrompt" to request.systemPrompt,
                 "toneDirective" to request.toneDirective,
                 "userPrompt" to request.userPrompt,
-            ),
+            )
+        return CombinedPrompt(
+            text = NiaPromptTemplate.render(template, values),
+            stablePrefixChars =
+                NiaPromptTemplate.stablePrefixChars(
+                    template = template,
+                    values = values,
+                    stableValueChars = mapOf("systemPrompt" to request.stableSystemPromptChars),
+                ),
         )
+    }
 
     companion object {
         /** perCallTimeout 을 강제하는 bounded daemon 풀(전 인스턴스 공유). 매달린 호출로부터 벽시계 상한을 지킨다. */
@@ -190,4 +199,9 @@ class RoutingCloudSpeechGenerationAdapter(
                 ThreadFactory { r -> Thread(r, "speech-cloud-call").also { it.isDaemon = true } },
             )
     }
+
+    private data class CombinedPrompt(
+        val text: String,
+        val stablePrefixChars: Int,
+    )
 }

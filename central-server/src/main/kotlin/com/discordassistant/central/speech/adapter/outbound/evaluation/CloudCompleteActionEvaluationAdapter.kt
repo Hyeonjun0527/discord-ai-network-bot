@@ -44,11 +44,15 @@ class CloudCompleteActionEvaluationAdapter(
                             maxOutputTokens = MAX_OUTPUT_TOKENS,
                             maxRetries = 0,
                             cachePolicy =
-                                CloudLlmCachePolicy.stablePrefix(
-                                    namespace = ACTION_EVALUATOR_CACHE_NAMESPACE,
-                                    prompt = prompt.text,
-                                    stablePrefixChars = prompt.stablePrefixChars,
-                                ),
+                                if (prompt.stablePrefixChars > 0) {
+                                    CloudLlmCachePolicy.stablePrefix(
+                                        namespace = ACTION_EVALUATOR_CACHE_NAMESPACE,
+                                        prompt = prompt.text,
+                                        stablePrefixChars = prompt.stablePrefixChars,
+                                    )
+                                } else {
+                                    CloudLlmCachePolicy.disabled()
+                                },
                         ),
                 )
             }.getOrElse { error ->
@@ -72,30 +76,35 @@ class CloudCompleteActionEvaluationAdapter(
                 "id=${candidate.candidateId}; kind=${candidate.kind}; reaction=${candidate.reactionCode.orEmpty()}\n" +
                     candidate.bubbles.joinToString("\n") { "  bubble=«${it.take(MAX_BUBBLE_CHARS)}»" }
             }
-        val text =
-            NiaPromptTemplate.render(
-                promptSource.text(NiaPromptKey.ACTION_EVALUATOR_TEMPLATE),
-                mapOf(
-                    "speechIntent" to request.speechIntent.orEmpty().take(MAX_INTENT_CHARS),
-                    "socialAct" to request.socialAct.wireName,
-                    "provisionalDecision" to request.provisionalDecision,
-                    "provisionalConfidence" to request.provisionalConfidence.toString(),
-                    "contextVersion" to request.contextVersion.toString(),
-                    "seed" to request.seed.toString(),
-                    "triggerMessageRef" to request.triggerMessageRef.orEmpty(),
-                    "stateRefs" to request.stateRefs.joinToString(","),
-                    "enforcement" to request.enforcementConstraints.sorted().joinToString(","),
-                    "recentScene" to recentScene,
-                    "rawContext" to
-                        request.rawContextSceneData
-                            ?.let { "«${quoteLatestData(it, MAX_RAW_SCENE_CHARS)}»" }
-                            .orEmpty(),
-                    "candidates" to candidates,
-                ),
+        val template = promptSource.text(NiaPromptKey.ACTION_EVALUATOR_TEMPLATE)
+        val values =
+            mapOf(
+                "speechIntent" to request.speechIntent.orEmpty().take(MAX_INTENT_CHARS),
+                "socialAct" to request.socialAct.wireName,
+                "provisionalDecision" to request.provisionalDecision,
+                "provisionalConfidence" to request.provisionalConfidence.toString(),
+                "contextVersion" to request.contextVersion.toString(),
+                "seed" to request.seed.toString(),
+                "triggerMessageRef" to request.triggerMessageRef.orEmpty(),
+                "stateRefs" to request.stateRefs.joinToString(","),
+                "enforcement" to request.enforcementConstraints.sorted().joinToString(","),
+                "recentScene" to recentScene,
+                "rawContext" to
+                    request.rawContextSceneData
+                        ?.let { "«${quoteLatestData(it, MAX_RAW_SCENE_CHARS)}»" }
+                        .orEmpty(),
+                "candidates" to candidates,
             )
-        val stablePrefixChars = text.indexOf(DYNAMIC_PROMPT_START)
-        check(stablePrefixChars > 0) { "action evaluator prompt의 동적 경계를 찾지 못했다" }
-        return CompleteActionPrompt(text, stablePrefixChars)
+        val text = NiaPromptTemplate.render(template, values)
+        return CompleteActionPrompt(
+            text = text,
+            stablePrefixChars =
+                NiaPromptTemplate.stablePrefixChars(
+                    template = template,
+                    values = values,
+                    stableValueChars = emptyMap(),
+                ),
+        )
     }
 
     private fun parse(
@@ -155,7 +164,6 @@ class CloudCompleteActionEvaluationAdapter(
         const val MAX_RAW_SCENE_CHARS: Int = 16_000
         const val MAX_BUBBLE_CHARS: Int = 2_000
         const val MAX_OUTPUT_TOKENS: Int = 512
-        const val DYNAMIC_PROMPT_START: String = "speech_intent="
         const val ACTION_EVALUATOR_CACHE_NAMESPACE: String = "nia-action-evaluator-v1"
     }
 }

@@ -39,7 +39,7 @@ enum class CloudLlmPurpose {
 }
 
 /**
- * OpenAI prompt cache 정책. 모든 호출은 explicit 모드를 쓰며, 고정 prefix를 알는 호출만 cache write를 허용한다.
+ * OpenAI prompt cache 정책. 모든 호출은 explicit 모드를 쓰며, 고정 prefix를 아는 호출만 cache write를 허용한다.
  * [stablePrefixChars]가 0이면 cache write를 완전히 끄고, 양수면 그 prefix 하나만 재사용 대상으로 만든다.
  */
 data class CloudLlmCachePolicy(
@@ -498,8 +498,12 @@ class OpenAiCloudLlm(
     @param:Value("\${central.cloud.openai-base-url:https://api.openai.com/v1}") private val baseUrl: String,
     @param:Value("\${central.cloud.llm-timeout-seconds:20}") private val timeoutSeconds: Long,
     @param:Value("\${central.cloud.llm-max-retries:0}") private val maxRetries: Int = 0,
-    @param:Value("\${central.cloud.prompt-cache-writes-enabled:false}")
-    private val promptCacheWritesEnabled: Boolean = false,
+    @param:Value("\${central.cloud.prompt-cache-nia-judge-enabled:false}")
+    private val promptCacheNiaJudgeEnabled: Boolean = false,
+    @param:Value("\${central.cloud.prompt-cache-nia-speech-enabled:false}")
+    private val promptCacheNiaSpeechEnabled: Boolean = false,
+    @param:Value("\${central.cloud.prompt-cache-nia-action-evaluator-enabled:false}")
+    private val promptCacheNiaActionEvaluatorEnabled: Boolean = false,
     private val usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(OpenAiCloudLlm::class.java)
@@ -644,7 +648,7 @@ class OpenAiCloudLlm(
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val startedAt = System.nanoTime()
         val effectiveCachePolicy =
-            if (promptCacheWritesEnabled) options.cachePolicy else CloudLlmCachePolicy.disabled()
+            if (cacheWriteEnabledFor(options.purpose)) options.cachePolicy else CloudLlmCachePolicy.disabled()
         val payload =
             mapper.createObjectNode().apply {
                 put("model", model.ifBlank { DEFAULT_MODEL })
@@ -754,6 +758,16 @@ class OpenAiCloudLlm(
         }
         throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, lastTimeout)
     }
+
+    private fun cacheWriteEnabledFor(purpose: CloudLlmPurpose): Boolean =
+        when (purpose) {
+            CloudLlmPurpose.NIA_JUDGE,
+            CloudLlmPurpose.NIA_SHADOW_JUDGE,
+            -> promptCacheNiaJudgeEnabled
+            CloudLlmPurpose.NIA_SPEECH -> promptCacheNiaSpeechEnabled
+            CloudLlmPurpose.NIA_ACTION_EVALUATOR -> promptCacheNiaActionEvaluatorEnabled
+            else -> false
+        }
 
     private fun toResponsesTools(toolsJson: String): com.fasterxml.jackson.databind.JsonNode {
         val source = mapper.readTree(toolsJson)

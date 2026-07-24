@@ -166,7 +166,6 @@ class OpenAiTokenUsageMetricsTest {
                     baseUrl = "http://127.0.0.1:${server.address.port}",
                     timeoutSeconds = 2,
                     maxRetries = 0,
-                    promptCacheWritesEnabled = false,
                     usageObserver = OpenAiTokenUsageMetrics(registry),
                 )
 

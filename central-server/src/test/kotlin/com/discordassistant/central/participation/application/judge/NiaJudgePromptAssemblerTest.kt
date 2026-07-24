@@ -15,6 +15,9 @@ import com.discordassistant.central.participation.application.port.out.SceneSnap
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotAction
 import com.discordassistant.central.participation.domain.model.fewshot.NiaFewShotDeliveryMode
+import com.discordassistant.central.shared.NiaPromptDefaults
+import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.NiaPromptSource
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -140,6 +143,32 @@ class NiaJudgePromptAssemblerTest {
         assertThat(second.prompt.drop(second.stablePromptPrefixChars))
             .isNotEqualTo(first.prompt.drop(first.stablePromptPrefixChars))
             .contains("니아야 지금 있어?", "응답해봐")
+    }
+
+    @Test
+    fun `관리형 judge 템플릿도 input JSON 내부 첫 동적 장면에서 cache를 끊는다`() {
+        val managedTemplate =
+            """
+            {{inputJson}}
+
+            output_schema={{outputSchema}}
+            """.trimIndent()
+        val promptSource =
+            NiaPromptSource {
+                NiaPromptDefaults.documents +
+                    (NiaPromptKey.JUDGE_TEMPLATE to managedTemplate)
+            }
+
+        val assembled = NiaJudgePromptAssembler(promptSource = promptSource).assemble(sampleRequest())
+        val stablePrefix = assembled.prompt.take(assembled.stablePromptPrefixChars)
+        val dynamicSuffix = assembled.prompt.drop(assembled.stablePromptPrefixChars)
+
+        assertThat(stablePrefix)
+            .contains("\"fewShotSet\":")
+            .doesNotContain("\"rawScene\":", "\"speakerLabel\":\"member_1\"")
+        assertThat(dynamicSuffix)
+            .startsWith("\"rawScene\":")
+            .contains("\"speakerLabel\":\"member_1\"", "output_schema=")
     }
 
     @Test

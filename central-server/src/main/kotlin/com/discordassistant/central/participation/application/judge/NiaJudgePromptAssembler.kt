@@ -28,14 +28,12 @@ class NiaJudgePromptAssembler(
         val promptPayload = request.toPromptPayload()
         val payloadJson = promptMapper.writeValueAsString(promptPayload)
         val prompt = buildManagedPrompt(payloadJson)
-        val stablePromptPrefixChars = prompt.indexOf(RAW_SCENE_FIELD)
-        check(stablePromptPrefixChars > 0) { "judge prompt에서 rawScene 경계를 찾지 못했다" }
         return NiaJudgeLlmRequest(
-            prompt = prompt,
+            prompt = prompt.text,
             promptVersion = PROMPT_VERSION,
             seed = request.seed,
             timeoutMillis = timeoutMillis,
-            stablePromptPrefixChars = stablePromptPrefixChars,
+            stablePromptPrefixChars = prompt.stablePrefixChars,
             metadata =
                 mapOf(
                     "input_schema" to INPUT_SCHEMA,
@@ -48,14 +46,29 @@ class NiaJudgePromptAssembler(
         )
     }
 
-    private fun buildManagedPrompt(payloadJson: String): String =
-        NiaPromptTemplate.render(
-            promptSource.text(NiaPromptKey.JUDGE_TEMPLATE),
+    private fun buildManagedPrompt(payloadJson: String): ManagedPrompt {
+        val template = promptSource.text(NiaPromptKey.JUDGE_TEMPLATE)
+        val values =
             mapOf(
                 "outputSchema" to NiaJudgeLlmRequest.OUTPUT_SCHEMA,
                 "inputJson" to payloadJson,
-            ),
+            )
+        val stablePayloadChars = payloadJson.indexOf(RAW_SCENE_FIELD)
+        check(stablePayloadChars > 0) { "judge payload에서 rawScene 경계를 찾지 못했다" }
+        return ManagedPrompt(
+            text = NiaPromptTemplate.render(template, values),
+            stablePrefixChars =
+                NiaPromptTemplate.stablePrefixChars(
+                    template = template,
+                    values = values,
+                    stableValueChars =
+                        mapOf(
+                            "outputSchema" to NiaJudgeLlmRequest.OUTPUT_SCHEMA.length,
+                            "inputJson" to stablePayloadChars,
+                        ),
+                ),
         )
+    }
 
     private fun SingleJudgeDecisionRequest.requiresDeliberation(): Boolean {
         val scene = sceneSnapshot
@@ -229,6 +242,11 @@ class NiaJudgePromptAssembler(
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
         private const val RAW_SCENE_FIELD: String = "\"rawScene\":"
     }
+
+    private data class ManagedPrompt(
+        val text: String,
+        val stablePrefixChars: Int,
+    )
 }
 
 private data class JudgePromptPayload(

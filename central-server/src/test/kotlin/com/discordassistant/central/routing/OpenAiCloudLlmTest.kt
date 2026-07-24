@@ -88,7 +88,7 @@ class OpenAiCloudLlmTest {
             val observer = CloudLlmUsageObserver { _, purpose, usage -> observed.set(purpose to usage) }
 
             val result =
-                client(server, usageObserver = observer, promptCacheWritesEnabled = true).generate(
+                client(server, usageObserver = observer, promptCacheNiaJudgeEnabled = true).generate(
                     prompt,
                     "gpt-5.6-luna",
                     history = emptyList(),
@@ -120,7 +120,7 @@ class OpenAiCloudLlmTest {
     }
 
     @Test
-    fun `cache write 전역 gate가 꺼져 있으면 caller의 breakpoint 요청도 no-write로 내린다`() {
+    fun `judge cache gate가 꺼져 있으면 caller의 breakpoint 요청도 no-write로 내린다`() {
         val capturedBody = AtomicReference<String>()
         val response = responseBody("판단").toByteArray()
         val server =
@@ -160,6 +160,77 @@ class OpenAiCloudLlmTest {
                     .single()
                     .path("content")
                     .isArray,
+            )
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `cache gate는 요청 목적별로 독립 적용된다`() {
+        val capturedBodies = mutableListOf<String>()
+        val response = responseBody("판단").toByteArray()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/") { exchange ->
+                    capturedBodies += String(exchange.requestBody.readBytes())
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val prompt = "고정 발화 규칙\n동적 장면"
+            val cache =
+                CloudLlmCachePolicy.stablePrefix(
+                    "nia-purpose:test",
+                    prompt,
+                    "고정 발화 규칙\n".length,
+                )
+            val client = client(server, promptCacheNiaSpeechEnabled = true)
+
+            client.generate(
+                prompt,
+                "gpt-5.6-luna",
+                emptyList(),
+                null,
+                CloudLlmRequestOptions(
+                    purpose = CloudLlmPurpose.NIA_JUDGE,
+                    cachePolicy = cache,
+                ),
+            )
+            client.generate(
+                prompt,
+                "gpt-5.6-luna",
+                emptyList(),
+                null,
+                CloudLlmRequestOptions(
+                    purpose = CloudLlmPurpose.NIA_SPEECH,
+                    cachePolicy = cache,
+                ),
+            )
+
+            val judgePayload = mapper.readTree(capturedBodies[0])
+            val speechPayload = mapper.readTree(capturedBodies[1])
+            assertFalse(judgePayload.has("prompt_cache_key"))
+            assertFalse(
+                judgePayload
+                    .path("input")
+                    .single()
+                    .path("content")
+                    .isArray,
+            )
+            assertEquals(cache.key, speechPayload.path("prompt_cache_key").asText())
+            assertEquals(
+                "explicit",
+                speechPayload
+                    .path("input")
+                    .single()
+                    .path("content")
+                    .first()
+                    .path("prompt_cache_breakpoint")
+                    .path("mode")
+                    .asText(),
             )
         } finally {
             server.stop(0)
@@ -417,14 +488,18 @@ class OpenAiCloudLlmTest {
         server: HttpServer,
         timeoutSeconds: Long = 2,
         maxRetries: Int = 0,
-        promptCacheWritesEnabled: Boolean = false,
+        promptCacheNiaJudgeEnabled: Boolean = false,
+        promptCacheNiaSpeechEnabled: Boolean = false,
+        promptCacheNiaActionEvaluatorEnabled: Boolean = false,
         usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
     ) = OpenAiCloudLlm(
         apiKey = "test-key",
         baseUrl = "http://127.0.0.1:${server.address.port}",
         timeoutSeconds = timeoutSeconds,
         maxRetries = maxRetries,
-        promptCacheWritesEnabled = promptCacheWritesEnabled,
+        promptCacheNiaJudgeEnabled = promptCacheNiaJudgeEnabled,
+        promptCacheNiaSpeechEnabled = promptCacheNiaSpeechEnabled,
+        promptCacheNiaActionEvaluatorEnabled = promptCacheNiaActionEvaluatorEnabled,
         usageObserver = usageObserver,
     )
 

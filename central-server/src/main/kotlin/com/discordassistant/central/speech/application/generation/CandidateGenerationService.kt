@@ -86,30 +86,14 @@ class CandidateGenerationService(
         val systemPrompt = assembleSystemPrompt(packet, candidateCount)
         val userPrompt = assembleUserPayload(packet, grounding)
         return SpeechGenerationRequest(
-            systemPrompt = systemPrompt,
+            systemPrompt = systemPrompt.text,
             userPrompt = userPrompt,
             socialAct = packet.socialAct,
             candidateCount = candidateCount,
             reasoningMode = reasoningModeSelector.select(packet),
             maxOutputTokens = budget.clampOutputTokens(budget.maxOutputTokens),
-            stableSystemPromptChars = stableSystemPromptChars(systemPrompt, packet.identity),
+            stableSystemPromptChars = systemPrompt.stablePrefixChars,
         )
-    }
-
-    private fun stableSystemPromptChars(
-        systemPrompt: String,
-        identity: IdentityKernelSection,
-    ): Int {
-        if (identity.stablePersonaBlockChars < identity.personaBlock.length) {
-            check(systemPrompt.startsWith(identity.personaBlock)) { "speech system prompt가 identity block으로 시작하지 않는다" }
-            return identity.stablePersonaBlockChars
-        }
-        val dynamicStart = systemPrompt.indexOf(PARTICIPATION_DECISION_MARKER)
-        return if (dynamicStart >= 0) {
-            dynamicStart + PARTICIPATION_DECISION_MARKER.length
-        } else {
-            systemPrompt.length
-        }
     }
 
     /**
@@ -160,11 +144,12 @@ class CandidateGenerationService(
     private fun assembleSystemPrompt(
         packet: SpeechScenePacket,
         candidateCount: Int,
-    ): String =
-        NiaPromptTemplate.render(
-            promptSource.text(NiaPromptKey.SPEECH_SYSTEM_TEMPLATE),
+    ): AssembledSystemPrompt {
+        val template = promptSource.text(NiaPromptKey.SPEECH_SYSTEM_TEMPLATE)
+        val identity = renderIdentity(packet.identity)
+        val values =
             mapOf(
-                "identity" to renderIdentity(packet.identity),
+                "identity" to identity,
                 "participationDecision" to packet.speechIntent.orEmpty(),
                 "socialActInstruction" to socialActCompiler.compile(packet.socialAct),
                 "burstInstruction" to burstCompiler.compile(packet.burstShape),
@@ -173,8 +158,24 @@ class CandidateGenerationService(
                         promptSource.text(NiaPromptKey.SPEECH_OUTPUT_TEMPLATE),
                         mapOf("candidateCount" to candidateCount.toString()),
                     ),
-            ),
+            )
+        val text = NiaPromptTemplate.render(template, values)
+        val stableIdentityChars =
+            if (packet.identity.stablePersonaBlockChars == packet.identity.personaBlock.length) {
+                identity.length
+            } else {
+                packet.identity.stablePersonaBlockChars
+            }
+        return AssembledSystemPrompt(
+            text = text,
+            stablePrefixChars =
+                NiaPromptTemplate.stablePrefixChars(
+                    template = template,
+                    values = values,
+                    stableValueChars = mapOf("identity" to stableIdentityChars),
+                ),
         )
+    }
 
     /** 정체성 section 을 프롬프트 블록으로 렌더한다(SSOT 본문 + 금지사항). */
     private fun renderIdentity(identity: IdentityKernelSection): String =
@@ -192,7 +193,6 @@ class CandidateGenerationService(
 
     companion object {
         private const val MAX_GROUNDING_CHARS: Int = 16_000
-        private const val PARTICIPATION_DECISION_MARKER: String = "[participation 결정]\n"
 
         /** GLM 이 후보 버블 배열·style tag·uncertainty 를 JSON 으로 돌려주게 하는 출력 지시(T012 파서와 짝). */
         fun outputFormatInstruction(candidateCount: Int): String =
@@ -201,4 +201,9 @@ class CandidateGenerationService(
                 "{\"candidates\":[{\"bubbles\":[\"...\"],\"style_tags\":[\"...\"],\"uncertainty\":0.0}]}. " +
                 "설명·코드펜스 없이 JSON 객체만."
     }
+
+    private data class AssembledSystemPrompt(
+        val text: String,
+        val stablePrefixChars: Int,
+    )
 }

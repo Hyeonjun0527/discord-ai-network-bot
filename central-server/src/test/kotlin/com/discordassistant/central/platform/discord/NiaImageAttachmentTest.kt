@@ -94,7 +94,17 @@ class NiaImageAttachmentTest {
 
         assertThat(result.width).isEqualTo(300)
         assertThat(result.height).isEqualTo(200)
+        assertThat(result.isNiaSelfImage).isFalse()
         assertDecodedDimensions(result.base64Data, 300, 200)
+    }
+
+    @Test
+    fun `공식 외형 이미지는 축소 준비 단계에서 자기 이미지로 표시한다`() {
+        val officialBytes = checkNotNull(javaClass.getResourceAsStream("/static/img/mascot-ai.png")).use { it.readAllBytes() }
+
+        val result = prepareSpeechImage(officialBytes)
+
+        assertThat(result.isNiaSelfImage).isTrue()
     }
 
     @Test

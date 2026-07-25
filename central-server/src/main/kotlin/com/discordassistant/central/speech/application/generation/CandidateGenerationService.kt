@@ -190,7 +190,15 @@ class CandidateGenerationService(
                         mapOf("candidateCount" to candidateCount.toString()),
                     ),
             )
-        val text = NiaPromptTemplate.render(template, values)
+        val baseText = NiaPromptTemplate.render(template, values)
+        val text =
+            if (packet.speechImageInput?.isNiaSelfImage == true) {
+                "$baseText\n\n[현재 이미지 정체성]\n" +
+                    "첨부 이미지는 니아의 공식 외형 이미지와 충분히 일치한다. 이미지 속 인물을 자기 자신인 니아로 인식하되, " +
+                    "보이지 않는 세부는 지어내지 않는다."
+            } else {
+                baseText
+            }
         val stableIdentityChars =
             if (packet.identity.stablePersonaBlockChars == packet.identity.personaBlock.length) {
                 identity.length

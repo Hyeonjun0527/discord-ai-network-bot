@@ -171,6 +171,7 @@ data class SpeechImageInput(
     val base64Data: String,
     val width: Int,
     val height: Int,
+    val isNiaSelfImage: Boolean = false,
 ) {
     init {
         require(base64Data.isNotBlank()) { "이미지 base64Data 는 비어 있을 수 없다" }
@@ -184,7 +185,8 @@ data class SpeechImageInput(
         get() = ((width + 31) / 32) * ((height + 31) / 32)
 
     override fun toString(): String =
-        "SpeechImageInput(mediaType=$mediaType, base64Data=<redacted:${base64Data.length} chars>, width=$width, height=$height)"
+        "SpeechImageInput(mediaType=$mediaType, base64Data=<redacted:${base64Data.length} chars>, " +
+            "width=$width, height=$height, isNiaSelfImage=$isNiaSelfImage)"
 
     companion object {
         const val MAX_DIMENSION: Int = 1_024

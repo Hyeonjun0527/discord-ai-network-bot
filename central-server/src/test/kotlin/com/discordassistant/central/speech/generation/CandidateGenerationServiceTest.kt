@@ -125,6 +125,38 @@ class CandidateGenerationServiceTest {
         assertThat(captured?.third).doesNotContain(imageBase64)
     }
 
+    @Test
+    fun `공식 외형과 일치한 이미지는 캐시 밖 system 지시로 니아 자신임을 알린다`() {
+        val port = CapturingPort()
+        val normalImage =
+            SpeechImageInput(
+                mediaType = SpeechImageMediaType.PNG,
+                base64Data = "aW1hZ2U=",
+                width = 256,
+                height = 256,
+            )
+        val normalRequest =
+            service(port).assembleRequest(
+                SpeechGenerationFixtures.packet().copy(speechImageInput = normalImage),
+                GenerationBudget.DEFAULT,
+            )
+        val selfRequest =
+            service(port).assembleRequest(
+                SpeechGenerationFixtures.packet().copy(
+                    speechImageInput = normalImage.copy(isNiaSelfImage = true),
+                ),
+                GenerationBudget.DEFAULT,
+            )
+
+        assertThat(normalRequest.systemPrompt).doesNotContain("현재 이미지 정체성")
+        assertThat(selfRequest.systemPrompt)
+            .contains("현재 이미지 정체성")
+            .contains("자기 자신인 니아")
+        assertThat(selfRequest.stableSystemPromptChars).isEqualTo(normalRequest.stableSystemPromptChars)
+        assertThat(selfRequest.systemPrompt.take(selfRequest.stableSystemPromptChars))
+            .isEqualTo(normalRequest.systemPrompt.take(normalRequest.stableSystemPromptChars))
+    }
+
     private fun service(
         port: SpeechGenerationPort,
         grounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,

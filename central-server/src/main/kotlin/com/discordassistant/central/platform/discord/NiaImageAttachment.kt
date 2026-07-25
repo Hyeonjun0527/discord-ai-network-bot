@@ -121,6 +121,7 @@ internal fun prepareSpeechImage(bytes: ByteArray): SpeechImageInput {
                     else -> throw UnsupportedImageFormatException()
                 }
             val resized = resize(source, dimensions.first, dimensions.second, mediaType)
+            val isNiaSelfImage = defaultNiaSelfImageMatcher?.matches(resized) == true
             val encoded = encode(resized, mediaType)
             if (encoded.size > MAX_ENCODED_BYTES) throw ImagePayloadTooLargeException()
             SpeechImageInput(
@@ -128,6 +129,7 @@ internal fun prepareSpeechImage(bytes: ByteArray): SpeechImageInput {
                 base64Data = Base64.getEncoder().encodeToString(encoded),
                 width = dimensions.first,
                 height = dimensions.second,
+                isNiaSelfImage = isNiaSelfImage,
             )
         } finally {
             reader.dispose()
@@ -208,6 +210,10 @@ private fun encode(
 private class UnsupportedImageFormatException : RuntimeException()
 
 private class ImagePayloadTooLargeException : RuntimeException()
+
+private val defaultNiaSelfImageMatcher by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    NiaSelfImageMatcher.fromClasspathOrNull()
+}
 
 private const val MAX_SOURCE_PIXELS: Long = 20_000_000
 private const val MAX_ENCODED_BYTES: Int = 6 * 1024 * 1024

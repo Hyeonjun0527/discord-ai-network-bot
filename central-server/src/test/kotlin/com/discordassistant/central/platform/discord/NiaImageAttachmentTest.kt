@@ -1,6 +1,8 @@
 package com.discordassistant.central.platform.discord
 
 import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
+import com.sun.net.httpserver.HttpServer
+import net.dv8tion.jda.api.entities.Message
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -8,10 +10,64 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.net.InetSocketAddress
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicReference
 import javax.imageio.ImageIO
 
 class NiaImageAttachmentTest {
+    @Test
+    fun `Discord PNG는 변환 프록시 대신 원본을 받아 로컬에서 축소한다`() {
+        val original = png(width = 2_048, height = 512)
+        val requestedUri = AtomicReference<String?>()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/source.png") { exchange ->
+                    requestedUri.set(exchange.requestURI.toString())
+                    val response = original
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                createContext("/proxy.png") { exchange ->
+                    requestedUri.set(exchange.requestURI.toString())
+                    val response = "proxy-format".toByteArray()
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val sourceUrl = "http://127.0.0.1:${server.address.port}/source.png?signed=1"
+            val proxyUrl = "http://127.0.0.1:${server.address.port}/proxy.png"
+            val attachment =
+                Message.Attachment(
+                    1L,
+                    sourceUrl,
+                    proxyUrl,
+                    "image.png",
+                    "image/png",
+                    null,
+                    original.size,
+                    512,
+                    2_048,
+                    false,
+                    null,
+                    0.0,
+                    null,
+                )
+
+            val result = DiscordImageAttachmentPreparer().prepare(listOf(attachment))
+
+            assertThat(result).isInstanceOf(TargetedImagePreparation.Ready::class.java)
+            val image = (result as TargetedImagePreparation.Ready).image
+            assertThat(image.width).isEqualTo(1_024)
+            assertThat(image.height).isEqualTo(256)
+            assertThat(requestedUri.get()).isEqualTo("/source.png?signed=1")
+        } finally {
+            server.stop(0)
+        }
+    }
+
     @Test
     fun `가로로 긴 이미지는 비율을 유지해 1024x256으로 줄인다`() {
         val result = prepareSpeechImage(png(width = 2_048, height = 512))

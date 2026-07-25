@@ -4,6 +4,7 @@ import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import net.dv8tion.jda.api.entities.Message
+import net.dv8tion.jda.api.utils.FileProxy
 import org.springframework.stereotype.Component
 import java.awt.Color
 import java.awt.RenderingHints
@@ -54,7 +55,8 @@ class DiscordImageAttachmentPreparer {
         }
 
         val attachment = imageAttachments.single()
-        val download = attachment.proxy.download(SpeechImageInput.MAX_DIMENSION, SpeechImageInput.MAX_DIMENSION)
+        // Discord proxy는 이미지를 다른 형식으로 변환할 수 있으므로 원본을 받아 아래의 검증된 경로에서 축소한다.
+        val download = FileProxy(attachment.url).download()
         return try {
             val bytes =
                 download

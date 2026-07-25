@@ -9,6 +9,7 @@ import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
+import com.discordassistant.central.shared.niaIdentityPersona
 import org.springframework.stereotype.Component
 
 /**
@@ -127,7 +128,7 @@ class ChannelAiPromptRenderer(
                 niaPromptSource.text(NiaPromptKey.ASK_NIA_TEMPLATE),
                 mapOf(
                     "safety" to niaPromptSource.text(NiaPromptKey.SAFETY_GUARDRAIL),
-                    "persona" to niaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA),
+                    "persona" to niaPromptSource.niaIdentityPersona(),
                     "voicePrinciples" to niaPromptSource.text(NiaPromptKey.VOICE_PRINCIPLES),
                     "managedFewShot" to if (includeRag) "[채널 지식/RAG]\n${rag.orEmpty()}" else "",
                     "relation" to "",

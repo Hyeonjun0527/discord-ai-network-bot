@@ -4,6 +4,7 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.port.out.IdentityKernelBridgePort
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 
@@ -11,8 +12,7 @@ import com.discordassistant.central.speech.domain.model.IdentityKernelSection
  * 니아 정체성 **IdentityKernel assembler**(NEXA-P14-T006, application).
  *
  * globalpromptset 의 승인된 성격·금지사항·관심사를 짧은 immutable [IdentityKernelSection] 으로 만든다. 정체성
- * 본문은 [NexaIdentity] SSOT 를 **재사용**하고 복제하지 않는다(ADR 0010 읽기 브리지) — 이 클래스는 SSOT 문자열을
- * 다시 정의하지 않고 speech 전용 [NexaIdentity.NIA_SPEECH_PERSONA] 를 그대로 읽어 발췌만 한다.
+ * 본문은 [NexaIdentity] SSOT 를 **재사용**하고 복제하지 않는다(ADR 0010 읽기 브리지).
  *
  * **acceptance(T006) — 서버별 정체성과 런타임 사용자 기억이 섞여 저장되지 않는다**: 결과 section 은 persona/금지/
  * 관심사만 담고(사용자 기억 필드 없음) immutable 이다. 기억은 MemoryContextSelector(T008)가 별도 운반한다 —
@@ -43,7 +43,7 @@ class IdentityKernelAssembler(
      */
     private fun personaBlockFor(personaName: String): String =
         if (personaName == NexaIdentity.NIA_NAME) {
-            promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES)
+            promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES)
         } else {
             // 길드 지정 정체성: SSOT 전문을 강제하지 않고 이름·상징 문장만 짧게 둔다(니아 전문 복제 금지).
             "당신은 「$personaName」 입니다. 이 정체성으로, 1인칭으로, 처음부터 끝까지 일관되게 말하세요."

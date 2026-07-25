@@ -3,6 +3,7 @@ package com.discordassistant.central.speech.context
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
+import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.context.IdentityKernelAssembler
 import com.discordassistant.central.speech.application.port.out.IdentityKernelBridgePort
 import com.discordassistant.central.speech.application.port.out.IdentityKernelMeta
@@ -23,13 +24,14 @@ class IdentityKernelAssemblerTest {
         val section =
             assembler(IdentityKernelMeta.of("니아", emptySet(), administratorApproved = false)).assemble(1L)
         assertThat(section.personaBlock).isEqualTo(
-            CodeNiaPromptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" +
+            CodeNiaPromptSource.niaIdentityPersona() + "\n\n" +
                 CodeNiaPromptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
         )
         assertThat(section.personaBlock).contains("실제 내용을 그 턴에 완결한다")
         assertThat(section.personaBlock).contains("미래 행동만 약속하고 끝내지 않는다")
         assertThat(section.personaBlock).contains("친구 단톡방의 한 사람", "확실히 모르면 단정하지 않는다")
         assertThat(section.personaBlock).contains("조사와 어순이 자연스러운 한국어 구어체")
+        assertThat(section.personaBlock).contains(NexaIdentity.NIA_CHARACTER_PROFILE)
         assertThat(section.personaBlock).doesNotContain("와이파이 비번", "커피 먼저 주문하셔야 돼요", "그만 좀 해라 ㅋㅋ")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
     }
@@ -56,6 +58,7 @@ class IdentityKernelAssemblerTest {
         assertThat(section.personaName).isEqualTo("아리")
         assertThat(section.personaBlock).contains("아리")
         assertThat(section.personaBlock).isNotEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
+        assertThat(section.personaBlock).doesNotContain(NexaIdentity.NIA_CHARACTER_PROFILE)
         assertThat(section.interests).containsExactly("음악")
     }
 

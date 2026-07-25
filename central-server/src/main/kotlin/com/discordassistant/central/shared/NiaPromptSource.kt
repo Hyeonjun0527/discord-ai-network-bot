@@ -126,6 +126,8 @@ fun interface NiaPromptSource {
     fun text(key: NiaPromptKey): String = documents()[key] ?: NiaPromptDefaults.text(key)
 }
 
+fun NiaPromptSource.niaIdentityPersona(): String = NexaIdentity.withCharacterProfile(text(NiaPromptKey.IDENTITY_PERSONA))
+
 object CodeNiaPromptSource : NiaPromptSource {
     override fun documents(): Map<NiaPromptKey, String> = NiaPromptDefaults.documents
 }

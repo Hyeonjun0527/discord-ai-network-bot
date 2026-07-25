@@ -2,6 +2,7 @@
 
 - 상태(Status): 승인됨 (Accepted)
 - 날짜(Date): 2026-07-17
+- 최신 개정(Amended): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527
 - 대체 범위: [ADR 0016](./0016-nia-raw-fewshot-judge.md)의 "SPEAK 뒤에는 행동을 다시 선택하지 않는다" 결정
 - 관련: [participation runtime](../nexa/architecture/participation-runtime.md),
@@ -57,6 +58,11 @@ Discord 사건
     일반 장면은 빠른 경로를 유지하며 효과는 운영 로그 기반 ablation으로 보정한다.
 12. 장면 projection에는 raw guild/channel ID를 쓰지 않고 keyed pseudonym만 저장한다. Discord 실행에 꼭 필요한
     routing ID와 target message ID는 scheduled action 및 WAIT outbox에서 field encryption을 강제한다.
+13. local critics를 통과한 `REQUIRED` 응답에서 Judge confidence가 운영 임계값 이상이면, 별도 Cloud
+    action evaluator 대신 그 evaluator 장애 시에도 사용하는 최소 uncertainty SEND 후보를 결정적으로
+    선택할 수 있다. `OPTIONAL`, 임계값 미만, critic 전멸은 이 빠른 경로에 들어오지 않는다. consent,
+    high-risk, generation freshness, 실행 직전 mode/permit 검사는 경로와 관계없이 그대로 적용한다.
+    이 최적화는 `NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED`로 독립 롤백한다.
 
 ## 결과 (Consequences)
 

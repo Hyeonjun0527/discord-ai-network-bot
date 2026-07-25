@@ -63,11 +63,18 @@ Micrometer 컴포넌트가 존재하거나 0 gauge가 노출되는 것을 "수�
 
 정상적인 `FINAL` 턴의 요청 형태는 다음과 같다.
 
-- 비발화: `nia_judge` 1회. 출력 형식이 깨진 경우에만 `nia_judge_repair`가 최대 1회 추가된다.
+- 연속 social message는 turn boundary가 닫힐 때 최신 signal 하나로 합쳐진다. 메시지마다 raw context와
+  generation은 즉시 갱신되므로 중간 원문을 버리는 것이 아니라 유료 Judge 시작 횟수만 줄인다.
+- 비발화: `nia_judge` 1회. strict Structured Outputs envelope가 `refusal`/`incomplete`이면 자동 재호출
+  없이 fail-closed한다. completed 응답의 동적 의미 검증이 실패한 경우에만 `nia_judge_repair`가 최대
+  1회 추가될 수 있다.
 - 발화: `nia_judge` 1회 + `nia_speech` 1회 + `nia_action_evaluator` 1회가 기본이다. 세 요청은 같은 답을 세 번
   생성하는 것이 아니라 각각 참여 여부 판단, 서로 다른 실제 문구 후보 생성, SEND/REACT/IGNORE 최종 선택을 맡는다.
 - evaluator는 생존 행동 후보가 하나뿐이면 호출하지 않는다. 완전히 같은 speech 후보도 먼저 하나로 줄이므로 REQUIRED 응답의
   실질 후보가 하나면 `nia_action_evaluator`는 0회다.
+- 운영 fast path가 켜져 있으면 local critics를 통과한 `REQUIRED` 응답 중 Judge confidence가 임계값 이상인
+  경우에도 evaluator를 호출하지 않고 최소 uncertainty SEND 후보를 선택한다. OPTIONAL과 낮은 confidence는
+  계속 evaluator를 호출하므로, 절감률은 `nia_action_evaluator / nia_speech` 요청 비율로 확인한다.
 - stale 턴은 `stage=before_judge`면 OpenAI 요청 0회, `stage=after_judge`면 이미 시작한 judge 1회만 비용에 남을 수 있다.
 - RAG 항목에 비교 가능한 vector가 있을 때만 `nia_rag_embedding`이 발생하며, 완전히 같은 장면 query는 프로세스 내 해시 캐시를
   재사용한다.

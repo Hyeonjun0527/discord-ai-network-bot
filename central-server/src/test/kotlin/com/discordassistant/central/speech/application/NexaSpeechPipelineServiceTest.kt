@@ -7,6 +7,8 @@ import com.discordassistant.central.speech.application.generation.CompleteAction
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
+import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluation
+import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
@@ -85,12 +87,14 @@ class NexaSpeechPipelineServiceTest {
         candidates: List<SpeechCandidate>,
         gate: ConsentGate,
         log: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
-    ): NexaSpeechPipelineService = pipeline(FakePort(candidates), gate, log)
+        completeActionSelector: CompleteActionSelector = deterministicCompleteActionSelector(),
+    ): NexaSpeechPipelineService = pipeline(FakePort(candidates), gate, log, completeActionSelector)
 
     private fun pipeline(
         generationPort: FakePort,
         gate: ConsentGate,
         log: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+        completeActionSelector: CompleteActionSelector = deterministicCompleteActionSelector(),
     ): NexaSpeechPipelineService {
         val generationService =
             CandidateGenerationService(
@@ -104,7 +108,7 @@ class NexaSpeechPipelineServiceTest {
             generationGate = SpeechGenerationGate(generationService),
             candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
             decisionLog = log,
-            completeActionSelector = deterministicCompleteActionSelector(),
+            completeActionSelector = completeActionSelector,
         )
     }
 
@@ -162,6 +166,107 @@ class NexaSpeechPipelineServiceTest {
 
         assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
         assertThat(result.selected?.candidateId).isEqualTo("current")
+    }
+
+    @Test
+    fun `REQUIRED 평가 우회도 critic 생존 후보만 대상으로 가장 낮은 불확실성을 고른다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                evaluator =
+                    CompleteActionEvaluationPort {
+                        evaluationCalls++
+                        error("critic 통과 후보의 REQUIRED 평가를 호출하면 안 된다")
+                    },
+                requiredBypassEnabled = true,
+                requiredBypassMinConfidence = 0.90,
+            )
+        val gate = ConsentGate().apply { grant("user_1") }
+        val log = CapturingLog()
+
+        val result =
+            pipeline(
+                candidates =
+                    listOf(
+                        SpeechCandidate(
+                            "critic_rejected",
+                            listOf("내 GLM_API_KEY 는 sk-ABCDEFGHIJKLMNOP1234 이야"),
+                            uncertainty = 0.0,
+                        ),
+                        SpeechCandidate("safe_uncertain", listOf("아마 그럴 거야"), uncertainty = 0.6),
+                        SpeechCandidate("safe_certain", listOf("응 그게 맞아"), uncertainty = 0.1),
+                    ),
+                gate = gate,
+                log = log,
+                completeActionSelector = selector,
+            ).run(
+                subjectPseudonym = "user_1",
+                trigger = SpeechTrigger.SPEAK,
+                packet = packet(responseObligation = SpeechResponseObligation.REQUIRED),
+                seed = 1L,
+                provisionalConfidence = 0.95,
+            )
+
+        assertThat(evaluationCalls).isZero()
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(result.selected?.candidateId).isEqualTo("safe_certain")
+        assertThat(log.records.last().criticBlockReasons).contains("SECRET_DISCLOSURE")
+    }
+
+    @Test
+    fun `REQUIRED 평가 우회 전에도 외부 요청 경계의 동의를 다시 확인한다`() {
+        var externalChecks = 0
+        val revokingGate =
+            object : ConsentGate() {
+                override fun checkAllowed(
+                    subjectPseudonym: String,
+                    stage: ProcessingStage,
+                ) {
+                    if (stage == ProcessingStage.EXTERNAL_GLM_REQUEST && ++externalChecks == 2) {
+                        revoke(subjectPseudonym)
+                    }
+                    super.checkAllowed(subjectPseudonym, stage)
+                }
+            }.apply { grant("user_1") }
+        val generationPort =
+            FakePort(
+                listOf(
+                    SpeechCandidate("certain", listOf("응 그게 맞아"), uncertainty = 0.1),
+                    SpeechCandidate("uncertain", listOf("아마 그럴 거야"), uncertainty = 0.6),
+                ),
+            )
+        val selector =
+            CompleteActionSelector(
+                evaluator =
+                    CompleteActionEvaluationPort { request ->
+                        CompleteActionEvaluation(
+                            selectedCandidateId = request.candidates.first().candidateId,
+                            predictedOutcome = "호출되지 않아야 한다",
+                            reasonCode = "UNEXPECTED_EVALUATION",
+                            confidence = 1.0,
+                        )
+                    },
+                requiredBypassEnabled = true,
+                requiredBypassMinConfidence = 0.90,
+            )
+
+        val result =
+            pipeline(
+                generationPort = generationPort,
+                gate = revokingGate,
+                completeActionSelector = selector,
+            ).run(
+                subjectPseudonym = "user_1",
+                trigger = SpeechTrigger.SPEAK,
+                packet = packet(responseObligation = SpeechResponseObligation.REQUIRED),
+                seed = 1L,
+                provisionalConfidence = 0.95,
+            )
+
+        assertThat(externalChecks).isEqualTo(2)
+        assertThat(generationPort.calls).isEqualTo(1)
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.BLOCKED)
+        assertThat(result.consentStage).isEqualTo(ProcessingStage.EXTERNAL_GLM_REQUEST)
     }
 
     @Test

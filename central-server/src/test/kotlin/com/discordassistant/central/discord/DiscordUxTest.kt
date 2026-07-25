@@ -50,10 +50,18 @@ class DiscordUxTest {
         val withMention = GatewayIntentPolicy.intents(messageContentIntentEnabled = true)
         assertTrue(withMention.contains(GatewayIntent.MESSAGE_CONTENT))
         assertTrue(withMention.contains(GatewayIntent.GUILD_MESSAGES))
+        assertFalse(withMention.contains(GatewayIntent.GUILD_MESSAGE_TYPING))
 
         val slashOnly = GatewayIntentPolicy.intents(messageContentIntentEnabled = false)
         assertFalse(slashOnly.contains(GatewayIntent.MESSAGE_CONTENT))
         assertTrue(slashOnly.contains(GatewayIntent.GUILD_MESSAGES))
+
+        val withTyping =
+            GatewayIntentPolicy.intents(
+                messageContentIntentEnabled = true,
+                typingIntentEnabled = true,
+            )
+        assertTrue(withTyping.contains(GatewayIntent.GUILD_MESSAGE_TYPING))
     }
 
     @Test

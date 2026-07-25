@@ -99,7 +99,7 @@ class NiaJudgeOutputParser(
                 .filter { it in FINAL_TEXT_FIELDS }
                 .toList()
         require(banned.isEmpty()) { "judge output must not include final response text fields: $banned" }
-        root["speechIntent"]?.let { speechIntent ->
+        root["speechIntent"]?.takeUnless { it.isNull }?.let { speechIntent ->
             val nestedBanned =
                 speechIntent
                     .fieldNames()
@@ -183,7 +183,7 @@ class NiaJudgeOutputParser(
     }
 
     private fun JsonNode.optionalToneAxes(): JudgeToneAxes {
-        val tone = this["toneAxes"] ?: return JudgeToneAxes.NEUTRAL
+        val tone = this["toneAxes"]?.takeUnless { it.isNull } ?: return JudgeToneAxes.NEUTRAL
         require(tone.isObject) { "toneAxes must be an object" }
         val unknown = tone.fieldNames().asSequence().toSet() - TONE_AXIS_FIELDS
         require(unknown.isEmpty()) { "unknown toneAxes fields: ${unknown.sorted()}" }
@@ -197,7 +197,7 @@ class NiaJudgeOutputParser(
     }
 
     private fun JsonNode.optionalBeliefDelta(): JudgeBeliefDelta {
-        val belief = this["beliefUpdates"] ?: return JudgeBeliefDelta.EMPTY
+        val belief = this["beliefUpdates"]?.takeUnless { it.isNull } ?: return JudgeBeliefDelta.EMPTY
         require(belief.isObject) { "beliefUpdates must be an object" }
         val unknown = belief.fieldNames().asSequence().toSet() - BELIEF_UPDATE_FIELDS
         require(unknown.isEmpty()) { "unknown beliefUpdates fields: ${unknown.sorted()}" }
@@ -269,6 +269,7 @@ class NiaJudgeOutputParser(
 
     private fun JsonNode.optionalText(field: String): String? {
         val value = this[field] ?: return null
+        if (value.isNull) return null
         require(value.isTextual) { "optional text field must be textual: $field" }
         return value.asText().takeIf { it.isNotBlank() }
     }
@@ -290,6 +291,7 @@ class NiaJudgeOutputParser(
         default: Double,
     ): Double {
         val value = this[field] ?: return default
+        if (value.isNull) return default
         require(value.isNumber) { "optional numeric field must be numeric: $field" }
         return value.asDouble()
     }
@@ -299,6 +301,7 @@ class NiaJudgeOutputParser(
         default: Long,
     ): Long {
         val value = this[field] ?: return default
+        if (value.isNull) return default
         require(value.isNumber) { "optional long field must be numeric: $field" }
         return value.asLong()
     }
@@ -308,6 +311,7 @@ class NiaJudgeOutputParser(
         default: Int,
     ): Int {
         val value = this[field] ?: return default
+        if (value.isNull) return default
         require(value.isIntegralNumber) { "optional int field must be an integer: $field" }
         return value.asInt()
     }
@@ -320,6 +324,7 @@ class NiaJudgeOutputParser(
 
     private fun JsonNode.optionalTextArray(field: String): List<String> {
         val value = this[field] ?: return emptyList()
+        if (value.isNull) return emptyList()
         require(value.isArray) { "field must be an array: $field" }
         return value.map { node ->
             require(node.isTextual && node.asText().isNotBlank()) { "array field must contain nonblank text: $field" }
@@ -329,6 +334,7 @@ class NiaJudgeOutputParser(
 
     private fun JsonNode.optionalObjectArray(field: String): List<JsonNode> {
         val value = this[field] ?: return emptyList()
+        if (value.isNull) return emptyList()
         require(value.isArray) { "field must be an array: $field" }
         return value.map { node ->
             require(node.isObject) { "array field must contain objects: $field" }

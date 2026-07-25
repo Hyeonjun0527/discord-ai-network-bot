@@ -79,12 +79,24 @@ data class CloudLlmCachePolicy(
     }
 }
 
+/** Provider별 wire 형식과 분리된 strict JSON Schema 출력 계약이다. */
+data class CloudLlmJsonSchema(
+    val name: String,
+    val schemaJson: String,
+) {
+    init {
+        require(name.matches(Regex("[A-Za-z0-9_-]{1,64}"))) { "JSON Schema 이름 형식이 잘못됐다: $name" }
+        require(schemaJson.isNotBlank()) { "JSON Schema 는 비어 있을 수 없다" }
+    }
+}
+
 data class CloudLlmRequestOptions(
     val purpose: CloudLlmPurpose = CloudLlmPurpose.GENERAL,
     val maxOutputTokens: Int? = null,
     val cachePolicy: CloudLlmCachePolicy = CloudLlmCachePolicy.disabled(),
     val requestTimeout: Duration? = null,
     val maxRetries: Int? = null,
+    val jsonSchema: CloudLlmJsonSchema? = null,
 ) {
     init {
         maxOutputTokens?.let { require(it > 0) { "maxOutputTokens 는 양수여야 한다: $it" } }
@@ -299,6 +311,7 @@ object CloudLlmResponseParser {
             } catch (e: Exception) {
                 throw CloudLlmException("클라우드 AI 응답 파싱 실패", e)
             }
+        rejectFailedEnvelope(root)
         val error = root.get("error")
         if (error != null && !error.isNull) {
             // 업스트림 에러(모델 없음·인증·잔액 등)의 사유를 운영자가 바로 진단할 수 있게 노출한다
@@ -340,7 +353,27 @@ object CloudLlmResponseParser {
     fun upstreamErrorReason(
         body: String,
         mapper: ObjectMapper,
-    ): String? = runCatching { mapper.readTree(body).get("error")?.let(::errorReasonOf) }.getOrNull()
+    ): String? =
+        runCatching {
+            val root = mapper.readTree(body)
+            root
+                .takeUnless { hasFailedStatus(it) || containsRefusal(it) }
+                ?.get("error")
+                ?.let(::errorReasonOf)
+        }.getOrNull()
+
+    /** refusal 또는 미완료 응답의 원문을 운영 로그에 남기지 않는다. */
+    internal fun safeLogExcerpt(
+        body: String,
+        mapper: ObjectMapper,
+    ): String {
+        val root = runCatching { mapper.readTree(body) }.getOrNull() ?: return body.take(LOG_EXCERPT_LIMIT)
+        return if (hasFailedStatus(root) || containsRefusal(root)) {
+            "[provider envelope redacted]"
+        } else {
+            body.take(LOG_EXCERPT_LIMIT)
+        }
+    }
 
     /** HTTP status → 운영자용 짧은 카테고리. */
     fun statusCategory(status: Int): String =
@@ -355,6 +388,7 @@ object CloudLlmResponseParser {
 
     /** 사용자(디스코드)에게 노출되는 일반화 메시지(원인 추출 실패 시 폴백). */
     const val USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
+    private const val LOG_EXCERPT_LIMIT = 500
 
     /**
      * Responses API의 `output[]`에서 `function_call`과 일반 `output_text`를 추출한다.
@@ -371,6 +405,7 @@ object CloudLlmResponseParser {
             } catch (e: Exception) {
                 throw CloudLlmException("클라우드 AI 응답 파싱 실패", e)
             }
+        rejectFailedEnvelope(root)
         val error = root.get("error")
         if (error != null && !error.isNull) {
             throw CloudLlmException(USER_ERROR_MESSAGE)
@@ -427,6 +462,34 @@ object CloudLlmResponseParser {
                         content.get("text")?.takeIf { it.isTextual && it.asText().isNotBlank() }?.asText()
                     }.orEmpty()
             }.orEmpty()
+
+    private fun rejectFailedEnvelope(root: com.fasterxml.jackson.databind.JsonNode) {
+        if (hasFailedStatus(root)) {
+            throw CloudLlmException("클라우드 AI 응답이 완료되지 않았습니다.")
+        }
+        if (containsRefusal(root)) {
+            throw CloudLlmException("클라우드 AI가 요청 처리를 거부했습니다.")
+        }
+    }
+
+    private fun hasFailedStatus(root: com.fasterxml.jackson.databind.JsonNode): Boolean {
+        val status = root.get("status") ?: return false
+        return !status.isTextual || status.asText() != "completed"
+    }
+
+    private fun containsRefusal(root: com.fasterxml.jackson.databind.JsonNode): Boolean =
+        root
+            .get("output")
+            ?.takeIf { it.isArray }
+            ?.any { item ->
+                item
+                    .get("content")
+                    ?.takeIf { it.isArray }
+                    ?.any { content ->
+                        content.get("type")?.asText() == "refusal" ||
+                            content.get("refusal")?.let { !it.isNull } == true
+                    } == true
+            } == true
 
     /**
      * 이미지 안전 심사 응답에서 모델이 돌려준 JSON 결과를 추출한다. 코드펜스가 섞여도 첫 JSON object만 허용하고,
@@ -660,6 +723,21 @@ class OpenAiCloudLlm(
                     cache.key?.let { put("prompt_cache_key", it) }
                 }
                 instructions?.takeIf { it.isNotBlank() }?.let { put("instructions", it) }
+                options.jsonSchema?.let { jsonSchema ->
+                    val schema =
+                        try {
+                            mapper.readTree(jsonSchema.schemaJson)
+                        } catch (e: Exception) {
+                            throw IllegalArgumentException("유효하지 않은 JSON Schema 다: ${jsonSchema.name}", e)
+                        }
+                    require(schema.isObject) { "JSON Schema 최상위 값은 object 여야 한다: ${jsonSchema.name}" }
+                    putObject("text").putObject("format").apply {
+                        put("type", "json_schema")
+                        put("name", jsonSchema.name)
+                        put("strict", true)
+                        set<com.fasterxml.jackson.databind.JsonNode>("schema", schema)
+                    }
+                }
                 val input = putArray("input")
                 messages.forEachIndexed { index, (role, content) ->
                     val message = input.addObject().put("role", role)
@@ -744,7 +822,7 @@ class OpenAiCloudLlm(
                     attempt,
                     effectiveMaxAttempts,
                     elapsedMs(startedAt),
-                    response.body().take(500),
+                    CloudLlmResponseParser.safeLogExcerpt(response.body(), mapper),
                 )
                 val reason = CloudLlmResponseParser.upstreamErrorReason(response.body(), mapper)
                 val category = CloudLlmResponseParser.statusCategory(response.statusCode())

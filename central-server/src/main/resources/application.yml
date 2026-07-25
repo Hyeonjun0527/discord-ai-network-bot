@@ -59,6 +59,9 @@ central:
     # @니아 질문처럼 일반 메시지 본문을 읽는 멘션 호출. Developer Portal Bot 설정의 Message Content Intent 와 일치해야 한다.
     # false 면 MESSAGE_CONTENT 를 요청하지 않아 슬래시/버튼/모달만 안전하게 부팅한다.
     message-content-intent-enabled: ${DISCORD_MESSAGE_CONTENT_INTENT_ENABLED:true}
+    # 연속 메시지 turn boundary가 열린 동안 사용자의 typing 신호로 quiet window를 연장한다.
+    # 비특권 intent이며, 꺼져도 메시지 간격 기반 적응형 경계는 그대로 동작한다.
+    typing-intent-enabled: ${DISCORD_TYPING_INTENT_ENABLED:false}
     # Developer Portal 에서 Message Content Intent 가 꺼져 4014 로 거부되면, @멘션 질문을 끄고 슬래시 명령만 자동 재기동한다.
     fallback-without-message-content-on-4014: ${DISCORD_FALLBACK_WITHOUT_MESSAGE_CONTENT_ON_4014:true}
   relay:
@@ -190,9 +193,15 @@ central:
       # 자동 중단 평가 tick 주기(ms).
       interval-ms: ${NEXA_CANARY_HALT_INTERVAL_MS:60000}
     participation:
+      turn-boundary:
+        # FINAL real-send 턴만 2~7초 적응형 quiet window로 합친다. 30초 hard cap과 generation 검사는
+        # 계속되는 메시지/typing이 판단을 무한 지연하거나 낡은 발화를 보내지 못하게 한다.
+        enabled: ${NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED:false}
       judge:
         # 니아 participation 판단 모델. 발화와 같은 Luna none 경로를 사용한다.
         model: ${NEXA_PARTICIPATION_JUDGE_MODEL:gpt-5.6-luna}
+        # Responses API strict JSON Schema를 사용한다. refusal/incomplete는 재호출하지 않고 fail-closed한다.
+        structured-output-enabled: ${NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED:false}
         raw-context:
           # 저장 보존 한도(20만 자)와 모델 입력 한도를 분리한다. 기본값은 기존 판단 품질을 보존하고,
           # 목적별 input token 실측 뒤 운영에서만 낮춘다.
@@ -200,6 +209,12 @@ central:
       speech:
         raw-context:
           max-chars: ${NEXA_PARTICIPATION_SPEECH_RAW_CONTEXT_MAX_CHARS:12000}
+    speech:
+      action-evaluator:
+        # REQUIRED + 높은 Judge 확신도만 기존 evaluator 장애 폴백과 같은 로컬 최소-불확실도 선택을 사용한다.
+        # OPTIONAL과 임계값 미만은 항상 별도 evaluator를 유지한다.
+        required-bypass-enabled: ${NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED:false}
+        required-bypass-min-confidence: ${NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_MIN_CONFIDENCE:0.90}
 
 # 원문 문자 수가 0인 첨부/삭제 메시지도 행과 직렬화 메타데이터를 소비하므로 개수 상한을 별도로 둔다.
 # 100개 burst 원문은 그대로 보존하면서 비어 있는 행이 무한히 쌓여 judge 입력 상한을 우회하는 것만 막는다.

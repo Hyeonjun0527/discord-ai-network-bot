@@ -1,12 +1,40 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.global.observability.NiaRuntimeMetrics
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryAdmission
 import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class NiaMessageContextTest {
+    @Test
+    fun `turn boundary admission은 explicit ambient와 fail closed를 운영 메트릭에 남긴다`() {
+        val registry = SimpleMeterRegistry()
+        val metrics = NiaRuntimeMetrics(registry)
+
+        metrics.recordTurnBoundary(NiaTurnBoundaryAdmission.DEFERRED, explicitlyAddressed = true)
+        metrics.recordTurnBoundary(NiaTurnBoundaryAdmission.FAIL_CLOSED, explicitlyAddressed = false)
+        metrics.recordTurnBoundary(NiaTurnBoundaryAdmission.BYPASS, explicitlyAddressed = false)
+
+        assertThat(
+            registry
+                .find("nexa_turn_outcome_total")
+                .tags("outcome", "attention_deferred", "stage", "none", "addressing", "explicit")
+                .counter()
+                ?.count(),
+        ).isEqualTo(1.0)
+        assertThat(
+            registry
+                .find("nexa_turn_outcome_total")
+                .tags("outcome", "failed", "stage", "none", "addressing", "ambient")
+                .counter()
+                ?.count(),
+        ).isEqualTo(1.0)
+    }
+
     @Test
     fun `bridge의 단일 rollout snapshot이 legacy 응답 소유권을 전달한다`() {
         fun owns(
@@ -343,6 +371,39 @@ class NiaMessageContextTest {
         )
 
         assertThat(buffer.map { it.id }).containsExactly(11L)
+    }
+
+    @Test
+    fun `delayed snapshot용 최근 버퍼는 edit을 제자리 교체하고 delete를 제거한다`() {
+        val buffer =
+            ArrayDeque(
+                listOf(
+                    msg(id = 1L, authorId = 10L, authorLabel = "HJ", content = "수정 전"),
+                    msg(id = 2L, authorId = 11L, authorLabel = "SY", content = "그대로"),
+                ),
+            )
+
+        assertThat(
+            updateRecentPromptMessage(
+                buffer,
+                msg(id = 1L, authorId = 10L, authorLabel = "HJ", content = "수정 후"),
+            ),
+        ).isTrue()
+        assertThat(buffer.map { it.content }).containsExactly("수정 후", "그대로")
+        assertThat(removeRecentPromptMessage(buffer, 1L)).isTrue()
+        assertThat(buffer.map { it.id }).containsExactly(2L)
+    }
+
+    @Test
+    fun `thread receive edit delete는 같은 routing과 raw context scope를 사용한다`() {
+        val thread = discordMessageScope(channelId = 200L, isThread = true)
+        val channel = discordMessageScope(channelId = 100L, isThread = false)
+
+        assertThat(thread.routingId).isEqualTo(200L)
+        assertThat(thread.channelId).isEqualTo(200L)
+        assertThat(thread.threadId).isEqualTo(200L)
+        assertThat(channel.routingId).isEqualTo(100L)
+        assertThat(channel.threadId).isNull()
     }
 
     private fun msg(

@@ -5,9 +5,11 @@ import com.discordassistant.central.participation.application.judge.NiaParticipa
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmResponse
+import com.discordassistant.central.participation.application.port.out.NiaJudgeOutputContract
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmCachePolicy
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmJsonSchema
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
@@ -32,6 +34,8 @@ class CloudLlmNiaJudgeAdapter(
     private val cloudLlm: CloudLlm,
     @param:Value("\${central.nexa.participation.judge.model:gpt-5.6-luna}")
     private val model: String = DEFAULT_MODEL,
+    @param:Value("\${central.nexa.participation.judge.structured-output-enabled:false}")
+    private val structuredOutputEnabled: Boolean = false,
 ) : NiaJudgeLlmPort {
     private val callExecutor = newCallExecutor()
 
@@ -82,6 +86,15 @@ class CloudLlmNiaJudgeAdapter(
                                     maxOutputTokens = MAX_OUTPUT_TOKENS,
                                     requestTimeout = upstreamTimeout(request.timeoutMillis),
                                     maxRetries = 0,
+                                    jsonSchema =
+                                        if (structuredOutputEnabled) {
+                                            CloudLlmJsonSchema(
+                                                name = NiaJudgeOutputContract.FORMAT_NAME,
+                                                schemaJson = NiaJudgeOutputContract.JSON_SCHEMA,
+                                            )
+                                        } else {
+                                            null
+                                        },
                                     cachePolicy =
                                         if (request.stablePromptPrefixChars > 0) {
                                             CloudLlmCachePolicy.stablePrefix(

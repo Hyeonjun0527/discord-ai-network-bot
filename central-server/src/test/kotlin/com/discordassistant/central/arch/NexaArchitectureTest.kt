@@ -217,22 +217,24 @@ class NexaArchitectureTest {
 
         val onMessageReceived = source.substringBetween("override fun onMessageReceived", "private fun forwardToParticipation")
         val botFilter = onMessageReceived.indexOf("if (event.author.isBot) {")
-        val participationForward =
-            onMessageReceived.indexOf(
-                "forwardToParticipation(event, mentioned || directlyAddressed, rawContextPreCaptured)",
-            )
+        val participationTurn = onMessageReceived.indexOf("val participationTurn =")
+        val participationForward = onMessageReceived.indexOf("forwardToParticipation(", participationTurn)
         val participationOwnershipReturn = onMessageReceived.indexOf("if (participationTurn.ownsTurn) return")
         val mentionResponse = onMessageReceived.indexOf("if (mentioned)")
         val autoRespond = onMessageReceived.indexOf("handleAutoRespond(event)")
 
-        assertThat(participationForward).isGreaterThan(botFilter)
+        assertThat(participationTurn).isGreaterThan(botFilter)
+        assertThat(participationForward).isGreaterThan(participationTurn)
         assertThat(participationOwnershipReturn).isGreaterThan(participationForward)
         assertThat(participationOwnershipReturn).isLessThan(mentionResponse)
         assertThat(participationOwnershipReturn).isLessThan(autoRespond)
 
         val forwardToParticipation = source.substringBetween("private fun forwardToParticipation", "private fun participationSourceTypeOf")
+        val signalConstruction = forwardToParticipation.indexOf("ParticipationMessageSignal(")
+        val boundaryDispatch = forwardToParticipation.indexOf("deferOrEvaluateParticipation(signal, selfId)")
         val bridgeCall = forwardToParticipation.indexOf("participationEmitBridge.onMessageTurn(")
-        assertThat(forwardToParticipation.indexOf("ParticipationMessageSignal(")).isGreaterThan(bridgeCall)
+        assertThat(boundaryDispatch).isGreaterThan(signalConstruction)
+        assertThat(bridgeCall).isGreaterThan(boundaryDispatch)
         assertThat(forwardToParticipation).contains(
             "triggerText = contentRaw.take(500)",
             "rawText = contentRaw",

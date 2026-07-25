@@ -2,6 +2,7 @@ package com.discordassistant.central.routing
 
 import com.discordassistant.central.routing.application.CloudLlmCachePolicy
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmJsonSchema
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmUsage
@@ -53,6 +54,7 @@ class OpenAiCloudLlmTest {
             assertEquals(false, payload.path("store").asBoolean())
             assertEquals("explicit", payload.path("prompt_cache_options").path("mode").asText())
             assertFalse(payload.has("prompt_cache_key"))
+            assertFalse(payload.has("text"))
             assertFalse(
                 payload
                     .path("input")
@@ -60,6 +62,65 @@ class OpenAiCloudLlmTest {
                     .path("content")
                     .isArray,
             )
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `strict JSON Schema는 Responses text format 객체로 전송한다`() {
+        val capturedBody = AtomicReference<String>()
+        val response =
+            """
+            {
+              "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "{\"decision\":\"IGNORE\"}"}]
+              }],
+              "usage": {"input_tokens": 3, "output_tokens": 4}
+            }
+            """.trimIndent().toByteArray()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/") { exchange ->
+                    capturedBody.set(String(exchange.requestBody.readBytes()))
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val schemaJson =
+                """
+                {
+                  "type": "object",
+                  "properties": {"decision": {"type": "string"}},
+                  "required": ["decision"],
+                  "additionalProperties": false
+                }
+                """.trimIndent()
+
+            client(server).generate(
+                prompt = "판단해",
+                model = "gpt-5.6-luna",
+                history = emptyList(),
+                thinking = null,
+                options =
+                    CloudLlmRequestOptions(
+                        jsonSchema =
+                            CloudLlmJsonSchema(
+                                name = "judge_output_v1",
+                                schemaJson = schemaJson,
+                            ),
+                    ),
+            )
+
+            val format = mapper.readTree(capturedBody.get()).path("text").path("format")
+            assertEquals("json_schema", format.path("type").asText())
+            assertEquals("judge_output_v1", format.path("name").asText())
+            assertTrue(format.path("strict").asBoolean())
+            assertTrue(format.path("schema").isObject)
+            assertEquals(mapper.readTree(schemaJson), format.path("schema"))
         } finally {
             server.stop(0)
         }

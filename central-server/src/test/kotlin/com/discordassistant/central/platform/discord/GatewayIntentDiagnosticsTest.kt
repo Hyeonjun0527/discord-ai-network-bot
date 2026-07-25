@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test
 class GatewayIntentDiagnosticsTest {
     @Test
     fun `현재 정책은 콘텐츠 인텐트 켜져도 타이핑 수집은 DEGRADED`() {
-        // GatewayIntentPolicy 는 GUILD_MESSAGES + GUILD_MESSAGE_REACTIONS (+MESSAGE_CONTENT)만 구독 — 타이핑 미구독.
+        // typing 설정 기본값은 false라 명시적으로 켜기 전에는 intent가 없다.
         val granted = GatewayIntentPolicy.intents(messageContentIntentEnabled = true).toSet()
         val diagnoses = GatewayIntentDiagnostics.diagnose(granted)
 
@@ -30,6 +30,33 @@ class GatewayIntentDiagnosticsTest {
         assertEquals(FeatureGatewayHealth.DEGRADED, typing.health)
         assertTrue(typing.missingIntents.contains(GatewayIntent.GUILD_MESSAGE_TYPING))
         assertEquals(FeatureGatewayHealth.DEGRADED, GatewayIntentDiagnostics.overallHealth(diagnoses))
+    }
+
+    @Test
+    fun `typing intent를 켜면 타이핑 수집 진단이 HEALTHY다`() {
+        val granted =
+            GatewayIntentPolicy
+                .intents(
+                    messageContentIntentEnabled = true,
+                    typingIntentEnabled = true,
+                ).toSet()
+        val diagnoses = GatewayIntentDiagnostics.diagnose(granted)
+
+        assertEquals(FeatureGatewayHealth.HEALTHY, diagnoses.getValue(IngestionFeature.TYPING_CAPTURE).health)
+        assertEquals(FeatureGatewayHealth.HEALTHY, GatewayIntentDiagnostics.overallHealth(diagnoses))
+    }
+
+    @Test
+    fun `gateway status와 health detail은 실제 typing 구독 설정을 보존한다`() {
+        val status = DiscordGatewayStatus(discordEnabled = true)
+        status.markStarting(messageContentIntent = true, typingIntent = true)
+        status.markReady(messageContentIntent = true, typingIntent = true)
+
+        val health = DiscordGatewayHealthIndicator(status).health()
+
+        assertTrue(status.typingIntentEnabled)
+        assertEquals(true, health.details["typingIntentEnabled"])
+        assertEquals(FeatureGatewayHealth.HEALTHY.name, health.details["ingestionGatewayHealth"])
     }
 
     @Test

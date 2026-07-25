@@ -11,7 +11,15 @@ import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 /** 모호한 장면에서 실제 SEND 문구·REACT·IGNORE를 평가한 뒤 최종 행동을 고른다. */
 class CompleteActionSelector(
     private val evaluator: CompleteActionEvaluationPort,
+    private val requiredBypassEnabled: Boolean = false,
+    private val requiredBypassMinConfidence: Double = DEFAULT_REQUIRED_BYPASS_MIN_CONFIDENCE,
 ) {
+    init {
+        require(requiredBypassMinConfidence in 0.0..1.0) {
+            "requiredBypassMinConfidence 는 [0,1]이어야 한다: $requiredBypassMinConfidence"
+        }
+    }
+
     fun select(
         speechCandidates: List<SpeechCandidate>,
         packet: SpeechScenePacket,
@@ -53,6 +61,9 @@ class CompleteActionSelector(
             }
         if (candidates.isEmpty()) return fallbackSelection(uniqueSpeechCandidates, responseRequired)
         if (candidates.size == 1) return candidates.single().toSelection(uniqueSpeechCandidates)
+        if (shouldBypassEvaluator(candidates, responseRequired, provisionalConfidence)) {
+            return fallbackSelection(uniqueSpeechCandidates, responseRequired)
+        }
         val evaluation =
             evaluator.select(
                 CompleteActionEvaluationRequest(
@@ -77,6 +88,16 @@ class CompleteActionSelector(
                 ?: return fallbackSelection(uniqueSpeechCandidates, responseRequired)
         return selected.toSelection(uniqueSpeechCandidates)
     }
+
+    private fun shouldBypassEvaluator(
+        candidates: List<CompleteActionCandidate>,
+        responseRequired: Boolean,
+        provisionalConfidence: Double,
+    ): Boolean =
+        requiredBypassEnabled &&
+            responseRequired &&
+            provisionalConfidence >= requiredBypassMinConfidence &&
+            candidates.all { it.kind == CompleteActionKind.SEND }
 
     private fun CompleteActionCandidate.toSelection(speechCandidates: List<SpeechCandidate>): CompleteActionSelection =
         when (kind) {
@@ -103,6 +124,7 @@ class CompleteActionSelector(
         const val IGNORE_CANDIDATE_ID: String = "action_ignore"
         const val DEFAULT_REACTION_CODE: String = "ack"
         const val MIN_CONFIDENCE: Double = 0.55
+        const val DEFAULT_REQUIRED_BYPASS_MIN_CONFIDENCE: Double = 0.90
         val ENFORCEMENT_CONSTRAINTS: Set<String> =
             setOf("CONSENT_RECHECK_REQUIRED", "SAFETY_CRITICS_PASSED", "STALE_CONTEXT_CANCEL", "REACTION_ALLOWLIST")
     }

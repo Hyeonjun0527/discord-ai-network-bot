@@ -47,9 +47,35 @@ class NiaPromptConfigurationServiceTest {
         assertThat(service.text(NiaPromptKey.IDENTITY_PERSONA)).isEqualTo("관리자가 수정한 니아 정체성")
     }
 
-    private fun serviceWithMemoryRepository(): NiaPromptConfigurationService {
+    @Test
+    fun `폐기된 repair와 evaluator 문서가 DB에 남아 있어도 현재 관리 프롬프트를 유지한다`() {
+        val mapper = jacksonObjectMapper()
+        val documents = NiaPromptDefaults.documents.mapKeys { it.key.wireName }.toMutableMap()
+        documents[NiaPromptKey.IDENTITY_PERSONA.wireName] = "운영에서 적용 중인 니아 정체성"
+        documents["judge_repair_template"] = "폐기된 repair 문서"
+        documents["action_evaluator_template"] = "폐기된 evaluator 문서"
+        val encoded = mapper.writeValueAsString(documents)
+        val service =
+            serviceWithMemoryRepository(
+                NiaPromptConfigurationEntity(
+                    activeVersion = 7,
+                    activeDocumentsJson = encoded,
+                    draftDocumentsJson = encoded,
+                ),
+            )
+
+        val view = service.load()
+
+        assertThat(view.source).isEqualTo("MANAGED")
+        assertThat(view.activeVersion).isEqualTo(7)
+        assertThat(view.activeDocuments.keys).containsExactlyInAnyOrderElementsOf(NiaPromptKey.entries)
+        assertThat(view.activeDocuments.getValue(NiaPromptKey.IDENTITY_PERSONA))
+            .isEqualTo("운영에서 적용 중인 니아 정체성")
+    }
+
+    private fun serviceWithMemoryRepository(initial: NiaPromptConfigurationEntity? = null): NiaPromptConfigurationService {
         val repository = mock(NiaPromptConfigurationRepository::class.java)
-        var stored: NiaPromptConfigurationEntity? = null
+        var stored: NiaPromptConfigurationEntity? = initial
         `when`(repository.findById(NiaPromptConfigurationEntity.SINGLETON_ID)).thenAnswer { Optional.ofNullable(stored) }
         doAnswer { invocation ->
             invocation.getArgument<NiaPromptConfigurationEntity>(0).also { stored = it }

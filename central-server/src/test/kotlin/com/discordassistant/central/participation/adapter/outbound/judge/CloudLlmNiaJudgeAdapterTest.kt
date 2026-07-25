@@ -66,22 +66,16 @@ class CloudLlmNiaJudgeAdapterTest {
     }
 
     @Test
-    fun `shadow와 repair 호출은 운영 비용 목적이 따로 기록된다`() {
+    fun `shadow 호출만 운영 비용 목적이 따로 기록된다`() {
         val cloudLlm = RecordingCloudLlm()
         val adapter = CloudLlmNiaJudgeAdapter(cloudLlm, "gpt-5.6-luna")
 
         adapter.complete(request().copy(metadata = mapOf("execution_purpose" to "shadow")))
         assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SHADOW_JUDGE)
 
-        adapter.complete(
-            request().copy(
-                metadata = mapOf("execution_purpose" to "shadow", "repair_attempt" to "true"),
-            ),
-        )
-        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR)
-
+        // 이전 repair metadata가 남아 있어도 별도 호출 목적을 만들지 않는다.
         adapter.complete(request().copy(metadata = mapOf("repair_attempt" to "true")))
-        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_JUDGE_REPAIR)
+        assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_JUDGE)
     }
 
     @Test
@@ -116,11 +110,6 @@ class CloudLlmNiaJudgeAdapterTest {
             mapOf(
                 emptyMap<String, String>() to CloudLlmPurpose.NIA_JUDGE,
                 mapOf("execution_purpose" to "shadow") to CloudLlmPurpose.NIA_SHADOW_JUDGE,
-                mapOf("repair_attempt" to "true") to CloudLlmPurpose.NIA_JUDGE_REPAIR,
-                mapOf(
-                    "execution_purpose" to "shadow",
-                    "repair_attempt" to "true",
-                ) to CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR,
             )
 
         cases.forEach { (metadata, purpose) ->
@@ -145,8 +134,6 @@ class CloudLlmNiaJudgeAdapterTest {
             listOf(
                 emptyMap(),
                 mapOf("execution_purpose" to "shadow"),
-                mapOf("repair_attempt" to "true"),
-                mapOf("execution_purpose" to "shadow", "repair_attempt" to "true"),
             )
 
         metadataByPurpose.forEach { metadata ->

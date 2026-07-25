@@ -65,21 +65,22 @@
   `runtime secret files present`만 확인한다.
 
 ### 6-1) 니아 비용 최적화 롤백
-- 세 최적화는 독립 스위치다. 장애 범위만 끄고 모델·few-shot·원문 보존 정책은 바꾸지 않는다.
+- Structured Outputs와 turn boundary는 독립 스위치다. 장애 범위만 끄고 모델·few-shot·원문 보존 정책은 바꾸지 않는다.
   - Structured Outputs/provider 호환 문제:
     `NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED=false`
   - turn boundary 지연·typing 문제:
     `NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED=false`,
     필요하면 `DISCORD_TYPING_INTENT_ENABLED=false`
-  - 고확신 REQUIRED 후보 선택 품질 문제:
-    `NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED=false`
 - rawScene 고정폭 row는 `nia.participation-judge-input.v4`와 `nia-judge-prompt-v18`로 이전 cache와 분리된다.
   이 형식 자체를 되돌릴 때는 이전 이미지 태그로 롤백한다.
+- Judge repair, Speech retry, Cloud action evaluator 제거는 2회 생성 상한의 구조적 불변식이라 스위치로 다시
+  켜지 않는다. 문제가 있으면 이전 이미지로 전체 롤백한 뒤 비용·품질 근거를 재검토한다.
 - 비용 효과는 원문 로그가 아니라
   `central_openai_requests_total{purpose=...}`와
   `central_openai_tokens_total{purpose=...,category=...}`의 배포 전후 구간으로 비교한다.
-- 운영 원문을 재생하거나 유료 테스트 호출을 자동으로 만들지 않는다. 실제 트래픽에서 오류율·Judge 호출 수·
-  evaluator/speech 비율을 관측하고, 품질 이상이면 해당 스위치만 내린다.
+- 운영 원문을 재생하거나 유료 테스트 호출을 자동으로 만들지 않는다. 실제 트래픽에서 오류율과
+  `nia_speech / nia_judge` 요청 비율을 관측한다. `nia_judge_repair`와 `nia_action_evaluator` 신규 시계열은
+  생기지 않아야 한다.
 
 ### 7) 폐루프 테이블 보존 정리
 - WAIT outbox와 행동-결과 관측 행은 기본 30일 보존 후 매일 UTC 03:55에 정리된다.

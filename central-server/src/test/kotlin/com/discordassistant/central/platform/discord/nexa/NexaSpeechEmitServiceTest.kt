@@ -240,7 +240,7 @@ class NexaSpeechEmitServiceTest {
             NexaSpeechPipelineService(
                 consentGate = PolicyBackedConsentGate(consentPolicy),
                 generationGate = SpeechGenerationGate(generationService),
-                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                candidateFilter = NexaSpeechPipelineService.securityCriticFilter(),
                 decisionLog = speechLog,
                 completeActionSelector = deterministicCompleteActionSelector(),
             )

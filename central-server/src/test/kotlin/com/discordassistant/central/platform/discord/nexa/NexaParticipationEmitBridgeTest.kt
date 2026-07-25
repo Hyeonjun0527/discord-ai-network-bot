@@ -1114,7 +1114,8 @@ class NexaParticipationEmitBridgeTest {
         assertThat(request.socialAct).isEqualTo(SpeechSocialAct.ASK)
         assertThat(request.systemPrompt).contains("대화를 잇는 한 가지 질문만")
         assertThat(request.systemPrompt).doesNotContain("act_hint=")
-        assertThat(request.systemPrompt).contains("SPEAK는 잠정 판단")
+        assertThat(request.systemPrompt).contains("SPEAK는 참여 여부에 대한 최종 판단")
+        assertThat(request.systemPrompt).doesNotContain("SPEAK는 잠정 판단")
         assertThat(request.systemPrompt).contains("정확히 2개")
         assertThat(request.systemPrompt).doesNotContain("와이파이 비번", "커피 먼저 주문하셔야 돼요")
         assertThat(request.userPrompt).contains("[judge 원문 장면")
@@ -2448,7 +2449,7 @@ class NexaParticipationEmitBridgeTest {
             NexaSpeechPipelineService(
                 consentGate = PolicyBackedConsentGate(consentPolicy),
                 generationGate = SpeechGenerationGate(generationService),
-                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                candidateFilter = NexaSpeechPipelineService.securityCriticFilter(),
                 decisionLog = CapturingSpeechLog(),
                 completeActionSelector = deterministicCompleteActionSelector(),
             )
@@ -2481,7 +2482,7 @@ class NexaParticipationEmitBridgeTest {
             NexaSpeechPipelineService(
                 consentGate = PolicyBackedConsentGate(consentPolicy),
                 generationGate = SpeechGenerationGate(generationService),
-                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                candidateFilter = NexaSpeechPipelineService.securityCriticFilter(),
                 decisionLog = CapturingSpeechLog(),
                 completeActionSelector = deterministicCompleteActionSelector(),
             )

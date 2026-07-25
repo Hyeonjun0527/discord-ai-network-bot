@@ -71,20 +71,16 @@ services:
       OPENAI_LLM_MAX_RETRIES: "0"
       # Judge의 고정 지시와 active few-shot prefix만 캐시한다. raw scene/RAG/상태는 breakpoint 뒤라
       # 매 요청 새로 전달되고, active few-shot이 바뀌면 prefix hash도 바뀐다. 운영 환경변수로 즉시 OFF
-      # 할 수 있고, 짧은 speech/evaluator prefix는 기본 비활성으로 둔다.
+      # 할 수 있고, 짧은 speech prefix는 기본 비활성으로 둔다.
       OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_JUDGE_ENABLED:-true}
       OPENAI_PROMPT_CACHE_NIA_SPEECH_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_SPEECH_ENABLED:-false}
-      OPENAI_PROMPT_CACHE_NIA_ACTION_EVALUATOR_ENABLED: ${OPENAI_PROMPT_CACHE_NIA_ACTION_EVALUATOR_ENABLED:-false}
       NEXA_SPEECH_MODEL: ${NEXA_SPEECH_MODEL:-gpt-5.6-luna}
-      NEXA_SPEECH_MAX_RETRIES: "0"
       NEXA_PARTICIPATION_JUDGE_MODEL: ${NEXA_PARTICIPATION_JUDGE_MODEL:-gpt-5.6-luna}
       # 비용 최적화는 서로 독립적으로 즉시 롤백할 수 있다. rawScene 압축은 입력 schema/prompt version으로
       # 기존 캐시와 분리되고, 아래 세 스위치는 다음 요청부터 각 경로만 끈다.
       NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED: ${NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED:-true}
       NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED: ${NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED:-true}
       DISCORD_TYPING_INTENT_ENABLED: ${DISCORD_TYPING_INTENT_ENABLED:-true}
-      NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED: ${NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED:-true}
-      NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_MIN_CONFIDENCE: ${NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_MIN_CONFIDENCE:-0.90}
       # 클라우드 이미지 생성(/그림)은 현재 운영 secret-file 계약에 Stability 키가 없어 비활성이다.
       # 필요하면 평문 env를 복구하지 말고 production Environment + configtree target을 함께 추가한다.
       # 안전심사는 OpenAI 활성 전제(AskCommandHandler.imagine fail-closed).

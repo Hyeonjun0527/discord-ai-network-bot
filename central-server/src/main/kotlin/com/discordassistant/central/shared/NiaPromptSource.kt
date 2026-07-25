@@ -45,13 +45,6 @@ enum class NiaPromptKey(
         "현재 장면 JSON과 전역 few-shot, RAG를 받아 행동을 고르는 전체 템플릿",
         setOf("outputSchema", "inputJson"),
     ),
-    JUDGE_REPAIR_TEMPLATE(
-        "judge_repair_template",
-        "판단",
-        "판단 출력 복구 입력",
-        "판단 모델이 잘못된 형식으로 답했을 때 두 번째 호출에 붙는 원문",
-        setOf("rejectionCode", "outputSchema"),
-    ),
     FEW_SHOT_TEMPLATE(
         "few_shot_template",
         "예시 조립",
@@ -105,20 +98,6 @@ enum class NiaPromptKey(
         "클라우드 발화 최종 입력",
         "시스템 입력·감정 지침·사용자 입력을 실제 모델 호출 직전에 합치는 형식",
         setOf("systemPrompt", "toneDirective", "userPrompt"),
-    ),
-    ACTION_EVALUATOR_TEMPLATE(
-        "action_evaluator_template",
-        "최종 행동 선택",
-        "완전 행동 후보 평가 입력",
-        "실제 문구·침묵·리액션 후보 중 최종 행동 하나를 고르는 전체 템플릿",
-        setOf(
-            "speechIntent",
-            "socialAct",
-            "provisionalConfidence",
-            "recentScene",
-            "rawContext",
-            "candidates",
-        ),
     ),
     ASK_NIA_TEMPLATE(
         "ask_nia_template",

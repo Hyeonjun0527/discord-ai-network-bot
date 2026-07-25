@@ -1,7 +1,6 @@
 package com.discordassistant.central.participation.adapter.outbound.judge
 
 import com.discordassistant.central.participation.application.judge.NiaJudgePromptAssembler
-import com.discordassistant.central.participation.application.judge.NiaParticipationJudge
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmResponse
@@ -73,15 +72,10 @@ class CloudLlmNiaJudgeAdapter(
                             options =
                                 CloudLlmRequestOptions(
                                     purpose =
-                                        when {
-                                            request.metadata[NiaJudgePromptAssembler.EXECUTION_PURPOSE_METADATA_KEY] == "shadow" &&
-                                                request.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY] == "true" ->
-                                                CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR
-                                            request.metadata[NiaJudgePromptAssembler.EXECUTION_PURPOSE_METADATA_KEY] == "shadow" ->
-                                                CloudLlmPurpose.NIA_SHADOW_JUDGE
-                                            request.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY] == "true" ->
-                                                CloudLlmPurpose.NIA_JUDGE_REPAIR
-                                            else -> CloudLlmPurpose.NIA_JUDGE
+                                        if (request.metadata[NiaJudgePromptAssembler.EXECUTION_PURPOSE_METADATA_KEY] == "shadow") {
+                                            CloudLlmPurpose.NIA_SHADOW_JUDGE
+                                        } else {
+                                            CloudLlmPurpose.NIA_JUDGE
                                         },
                                     maxOutputTokens = MAX_OUTPUT_TOKENS,
                                     requestTimeout = upstreamTimeout(request.timeoutMillis),

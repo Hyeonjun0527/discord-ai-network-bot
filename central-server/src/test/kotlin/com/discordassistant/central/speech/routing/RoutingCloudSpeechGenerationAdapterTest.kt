@@ -29,7 +29,7 @@ import java.time.ZoneOffset
  * fail-safe, stale 폐기, 사용량 기록.
  */
 class RoutingCloudSpeechGenerationAdapterTest {
-    private val config = SpeechModelConfig(model = "glm-5.1", timeoutSeconds = 8, maxRetries = 1, temperature = 0.9)
+    private val config = SpeechModelConfig(model = "glm-5.1", timeoutSeconds = 8, temperature = 0.9)
 
     private fun request(count: Int = 1) =
         SpeechGenerationRequest(
@@ -164,12 +164,12 @@ class RoutingCloudSpeechGenerationAdapterTest {
     }
 
     @Test
-    fun `transient failure is retried within budget`() {
+    fun `transient failure is not retried`() {
         val fake = FakeCloudLlm(throwOnce = true)
         val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
         val result = adapter.generate(request())
-        assertThat(result.isEmpty).isFalse()
-        assertThat(fake.calls).isEqualTo(2) // 첫 호출 실패 후 재시도 성공.
+        assertThat(result.isEmpty).isTrue()
+        assertThat(fake.calls).isEqualTo(1)
     }
 
     @Test
@@ -178,7 +178,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
         // clock 을 deadline 이후로 고정해, 응답 직후 stale 판정이 나도록 한다.
         val lateClock = Clock.fixed(now.plusSeconds(100), ZoneOffset.UTC)
         val adapter = RoutingCloudSpeechGenerationAdapter(FakeCloudLlm(), config, clock = lateClock)
-        val staleBudget = CloudCallBudget(Duration.ofSeconds(8), 0, now) // deadline 이미 지남.
+        val staleBudget = CloudCallBudget(Duration.ofSeconds(8), now) // deadline 이미 지남.
         assertThat(adapter.generateWithin(request(), staleBudget).isEmpty).isTrue()
     }
 }

@@ -1,6 +1,6 @@
 package com.discordassistant.central.speech.generation
 
-import com.discordassistant.central.speech.application.generation.CandidateSelector
+import com.discordassistant.central.speech.application.generation.CandidateCriticFilter
 import com.discordassistant.central.speech.application.generation.ShadowSample
 import com.discordassistant.central.speech.application.generation.SpeechShadowEvaluator
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test
 /** NEXA-P14-T024: 전송 없이 후보 품질·비용을 shadow 평가(assistant-style rate·contradiction·latency·cost + human). */
 class SpeechShadowEvaluatorTest {
     private val selector =
-        CandidateSelector(
+        CandidateCriticFilter(
             listOf(
                 AssistantStyleDetector(),
                 RepetitionDetector(),

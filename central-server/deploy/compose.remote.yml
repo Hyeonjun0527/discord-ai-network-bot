@@ -67,7 +67,7 @@ services:
       # 빠른 채팅/무료질문/니아 speech 기본 모델.
       OPENAI_FREE_MODEL: ${OPENAI_FREE_MODEL:-gpt-5.6-luna}
       OPENAI_FAST_MODEL: ${OPENAI_FAST_MODEL:-gpt-5.6-luna}
-      # provider timeout 뒤 같은 요청을 다시 과금하지 않는다. 코드 기본값과 운영 compose를 이중 고정한다.
+      # provider 내부 중첩 재시도는 끈다. Judge/Speech가 실패 시 각각 한 번만 재시도한다.
       OPENAI_LLM_MAX_RETRIES: "0"
       # Judge의 고정 지시와 active few-shot prefix만 캐시한다. raw scene/RAG/상태는 breakpoint 뒤라
       # 매 요청 새로 전달되고, active few-shot이 바뀌면 prefix hash도 바뀐다. 운영 환경변수로 즉시 OFF

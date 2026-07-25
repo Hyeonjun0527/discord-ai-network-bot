@@ -1,14 +1,15 @@
 # 바운디드 컨텍스트 계약: speech (발화 생성)
 
-- 작업: NEXA-P01-T007 · 상위 결정: [ADR 0018 2회 LLM 생성 상한](../../adr/0018-nia-two-call-llm-budget.md)
+- 작업: NEXA-P01-T007 · 상위 결정:
+  [ADR 0018 제한된 LLM 재시도 상한](../../adr/0018-nia-bounded-llm-retry-budget.md)
 - 패키지(예정): `com.discordassistant.central.speech`
 - 근거 기준선: [current-llm-flow.md](../baseline/current-llm-flow.md)
 - 포트 계약: routing-integration.md (`docs/nexa/architecture/routing-integration.md`, T010 예정)
 
 ## 책임 (한 문장)
 
-participation이 `SPEAK`를 고른 **뒤에만**, 장면·기억·정체성을 사용해 실제 문구 후보를 한 번 생성하고
-로컬 안전검사를 통과한 후보를 고른다. JDA로 직접 보내지는 않는다.
+participation이 `SPEAK`를 고른 **뒤에만**, 장면·기억·정체성을 사용해 실제 문구 후보를 생성하고
+로컬 안전검사를 통과한 후보를 고른다. 생성 실패 때만 한 번 재시도하며 JDA로 직접 보내지는 않는다.
 
 speech는 Judge의 최종 `SPEAK` 이후에만 실행되므로 WAIT/IGNORE를 SPEAK로 승격할 수 없다. 생존 문구가 없을
 때만 REACT 또는 IGNORE로 안전 하강하며, 별도 모델에게 행동을 다시 묻지 않는다.
@@ -26,7 +27,7 @@ speech는 Judge의 최종 `SPEAK` 이후에만 실행되므로 WAIT/IGNORE를 SP
 
 - **참여 판단** → `participation`; speech는 Judge의 `SPEAK`를 다시 모델 평가하지 않음
 - **few-shot 판단 헌법** → participation/admin. speech prompt 예시가 아니라 participation judge 예시다
-- **전송·재시도·타이밍** → `actionruntime`
+- **Discord 전송·전송 재시도·타이밍** → `actionruntime`
 - **외부 모델 제공자 선택·쿼터·요청 로그** → `routing`(provider-neutral)
 - **정체성 SSOT** → `ainetwork`(speech는 페르소나를 읽어 프롬프트에 주입만)
 
@@ -36,7 +37,8 @@ speech는 Judge의 최종 `SPEAK` 이후에만 실행되므로 WAIT/IGNORE를 SP
 - `provider-agent`의 `glm.py`·특정 Z.AI SDK 타입·모델 식별자 문자열이 `speech.domain`에 노출되지
   않는다. 모델 선택·정책·쿼터·requestlog는 routing이 책임진다([current-llm-flow.md](../baseline/current-llm-flow.md)).
 - 따라서 NEXA 발화도 반드시 central routing을 거쳐 차단·한도·채널 정책·관측 일관성을 유지한다.
-- 한 `SPEAK` 결정당 `CloudLlm` 호출은 한 번뿐이며 Speech 자체 retry는 없다. 후보 여러 개는 같은 응답에서 받는다.
+- 한 `SPEAK` 결정당 `CloudLlm`은 정상 1회, 첫 호출 실패 때만 최대 2회다. provider 내부 retry는 0이며 후보
+  여러 개는 같은 응답에서 받는다.
 
 ## 포트
 
@@ -68,5 +70,6 @@ speech는 Judge의 최종 `SPEAK` 이후에만 실행되므로 WAIT/IGNORE를 SP
 3. speech는 발화 계획을 반환할 뿐 전송하지 않는다.
 4. 발화 계획은 actionruntime의 재평가로 폐기될 수 있다(speech는 전송을 보장받지 않음).
 5. speech는 WAIT/IGNORE/REACT/CANCEL을 SPEAK로 승격하지 않는다.
-6. 발화 호출 실패·malformed 응답·critic 전멸은 재호출 없이 침묵/리액션으로 안전 하강한다.
+6. 발화 호출 실패·malformed 응답은 deadline 안에서 한 번만 재시도한다. 두 시도 실패·deadline 만료·critic
+   전멸은 침묵/리액션으로 안전 하강한다.
 7. 별도 Cloud action evaluator를 호출하지 않는다.

@@ -1,6 +1,6 @@
 # ADR 0017: NIA persistent closed-loop social policy
 
-- 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0018](./0018-nia-two-call-llm-budget.md))
+- 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0018](./0018-nia-bounded-llm-retry-budget.md))
 - 날짜(Date): 2026-07-17
 - 최신 개정(Amended): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527

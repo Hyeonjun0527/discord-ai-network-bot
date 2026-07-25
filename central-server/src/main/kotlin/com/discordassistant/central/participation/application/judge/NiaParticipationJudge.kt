@@ -10,12 +10,19 @@ class NiaParticipationJudge(
     private val outputParser: NiaJudgeOutputParser,
 ) : SingleParticipationJudgePort {
     override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
-        val firstPrompt = request.preparedLlmRequest ?: promptAssembler.assemble(request)
-        val result = attempt(firstPrompt)
-        if (result is NiaJudgeOutputParseResult.Accepted) {
-            return SingleJudgeDecisionGuard.apply(request, result.parsed.decision).finalDecision
+        val prompt = request.preparedLlmRequest ?: promptAssembler.assemble(request)
+        var lastRejection: NiaJudgeOutputParseResult.Rejected? = null
+        repeat(MAX_ATTEMPTS) {
+            when (val result = attempt(prompt)) {
+                is NiaJudgeOutputParseResult.Accepted ->
+                    return SingleJudgeDecisionGuard.apply(request, result.parsed.decision).finalDecision
+                is NiaJudgeOutputParseResult.Rejected -> {
+                    lastRejection = result
+                    if (Thread.currentThread().isInterrupted) return degradedDecision(request, result)
+                }
+            }
         }
-        return degradedDecision(request, result as NiaJudgeOutputParseResult.Rejected)
+        return degradedDecision(request, requireNotNull(lastRejection))
     }
 
     private fun attempt(prompt: NiaJudgeLlmRequest): NiaJudgeOutputParseResult =
@@ -146,6 +153,7 @@ class NiaParticipationJudge(
 
     companion object {
         const val DEFAULT_DEGRADED_DELAY_MILLIS: Long = 1_000
+        private const val MAX_ATTEMPTS: Int = 2
         private const val JUDGE_LLM_ERROR_CODE: String = "judge_llm_error"
         private const val MAX_CONTEXTUAL_FALLBACK_PRESSURE: Double = 0.8
     }

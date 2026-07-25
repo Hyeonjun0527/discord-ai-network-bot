@@ -52,19 +52,19 @@ class NiaParticipationJudgeTest {
     }
 
     @Test
-    fun `judge does not make a second paid call after malformed output`() {
+    fun `judge retries malformed output once and uses the valid second result`() {
         val llm = FakeJudgeLlm(response("{bad-json"), response(output("SPEAK")))
         val judge = judge(llm)
 
         val decision = judge.decide(sampleRequest(directAddressed = false))
 
-        assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
-        assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
-        assertThat(llm.requests).hasSize(1)
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(llm.requests).hasSize(2)
+        assertThat(llm.requests.distinct()).hasSize(1)
     }
 
     @Test
-    fun `judge degrades to WAIT or IGNORE after its single attempt fails validation`() {
+    fun `judge degrades to WAIT or IGNORE after both attempts fail validation`() {
         val llm = FakeJudgeLlm(response("{bad-json"))
         val judge = judge(llm)
 
@@ -73,7 +73,18 @@ class NiaParticipationJudgeTest {
         assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.confidence).isEqualTo(0.0)
-        assertThat(llm.requests).hasSize(1)
+        assertThat(llm.requests).hasSize(2)
+    }
+
+    @Test
+    fun `judge retries a provider failure once and uses the successful result`() {
+        val llm = ThrowOnceJudgeLlm(response(output("SPEAK")))
+        val judge = judge(llm)
+
+        val decision = judge.decide(sampleRequest())
+
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
@@ -86,7 +97,7 @@ class NiaParticipationJudgeTest {
         assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.speechIntent!!.sceneDirection).contains("if asked to stop or yield")
         assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.direct_address.judge_llm_error")
-        assertThat(llm.calls).isEqualTo(1)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
@@ -98,7 +109,7 @@ class NiaParticipationJudgeTest {
 
         assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
-        assertThat(llm.calls).isEqualTo(1)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
@@ -315,7 +326,19 @@ class NiaParticipationJudgeTest {
 
         override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
             requests += request
-            return responses[cursor++]
+            return responses.getOrElse(cursor++) { responses.last() }
+        }
+    }
+
+    private class ThrowOnceJudgeLlm(
+        private val response: NiaJudgeLlmResponse,
+    ) : NiaJudgeLlmPort {
+        var calls: Int = 0
+
+        override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
+            calls++
+            if (calls == 1) throw IllegalStateException("provider unavailable")
+            return response
         }
     }
 

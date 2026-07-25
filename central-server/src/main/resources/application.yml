@@ -197,7 +197,7 @@ central:
       judge:
         # 니아 participation 판단 모델. 발화와 같은 Luna none 경로를 사용한다.
         model: ${NEXA_PARTICIPATION_JUDGE_MODEL:gpt-5.6-luna}
-        # Responses API strict JSON Schema를 사용한다. refusal/incomplete는 재호출하지 않고 fail-closed한다.
+        # Responses API strict JSON Schema를 사용한다. 실패는 Judge가 한 번만 재시도한 뒤 제한 하강한다.
         structured-output-enabled: ${NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED:false}
         raw-context:
           # 저장 보존 한도(20만 자)와 모델 입력 한도를 분리한다. 기본값은 기존 판단 품질을 보존하고,

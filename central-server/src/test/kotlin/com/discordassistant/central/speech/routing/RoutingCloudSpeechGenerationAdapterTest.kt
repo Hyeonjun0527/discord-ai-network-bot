@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 /**
@@ -46,7 +47,9 @@ class RoutingCloudSpeechGenerationAdapterTest {
     private open class FakeCloudLlm(
         private val enabled: Boolean = true,
         private val response: String = """{"candidates":[{"bubbles":["안녕!"]}]}""",
+        private val responseSequence: List<String> = emptyList(),
         private val throwOnce: Boolean = false,
+        private val throwAlways: Boolean = false,
     ) : CloudLlm {
         var calls = 0
         var lastPrompt: String? = null
@@ -60,8 +63,10 @@ class RoutingCloudSpeechGenerationAdapterTest {
         ): CloudLlmResult {
             calls++
             lastPrompt = prompt
+            if (throwAlways) throw RuntimeException("persistent")
             if (throwOnce && calls == 1) throw RuntimeException("transient")
-            return CloudLlmResult(response, CloudLlmUsage(promptTokens = 10, completionTokens = 5))
+            val content = responseSequence.getOrElse(calls - 1) { response }
+            return CloudLlmResult(content, CloudLlmUsage(promptTokens = 10, completionTokens = 5))
         }
 
         override fun generateSampled(
@@ -158,16 +163,63 @@ class RoutingCloudSpeechGenerationAdapterTest {
 
     @Test
     fun `malformed response yields empty result without throwing`() {
+        val fake = FakeCloudLlm(response = "totally not json")
         val adapter =
-            RoutingCloudSpeechGenerationAdapter(FakeCloudLlm(response = "totally not json"), config)
+            RoutingCloudSpeechGenerationAdapter(fake, config)
+
         assertThat(adapter.generate(request()).isEmpty).isTrue()
+        assertThat(fake.calls).isEqualTo(2)
     }
 
     @Test
-    fun `transient failure is not retried`() {
+    fun `transient failure is retried once`() {
         val fake = FakeCloudLlm(throwOnce = true)
         val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
         val result = adapter.generate(request())
+
+        assertThat(result.isEmpty).isFalse()
+        assertThat(fake.calls).isEqualTo(2)
+        assertThat(fake.lastOptions!!.maxRetries).isZero()
+    }
+
+    @Test
+    fun `malformed first response is retried once`() {
+        val fake =
+            FakeCloudLlm(
+                responseSequence =
+                    listOf(
+                        "totally not json",
+                        """{"candidates":[{"bubbles":["다시 성공"]}]}""",
+                    ),
+            )
+        val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
+
+        val result = adapter.generate(request())
+
+        assertThat(result.isEmpty).isFalse()
+        assertThat(result.candidates.single().bubbles).containsExactly("다시 성공")
+        assertThat(fake.calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `persistent provider failure stops after two attempts`() {
+        val fake = FakeCloudLlm(throwAlways = true)
+        val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
+
+        assertThat(adapter.generate(request()).isEmpty).isTrue()
+        assertThat(fake.calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `speech does not start its retry after the overall deadline`() {
+        val startedAt = Instant.parse("2026-06-22T00:00:00Z")
+        val deadline = startedAt.plusSeconds(8)
+        val clock = SequenceClock(listOf(startedAt, deadline))
+        val fake = FakeCloudLlm(throwAlways = true)
+        val adapter = RoutingCloudSpeechGenerationAdapter(fake, config, clock = clock)
+
+        val result = adapter.generateWithin(request(), CloudCallBudget(Duration.ofSeconds(8), deadline))
+
         assertThat(result.isEmpty).isTrue()
         assertThat(fake.calls).isEqualTo(1)
     }
@@ -177,8 +229,27 @@ class RoutingCloudSpeechGenerationAdapterTest {
         val now = Instant.parse("2026-06-22T00:00:00Z")
         // clock 을 deadline 이후로 고정해, 응답 직후 stale 판정이 나도록 한다.
         val lateClock = Clock.fixed(now.plusSeconds(100), ZoneOffset.UTC)
-        val adapter = RoutingCloudSpeechGenerationAdapter(FakeCloudLlm(), config, clock = lateClock)
+        val fake = FakeCloudLlm()
+        val adapter = RoutingCloudSpeechGenerationAdapter(fake, config, clock = lateClock)
         val staleBudget = CloudCallBudget(Duration.ofSeconds(8), now) // deadline 이미 지남.
+
         assertThat(adapter.generateWithin(request(), staleBudget).isEmpty).isTrue()
+        assertThat(fake.calls).isZero()
+    }
+
+    private class SequenceClock(
+        instants: List<Instant>,
+    ) : Clock() {
+        private val remaining = ArrayDeque(instants)
+        private var latest = instants.first()
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+
+        override fun instant(): Instant {
+            if (remaining.isNotEmpty()) latest = remaining.removeFirst()
+            return latest
+        }
     }
 }

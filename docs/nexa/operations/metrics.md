@@ -66,17 +66,18 @@ Micrometer 컴포넌트가 존재하거나 0 gauge가 노출되는 것을 "수�
 
 - 연속 social message는 turn boundary가 닫힐 때 최신 signal 하나로 합쳐진다. 메시지마다 raw context와
   generation은 즉시 갱신되므로 중간 원문을 버리는 것이 아니라 유료 Judge 시작 횟수만 줄인다.
-- 비발화: `nia_judge` 최대 1회. provider 실패, strict Structured Outputs의 `refusal`/`incomplete`, completed
-  응답의 의미 검증 실패 모두 repair 없이 로컬 제한 하강한다.
-- 발화: `nia_judge` 최대 1회 + `nia_speech` 최대 1회다. Speech 한 요청이 여러 실제 문구 후보를 함께 만들고,
+- 비발화 정상 경로는 `nia_judge` 1회다. provider·파싱·의미 검증 실패 때 같은 prompt로 한 번만 재시도하므로
+  실패 복구 상한은 2회다.
+- 발화 정상 경로는 `nia_judge` 1회 + `nia_speech` 1회다. Speech 한 요청이 여러 실제 문구 후보를 함께 만들고,
   로컬 critic 통과 후보 중 uncertainty가 가장 낮은 하나를 고른다.
-- Judge repair, Speech retry, Cloud action evaluator는 없다. timeout·malformed 응답은 같은 장면을 다시
-  과금하지 않고 침묵/리액션으로 안전 하강한다.
-- 따라서 생성 LLM 요청 상한은 비발화 1회, 발화 2회다. consent, high-risk, secret, burst, intent
-  fulfillment, freshness, mode, permit 검사는 이 상한 안에서 로컬로 적용된다.
-- stale 턴은 `stage=before_judge`면 OpenAI 요청 0회, `stage=after_judge`면 이미 시작한 judge 1회만 비용에 남을 수 있다.
+- Judge와 Speech는 각 단계 실패 때 한 번만 재시도한다. provider 내부 retry와 별도 Judge repair, Cloud action
+  evaluator는 없으므로 실패 복구를 포함한 생성 LLM 요청 상한은 비발화 2회, 발화 4회다.
+- consent, high-risk, secret, burst, intent fulfillment, freshness, mode, permit 검사는 추가 AI 호출 없이
+  로컬로 적용된다.
+- stale 턴은 `stage=before_judge`면 OpenAI 요청 0회다. Judge 도중 새 메시지가 들어오면 이미 시작한 Judge
+  호출은 최대 2회 비용에 남을 수 있으며, Speech는 전체 deadline이 지나면 재시도를 시작하지 않는다.
 - RAG 항목에 비교 가능한 vector가 있을 때만 `nia_rag_embedding`이 발생하며, 완전히 같은 장면 query는 프로세스 내
-  해시 캐시를 재사용한다. 이는 생성 LLM 2회 상한과 별도인 embedding HTTP 요청이므로, **모든 유료 OpenAI 요청**
+  해시 캐시를 재사용한다. 이는 생성 LLM 호출 상한과 별도인 embedding HTTP 요청이므로, **모든 유료 OpenAI 요청**
   수를 셀 때는 따로 더해야 한다.
 
 ### 8. fir_mir (FIR/MIR proxy 운영 경보) — `FirMirProxyMetrics`(P18-T008)

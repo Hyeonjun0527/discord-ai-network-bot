@@ -82,18 +82,275 @@ class NiaTurnBoundaryCoordinatorTest {
         var observedGeneration = 1L
         val callbacks = callbacks(latest = { _, generation -> generation == observedGeneration })
 
-        assertThat(coordinator.onTyping(20L)).isFalse()
+        assertThat(coordinator.onTyping(20L, 30L)).isFalse()
         coordinator.onMessage(true, 20L, 1L, signal(1L), callbacks)
         assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusMillis(4_500))
 
         clock.advance(Duration.ofSeconds(4))
-        assertThat(coordinator.onTyping(20L)).isTrue()
+        assertThat(coordinator.onTyping(20L, 31L)).isFalse()
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusMillis(4_500))
+        assertThat(coordinator.onTyping(20L, 30L)).isTrue()
         assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusSeconds(8))
         assertThat(observedGeneration).isEqualTo(1L)
 
         clock.advance(Duration.ofSeconds(25))
-        assertThat(coordinator.onTyping(20L)).isTrue()
+        assertThat(coordinator.onTyping(20L, 30L)).isTrue()
         assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusSeconds(30))
+    }
+
+    @Test
+    fun `직접 요청 뒤 다른 사용자의 일반 메시지는 대상과 마감시각을 바꾸지 않고 장면 세대만 갱신한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        var latestGeneration = 1L
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks =
+            callbacks(
+                latest = { _, generation -> generation == latestGeneration },
+                judge = judged::add,
+            )
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks)
+        val originalDeadline = coordinator.pendingDeadline(20L)
+
+        clock.advance(Duration.ofSeconds(1))
+        latestGeneration = 2L
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(userId = 31L),
+            callbacks,
+        )
+
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(originalDeadline)
+        scheduler.fire(0, evenIfCancelled = true)
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        val judgedSignal = judged.single()
+        assertThat(judgedSignal.messageId).isEqualTo(1L)
+        assertThat(judgedSignal.userId).isEqualTo(30L)
+        assertThat(judgedSignal.turnGeneration).isEqualTo(2L)
+        assertThat(judgedSignal.mentioned).isTrue()
+    }
+
+    @Test
+    fun `새 메시지 ingress는 FIFO 병합 전 timer race를 막고 직접 요청을 보존한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks = callbacks(judge = judged::add)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks)
+        assertThat(coordinator.onMessageIngress(20L, 2L)).isTrue()
+
+        scheduler.fire(0, evenIfCancelled = true)
+        assertThat(judged).isEmpty()
+        assertThat(coordinator.onTyping(20L, 30L)).isFalse()
+
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(userId = 31L),
+            callbacks,
+        )
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        assertThat(judged.single().messageId).isEqualTo(1L)
+        assertThat(judged.single().turnGeneration).isEqualTo(2L)
+    }
+
+    @Test
+    fun `같은 사용자의 후속 메시지는 최신 문장을 대상으로 삼고 직접 요청 성격을 계승한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks = callbacks(judge = judged::add)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks)
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(true, 20L, 2L, signal(2L), callbacks)
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        val judgedSignal = judged.single()
+        assertThat(judgedSignal.messageId).isEqualTo(2L)
+        assertThat(judgedSignal.userId).isEqualTo(30L)
+        assertThat(judgedSignal.turnGeneration).isEqualTo(2L)
+        assertThat(judgedSignal.mentioned).isTrue()
+    }
+
+    @Test
+    fun `직접 요청 작성자가 다른 사람에게 답장하면 니아 판단 대상으로 계승하지 않는다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks = callbacks(judge = judged::add)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks)
+        val originalDeadline = coordinator.pendingDeadline(20L)
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(replyToHuman = true, replyToMessageId = 99L),
+            callbacks,
+        )
+        scheduler.fire(1)
+
+        assertThat(coordinator.pendingDeadline(20L)).isNull()
+        assertThat(judged).hasSize(1)
+        val judgedSignal = judged.single()
+        assertThat(judgedSignal.messageId).isEqualTo(1L)
+        assertThat(judgedSignal.turnGeneration).isEqualTo(2L)
+        assertThat(judgedSignal.mentioned).isTrue()
+        assertThat(judgedSignal.replyToHuman).isFalse()
+        assertThat(originalDeadline).isEqualTo(start.plusMillis(4_500))
+    }
+
+    @Test
+    fun `다른 사용자의 새 직접 요청은 이전 직접 요청보다 최신 대상으로 승격한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks = callbacks(judge = judged::add)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks)
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(userId = 31L, mentioned = true),
+            callbacks,
+        )
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        val judgedSignal = judged.single()
+        assertThat(judgedSignal.messageId).isEqualTo(2L)
+        assertThat(judgedSignal.userId).isEqualTo(31L)
+        assertThat(judgedSignal.turnGeneration).isEqualTo(2L)
+    }
+
+    @Test
+    fun `대상 작성자가 바뀌면 이전 작성자의 typing 유예를 계승하지 않는다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L).copy(mentioned = true), callbacks())
+        clock.advance(Duration.ofSeconds(1))
+        assertThat(coordinator.onTyping(20L, 30L)).isTrue()
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusSeconds(5))
+
+        clock.advance(Duration.ofMillis(100))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(userId = 31L, mentioned = true),
+            callbacks(),
+        )
+
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusMillis(3_100))
+    }
+
+    @Test
+    fun `30초 넘게 끊긴 이전 대화 속도는 새 turn의 idle 계산에 쓰지 않는다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+
+        coordinator.onMessage(true, 20L, 1L, signal(1L), callbacks())
+        scheduler.fire(0)
+
+        clock.advance(Duration.ofSeconds(31))
+        coordinator.onMessage(true, 20L, 2L, signal(2L), callbacks())
+
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(clock.instant().plusMillis(4_500))
+    }
+
+    @Test
+    fun `dispatcher가 밀려도 처리 시각이 아니라 Discord 메시지 시각으로 대화 속도를 계산한다`() {
+        val clock = MutableClock(start.plusSeconds(10))
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L).copy(tsMs = start.toEpochMilli()),
+            callbacks(),
+        )
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(tsMs = start.plusSeconds(5).toEpochMilli()),
+            callbacks(),
+        )
+
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusSeconds(10))
+    }
+
+    @Test
+    fun `역순으로 도착한 Discord 시각은 다음 메시지 간격의 기준점을 과거로 되돌리지 않는다`() {
+        val clock = MutableClock(start.plusSeconds(10))
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L).copy(tsMs = start.plusSeconds(5).toEpochMilli()),
+            callbacks(),
+        )
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(tsMs = start.plusSeconds(3).toEpochMilli()),
+            callbacks(),
+        )
+        coordinator.onMessage(
+            true,
+            20L,
+            3L,
+            signal(3L).copy(tsMs = start.plusSeconds(6).toEpochMilli()),
+            callbacks(),
+        )
+
+        assertThat(coordinator.pendingDeadline(20L)).isEqualTo(start.plusSeconds(8))
+    }
+
+    @Test
+    fun `늦게 도착한 이전 generation은 최신 대상과 timer를 취소하지 않는다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<Long>()
+        val coordinator = coordinator(clock, scheduler)
+        val callbacks = callbacks(judge = { judged += it.messageId })
+
+        coordinator.onMessage(true, 20L, 2L, signal(2L), callbacks)
+        assertThat(coordinator.onMessage(true, 20L, 1L, signal(1L), callbacks))
+            .isEqualTo(NiaTurnBoundaryAdmission.DEFERRED)
+
+        assertThat(scheduler.size).isEqualTo(1)
+        scheduler.fire(0)
+        assertThat(judged).containsExactly(2L)
     }
 
     @Test
@@ -302,6 +559,29 @@ class NiaTurnBoundaryCoordinatorTest {
             )
         assertThat(rejecting.onMessage(true, 20L, 1L, signal(1L), callbacks()))
             .isEqualTo(NiaTurnBoundaryAdmission.FAIL_CLOSED)
+    }
+
+    @Test
+    fun `새 메시지 처리 시 real send가 꺼졌으면 일시 정지한 pending도 제거한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val judged = mutableListOf<Long>()
+        val coordinator = coordinator(clock, scheduler)
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L),
+            callbacks(judge = { judged += it.messageId }),
+        )
+        assertThat(coordinator.onMessageIngress(20L, 2L)).isTrue()
+        assertThat(coordinator.onMessage(false, 20L, 2L, signal(2L), callbacks()))
+            .isEqualTo(NiaTurnBoundaryAdmission.BYPASS)
+
+        scheduler.fire(0, evenIfCancelled = true)
+        assertThat(coordinator.pendingDeadline(20L)).isNull()
+        assertThat(judged).isEmpty()
     }
 
     @Test

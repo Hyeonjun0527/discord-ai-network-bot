@@ -4,6 +4,7 @@ import com.discordassistant.central.global.observability.NiaRuntimeMetrics
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryAdmission
 import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
+import com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
@@ -392,6 +393,68 @@ class NiaMessageContextTest {
         assertThat(buffer.map { it.content }).containsExactly("수정 후", "그대로")
         assertThat(removeRecentPromptMessage(buffer, 1L)).isTrue()
         assertThat(buffer.map { it.id }).containsExactly(2L)
+    }
+
+    @Test
+    fun `delayed target이 최근 버퍼에서 밀려나도 원래 원문과 직접 요청 성격을 보존한다`() {
+        val signal =
+            ParticipationMessageSignal(
+                guildId = 10L,
+                channelId = 20L,
+                messageId = 1L,
+                userId = 30L,
+                mentioned = true,
+                recentTurns = emptyList(),
+                triggerText = "니아야 질문",
+                rawText = "니아야 질문",
+                sceneSeq = 0L,
+                contextVersion = 0L,
+                seed = 1L,
+                turnGeneration = 120L,
+            )
+        val refreshed =
+            refreshDelayedTriggerSignal(
+                signal = signal,
+                recentMessages =
+                    listOf(
+                        msg(id = 119L, authorId = 31L, authorLabel = "SY", content = "다른 말"),
+                        msg(id = 120L, authorId = 32L, authorLabel = "JH", content = "최신 말"),
+                    ),
+                selfId = 99L,
+            )
+
+        assertThat(refreshed.messageId).isEqualTo(1L)
+        assertThat(refreshed.turnGeneration).isEqualTo(120L)
+        assertThat(refreshed.rawText).isEqualTo("니아야 질문")
+        assertThat(refreshed.mentioned).isTrue()
+    }
+
+    @Test
+    fun `같은 작성자의 후속 문장은 멘션 문자가 없어도 묶음의 직접 요청 성격을 잃지 않는다`() {
+        val inherited =
+            ParticipationMessageSignal(
+                guildId = 10L,
+                channelId = 20L,
+                messageId = 2L,
+                userId = 30L,
+                mentioned = true,
+                recentTurns = emptyList(),
+                triggerText = "몇 시야",
+                rawText = "몇 시야",
+                sceneSeq = 0L,
+                contextVersion = 0L,
+                seed = 2L,
+                turnGeneration = 2L,
+            )
+        val refreshed =
+            refreshDelayedTriggerSignal(
+                signal = inherited,
+                recentMessages = listOf(msg(id = 2L, authorId = 30L, authorLabel = "HJ", content = "몇 시야")),
+                selfId = 99L,
+            )
+
+        assertThat(refreshed.rawText).isEqualTo("몇 시야")
+        assertThat(refreshed.mentioned).isTrue()
     }
 
     @Test

@@ -5,18 +5,18 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Calculates the quiet boundary used to collapse a burst of Discord messages into one participation judgment.
+ * 연속 Discord 메시지를 한 번의 참여 판단으로 묶을 정적 경계를 계산한다.
  *
- * The idle window follows the median observed message gap and is bounded to a human-scale 2–7 seconds. The first
- * message uses the midpoint because no channel tempo has been observed yet. Typing can postpone the boundary, but the
- * first-message hard deadline always wins.
+ * 최근 메시지 간격의 중앙값을 2~7초로 제한하고, 표본이 없으면 중간값을 사용한다. 타이핑은 경계를 늦출 수 있지만
+ * 최초 메시지 기준 하드 마감은 넘지 않는다.
  */
 internal class AdaptiveTurnBoundaryPolicy(
     private val minimumIdle: Duration = Duration.ofMillis(AttentionGateConstants.IDLE_MIN_MS.toLong()),
     private val maximumIdle: Duration = Duration.ofMillis(AttentionGateConstants.IDLE_MAX_MS.toLong()),
     private val hardMaximum: Duration = Duration.ofSeconds(30),
     private val typingGrace: Duration = Duration.ofMillis(AttentionGateConstants.TYPING_GRACE_MS.toLong()),
-    val sampleLimit: Int = AttentionGateConstants.GAP_WINDOW,
+    val sampleLimit: Int = DEFAULT_SAMPLE_LIMIT,
+    val sampleHorizon: Duration = hardMaximum,
 ) {
     init {
         require(!minimumIdle.isNegative && !minimumIdle.isZero) { "minimumIdle must be positive" }
@@ -24,6 +24,7 @@ internal class AdaptiveTurnBoundaryPolicy(
         require(hardMaximum >= maximumIdle) { "hardMaximum must be at least maximumIdle" }
         require(!typingGrace.isNegative && !typingGrace.isZero) { "typingGrace must be positive" }
         require(sampleLimit > 0) { "sampleLimit must be positive" }
+        require(!sampleHorizon.isNegative && !sampleHorizon.isZero) { "sampleHorizon must be positive" }
     }
 
     fun deadline(
@@ -73,4 +74,8 @@ internal class AdaptiveTurnBoundaryPolicy(
         left: Long,
         right: Long,
     ): Long = left + (right - left) / 2
+
+    companion object {
+        private const val DEFAULT_SAMPLE_LIMIT = 100
+    }
 }

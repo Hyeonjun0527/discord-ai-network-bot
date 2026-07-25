@@ -60,6 +60,7 @@ import com.discordassistant.central.participation.application.judge.SingleJudgeS
 import com.discordassistant.central.participation.application.judge.SingleParticipationJudgePort
 import com.discordassistant.central.participation.application.port.out.DecisionLogRecord
 import com.discordassistant.central.participation.application.port.out.FeatureVectorView
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
 import com.discordassistant.central.participation.application.port.out.PolicyConfigView
@@ -115,8 +116,10 @@ import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefState
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
+import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import com.discordassistant.central.speech.domain.model.SpeechResponseObligation
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
@@ -445,7 +448,8 @@ class NexaParticipationEmitBridge(
     }
 
     private fun rememberLastHumanSignal(signal: ParticipationMessageSignal) {
-        lastHumanSignals[signal.channelId.toString()] = signal
+        // WAIT 재평가에는 텍스트 장면만 필요하다. 큰 이미지 바이트를 채널 캐시에 남기지 않는다.
+        lastHumanSignals[signal.channelId.toString()] = signal.copy(speechImageInput = null)
         if (lastHumanSignals.size > MAX_CACHED_CHANNEL_SIGNALS) {
             lastHumanSignals.keys.firstOrNull()?.let(lastHumanSignals::remove)
         }
@@ -778,6 +782,28 @@ class NexaParticipationEmitBridge(
         val guildPseudonym = guildPseudonym(signal.guildId)
         val userPseudonym = userPseudonym(signal.guildId, signal.userId)
         val channelKey = channelPseudonym(signal.guildId, signal.channelId)
+        if (signal.unsupportedAttachmentRequest == UnsupportedAttachmentRequest.PDF_READ) {
+            return emitLocalSpeech(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                userPseudonym = userPseudonym,
+                channelKey = channelKey,
+                template = LocalSpeechTemplate.PDF_UNSUPPORTED,
+                reasonCode = "LOCAL_PDF_UNSUPPORTED",
+                originRolloutMode = originRolloutMode,
+                rawContextSnapshot = rawContextSnapshot,
+            )
+        }
+        if (signal.speechImageInput != null) {
+            return emitImageSpeech(
+                signal = signal,
+                guildPseudonym = guildPseudonym,
+                userPseudonym = userPseudonym,
+                channelKey = channelKey,
+                originRolloutMode = originRolloutMode,
+                rawContextSnapshot = rawContextSnapshot,
+            )
+        }
         val sceneBuild = buildPolicyScene(signal, guildPseudonym, channelKey)
         val request =
             PolicyDecisionRequest(
@@ -1018,6 +1044,20 @@ class NexaParticipationEmitBridge(
         val decision =
             try {
                 judge.decide(request)
+            } catch (_: NiaJudgeTokenBudgetExceededException) {
+                if (!signal.mentioned && !signal.replyToNia && !signal.niaTurnContinuationLikely) {
+                    return ParticipationEmitOutcome.NotSpeaking(SocialActionKind.IGNORE)
+                }
+                return emitLocalSpeech(
+                    signal = signal,
+                    guildPseudonym = guildPseudonym,
+                    userPseudonym = userPseudonym,
+                    channelKey = channelKey,
+                    template = LocalSpeechTemplate.CHANNEL_TOKEN_BUDGET_EXHAUSTED,
+                    reasonCode = "CHANNEL_TOKEN_BUDGET_EXHAUSTED",
+                    originRolloutMode = originRolloutMode,
+                    rawContextSnapshot = rawContextSnapshot,
+                )
             } catch (e: Exception) {
                 log.warn("NEXA single judge final 판단 실패(sceneSeq={}) — {}", signal.sceneSeq, e::class.simpleName)
                 logSingleJudgeDecision(
@@ -1224,7 +1264,10 @@ class NexaParticipationEmitBridge(
         val traceId = correlationIdOf(signal)
         ragMatchesByTrace[traceId] = matches
         val request = base.copy(conversationRag = matches.toJudgePayload())
-        val preparedLlmRequest = judgePromptAssembler.assemble(request)
+        val preparedLlmRequest =
+            judgePromptAssembler
+                .assemble(request)
+                .copy(channelTokenBudgetKey = channelKey)
         inputTraceStore?.recordJudge(
             traceId = traceId,
             judgePrompt = preparedLlmRequest.prompt,
@@ -1467,6 +1510,7 @@ class NexaParticipationEmitBridge(
         originRolloutMode: ShadowMode,
         rawContextSnapshot: RawContextSnapshot,
         speechFewShotContext: ActiveFewShotContext? = null,
+        localSpeechTemplate: LocalSpeechTemplate? = null,
     ): ParticipationEmitOutcome {
         if (!turnGenerations.isLatest(signal.channelId, signal.turnGeneration)) {
             return ParticipationEmitOutcome.Superseded(NiaTurnSupersessionStage.BEFORE_SPEECH_GENERATION)
@@ -1481,7 +1525,7 @@ class NexaParticipationEmitBridge(
             featureVector = featureVector,
             attribution = attribution,
             rawContextSnapshot = rawContextSnapshot,
-            consumedGenerationQuota = originRolloutMode.allowsRealSend,
+            consumedGenerationQuota = originRolloutMode.allowsRealSend && localSpeechTemplate == null,
         )
         if (!originRolloutMode.allowsRealSend) {
             return ParticipationEmitOutcome.ShadowPredicted(SocialActionKind.SPEAK)
@@ -1502,6 +1546,9 @@ class NexaParticipationEmitBridge(
         val packet =
             SpeechScenePacket.of(
                 inputTraceId = correlationIdOf(signal),
+                channelTokenBudgetKey = channelKey,
+                localSpeechTemplate = localSpeechTemplate,
+                speechImageInput = signal.speechImageInput,
                 focusThreadKey = focusThreadKey(signal, guildPseudonym),
                 target = SpeechTarget.member(userPseudonym),
                 recentTurns = speechContext.recentTurns,
@@ -1594,6 +1641,63 @@ class NexaParticipationEmitBridge(
         }
         return ParticipationEmitOutcome.Emitted(result)
     }
+
+    private fun emitLocalSpeech(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        userPseudonym: String,
+        channelKey: String,
+        template: LocalSpeechTemplate,
+        reasonCode: String,
+        originRolloutMode: ShadowMode,
+        rawContextSnapshot: RawContextSnapshot,
+    ): ParticipationEmitOutcome =
+        emitSpeak(
+            signal = signal,
+            guildPseudonym = guildPseudonym,
+            userPseudonym = userPseudonym,
+            channelKey = channelKey,
+            response = ruleForcedSpeakResponse(),
+            attribution =
+                DecisionAttribution(
+                    reasonCode = reasonCode,
+                    judgeConfidence = 1.0,
+                    decisionDelayMillis = 0,
+                    finalDecisionSource = "LOCAL_CAPABILITY_POLICY",
+                    responseObligation = SpeechResponseObligation.REQUIRED,
+                ),
+            originRolloutMode = originRolloutMode,
+            rawContextSnapshot = rawContextSnapshot,
+            localSpeechTemplate = template,
+        )
+
+    /** 이미 니아에게 향한 것이 확정된 이미지라 Judge를 다시 호출하지 않고 기존 speech 안전 경로로만 보낸다. */
+    private fun emitImageSpeech(
+        signal: ParticipationMessageSignal,
+        guildPseudonym: String,
+        userPseudonym: String,
+        channelKey: String,
+        originRolloutMode: ShadowMode,
+        rawContextSnapshot: RawContextSnapshot,
+    ): ParticipationEmitOutcome =
+        emitSpeak(
+            signal = signal,
+            guildPseudonym = guildPseudonym,
+            userPseudonym = userPseudonym,
+            channelKey = channelKey,
+            response = ruleForcedSpeakResponse(),
+            attribution =
+                DecisionAttribution(
+                    reasonCode = "TARGETED_IMAGE",
+                    judgeConfidence = null,
+                    decisionDelayMillis = 0,
+                    finalDecisionSource = "LOCAL_TARGETING_POLICY",
+                    speechIntent = "사용자가 현재 니아 턴에 보여 준 이미지를 직접 보고, 최신 문구가 있으면 그 요청에 답한다",
+                    responseObligation = SpeechResponseObligation.REQUIRED,
+                ),
+            originRolloutMode = originRolloutMode,
+            rawContextSnapshot = rawContextSnapshot,
+        )
 
     private fun recordTrace(
         signal: ParticipationMessageSignal,
@@ -2531,6 +2635,10 @@ data class ParticipationMessageSignal(
     val triggerText: String = "",
     /** raw context store 에 저장할 원문. [triggerText] 와 달리 규칙 평가용 500자 절단을 적용하지 않는다. */
     val rawText: String = triggerText,
+    /** 첨부 본문을 읽지 않고 메타데이터와 현재 요청 문구만으로 판정한 미지원 기능 요청. */
+    val unsupportedAttachmentRequest: UnsupportedAttachmentRequest? = null,
+    /** 니아에게 향한 것이 결정된 뒤 1024px 안으로 축소·재인코딩한 이미지 한 장. raw context에는 저장하지 않는다. */
+    val speechImageInput: SpeechImageInput? = null,
     /** 트리거 화자 가명 라벨([CoreInterventionRules] 의 봇/시스템·사적 핑퐁 판정용). 미관측이면 빈 문자열. */
     val speakerLabel: String = "",
     /** 트리거가 니아의 메시지에 대한 reply 인가(core hard_policy RESPOND_NOW reply 신호). 미관측이면 false(보수적). */
@@ -2626,6 +2734,10 @@ data class ParticipationMessageSignal(
         require(rateLimitPressure in 0.0..1.0) { "rateLimitPressure 는 [0,1] 범위여야 한다: $rateLimitPressure" }
         require(antiSpamPressure in 0.0..1.0) { "antiSpamPressure 는 [0,1] 범위여야 한다: $antiSpamPressure" }
     }
+}
+
+enum class UnsupportedAttachmentRequest {
+    PDF_READ,
 }
 
 data class ParticipationRawContextRedactionSignal(

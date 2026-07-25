@@ -15,6 +15,15 @@ package com.discordassistant.central.speech.domain.model
 data class SpeechScenePacket(
     /** 관리자 입력 추적용 실행 correlation. 외부 프롬프트 내용에는 포함하지 않는다. */
     val inputTraceId: String? = null,
+    /** 원문 Discord ID가 아닌 채널 가명 키. 외부 LLM 토큰 예산에만 사용하고 프롬프트에는 넣지 않는다. */
+    val channelTokenBudgetKey: String? = null,
+    /** 모델을 호출하지 않고 로컬에서 만들어야 하는 제한 안내. null이면 일반 발화 생성 경로다. */
+    val localSpeechTemplate: LocalSpeechTemplate? = null,
+    /**
+     * 사용자가 현재 니아 턴에 직접 보여 준 이미지 한 장. 프롬프트 문자열·raw context·trace에는 직렬화하지 않고,
+     * 이미지 입력을 지원하는 provider adapter에만 별도 전달한다.
+     */
+    val speechImageInput: SpeechImageInput? = null,
     /** 발화가 일어나는 focus thread 식별자(가명화된 thread key — snowflake 원문 아님, T005 minimizer 가 보장). */
     val focusThreadKey: String,
     /** 발화 대상(특정 사용자/스레드/없음). */
@@ -42,6 +51,9 @@ data class SpeechScenePacket(
 ) {
     init {
         inputTraceId?.let { require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "inputTraceId 형식이 잘못됐다" } }
+        channelTokenBudgetKey?.let {
+            require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "channelTokenBudgetKey 형식이 잘못됐다" }
+        }
         require(focusThreadKey.isNotBlank()) { "focusThreadKey 는 비어 있을 수 없다" }
         require(recentTurns.size <= MAX_TURNS) {
             "recentTurns 는 최대 $MAX_TURNS 개까지만 담는다(무제한 채널 로그 금지): ${recentTurns.size}"
@@ -83,6 +95,9 @@ data class SpeechScenePacket(
          */
         fun of(
             inputTraceId: String? = null,
+            channelTokenBudgetKey: String? = null,
+            localSpeechTemplate: LocalSpeechTemplate? = null,
+            speechImageInput: SpeechImageInput? = null,
             focusThreadKey: String,
             target: SpeechTarget,
             recentTurns: List<ConversationTurn>,
@@ -98,6 +113,9 @@ data class SpeechScenePacket(
         ): SpeechScenePacket =
             SpeechScenePacket(
                 inputTraceId = inputTraceId,
+                channelTokenBudgetKey = channelTokenBudgetKey,
+                localSpeechTemplate = localSpeechTemplate,
+                speechImageInput = speechImageInput,
                 focusThreadKey = focusThreadKey,
                 target = target,
                 recentTurns = recentTurns.takeLast(MAX_TURNS),
@@ -113,6 +131,72 @@ data class SpeechScenePacket(
                 groundingNeed = groundingNeed,
             )
     }
+}
+
+/** 비용·기능 경계에서 AI 호출 없이 답해야 하는 소수의 결정론적 안내다. */
+enum class LocalSpeechTemplate {
+    PDF_UNSUPPORTED,
+    CHANNEL_TOKEN_BUDGET_EXHAUSTED,
+    IMAGE_ONE_AT_A_TIME,
+    IMAGE_FORMAT_UNSUPPORTED,
+    IMAGE_LOAD_FAILED,
+    IMAGE_FEATURE_UNAVAILABLE,
+    ;
+
+    val text: String
+        get() =
+            when (this) {
+                PDF_UNSUPPORTED ->
+                    "ㅠㅜ 미안. 난 PDF는 못 읽어. 그거 읽게 하면 토큰을 엄청 써서 개발자 파산함 ㅠ"
+                CHANNEL_TOKEN_BUDGET_EXHAUSTED ->
+                    "아 오늘은 이 채널에서 토큰을 너무 많이 썼어 ㅠ 개발자 파산 방지로 잠깐 쉬어야 함"
+                IMAGE_ONE_AT_A_TIME ->
+                    "이미지는 한 번에 한 장만 보여줘 ㅠ"
+                IMAGE_FORMAT_UNSUPPORTED ->
+                    "ㅠ 미안. 지금은 PNG, JPG, 움직이지 않는 GIF만 볼 수 있어"
+                IMAGE_LOAD_FAILED ->
+                    "이미지를 못 불러왔어 ㅠ 한 번만 다시 보내줘"
+                IMAGE_FEATURE_UNAVAILABLE ->
+                    "ㅠ 미안. 지금 이 채널에서는 이미지를 볼 수 없어"
+            }
+}
+
+/**
+ * Speech provider에만 전달하는 축소 완료 이미지. Discord URL·파일명·원본 ID는 보존하지 않는다.
+ *
+ * [base64Data]는 이미 [MAX_DIMENSION] 안으로 축소·재인코딩된 PNG/JPEG 바이트만 허용한다.
+ */
+data class SpeechImageInput(
+    val mediaType: SpeechImageMediaType,
+    val base64Data: String,
+    val width: Int,
+    val height: Int,
+) {
+    init {
+        require(base64Data.isNotBlank()) { "이미지 base64Data 는 비어 있을 수 없다" }
+        require(base64Data.length <= MAX_BASE64_CHARS) { "이미지 payload가 너무 크다: ${base64Data.length}" }
+        require(width in 1..MAX_DIMENSION) { "이미지 너비는 1..$MAX_DIMENSION 이어야 한다: $width" }
+        require(height in 1..MAX_DIMENSION) { "이미지 높이는 1..$MAX_DIMENSION 이어야 한다: $height" }
+    }
+
+    /** GPT-5.6 이미지 입력의 32px patch 상한을 기준으로 한 보수적 예약량. */
+    val estimatedInputTokens: Int
+        get() = ((width + 31) / 32) * ((height + 31) / 32)
+
+    override fun toString(): String =
+        "SpeechImageInput(mediaType=$mediaType, base64Data=<redacted:${base64Data.length} chars>, width=$width, height=$height)"
+
+    companion object {
+        const val MAX_DIMENSION: Int = 1_024
+        const val MAX_BASE64_CHARS: Int = 8_000_000
+    }
+}
+
+enum class SpeechImageMediaType(
+    val mimeType: String,
+) {
+    JPEG("image/jpeg"),
+    PNG("image/png"),
 }
 
 enum class SpeechResponseObligation {

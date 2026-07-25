@@ -1,7 +1,9 @@
 package com.discordassistant.central.speech.routing
 
 import com.discordassistant.central.platform.discord.command.AskCommandHandler
+import com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmImageInput
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
@@ -14,8 +16,11 @@ import com.discordassistant.central.speech.adapter.outbound.routing.CloudCallBud
 import com.discordassistant.central.speech.adapter.outbound.routing.RoutingCloudSpeechGenerationAdapter
 import com.discordassistant.central.speech.adapter.outbound.routing.SpeechModelConfig
 import com.discordassistant.central.speech.application.port.out.ReasoningMode
+import com.discordassistant.central.speech.application.port.out.SpeechGenerationFailureReason
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechUsageRecorderPort
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
+import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -50,10 +55,12 @@ class RoutingCloudSpeechGenerationAdapterTest {
         private val responseSequence: List<String> = emptyList(),
         private val throwOnce: Boolean = false,
         private val throwAlways: Boolean = false,
+        private val throwBudgetExceeded: Boolean = false,
     ) : CloudLlm {
         var calls = 0
         var lastPrompt: String? = null
         var lastOptions: CloudLlmRequestOptions? = null
+        var lastImage: CloudLlmImageInput? = null
 
         override fun isEnabled() = enabled
 
@@ -63,6 +70,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
         ): CloudLlmResult {
             calls++
             lastPrompt = prompt
+            if (throwBudgetExceeded) throw ChannelTokenBudgetExceededException()
             if (throwAlways) throw RuntimeException("persistent")
             if (throwOnce && calls == 1) throw RuntimeException("transient")
             val content = responseSequence.getOrElse(calls - 1) { response }
@@ -75,6 +83,18 @@ class RoutingCloudSpeechGenerationAdapterTest {
             temperature: Double,
             options: CloudLlmRequestOptions,
         ): CloudLlmResult {
+            lastOptions = options
+            return generate(prompt, model)
+        }
+
+        override fun generateSampledWithImage(
+            prompt: String,
+            image: CloudLlmImageInput,
+            model: String,
+            temperature: Double,
+            options: CloudLlmRequestOptions,
+        ): CloudLlmResult {
+            lastImage = image
             lastOptions = options
             return generate(prompt, model)
         }
@@ -131,6 +151,29 @@ class RoutingCloudSpeechGenerationAdapterTest {
         assertThat(cloud.lastPrompt!!.take(cachePolicy.stablePrefixChars)).isEqualTo("너는 니아야\n\n")
         assertThat(cloud.lastOptions!!.requestTimeout).isEqualTo(Duration.ofMillis(7_750))
         assertThat(cloud.lastOptions!!.maxRetries).isZero()
+    }
+
+    @Test
+    fun `이미지 speech는 별도 Vision 입력으로 전달하고 provider 내부 재시도는 끈다`() {
+        val cloud = FakeCloudLlm()
+        val image =
+            SpeechImageInput(
+                mediaType = SpeechImageMediaType.JPEG,
+                base64Data = "aW1hZ2U=",
+                width = 1_024,
+                height = 512,
+            )
+        val adapter = RoutingCloudSpeechGenerationAdapter(cloud, config)
+
+        val result = adapter.generate(request().copy(speechImageInput = image))
+
+        assertThat(result.isEmpty).isFalse()
+        assertThat(cloud.calls).isEqualTo(1)
+        assertThat(cloud.lastImage)
+            .extracting("mimeType", "base64Data", "width", "height", "estimatedInputTokens")
+            .containsExactly("image/jpeg", "aW1hZ2U=", 1_024, 512, 512)
+        assertThat(cloud.lastOptions!!.maxRetries).isZero()
+        assertThat(cloud.lastOptions!!.purpose).isEqualTo(CloudLlmPurpose.NIA_SPEECH)
     }
 
     @Test
@@ -208,6 +251,17 @@ class RoutingCloudSpeechGenerationAdapterTest {
 
         assertThat(adapter.generate(request()).isEmpty).isTrue()
         assertThat(fake.calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `channel token budget rejection stops without speech retry`() {
+        val fake = FakeCloudLlm(throwBudgetExceeded = true)
+        val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
+
+        val result = adapter.generate(request().copy(channelTokenBudgetKey = "channel-pseudonym"))
+
+        assertThat(result.failureReason).isEqualTo(SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
+        assertThat(fake.calls).isEqualTo(1)
     }
 
     @Test

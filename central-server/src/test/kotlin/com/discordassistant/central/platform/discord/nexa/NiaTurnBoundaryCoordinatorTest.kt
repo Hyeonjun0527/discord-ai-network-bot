@@ -1,5 +1,7 @@
 package com.discordassistant.central.platform.discord.nexa
 
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
+import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Clock
@@ -619,6 +621,90 @@ class NiaTurnBoundaryCoordinatorTest {
         assertThat(judged).containsExactly(1L)
     }
 
+    @Test
+    fun `같은 사용자가 이미지 뒤에 문장을 이어 쓰면 최신 문장에 이미지를 계승한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val image = image("Zmlyc3Q=")
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L).copy(speechImageInput = image),
+            callbacks(judge = judged::add),
+        )
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(true, 20L, 2L, signal(2L), callbacks(judge = judged::add))
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        assertThat(judged.single().messageId).isEqualTo(2L)
+        assertThat(judged.single().speechImageInput).isEqualTo(image)
+    }
+
+    @Test
+    fun `다른 사람의 일반 메시지는 니아에게 보여 준 이미지 대상을 빼앗거나 이미지를 상속하지 않는다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val image = image("dGFyZ2V0")
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L).copy(speechImageInput = image),
+            callbacks(judge = judged::add),
+        )
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(userId = 31L),
+            callbacks(judge = judged::add),
+        )
+        scheduler.fire(1)
+
+        assertThat(judged).hasSize(1)
+        assertThat(judged.single().messageId).isEqualTo(1L)
+        assertThat(judged.single().userId).isEqualTo(30L)
+        assertThat(judged.single().speechImageInput).isEqualTo(image)
+    }
+
+    @Test
+    fun `같은 사용자가 새 이미지를 보여 주면 이전 이미지 대신 최신 한 장을 사용한다`() {
+        val clock = MutableClock(start)
+        val scheduler = ManualScheduler()
+        val coordinator = coordinator(clock, scheduler)
+        val judged = mutableListOf<ParticipationMessageSignal>()
+        val first = image("Zmlyc3Q=")
+        val second = image("c2Vjb25k")
+
+        coordinator.onMessage(
+            true,
+            20L,
+            1L,
+            signal(1L).copy(speechImageInput = first),
+            callbacks(judge = judged::add),
+        )
+        clock.advance(Duration.ofSeconds(1))
+        coordinator.onMessage(
+            true,
+            20L,
+            2L,
+            signal(2L).copy(speechImageInput = second),
+            callbacks(judge = judged::add),
+        )
+        scheduler.fire(1)
+
+        assertThat(judged.single().speechImageInput).isEqualTo(second)
+    }
+
     private fun coordinator(
         clock: Clock,
         scheduler: NiaTurnBoundaryScheduler,
@@ -648,6 +734,14 @@ class NiaTurnBoundaryCoordinatorTest {
             contextVersion = 0L,
             seed = messageId,
             turnGeneration = messageId,
+        )
+
+    private fun image(base64Data: String) =
+        SpeechImageInput(
+            mediaType = SpeechImageMediaType.PNG,
+            base64Data = base64Data,
+            width = 640,
+            height = 480,
         )
 
     private class MutableClock(

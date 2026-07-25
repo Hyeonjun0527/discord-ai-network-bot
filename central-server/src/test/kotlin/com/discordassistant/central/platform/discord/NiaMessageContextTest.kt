@@ -6,11 +6,118 @@ import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryAdmissi
 import com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome
 import com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
+import com.discordassistant.central.platform.discord.nexa.UnsupportedAttachmentRequest
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class NiaMessageContextTest {
+    @Test
+    fun `PDF 읽기 요청만 미지원으로 잡고 PDF 사용법 질문은 일반 대화로 둔다`() {
+        assertThat(
+            unsupportedPdfRequest(
+                listOf(msg(id = 1L, authorId = 10L, authorLabel = "HJ", content = "PDF 읽을 수 있니")),
+                currentMessageId = 1L,
+            ),
+        ).isEqualTo(UnsupportedAttachmentRequest.PDF_READ)
+        assertThat(
+            unsupportedPdfRequest(
+                listOf(msg(id = 2L, authorId = 10L, authorLabel = "HJ", content = "PDF 읽는 법 알려줘")),
+                currentMessageId = 2L,
+            ),
+        ).isNull()
+    }
+
+    @Test
+    fun `현재 PDF나 같은 작성자의 바로 전 PDF만 후속 읽기 요청과 연결한다`() {
+        assertThat(
+            unsupportedPdfRequest(
+                listOf(
+                    msg(
+                        id = 1L,
+                        authorId = 10L,
+                        authorLabel = "HJ",
+                        content = "이거 요약해줘",
+                        hasPdfAttachment = true,
+                    ),
+                ),
+                currentMessageId = 1L,
+            ),
+        ).isEqualTo(UnsupportedAttachmentRequest.PDF_READ)
+
+        val followUp =
+            listOf(
+                msg(
+                    id = 2L,
+                    authorId = 10L,
+                    authorLabel = "HJ",
+                    content = "",
+                    hasPdfAttachment = true,
+                    createdAtEpochMillis = 1_000L,
+                ),
+                msg(
+                    id = 3L,
+                    authorId = 10L,
+                    authorLabel = "HJ",
+                    content = "이거 읽어줘",
+                    createdAtEpochMillis = 7_000L,
+                ),
+            )
+        assertThat(unsupportedPdfRequest(followUp, currentMessageId = 3L))
+            .isEqualTo(UnsupportedAttachmentRequest.PDF_READ)
+    }
+
+    @Test
+    fun `다른 사람 PDF와 오래된 PDF와 무관한 후속 문장은 연결하지 않는다`() {
+        val otherAuthor =
+            listOf(
+                msg(
+                    id = 1L,
+                    authorId = 11L,
+                    authorLabel = "A",
+                    content = "",
+                    hasPdfAttachment = true,
+                    createdAtEpochMillis = 1_000L,
+                ),
+                msg(id = 2L, authorId = 10L, authorLabel = "B", content = "이거 읽어줘", createdAtEpochMillis = 2_000L),
+            )
+        assertThat(unsupportedPdfRequest(otherAuthor, currentMessageId = 2L)).isNull()
+
+        val oldPdf =
+            listOf(
+                msg(
+                    id = 3L,
+                    authorId = 10L,
+                    authorLabel = "HJ",
+                    content = "",
+                    hasPdfAttachment = true,
+                    createdAtEpochMillis = 1_000L,
+                ),
+                msg(
+                    id = 4L,
+                    authorId = 10L,
+                    authorLabel = "HJ",
+                    content = "이거 읽어줘",
+                    createdAtEpochMillis = 10 * 60 * 1_000L + 1_001L,
+                ),
+            )
+        assertThat(unsupportedPdfRequest(oldPdf, currentMessageId = 4L)).isNull()
+
+        val unrelated =
+            listOf(
+                msg(
+                    id = 5L,
+                    authorId = 10L,
+                    authorLabel = "HJ",
+                    content = "",
+                    hasPdfAttachment = true,
+                    createdAtEpochMillis = 1_000L,
+                ),
+                msg(id = 6L, authorId = 10L, authorLabel = "HJ", content = "오늘 뭐함", createdAtEpochMillis = 2_000L),
+            )
+        assertThat(unsupportedPdfRequest(unrelated, currentMessageId = 6L)).isNull()
+    }
+
     @Test
     fun `turn boundary admission은 explicit ambient와 fail closed를 운영 메트릭에 남긴다`() {
         val registry = SimpleMeterRegistry()
@@ -477,6 +584,7 @@ class NiaMessageContextTest {
         bot: Boolean = false,
         replyToMessageId: Long? = null,
         createdAtEpochMillis: Long = id,
+        hasPdfAttachment: Boolean = false,
     ) = DiscordRecentPromptMessage(
         id = id,
         authorId = authorId,
@@ -485,5 +593,6 @@ class NiaMessageContextTest {
         content = content,
         createdAtEpochMillis = createdAtEpochMillis,
         replyToMessageId = replyToMessageId,
+        hasPdfAttachment = hasPdfAttachment,
     )
 }

@@ -1,5 +1,6 @@
 package com.discordassistant.central.speech.application.port.out
 
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 
 /**
@@ -40,6 +41,10 @@ data class SpeechGenerationRequest(
     val maxOutputTokens: Int,
     /** [systemPrompt] 앞부분 중 장면마다 변하지 않아 explicit prompt cache에 넣을 수 있는 문자 수. */
     val stableSystemPromptChars: Int = 0,
+    /** 원문 Discord ID가 아닌 채널 가명 키. provider 호출 직전 토큰 예산에만 사용한다. */
+    val channelTokenBudgetKey: String? = null,
+    /** 별도 Vision 입력. base64를 [userPrompt]나 trace에 섞지 않는다. */
+    val speechImageInput: SpeechImageInput? = null,
     /**
      * 니아 감정 톤 힌트(D2 EmotionRenderer)의 *아주 약한* 미세 지시 — 기본 "" = 평소 니아(무영향·하위호환).
      * 비어 있지 않으면 생성 프롬프트에 약하게 얹는다. 정체성·답변 길이는 안 건드린다(I11 — 반응 온도만).
@@ -55,6 +60,9 @@ data class SpeechGenerationRequest(
         require(maxOutputTokens > 0) { "maxOutputTokens 는 양수여야 한다: $maxOutputTokens" }
         require(stableSystemPromptChars in 0..systemPrompt.length) {
             "stableSystemPromptChars 는 systemPrompt 길이 안이어야 한다: $stableSystemPromptChars/${systemPrompt.length}"
+        }
+        channelTokenBudgetKey?.let {
+            require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "channelTokenBudgetKey 형식이 잘못됐다" }
         }
     }
 
@@ -81,6 +89,8 @@ data class SpeechGenerationResult(
     val candidates: List<SpeechCandidate>,
     /** 응답을 만든 모델 메타(추적용 — 예: "glm-5.1" 라벨). 빈 결과면 비어 있을 수 있다. */
     val modelMetadata: String = "",
+    /** 외부 호출이 실행되기 전에 차단된 명시 원인. 일반 실패·빈 응답은 null로 기존 안전 하강을 유지한다. */
+    val failureReason: SpeechGenerationFailureReason? = null,
 ) {
     /** 사용 가능한 후보가 하나도 없는가 — fallback(T016)이 안전 하강할지의 가드. */
     val isEmpty: Boolean
@@ -89,7 +99,14 @@ data class SpeechGenerationResult(
     companion object {
         /** 안전 실패(무응답) — 호출/파싱/비활성 시 구현이 이 값을 돌려준다. */
         val EMPTY = SpeechGenerationResult(candidates = emptyList())
+
+        fun failed(reason: SpeechGenerationFailureReason): SpeechGenerationResult =
+            SpeechGenerationResult(candidates = emptyList(), failureReason = reason)
     }
+}
+
+enum class SpeechGenerationFailureReason {
+    CHANNEL_TOKEN_BUDGET_EXHAUSTED,
 }
 
 /**

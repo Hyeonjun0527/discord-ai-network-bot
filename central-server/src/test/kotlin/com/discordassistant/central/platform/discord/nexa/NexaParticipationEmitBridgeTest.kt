@@ -57,6 +57,7 @@ import com.discordassistant.central.participation.application.port.out.DecisionL
 import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.NiaFewShotStorePort
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
 import com.discordassistant.central.participation.application.port.out.ParticipationDecisionLogPort
 import com.discordassistant.central.participation.application.port.out.ParticipationPolicyPort
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
@@ -115,6 +116,8 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.ConversationTurn
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
+import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -176,6 +179,108 @@ class NexaParticipationEmitBridgeTest {
         assertThat(emit.calls).isZero()
         assertThat(scheduler.scheduled).isEmpty()
         assertThat(decisionLog.records.single().consumedGenerationQuota).isFalse()
+    }
+
+    @Test
+    fun `PDF 읽기 요청은 judge와 speech 모델을 모두 건너뛰고 로컬 발화를 예약한다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val judge = CapturingJudge(ignoreDecision())
+        val decisionLog = CapturingParticipationLog()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+                decisionLog = decisionLog,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = true,
+                    triggerText = "이거 읽어줘",
+                    rawText = "이거 읽어줘",
+                    unsupportedAttachmentRequest = UnsupportedAttachmentRequest.PDF_READ,
+                ),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(judge.lastRequest).isNull()
+        assertThat(emit.calls).isZero()
+        assertThat(scheduler.scheduled).hasSize(1)
+        assertThat(decisionLog.records.single().consumedGenerationQuota).isFalse()
+    }
+
+    @Test
+    fun `니아에게 보여 준 이미지는 judge 없이 speech Vision 입력 한 번으로 처리한다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val judge = CapturingJudge(ignoreDecision())
+        val decisionLog = CapturingParticipationLog()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+                decisionLog = decisionLog,
+            )
+        val image =
+            SpeechImageInput(
+                mediaType = SpeechImageMediaType.PNG,
+                base64Data = "aW1hZ2U=",
+                width = 1_024,
+                height = 768,
+            )
+
+        val outcome =
+            bridge.onMessage(
+                signal(
+                    mentioned = true,
+                    triggerText = "이거 뭐야",
+                    rawText = "이거 뭐야",
+                    speechImageInput = image,
+                ),
+            )
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(judge.lastRequest).isNull()
+        assertThat(emit.calls).isEqualTo(1)
+        assertThat(emit.lastRequest?.speechImageInput).isEqualTo(image)
+        assertThat(scheduler.scheduled).hasSize(1)
+        assertThat(decisionLog.records.single().consumedGenerationQuota).isTrue()
+    }
+
+    @Test
+    fun `직접 요청의 judge 채널 토큰 한도 초과는 재판단 없이 로컬 안내를 예약한다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val judge = BudgetExceededJudge()
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = judge,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(judge.calls).isEqualTo(1)
+        assertThat(emit.calls).isZero()
+        assertThat(scheduler.scheduled).hasSize(1)
     }
 
     @Test
@@ -2094,6 +2199,8 @@ class NexaParticipationEmitBridgeTest {
         tsMs: Long = 0,
         messageId: Long = 10L,
         rawText: String = triggerText,
+        unsupportedAttachmentRequest: UnsupportedAttachmentRequest? = null,
+        speechImageInput: SpeechImageInput? = null,
         sourceType: ParticipationMessageSourceType = ParticipationMessageSourceType.HUMAN,
         replyToHuman: Boolean = false,
         silenceMillis: Long? = null,
@@ -2128,6 +2235,8 @@ class NexaParticipationEmitBridgeTest {
             recentRawMessages = recentRawMessages,
             triggerText = triggerText,
             rawText = rawText,
+            unsupportedAttachmentRequest = unsupportedAttachmentRequest,
+            speechImageInput = speechImageInput,
             speakerLabel = speakerLabel,
             replyToNia = replyToNia,
             replyToHuman = replyToHuman,
@@ -2504,6 +2613,7 @@ class NexaParticipationEmitBridgeTest {
         private val port: CountingGenerationPort,
     ) {
         val calls: Int get() = port.calls
+        val lastRequest: SpeechGenerationRequest? get() = port.lastRequest
     }
 
     private class CountingGenerationPort(
@@ -2511,9 +2621,12 @@ class NexaParticipationEmitBridgeTest {
     ) : SpeechGenerationPort {
         var calls: Int = 0
             private set
+        var lastRequest: SpeechGenerationRequest? = null
+            private set
 
         override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
             calls++
+            lastRequest = request
             return SpeechGenerationResult(candidates, modelMetadata = "mock")
         }
     }
@@ -2644,6 +2757,15 @@ class NexaParticipationEmitBridgeTest {
         override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
             lastRequest = request
             return decision
+        }
+    }
+
+    private class BudgetExceededJudge : SingleParticipationJudgePort {
+        var calls: Int = 0
+
+        override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
+            calls++
+            throw NiaJudgeTokenBudgetExceededException()
         }
     }
 

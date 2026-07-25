@@ -392,6 +392,7 @@ internal class NiaTurnBoundaryCoordinator(
             conversationMentionsNia = current.conversationMentionsNia || incoming.conversationMentionsNia,
             nicknameCall = current.nicknameCall || incoming.nicknameCall,
             directAddressPressure = maxOf(current.directAddressPressure, incoming.directAddressPressure),
+            speechImageInput = incoming.speechImageInput ?: current.speechImageInput,
         )
     }
 
@@ -510,4 +511,4 @@ internal class NiaTurnBoundaryCoordinator(
 }
 
 private val ParticipationMessageSignal.explicitlyAddressed: Boolean
-    get() = mentioned || replyToNia
+    get() = mentioned || replyToNia || speechImageInput != null

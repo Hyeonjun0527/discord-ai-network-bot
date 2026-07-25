@@ -11,6 +11,7 @@ import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
 import java.security.MessageDigest
 import java.time.Duration
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /** 클라우드 LLM 토큰 사용량(있으면). 통계/로그용 — 없으면 0. */
@@ -94,11 +95,16 @@ data class CloudLlmRequestOptions(
     val requestTimeout: Duration? = null,
     val maxRetries: Int? = null,
     val jsonSchema: CloudLlmJsonSchema? = null,
+    /** 원문 Discord ID가 아닌 채널 가명 키. null이면 채널 토큰 예산을 적용하지 않는다. */
+    val channelTokenBudgetKey: String? = null,
 ) {
     init {
         maxOutputTokens?.let { require(it > 0) { "maxOutputTokens 는 양수여야 한다: $it" } }
         requestTimeout?.let { require(!it.isZero && !it.isNegative) { "requestTimeout 은 양수여야 한다: $it" } }
         maxRetries?.let { require(it >= 0) { "maxRetries 는 음수일 수 없다: $it" } }
+        channelTokenBudgetKey?.let {
+            require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "channelTokenBudgetKey 형식이 잘못됐다" }
+        }
     }
 }
 
@@ -141,6 +147,26 @@ data class CloudTurn(
     val content: String,
 )
 
+/** Provider wire DTO와 분리된 단일 이미지 입력. 호출 전에 1024px 상한·재인코딩을 마친 값만 허용한다. */
+data class CloudLlmImageInput(
+    val mimeType: String,
+    val base64Data: String,
+    val width: Int,
+    val height: Int,
+    val estimatedInputTokens: Int,
+) {
+    init {
+        require(mimeType == "image/jpeg" || mimeType == "image/png") { "지원하지 않는 이미지 MIME type이다: $mimeType" }
+        require(base64Data.isNotBlank()) { "이미지 base64Data 는 비어 있을 수 없다" }
+        require(width in 1..1_024 && height in 1..1_024) { "이미지 크기는 1024x1024 안이어야 한다: ${width}x$height" }
+        require(estimatedInputTokens > 0) { "이미지 token 추정치는 양수여야 한다: $estimatedInputTokens" }
+    }
+
+    override fun toString(): String =
+        "CloudLlmImageInput(mimeType=$mimeType, base64Data=<redacted:${base64Data.length} chars>, " +
+            "width=$width, height=$height, estimatedInputTokens=$estimatedInputTokens)"
+}
+
 /** 기존 호출자 호환용 추론 힌트. OpenAI 어댑터는 운영 정책에 따라 항상 reasoning effort `none`을 사용한다. */
 enum class CloudThinking(
     val wire: String,
@@ -169,7 +195,7 @@ data class CloudToolResponse(
 }
 
 /** 클라우드 LLM 호출/응답 오류. */
-class CloudLlmException(
+open class CloudLlmException(
     message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
@@ -228,6 +254,15 @@ interface CloudLlm {
         temperature: Double,
         options: CloudLlmRequestOptions,
     ): CloudLlmResult = generateSampled(prompt, model, temperature)
+
+    /** 별도 Vision 입력이 필요한 발화 생성. 이미지를 텍스트로 흉내 내거나 조용히 버리는 fallback은 허용하지 않는다. */
+    fun generateSampledWithImage(
+        prompt: String,
+        image: CloudLlmImageInput,
+        model: String,
+        temperature: Double,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult = throw CloudLlmException("이 CloudLlm 구현은 이미지 입력을 지원하지 않습니다.")
 
     /**
      * OpenAI 호환 tool calling 1회(AI 관리 비서). [systemPrompt]+[userPrompt] 로 대화를 만들고 [toolsJson]
@@ -563,11 +598,23 @@ class OpenAiCloudLlm(
     @param:Value("\${central.cloud.prompt-cache-nia-speech-enabled:false}")
     private val promptCacheNiaSpeechEnabled: Boolean = false,
     private val usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
+    private val channelTokenBudget: ChannelTokenBudgetPort = ChannelTokenBudgetPort.Unlimited,
+    @param:Value("\${central.nexa.token-budget.enabled:true}")
+    private val channelTokenBudgetEnabled: Boolean = true,
+    @param:Value("\${central.nexa.token-budget.per-channel:1000000}")
+    private val channelTokenBudgetPerChannel: Int = DEFAULT_CHANNEL_TOKEN_BUDGET,
+    @param:Value("\${central.nexa.token-budget.window-seconds:86400}")
+    private val channelTokenBudgetWindowSeconds: Long = DEFAULT_CHANNEL_TOKEN_BUDGET_WINDOW_SECONDS,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(OpenAiCloudLlm::class.java)
     private val mapper = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
     private val requestTimeout = Duration.ofSeconds(timeoutSeconds.coerceAtLeast(1))
+    private val channelTokenBudgetLimits =
+        ChannelTokenBudgetLimits(
+            perChannel = channelTokenBudgetPerChannel,
+            windowSeconds = channelTokenBudgetWindowSeconds,
+        )
 
     override fun isEnabled() = apiKey.isNotBlank()
 
@@ -588,6 +635,22 @@ class OpenAiCloudLlm(
         temperature: Double,
         options: CloudLlmRequestOptions,
     ): CloudLlmResult = generate(prompt, model, emptyList(), null, options)
+
+    override fun generateSampledWithImage(
+        prompt: String,
+        image: CloudLlmImageInput,
+        model: String,
+        temperature: Double,
+        options: CloudLlmRequestOptions,
+    ): CloudLlmResult =
+        parse(
+            postResponses(
+                messages = listOf("user" to prompt),
+                model = model.ifBlank { DEFAULT_MODEL },
+                options = options,
+                image = image,
+            ),
+        )
 
     override fun generate(
         prompt: String,
@@ -702,6 +765,7 @@ class OpenAiCloudLlm(
         instructions: String? = null,
         toolsJson: String? = null,
         options: CloudLlmRequestOptions = CloudLlmRequestOptions(),
+        image: CloudLlmImageInput? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val startedAt = System.nanoTime()
@@ -736,7 +800,8 @@ class OpenAiCloudLlm(
                 val input = putArray("input")
                 messages.forEachIndexed { index, (role, content) ->
                     val message = input.addObject().put("role", role)
-                    val cache = effectiveCachePolicy.takeIf { index == messages.lastIndex && role == "user" }
+                    val isFinalUser = index == messages.lastIndex && role == "user"
+                    val cache = effectiveCachePolicy.takeIf { isFinalUser }
                     if (cache != null && cache.stablePrefixChars > 0) {
                         require(cache.stablePrefixChars <= content.length) {
                             "stablePrefixChars 가 최종 user prompt 길이를 초과한다: ${cache.stablePrefixChars}/${content.length}"
@@ -750,6 +815,12 @@ class OpenAiCloudLlm(
                             .put("mode", "explicit")
                         content.drop(cache.stablePrefixChars).takeIf { it.isNotEmpty() }?.let { suffix ->
                             blocks.addObject().put("type", "input_text").put("text", suffix)
+                        }
+                        image?.let { blocks.addImageInput(it) }
+                    } else if (isFinalUser && image != null) {
+                        message.putArray("content").apply {
+                            addObject().put("type", "input_text").put("text", content)
+                            addImageInput(image)
                         }
                     } else {
                         message.put("content", content)
@@ -773,6 +844,7 @@ class OpenAiCloudLlm(
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build()
+            val tokenReservationId = reserveChannelTokens(options, requestBody, image)
             val response =
                 try {
                     recordAttempt(
@@ -826,10 +898,62 @@ class OpenAiCloudLlm(
             val responseBody = response.body()
             CloudLlmResponseParser.parseUsage(responseBody, mapper)?.let { usage ->
                 recordUsage(model.ifBlank { DEFAULT_MODEL }, options.purpose, usage)
+                settleChannelTokens(tokenReservationId, usage)
             }
             return responseBody
         }
         throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE, lastTimeout)
+    }
+
+    private fun reserveChannelTokens(
+        options: CloudLlmRequestOptions,
+        requestBody: String,
+        image: CloudLlmImageInput?,
+    ): String? {
+        val channelKey = options.channelTokenBudgetKey ?: return null
+        if (!channelTokenBudgetEnabled) return null
+        // base64는 wire 운반 형식이지 모델 text token이 아니다. 이를 제외한 text bytes + 이미지 patch 추정치로 예약하고,
+        // 성공 시 provider usage로 정확히 정산한다.
+        val textPayloadBytes =
+            requestBody.toByteArray(Charsets.UTF_8).size.toLong() -
+                (image?.base64Data?.length?.toLong() ?: 0L)
+        val estimatedTokens =
+            (
+                textPayloadBytes.coerceAtLeast(0L) +
+                    (image?.estimatedInputTokens ?: 0) +
+                    (options.maxOutputTokens ?: 0)
+            ).coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+                .coerceAtLeast(1)
+        val reservationId = UUID.randomUUID().toString()
+        if (!channelTokenBudget.reserve(reservationId, channelKey, estimatedTokens, channelTokenBudgetLimits)) {
+            throw ChannelTokenBudgetExceededException()
+        }
+        return reservationId
+    }
+
+    private fun com.fasterxml.jackson.databind.node.ArrayNode.addImageInput(image: CloudLlmImageInput) {
+        addObject()
+            .put("type", "input_image")
+            .put("image_url", "data:${image.mimeType};base64,${image.base64Data}")
+            .put("detail", "high")
+    }
+
+    private fun settleChannelTokens(
+        reservationId: String?,
+        usage: CloudLlmUsage,
+    ) {
+        if (reservationId == null) return
+        val actualTokens = usage.promptTokens.toLong() + usage.completionTokens
+        if (actualTokens <= 0) return
+        val settled =
+            runCatching {
+                channelTokenBudget.settle(
+                    reservationId,
+                    actualTokens.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                )
+            }.getOrDefault(false)
+        if (!settled) log.warn("채널 토큰 실사용 정산 실패 — 보수적 예약량을 유지합니다.")
     }
 
     private fun cacheWriteEnabledFor(purpose: CloudLlmPurpose): Boolean =
@@ -866,6 +990,8 @@ class OpenAiCloudLlm(
 
     companion object {
         const val DEFAULT_MODEL = "gpt-5.6-luna"
+        const val DEFAULT_CHANNEL_TOKEN_BUDGET: Int = 1_000_000
+        const val DEFAULT_CHANNEL_TOKEN_BUDGET_WINDOW_SECONDS: Long = 86_400
         private const val IMAGE_REVIEW_MAX_OUTPUT_TOKENS = 256
         private const val IMAGE_TRANSLATION_MAX_OUTPUT_TOKENS = 2_048
         const val REASONING_EFFORT = "none"

@@ -11,6 +11,9 @@ interface NiaJudgeLlmPort {
     fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse
 }
 
+/** provider HTTP 요청 전에 채널 토큰 예산이 소진됐음을 judge 상위 흐름에 원인 보존해 알린다. */
+class NiaJudgeTokenBudgetExceededException : RuntimeException("judge channel token budget exhausted")
+
 data class NiaJudgeLlmRequest(
     val prompt: String,
     val promptVersion: String,
@@ -19,6 +22,8 @@ data class NiaJudgeLlmRequest(
     val timeoutMillis: Long,
     val stablePromptPrefixChars: Int = 0,
     val metadata: Map<String, String> = emptyMap(),
+    /** 원문 Discord ID가 아닌 채널 가명 키. provider 호출 직전 토큰 예산을 적용할 때만 채운다. */
+    val channelTokenBudgetKey: String? = null,
 ) {
     init {
         require(prompt.isNotBlank()) { "judge prompt 는 비어 있을 수 없다" }
@@ -34,6 +39,9 @@ data class NiaJudgeLlmRequest(
             require(key.isStableLabel()) { "judge metadata key 는 안정 label 이어야 한다: $key" }
             require(value.length <= MAX_METADATA_VALUE_CHARS) { "judge metadata value 가 너무 길다: $key" }
         }
+        channelTokenBudgetKey?.let {
+            require(it.matches(Regex("[A-Za-z0-9_:.=-]{1,200}"))) { "judge channelTokenBudgetKey 형식이 잘못됐다" }
+        }
     }
 
     val promptHash: String get() = prompt.sha256()
@@ -41,7 +49,8 @@ data class NiaJudgeLlmRequest(
     override fun toString(): String =
         "NiaJudgeLlmRequest(promptVersion=$promptVersion, outputSchema=$outputSchema, seed=$seed, " +
             "timeoutMillis=$timeoutMillis, promptChars=${prompt.length}, promptHash=$promptHash, " +
-            "stablePromptPrefixChars=$stablePromptPrefixChars, metadataKeys=${metadata.keys.sorted()})"
+            "stablePromptPrefixChars=$stablePromptPrefixChars, metadataKeys=${metadata.keys.sorted()}, " +
+            "channelTokenBudgeted=${channelTokenBudgetKey != null})"
 
     companion object {
         const val OUTPUT_SCHEMA: String = "nia.participation-judge-output.v1"

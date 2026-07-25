@@ -93,6 +93,7 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.socialmemory.application.port.out.PendingIntentStore
 import com.discordassistant.central.socialmemory.domain.model.VisibilityScope
 import com.discordassistant.central.socialmemory.domain.model.intent.IntentActivation
@@ -1355,7 +1356,7 @@ class NexaParticipationEmitBridge(
     private fun niaIdentity(): IdentityKernelSection =
         IdentityKernelSection.of(
             personaName = NexaIdentity.NIA_NAME,
-            personaBlock = promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
+            personaBlock = promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
             prohibitions =
                 promptSource
                     .text(

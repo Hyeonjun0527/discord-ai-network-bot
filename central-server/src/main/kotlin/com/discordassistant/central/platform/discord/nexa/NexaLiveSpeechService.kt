@@ -10,6 +10,7 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.context.ConversationContextSelector
 import com.discordassistant.central.speech.application.generation.GenerationBudget
@@ -250,7 +251,7 @@ class NexaLiveSpeechService(
     private fun demoIdentity(): IdentityKernelSection =
         IdentityKernelSection.of(
             personaName = NexaIdentity.NIA_NAME,
-            personaBlock = promptSource.text(NiaPromptKey.IDENTITY_PERSONA) + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
+            personaBlock = promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
             prohibitions =
                 promptSource
                     .text(

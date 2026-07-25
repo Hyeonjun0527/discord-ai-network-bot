@@ -28,13 +28,11 @@ class NexaJudgeRuntimeConfig {
     fun niaSingleParticipationJudge(
         llmPort: NiaJudgeLlmPort,
         promptAssembler: NiaJudgePromptAssembler,
-        promptSource: NiaPromptSource,
     ): SingleParticipationJudgePort =
         NiaParticipationJudge(
             promptAssembler = promptAssembler,
             llmPort = llmPort,
             outputParser = NiaJudgeOutputParser(),
-            promptSource = promptSource,
         )
 
     @Bean

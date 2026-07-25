@@ -137,7 +137,7 @@ import com.discordassistant.central.participation.domain.model.action.SpeechDeli
  * NEXA participation **자발 발화 wiring**(NEXA participation-activation-plan 단계 1, platform/discord 어댑터).
  *
  * "AI 채팅 채널"(NEXA participation flag 가 활성인 (guild, channel))에서 받은 메시지에 대해, 니아가 **스스로**
- * 발화/리액션/침묵을 판단하고 잠정 SPEAK 면 단일 보안 seam [NexaSpeechEmitService.emit] 를 호출한다. 기존 채널 무조건
+ * 발화/리액션/침묵을 판단하고 확정 SPEAK면 단일 보안 seam [NexaSpeechEmitService.emit]를 호출한다. 기존 채널 무조건
  * 답변(autoRespond)과 별개의 participation 경로다. participation flag가 비활성일 때만 legacy autoRespond가 응답을 소유한다.
  *
  * **안전(단계 1 핵심)**:
@@ -1453,7 +1453,7 @@ class NexaParticipationEmitBridge(
         )
 
     /**
-     * 잠정 SPEAK(규칙 즉결 또는 정책 분포 argmax) 후 공통 경로 — emit 입력 조립 → 완전 행동 후보 평가 → 행동 예약.
+     * 확정 SPEAK(규칙 즉결 또는 정책 분포 argmax) 후 공통 경로 — emit 입력 조립 → 발화 생성·로컬 검사 → 행동 예약.
      * [response] 는 규칙 즉결이면 [ruleForcedSpeakResponse], 정책 위임이면 정책이 낸 분포다.
      */
     private fun emitSpeak(

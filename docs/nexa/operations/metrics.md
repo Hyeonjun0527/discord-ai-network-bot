@@ -55,7 +55,8 @@ Micrometer 컴포넌트가 존재하거나 0 gauge가 노출되는 것을 "수�
 - `central_openai_request_payload_chars{model,purpose}`(summary) — 직렬화된 요청 payload 문자 수. 원문을 저장하지 않고 목적별 평균 입력 크기와 비정상 팽창을 찾는다.
 - `central_openai_cache_policy_requests_total{model,purpose,policy}` — 실제 요청에 적용된 정책. policy는 `disabled` 또는 `explicit_prefix`다.
 - `central_openai_tokens_total{model,purpose,category}` — API usage 기반 누적 token. category는 `input_total`, `uncached_input`, `cached_input`, `cache_write`, `output`이다. `input_total`은 provider 원본 합계이고, 가격 성격별 비교에는 겹치지 않는 나머지인 `uncached_input`을 사용한다.
-- purpose는 `nia_judge`, `nia_judge_repair`, `nia_speech`, `nia_action_evaluator`, `nia_rag_embedding` 등 고정 enum이다. 원문·길드·채널·사용자 식별자는 넣지 않는다.
+- NIA 생성 경로의 현재 purpose는 `nia_judge`, `nia_shadow_judge`, `nia_speech`다.
+  `nia_rag_embedding`은 별도 embedding 어댑터가 쓰는 고정 label이다. 원문·길드·채널·사용자 식별자는 넣지 않는다.
 - 이 값은 **central-server 프로세스 안의 누적 카운터**다. 운영 compose의 Prometheus가 bearer token으로 15초마다 scrape하고 named volume에 365일 동안 보존한다. 365일 전에 삭제될 수 있는 용량 상한은 두지 않으므로 운영 호스트의 디스크 사용량을 함께 감시한다. 배포 검증은 collector ready뿐 아니라 `central-server` target의 `health=up`까지 확인한다.
 - 수집 경계는 central-server의 `/responses`·`/embeddings` HTTP 어댑터다. 별도 프로세스인
   `scripts/nexa-human-likeness-eval.py`와 `rag/build_index.py --with-vector`의 수동 유료 호출은 이 metric에 포함되지 않는다.
@@ -65,19 +66,19 @@ Micrometer 컴포넌트가 존재하거나 0 gauge가 노출되는 것을 "수�
 
 - 연속 social message는 turn boundary가 닫힐 때 최신 signal 하나로 합쳐진다. 메시지마다 raw context와
   generation은 즉시 갱신되므로 중간 원문을 버리는 것이 아니라 유료 Judge 시작 횟수만 줄인다.
-- 비발화: `nia_judge` 1회. strict Structured Outputs envelope가 `refusal`/`incomplete`이면 자동 재호출
-  없이 fail-closed한다. completed 응답의 동적 의미 검증이 실패한 경우에만 `nia_judge_repair`가 최대
-  1회 추가될 수 있다.
-- 발화: `nia_judge` 1회 + `nia_speech` 1회 + `nia_action_evaluator` 1회가 기본이다. 세 요청은 같은 답을 세 번
-  생성하는 것이 아니라 각각 참여 여부 판단, 서로 다른 실제 문구 후보 생성, SEND/REACT/IGNORE 최종 선택을 맡는다.
-- evaluator는 생존 행동 후보가 하나뿐이면 호출하지 않는다. 완전히 같은 speech 후보도 먼저 하나로 줄이므로 REQUIRED 응답의
-  실질 후보가 하나면 `nia_action_evaluator`는 0회다.
-- 운영 fast path가 켜져 있으면 local critics를 통과한 `REQUIRED` 응답 중 Judge confidence가 임계값 이상인
-  경우에도 evaluator를 호출하지 않고 최소 uncertainty SEND 후보를 선택한다. OPTIONAL과 낮은 confidence는
-  계속 evaluator를 호출하므로, 절감률은 `nia_action_evaluator / nia_speech` 요청 비율로 확인한다.
-- stale 턴은 `stage=before_judge`면 OpenAI 요청 0회, `stage=after_judge`면 이미 시작한 judge 1회만 비용에 남을 수 있다.
-- RAG 항목에 비교 가능한 vector가 있을 때만 `nia_rag_embedding`이 발생하며, 완전히 같은 장면 query는 프로세스 내 해시 캐시를
-  재사용한다.
+- 비발화 정상 경로는 `nia_judge` 1회다. provider·파싱·의미 검증 실패 때 같은 prompt로 한 번만 재시도하므로
+  실패 복구 상한은 2회다.
+- 발화 정상 경로는 `nia_judge` 1회 + `nia_speech` 1회다. Speech 한 요청이 여러 실제 문구 후보를 함께 만들고,
+  로컬 critic 통과 후보 중 uncertainty가 가장 낮은 하나를 고른다.
+- Judge와 Speech는 각 단계 실패 때 한 번만 재시도한다. provider 내부 retry와 별도 Judge repair, Cloud action
+  evaluator는 없으므로 실패 복구를 포함한 생성 LLM 요청 상한은 비발화 2회, 발화 4회다.
+- consent, high-risk, secret, burst, intent fulfillment, freshness, mode, permit 검사는 추가 AI 호출 없이
+  로컬로 적용된다.
+- stale 턴은 `stage=before_judge`면 OpenAI 요청 0회다. Judge 도중 새 메시지가 들어오면 이미 시작한 Judge
+  호출은 최대 2회 비용에 남을 수 있으며, Speech는 전체 deadline이 지나면 재시도를 시작하지 않는다.
+- RAG 항목에 비교 가능한 vector가 있을 때만 `nia_rag_embedding`이 발생하며, 완전히 같은 장면 query는 프로세스 내
+  해시 캐시를 재사용한다. 이는 생성 LLM 호출 상한과 별도인 embedding HTTP 요청이므로, **모든 유료 OpenAI 요청**
+  수를 셀 때는 따로 더해야 한다.
 
 ### 8. fir_mir (FIR/MIR proxy 운영 경보) — `FirMirProxyMetrics`(P18-T008)
 - `nexa_fir_proxy_total` / `nexa_mir_proxy_total` / `nexa_proxy_outcome_total{outcome}` — shadow/canary outcome 에서 지연 집계한 **false interruption(과반응)·missed intervention(과침묵) proxy**. **proxy** 이며 사용자 심리를 사실로 표시하지 않는다(dashboard 에 proxy 명시).

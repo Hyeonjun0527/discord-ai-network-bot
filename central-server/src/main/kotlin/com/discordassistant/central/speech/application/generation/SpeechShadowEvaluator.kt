@@ -18,7 +18,7 @@ import com.discordassistant.central.speech.domain.service.critic.CriticReason
  * 순수성: application — 도메인 selector/critic + 표준 타입만. Spring/JPA/JDA·glm/zai·DiscordSendPort 미참조.
  */
 class SpeechShadowEvaluator(
-    private val selector: CandidateSelector,
+    private val candidateFilter: CandidateCriticFilter,
 ) {
     /** [samples] 를 shadow 평가해 집계 리포트를 만든다(전송 없음). */
     fun evaluate(samples: List<ShadowSample>): ShadowReport {
@@ -41,7 +41,7 @@ class SpeechShadowEvaluator(
             }
             for (candidate in sample.candidates) {
                 totalCandidates++
-                val reasons = selector.rejectionReasons(candidate, sample.packet)
+                val reasons = candidateFilter.rejectionReasons(candidate, sample.packet)
                 if (reasons.isNotEmpty()) {
                     rejectedCandidates++
                     reasons.forEach { reasonCounts.merge(it, 1, Int::plus) }

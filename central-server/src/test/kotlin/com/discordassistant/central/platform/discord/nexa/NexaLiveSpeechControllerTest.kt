@@ -57,7 +57,7 @@ class NexaLiveSpeechControllerTest {
                             reasoningModeSelector = ReasoningModeSelector(),
                         ),
                     ),
-                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                candidateFilter = NexaSpeechPipelineService.securityCriticFilter(),
                 completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaLiveSpeechService(gate, pipeline)

@@ -628,7 +628,7 @@ enum class SpeechDeliveryMode {
     REPLY,
 }
 
-/** 최종 행동 평가기가 잠정 SPEAK를 다시 침묵으로 바꿔도 되는지 AI judge가 정한 대화 의무다. */
+/** 현재 턴을 반드시 말로 답해야 하는지 AI judge가 정한 대화 의무다. */
 enum class JudgeResponseObligation {
     REQUIRED,
     OPTIONAL,

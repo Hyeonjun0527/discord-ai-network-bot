@@ -3,7 +3,7 @@ package com.discordassistant.central.speech.application
 import com.discordassistant.central.global.privacy.ConsentGate
 import com.discordassistant.central.global.privacy.ConsentRevokedException
 import com.discordassistant.central.global.privacy.ProcessingStage
-import com.discordassistant.central.speech.application.generation.CandidateSelector
+import com.discordassistant.central.speech.application.generation.CandidateCriticFilter
 import com.discordassistant.central.speech.application.generation.CompleteActionSelection
 import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.FallbackSpeechPolicy
@@ -11,7 +11,6 @@ import com.discordassistant.central.speech.application.generation.GenerationBudg
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.generation.SpeechOutcome
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
-import com.discordassistant.central.speech.application.port.out.CompleteActionEvaluationPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
@@ -39,8 +38,8 @@ import java.time.Instant
  *     가 SPEAK·not stale 일 때만 generation 포트를 호출한다.
  *  3. **고위험 fallback(M3, T016)**: [HighRiskFallbackBoundary] 가 자해/위기/의료/법률 맥락이면 안전 directive 로
  *     하강한다 — 고위험/분류실패면 발화를 취소(BLOCKED→CANCEL)하고 조롱·확신을 차단한다.
- *  4. **전송 제약(M2, T003)**: [CandidateSelector] 가 비밀 노출과 버블 형식만 검증한 뒤 하나를 고른다. 말투와
- *     대화 품질은 문자열 패턴으로 탈락시키지 않고 생성 모델이 전체 문맥으로 판단한다.
+ *  4. **전송 제약(M2, T003)**: [CandidateCriticFilter]가 비밀 노출과 버블 형식을 검증하고,
+ *     [CompleteActionSelector]가 생존 후보 중 불확실성이 가장 낮은 하나를 고른다.
  *  5. **fallback 정책(T016)**: critic 통과 후보가 0 이면 [FallbackSpeechPolicy] 가 침묵/리액션으로 안전 하강한다.
  *  6. **결정 로그(M3, T015/T016)**: 위 결정을 [SpeechDecisionLogPort] 로 원문 없이 기록한다(decision-log sink 소비).
  *
@@ -52,11 +51,11 @@ import java.time.Instant
 class NexaSpeechPipelineService(
     private val consentGate: ConsentGate,
     private val generationGate: SpeechGenerationGate,
-    private val candidateSelector: CandidateSelector,
+    private val candidateFilter: CandidateCriticFilter,
     private val highRiskBoundary: HighRiskFallbackBoundary = HighRiskFallbackBoundary(),
     private val fallbackPolicy: FallbackSpeechPolicy = FallbackSpeechPolicy(),
     private val decisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
-    private val completeActionSelector: CompleteActionSelector = CompleteActionSelector(CompleteActionEvaluationPort.Noop),
+    private val completeActionSelector: CompleteActionSelector = CompleteActionSelector(),
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -67,13 +66,9 @@ class NexaSpeechPipelineService(
         subjectPseudonym: String,
         trigger: SpeechTrigger,
         packet: SpeechScenePacket,
-        seed: Long,
         stale: Boolean = false,
         budget: GenerationBudget = GenerationBudget.DEFAULT,
         traceContext: SpeechTraceContext = SpeechTraceContext.UNLINKED,
-        provisionalConfidence: Double = 0.0,
-        contextVersion: Long = 0,
-        triggerMessageRef: String? = null,
     ): PipelineResult {
         // 1) 동의 게이트(생성 직전). 철회/미동의면 생성 포트를 한 번도 호출하지 않고 차단.
         try {
@@ -127,30 +122,20 @@ class NexaSpeechPipelineService(
             )
         }
 
-        // 비밀 유출과 버블 형식을 검증한 후보 중 하나를 확률 선택한다.
+        // 비밀 유출과 버블 형식을 검증한 후보 중 불확실성이 가장 낮은 하나를 고른다.
         val generated = gate.result.candidates
         val criticReasons =
             generated
-                .flatMap { candidateSelector.rejectionReasons(it, packet) }
+                .flatMap { candidateFilter.rejectionReasons(it, packet) }
                 .map { it.name }
                 .toSet()
-        val survivors = candidateSelector.survivors(generated, packet)
+        val survivors = candidateFilter.survivors(generated, packet)
         val fallbackOutcome = fallbackPolicy.decide(gate.result, packet)
         val completeSelection =
             if (survivors.isNotEmpty() || fallbackOutcome == SpeechOutcome.ReactionOnly) {
-                // 생성 뒤 별도의 외부 가치 평가가 이어질 수 있으므로, 그 요청 직전에 동의를 다시 확인한다.
-                try {
-                    consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)
-                } catch (e: ConsentRevokedException) {
-                    return blocked(packet, traceContext, consentStage = e.stage, generated = generated.size)
-                }
                 completeActionSelector.select(
                     speechCandidates = survivors,
                     packet = packet,
-                    provisionalConfidence = provisionalConfidence,
-                    contextVersion = contextVersion,
-                    seed = seed,
-                    triggerMessageRef = triggerMessageRef,
                     offerReaction = true,
                 )
             } else {
@@ -158,7 +143,7 @@ class NexaSpeechPipelineService(
                 CompleteActionSelection.Ignore
             }
 
-        // 6) 모든 잠정 SPEAK는 실제 SEND 문구·REACT·IGNORE를 함께 비교한다. 평가 실패도 IGNORE로 닫힌다.
+        // 6) Judge가 확정한 SPEAK를 다시 모델 판단하지 않고 로컬 검사 생존 후보로 실행한다.
         return when (completeSelection) {
             is CompleteActionSelection.Send ->
                 speak(packet, traceContext, directive, completeSelection.candidate, generated.size, criticReasons)
@@ -330,9 +315,9 @@ class NexaSpeechPipelineService(
         )
 
     companion object {
-        /** 비밀 유출·전송 형식·요청 행위 수행 여부를 검사한다. 말투 품질은 생성·완전 행동 평가기가 판단한다. */
-        fun securityCriticSelector(): CandidateSelector =
-            CandidateSelector(
+        /** 비밀 유출·전송 형식·요청 행위 수행 여부를 검사한다. 말투 품질은 발화 생성 모델이 담당한다. */
+        fun securityCriticFilter(): CandidateCriticFilter =
+            CandidateCriticFilter(
                 critics =
                     listOf(
                         SecretDisclosureCritic(),

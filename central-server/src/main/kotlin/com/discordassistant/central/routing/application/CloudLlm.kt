@@ -31,10 +31,7 @@ enum class CloudLlmPurpose {
     SOCIAL_APPRAISAL,
     LEGACY_PARTICIPATION_JUDGE,
     NIA_JUDGE,
-    NIA_JUDGE_REPAIR,
-    NIA_SHADOW_JUDGE_REPAIR,
     NIA_SPEECH,
-    NIA_ACTION_EVALUATOR,
     NIA_SHADOW_JUDGE,
 }
 
@@ -565,8 +562,6 @@ class OpenAiCloudLlm(
     private val promptCacheNiaJudgeEnabled: Boolean = false,
     @param:Value("\${central.cloud.prompt-cache-nia-speech-enabled:false}")
     private val promptCacheNiaSpeechEnabled: Boolean = false,
-    @param:Value("\${central.cloud.prompt-cache-nia-action-evaluator-enabled:false}")
-    private val promptCacheNiaActionEvaluatorEnabled: Boolean = false,
     private val usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
 ) : CloudLlm {
     private val log = LoggerFactory.getLogger(OpenAiCloudLlm::class.java)
@@ -843,7 +838,6 @@ class OpenAiCloudLlm(
             CloudLlmPurpose.NIA_SHADOW_JUDGE,
             -> promptCacheNiaJudgeEnabled
             CloudLlmPurpose.NIA_SPEECH -> promptCacheNiaSpeechEnabled
-            CloudLlmPurpose.NIA_ACTION_EVALUATOR -> promptCacheNiaActionEvaluatorEnabled
             else -> false
         }
 

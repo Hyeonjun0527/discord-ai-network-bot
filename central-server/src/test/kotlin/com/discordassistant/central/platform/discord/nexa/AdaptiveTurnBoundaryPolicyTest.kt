@@ -10,6 +10,7 @@ class AdaptiveTurnBoundaryPolicyTest {
 
     @Test
     fun `표본이 없으면 2초와 7초의 중간 idle을 사용한다`() {
+        assertThat(policy.sampleLimit).isEqualTo(100)
         assertThat(policy.adaptiveIdle(emptyList()).toMillis()).isEqualTo(4_500)
         assertThat(policy.deadline(start, start, emptyList(), null)).isEqualTo(start.plusMillis(4_500))
     }

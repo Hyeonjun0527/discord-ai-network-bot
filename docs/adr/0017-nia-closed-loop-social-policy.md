@@ -1,10 +1,11 @@
 # ADR 0017: NIA persistent closed-loop social policy
 
-- 상태(Status): 승인됨 (Accepted)
+- 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0018](./0018-nia-bounded-llm-retry-budget.md))
 - 날짜(Date): 2026-07-17
 - 최신 개정(Amended): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527
 - 대체 범위: [ADR 0016](./0016-nia-raw-fewshot-judge.md)의 "SPEAK 뒤에는 행동을 다시 선택하지 않는다" 결정
+- 후속 대체 범위: ADR 0018이 Cloud 완전 행동 평가와 Judge/Speech 재호출 결정을 대체한다.
 - 관련: [participation runtime](../nexa/architecture/participation-runtime.md),
   [speech context](../nexa/architecture/speech-context.md),
   [actionruntime context](../nexa/architecture/actionruntime-context.md)
@@ -38,7 +39,8 @@ Discord 사건
    저장한다. 모든 믿음에는 안정된 근거 ref와 confidence 또는 probability가 필요하다.
 2. 명백한 장면은 저비용 단일 생성 경로를 쓸 수 있다. 모호하거나 열린 약속이 있는 장면은 여러 SEND 문구와
    `REACT`, `IGNORE`를 완전 행동 후보로 비교한다.
-3. 활성 완전 행동 평가기의 malformed·알 수 없는 후보·낮은 confidence는 `IGNORE`로 fail-closed한다.
+3. ~~Cloud 완전 행동 평가기의 malformed·알 수 없는 후보·낮은 confidence는 `IGNORE`로 fail-closed한다.~~
+   ADR 0018에 따라 평가기 자체를 제거하고 로컬 critic 실패를 안전 하강으로 처리한다.
 4. "이야기해볼게", "나중에 설명할게"처럼 요구 행위를 수행하지 않은 미래 예고는 문장 길이와 관계없이
    intent-fulfillment critic이 차단한다. 명시적 약속은 confidence와 함께 `PendingIntent`로 열고, 약속 이행이
    연결된 마지막 SEND action이 실제 완료된 뒤 그 action ID를 증거로 저장할 때만 완료한다.
@@ -58,18 +60,17 @@ Discord 사건
     일반 장면은 빠른 경로를 유지하며 효과는 운영 로그 기반 ablation으로 보정한다.
 12. 장면 projection에는 raw guild/channel ID를 쓰지 않고 keyed pseudonym만 저장한다. Discord 실행에 꼭 필요한
     routing ID와 target message ID는 scheduled action 및 WAIT outbox에서 field encryption을 강제한다.
-13. local critics를 통과한 `REQUIRED` 응답에서 Judge confidence가 운영 임계값 이상이면, 별도 Cloud
-    action evaluator 대신 그 evaluator 장애 시에도 사용하는 최소 uncertainty SEND 후보를 결정적으로
-    선택할 수 있다. `OPTIONAL`, 임계값 미만, critic 전멸은 이 빠른 경로에 들어오지 않는다. consent,
-    high-risk, generation freshness, 실행 직전 mode/permit 검사는 경로와 관계없이 그대로 적용한다.
-    이 최적화는 `NEXA_ACTION_EVALUATOR_REQUIRED_BYPASS_ENABLED`로 독립 롤백한다.
+13. ~~일부 `REQUIRED` 응답만 Cloud action evaluator를 생략한다.~~ ADR 0018에 따라 응답 의무나
+    confidence와 관계없이 별도 Cloud evaluator를 호출하지 않는다. consent, high-risk, generation freshness,
+    실행 직전 mode/permit 검사는 로컬 경계로 계속 적용한다.
 
 ## 결과 (Consequences)
 
 - 니아는 같은 안내가 이미 공유됐는지, 자신이 약속을 미완료했는지, 직전 행동이 반복 지적을 받았는지를 다음 판단에서 본다.
-- 최종 `SPEAK` 여부는 실제 문구와 침묵·리액션의 결과를 함께 본 뒤 정해진다.
+- 이 ADR의 Cloud 완전 행동 평가 결정은 ADR 0018로 대체됐다. 현재 `SPEAK` 참여 여부는 single judge가 정하고,
+  speech는 실제 문구 생성과 로컬 안전 하강만 담당한다.
 - WAIT와 multi-bubble은 새 사건이 들어오면 취소·수정 가능한 시간적 행동이 된다.
-- 추가 Cloud 평가 호출과 영속 상태가 생긴다. 그래서 명백한 장면은 단일 경로를 유지하고 상태 크기를 제한한다.
+- 영속 장면 상태는 유지하되 추가 Cloud action evaluator는 사용하지 않는다.
 - outcome code 추출은 명시적 피드백 신호에 한정된다. 숨은 감정을 사실처럼 저장하지 않는다.
 
 ## 승인 게이트 (Approval Gates)

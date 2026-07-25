@@ -18,7 +18,7 @@ platform/discord(adapter)
    conversation ──────(읽기)──────┐
         │                         │
         ▼                         ▼
-  participation ──(잠정 SPEAK)──▶ speech ──(CloudLlm)──▶ routing
+  participation ──(확정 SPEAK)──▶ speech ──(CloudLlm 1회)──▶ routing
         │                         │  (읽기)
         │ ScheduleAction          ├──▶ socialmemory(열린 약속 읽기)
         ▼                         ├──▶ ainetwork(정체성 브리지, 읽기)

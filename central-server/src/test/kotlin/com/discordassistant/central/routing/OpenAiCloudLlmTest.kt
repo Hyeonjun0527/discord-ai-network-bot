@@ -551,7 +551,6 @@ class OpenAiCloudLlmTest {
         maxRetries: Int = 0,
         promptCacheNiaJudgeEnabled: Boolean = false,
         promptCacheNiaSpeechEnabled: Boolean = false,
-        promptCacheNiaActionEvaluatorEnabled: Boolean = false,
         usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
     ) = OpenAiCloudLlm(
         apiKey = "test-key",
@@ -560,7 +559,6 @@ class OpenAiCloudLlmTest {
         maxRetries = maxRetries,
         promptCacheNiaJudgeEnabled = promptCacheNiaJudgeEnabled,
         promptCacheNiaSpeechEnabled = promptCacheNiaSpeechEnabled,
-        promptCacheNiaActionEvaluatorEnabled = promptCacheNiaActionEvaluatorEnabled,
         usageObserver = usageObserver,
     )
 

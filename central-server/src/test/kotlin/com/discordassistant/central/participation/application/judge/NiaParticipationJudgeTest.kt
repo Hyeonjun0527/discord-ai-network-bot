@@ -52,27 +52,20 @@ class NiaParticipationJudgeTest {
     }
 
     @Test
-    fun `judge retries once with repair instruction after malformed output`() {
-        val llm = FakeJudgeLlm(response("{bad-json"), response(output("WAIT")))
+    fun `judge retries malformed output once and uses the valid second result`() {
+        val llm = FakeJudgeLlm(response("{bad-json"), response(output("SPEAK")))
         val judge = judge(llm)
 
-        val decision = judge.decide(sampleRequest())
+        val decision = judge.decide(sampleRequest(directAddressed = false))
 
-        assertThat(decision.action).isEqualTo(SocialActionKind.WAIT)
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(llm.requests).hasSize(2)
-        val firstPrompt = llm.requests[0]
-        val repairPrompt = llm.requests[1]
-        assertThat(repairPrompt.prompt)
-            .contains("REPAIR_INSTRUCTION", "{bad-json", "valid_evidence_refs=msg_1", "latest_message_ref=msg_1")
-            .doesNotContain("야 이럴땐 위로해줘", "INPUT_JSON:")
-        assertThat(repairPrompt.prompt.length).isLessThan(firstPrompt.prompt.length)
-        assertThat(repairPrompt.stablePromptPrefixChars).isZero()
-        assertThat(repairPrompt.metadata[NiaParticipationJudge.REPAIR_ATTEMPT_METADATA_KEY]).isEqualTo("true")
+        assertThat(llm.requests.distinct()).hasSize(1)
     }
 
     @Test
-    fun `judge degrades to WAIT or IGNORE after retry exhaustion`() {
-        val llm = FakeJudgeLlm(response("{bad-json"), response("{still-bad"))
+    fun `judge degrades to WAIT or IGNORE after both attempts fail validation`() {
+        val llm = FakeJudgeLlm(response("{bad-json"))
         val judge = judge(llm)
 
         val decision = judge.decide(sampleRequest(directAddressed = false))
@@ -81,6 +74,17 @@ class NiaParticipationJudgeTest {
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.confidence).isEqualTo(0.0)
         assertThat(llm.requests).hasSize(2)
+    }
+
+    @Test
+    fun `judge retries a provider failure once and uses the successful result`() {
+        val llm = ThrowOnceJudgeLlm(response(output("SPEAK")))
+        val judge = judge(llm)
+
+        val decision = judge.decide(sampleRequest())
+
+        assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
@@ -93,7 +97,7 @@ class NiaParticipationJudgeTest {
         assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.speechIntent!!.sceneDirection).contains("if asked to stop or yield")
         assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.direct_address.judge_llm_error")
-        assertThat(llm.calls).isEqualTo(1)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
@@ -105,12 +109,12 @@ class NiaParticipationJudgeTest {
 
         assertThat(decision.action).isIn(SocialActionKind.WAIT, SocialActionKind.IGNORE)
         assertThat(decision.action).isNotEqualTo(SocialActionKind.SPEAK)
-        assertThat(llm.calls).isEqualTo(1)
+        assertThat(llm.calls).isEqualTo(2)
     }
 
     @Test
     fun `invalid judge output still answers a same-member question that continues nia's turn`() {
-        val llm = FakeJudgeLlm(response("{bad-json"), response("{still-bad"))
+        val llm = FakeJudgeLlm(response("{bad-json"))
         val judge = judge(llm)
 
         val decision =
@@ -129,9 +133,9 @@ class NiaParticipationJudgeTest {
 
     @Test
     fun `contextual fallback does not mechanically answer a non-question or human handoff`() {
-        val nonQuestionJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
-        val humanHandoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
-        val namedHandoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val nonQuestionJudge = judge(FakeJudgeLlm(response("{bad-json")))
+        val humanHandoffJudge = judge(FakeJudgeLlm(response("{bad-json")))
+        val namedHandoffJudge = judge(FakeJudgeLlm(response("{bad-json")))
 
         val nonQuestion =
             nonQuestionJudge.decide(
@@ -167,7 +171,7 @@ class NiaParticipationJudgeTest {
 
     @Test
     fun `contextual fallback stays silent for an explicit stop request`() {
-        val judge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val judge = judge(FakeJudgeLlm(response("{bad-json")))
 
         val decision =
             judge.decide(
@@ -185,8 +189,8 @@ class NiaParticipationJudgeTest {
 
     @Test
     fun `direct-address fallback also stays silent for a stop request or human handoff`() {
-        val stopJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
-        val handoffJudge = judge(FakeJudgeLlm(response("{bad-json"), response("{still-bad")))
+        val stopJudge = judge(FakeJudgeLlm(response("{bad-json")))
+        val handoffJudge = judge(FakeJudgeLlm(response("{bad-json")))
 
         val stop =
             stopJudge.decide(
@@ -322,7 +326,19 @@ class NiaParticipationJudgeTest {
 
         override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
             requests += request
-            return responses[cursor++]
+            return responses.getOrElse(cursor++) { responses.last() }
+        }
+    }
+
+    private class ThrowOnceJudgeLlm(
+        private val response: NiaJudgeLlmResponse,
+    ) : NiaJudgeLlmPort {
+        var calls: Int = 0
+
+        override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
+            calls++
+            if (calls == 1) throw IllegalStateException("provider unavailable")
+            return response
         }
     }
 

@@ -62,7 +62,7 @@ class NexaLiveSpeechServiceTest {
             NexaSpeechPipelineService(
                 consentGate = gate,
                 generationGate = SpeechGenerationGate(generationService),
-                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                candidateFilter = NexaSpeechPipelineService.securityCriticFilter(),
                 completeActionSelector = deterministicCompleteActionSelector(),
             )
         return NexaLiveSpeechService(gate, pipeline) to gate

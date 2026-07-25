@@ -21,7 +21,6 @@ import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
 import com.discordassistant.central.requestlog.application.NexaCorrelation
 import com.discordassistant.central.requestlog.application.NexaCorrelationRecorderPort
-import com.discordassistant.central.socialpolicy.domain.model.InteractionEvidenceRef
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.PipelineResult
 import com.discordassistant.central.speech.application.generation.GenerationBudget
@@ -120,7 +119,6 @@ class NexaSpeechEmitService(
                 subjectPseudonym = request.consentSubjectPseudonym,
                 trigger = SpeechTrigger.SPEAK,
                 packet = request.packet,
-                seed = request.seed,
                 stale = request.stale,
                 budget = request.budget,
                 traceContext =
@@ -128,9 +126,6 @@ class NexaSpeechEmitService(
                         decisionId = request.provenance.correlationId,
                         correlationId = request.provenance.correlationId,
                     ),
-                provisionalConfidence = request.provenance.judgeConfidence ?: 0.0,
-                contextVersion = request.provenance.contextVersion,
-                triggerMessageRef = request.actionTarget.targetMessageId?.let(InteractionEvidenceRef::discordMessage),
             )
 
         val pipelineWillSpeak = pipelineResult.outcome == SpeechDecisionOutcome.SPEAK && pipelineResult.selected != null

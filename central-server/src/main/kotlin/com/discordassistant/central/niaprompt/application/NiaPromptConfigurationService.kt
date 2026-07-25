@@ -86,7 +86,8 @@ class NiaPromptConfigurationService(
         saveDraft(NiaPromptDefaults.documents.mapKeys { it.key.wireName }, actorUserId)
 
     private fun validate(input: Map<String, String>): Map<NiaPromptKey, String> {
-        val unknown = input.keys - NiaPromptKey.entries.map(NiaPromptKey::wireName).toSet()
+        val activeKeys = NiaPromptKey.entries.map(NiaPromptKey::wireName).toSet()
+        val unknown = input.keys - activeKeys - RETIRED_PROMPT_KEYS
         require(unknown.isEmpty()) { "알 수 없는 프롬프트 키: ${unknown.sorted().joinToString()}" }
         val missing = NiaPromptKey.entries.filter { it.wireName !in input }
         require(missing.isEmpty()) { "누락된 프롬프트: ${missing.joinToString { it.wireName }}" }
@@ -114,5 +115,6 @@ class NiaPromptConfigurationService(
 
     companion object {
         private const val MAX_DOCUMENT_CHARS = 120_000
+        private val RETIRED_PROMPT_KEYS = setOf("judge_repair_template", "action_evaluator_template")
     }
 }

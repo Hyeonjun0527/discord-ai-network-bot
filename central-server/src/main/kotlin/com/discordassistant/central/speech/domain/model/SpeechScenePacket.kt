@@ -35,7 +35,7 @@ data class SpeechScenePacket(
     val rawContextSceneData: String? = null,
     /** AI judge가 지정한 현재 응답 대상 raw-scene ref. 과거 질문으로 답변 귀속이 밀리는 것을 막는다. */
     val responseTargetRef: String? = null,
-    /** AI judge가 정한 현재 턴의 응답 의무. REQUIRED면 후단 평가기가 다시 침묵으로 뒤집지 않는다. */
+    /** AI judge가 정한 현재 턴의 응답 의무. 후보가 없을 때 REQUIRED를 임의 리액션으로 대체하지 않는 데 쓴다. */
     val responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
     /** AI judge가 정한 외부 사실 검증 요구. */
     val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,

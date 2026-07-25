@@ -38,12 +38,10 @@ internal enum class NiaTurnBoundaryAdmission {
 }
 
 /**
- * Owns only the pre-judge burst boundary. All social judgment and outbound safety remain in
- * [NexaParticipationEmitBridge].
+ * Judge 호출 전 연속 메시지 경계만 소유한다. 사회적 판단과 발화 안전은 [NexaParticipationEmitBridge]에 남긴다.
  *
- * Timer tasks never call the bridge directly. They enqueue a worker onto the caller-provided channel dispatcher, and
- * both the timer and that worker validate the same epoch/generation. Cancellation is therefore best-effort only; a
- * raced task becomes a no-op.
+ * 타이머는 브리지를 직접 호출하지 않고 채널 dispatcher에 작업을 넣는다. 타이머와 작업은 같은 epoch·generation을
+ * 확인하므로 취소와 경합한 작업도 실제 판단으로 이어지지 않는다.
  */
 internal class NiaTurnBoundaryCoordinator(
     private val enabled: Boolean,
@@ -61,6 +59,30 @@ internal class NiaTurnBoundaryCoordinator(
         require(maximumTrackedScopes > 0) { "maximumTrackedScopes must be positive" }
     }
 
+    /** 새 사람 메시지가 FIFO 처리되기 전에 기존 타이머가 먼저 판단하지 못하게 일시 정지한다. */
+    fun onMessageIngress(
+        routingId: Long,
+        generation: Long,
+    ): Boolean {
+        if (!enabled || routingId <= 0 || generation <= 0) return false
+        return synchronized(lock) {
+            if (closed) return@synchronized false
+            val state = scopes[routingId] ?: return@synchronized false
+            if (generation <= state.latestGeneration) return@synchronized false
+            val pending = state.pending ?: return@synchronized false
+            if (pending.ingressSuspended) return@synchronized true
+
+            pending.scheduledTask?.cancel()
+            state.pending =
+                pending.copy(
+                    epoch = newEpoch(),
+                    ingressSuspended = true,
+                    scheduledTask = null,
+                )
+            true
+        }
+    }
+
     fun onMessage(
         realSendAtIngress: Boolean,
         routingId: Long,
@@ -68,36 +90,36 @@ internal class NiaTurnBoundaryCoordinator(
         signal: ParticipationMessageSignal,
         callbacks: Callbacks,
     ): NiaTurnBoundaryAdmission {
-        if (!enabled || !realSendAtIngress) return NiaTurnBoundaryAdmission.BYPASS
+        if (!enabled) return NiaTurnBoundaryAdmission.BYPASS
+        if (!realSendAtIngress) {
+            cancel(routingId)
+            return NiaTurnBoundaryAdmission.BYPASS
+        }
         require(routingId > 0) { "routingId must be positive: $routingId" }
         require(generation > 0) { "generation must be positive: $generation" }
 
         val now = clock.instant()
+        val messageAt = messageTime(signal, now)
         val scheduled =
             synchronized(lock) {
                 if (closed) return NiaTurnBoundaryAdmission.FAIL_CLOSED
                 if (!ensureScopeCapacity(routingId)) return NiaTurnBoundaryAdmission.FAIL_CLOSED
                 val state = scopes.getOrPut(routingId) { ScopeState() }
-                state.recordMessageGap(now, policy.sampleLimit)
+                if (generation <= state.latestGeneration) return@synchronized null
+                state.latestGeneration = generation
+                val effectiveMessageAt =
+                    state.recordMessageGap(messageAt, policy.sampleLimit, policy.sampleHorizon)
                 val previous = state.pending
                 previous?.scheduledTask?.cancel()
-                val pending =
-                    PendingTurn(
-                        epoch = newEpoch(),
-                        generation = generation,
-                        firstMessageAt = previous?.firstMessageAt ?: now,
-                        lastMessageAt = now,
-                        typingUntil = previous?.typingUntil,
-                        signal = signal,
-                        callbacks = callbacks,
-                    )
+                val pending = mergePending(state, previous, generation, signal, callbacks, effectiveMessageAt)
                 state.pending = pending
-                ScheduledBoundary(routingId, pending, deadline(state, pending))
+                ScheduledBoundary(routingId, pending, pending.deadline)
             }
+                ?: return NiaTurnBoundaryAdmission.DEFERRED
         return if (schedule(scheduled)) NiaTurnBoundaryAdmission.DEFERRED else NiaTurnBoundaryAdmission.FAIL_CLOSED
     }
 
-    /** Edit/delete invalidation is fail-closed: a partially derived signal is never judged after its scene changed. */
+    /** 편집·삭제로 장면이 바뀌면 일부만 갱신된 신호를 판단하지 않고 닫는다. */
     fun cancel(routingId: Long): Boolean {
         if (routingId <= 0) return false
         val task =
@@ -117,40 +139,42 @@ internal class NiaTurnBoundaryCoordinator(
         userId: Long,
     ): Int = cancelMatching { it.signal.guildId == guildId && it.signal.userId == userId }
 
-    /**
-     * Extends an existing burst only. It does not create state, record a message gap, or alter the turn generation.
-     */
-    fun onTyping(routingId: Long): Boolean {
-        if (!enabled || routingId <= 0) return false
+    /** 현재 판단 대상 작성자의 기존 묶음만 연장한다. */
+    fun onTyping(
+        routingId: Long,
+        userId: Long,
+    ): Boolean {
+        if (!enabled || routingId <= 0 || userId <= 0) return false
         val now = clock.instant()
         val scheduled =
             synchronized(lock) {
                 if (closed) return false
                 val state = scopes[routingId] ?: return false
                 val pending = state.pending ?: return false
+                if (pending.ingressSuspended) return false
+                if (pending.signal.userId != userId) return false
                 val hardDeadline = policy.hardDeadline(pending.firstMessageAt)
                 if (!now.isBefore(hardDeadline)) return false
                 val typingUntil = policy.typingUntil(now, hardDeadline)
-                val currentDeadline = deadline(state, pending)
-                if (!typingUntil.isAfter(currentDeadline)) return false
+                if (!typingUntil.isAfter(pending.deadline)) return false
 
                 pending.scheduledTask?.cancel()
                 val extended =
                     pending.copy(
                         epoch = newEpoch(),
                         typingUntil = typingUntil,
+                        deadline = typingUntil,
                         scheduledTask = null,
                     )
                 state.pending = extended
-                ScheduledBoundary(routingId, extended, deadline(state, extended))
+                ScheduledBoundary(routingId, extended, extended.deadline)
             }
         return schedule(scheduled)
     }
 
     internal fun pendingDeadline(routingId: Long): Instant? =
         synchronized(lock) {
-            val state = scopes[routingId] ?: return@synchronized null
-            state.pending?.let { deadline(state, it) }
+            scopes[routingId]?.pending?.deadline
         }
 
     override fun close() {
@@ -270,16 +294,115 @@ internal class NiaTurnBoundaryCoordinator(
         return pending.size
     }
 
-    private fun deadline(
+    private fun mergePending(
         state: ScopeState,
-        pending: PendingTurn,
-    ): Instant =
-        policy.deadline(
-            firstMessageAt = pending.firstMessageAt,
-            lastMessageAt = pending.lastMessageAt,
-            recentGapMillis = state.recentGapMillis,
-            typingUntil = pending.typingUntil,
+        previous: PendingTurn?,
+        generation: Long,
+        incoming: ParticipationMessageSignal,
+        callbacks: Callbacks,
+        now: Instant,
+    ): PendingTurn {
+        if (previous == null) {
+            return newPending(
+                state = state,
+                generation = generation,
+                signal = incoming,
+                callbacks = callbacks,
+                firstMessageAt = now,
+                lastMessageAt = now,
+                typingUntil = null,
+                now = now,
+            )
+        }
+
+        val replacesTarget = shouldReplaceTarget(previous.signal, incoming)
+        if (!replacesTarget) {
+            return previous.copy(
+                epoch = newEpoch(),
+                generation = generation,
+                signal = previous.signal.copy(turnGeneration = generation),
+                ingressSuspended = false,
+                scheduledTask = null,
+            )
+        }
+
+        val sameAuthor = previous.signal.userId == incoming.userId
+        return newPending(
+            state = state,
+            generation = generation,
+            signal = inheritSameAuthorAddressing(previous.signal, incoming),
+            callbacks = callbacks,
+            firstMessageAt = previous.firstMessageAt,
+            lastMessageAt = now,
+            typingUntil = previous.typingUntil.takeIf { sameAuthor },
+            now = now,
         )
+    }
+
+    private fun newPending(
+        state: ScopeState,
+        generation: Long,
+        signal: ParticipationMessageSignal,
+        callbacks: Callbacks,
+        firstMessageAt: Instant,
+        lastMessageAt: Instant,
+        typingUntil: Instant?,
+        now: Instant,
+    ): PendingTurn {
+        val targetSignal =
+            signal.copy(turnGeneration = generation)
+        val deadline =
+            policy.deadline(
+                firstMessageAt = firstMessageAt,
+                lastMessageAt = lastMessageAt,
+                recentGapMillis = state.recentGapMillis(now, policy.sampleHorizon),
+                typingUntil = typingUntil,
+            )
+        return PendingTurn(
+            epoch = newEpoch(),
+            generation = generation,
+            firstMessageAt = firstMessageAt,
+            lastMessageAt = lastMessageAt,
+            typingUntil = typingUntil,
+            deadline = deadline,
+            signal = targetSignal,
+            callbacks = callbacks,
+            ingressSuspended = false,
+        )
+    }
+
+    private fun shouldReplaceTarget(
+        current: ParticipationMessageSignal,
+        incoming: ParticipationMessageSignal,
+    ): Boolean {
+        if (current.explicitlyAddressed && incoming.replyToHuman && !incoming.explicitlyAddressed) return false
+        return incoming.userId == current.userId ||
+            incoming.explicitlyAddressed ||
+            !current.explicitlyAddressed
+    }
+
+    private fun inheritSameAuthorAddressing(
+        current: ParticipationMessageSignal?,
+        incoming: ParticipationMessageSignal,
+    ): ParticipationMessageSignal {
+        if (current == null || current.userId != incoming.userId) return incoming
+        return incoming.copy(
+            mentioned = current.mentioned || incoming.mentioned,
+            replyToNia = current.replyToNia || incoming.replyToNia,
+            conversationMentionsNia = current.conversationMentionsNia || incoming.conversationMentionsNia,
+            nicknameCall = current.nicknameCall || incoming.nicknameCall,
+            directAddressPressure = maxOf(current.directAddressPressure, incoming.directAddressPressure),
+        )
+    }
+
+    private fun messageTime(
+        signal: ParticipationMessageSignal,
+        now: Instant,
+    ): Instant {
+        if (signal.tsMs <= 0) return now
+        val observedAt = Instant.ofEpochMilli(signal.tsMs)
+        return if (observedAt.isAfter(now)) now else observedAt
+    }
 
     private fun newEpoch(): Long = ++nextEpoch
 
@@ -316,22 +439,48 @@ internal class NiaTurnBoundaryCoordinator(
     }
 
     private class ScopeState {
+        var latestGeneration: Long = 0
         var lastMessageAt: Instant? = null
-        val recentGapMillis = ArrayDeque<Long>()
+        private val recentGaps = ArrayDeque<ObservedGap>()
         var pending: PendingTurn? = null
 
         fun recordMessageGap(
             now: Instant,
             sampleLimit: Int,
-        ) {
-            lastMessageAt?.let { previous ->
+            sampleHorizon: Duration,
+        ): Instant {
+            prune(now, sampleHorizon)
+            val previous = lastMessageAt
+            if (previous != null) {
+                if (now.isBefore(previous)) return previous
                 val gap = Duration.between(previous, now).toMillis()
-                if (gap >= 0) {
-                    recentGapMillis.addLast(gap)
-                    while (recentGapMillis.size > sampleLimit) recentGapMillis.removeFirst()
+                if (gap >= sampleHorizon.toMillis()) {
+                    recentGaps.clear()
+                } else {
+                    recentGaps.addLast(ObservedGap(now, gap))
+                    while (recentGaps.size > sampleLimit) recentGaps.removeFirst()
                 }
             }
             lastMessageAt = now
+            return now
+        }
+
+        fun recentGapMillis(
+            now: Instant,
+            sampleHorizon: Duration,
+        ): List<Long> {
+            prune(now, sampleHorizon)
+            return recentGaps.map(ObservedGap::millis)
+        }
+
+        private fun prune(
+            now: Instant,
+            sampleHorizon: Duration,
+        ) {
+            val cutoff = now.minus(sampleHorizon)
+            while (recentGaps.firstOrNull()?.observedAt?.isBefore(cutoff) == true) {
+                recentGaps.removeFirst()
+            }
         }
     }
 
@@ -341,9 +490,16 @@ internal class NiaTurnBoundaryCoordinator(
         val firstMessageAt: Instant,
         val lastMessageAt: Instant,
         val typingUntil: Instant?,
+        val deadline: Instant,
         val signal: ParticipationMessageSignal,
         val callbacks: Callbacks,
+        val ingressSuspended: Boolean,
         var scheduledTask: NiaTurnBoundaryScheduledTask? = null,
+    )
+
+    private data class ObservedGap(
+        val observedAt: Instant,
+        val millis: Long,
     )
 
     private data class ScheduledBoundary(
@@ -352,3 +508,6 @@ internal class NiaTurnBoundaryCoordinator(
         val deadline: Instant,
     )
 }
+
+private val ParticipationMessageSignal.explicitlyAddressed: Boolean
+    get() = mentioned || replyToNia

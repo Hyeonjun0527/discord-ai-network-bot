@@ -4,9 +4,9 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * 클라우드 모델 호출 timeout·retry budget(NEXA-P14-T014, adapter/outbound/routing 값 객체·불변).
+ * 클라우드 모델 호출 timeout budget(NEXA-P14-T014, adapter/outbound/routing 값 객체·불변).
  *
- * action 의 executeAfter 와 stale deadline 을 고려한 **짧은 timeout** 과 **제한 retry** 를 표현한다(폭주 방지).
+ * action 의 executeAfter 와 stale deadline 을 고려한 **짧은 timeout** 을 표현한다.
  * (타입 이름에 provider 식별자를 넣지 않는다 — speech 는 provider-neutral 이어야 하며 ArchUnit 가 강제한다.)
  *
  * **acceptance(T014) — 늦게 도착한 응답이 현재 contextVersion 에 전송되지 않는다**: [isStale] 가 호출 직전·응답
@@ -16,29 +16,17 @@ import java.time.Instant
 data class CloudCallBudget(
     /** 1회 호출 timeout(짧게 — 사람 응답 속도). */
     val perCallTimeout: Duration,
-    /** 최대 재시도 횟수(0 이면 재시도 없음). 폭주 방지로 작게. */
-    val maxRetries: Int,
     /** 이 시각 이후 도착한 응답은 stale 로 폐기한다(action executeAfter + 여유). */
     val deadline: Instant,
 ) {
     init {
         require(!perCallTimeout.isNegative && !perCallTimeout.isZero) { "perCallTimeout 은 양수여야 한다" }
-        require(maxRetries in 0..MAX_ALLOWED_RETRIES) {
-            "maxRetries 는 [0,$MAX_ALLOWED_RETRIES] 범위여야 한다: $maxRetries"
-        }
     }
 
     /** [now] 가 deadline 을 지났으면 stale(응답 폐기 대상). */
     fun isStale(now: Instant): Boolean = !now.isBefore(deadline)
 
-    /** 총 시도 횟수(첫 호출 + 재시도). */
-    val maxAttempts: Int
-        get() = maxRetries + 1
-
     companion object {
-        /** 재시도 상한(어떤 budget 도 이보다 많이 재시도하지 못한다 — 하드 cap). */
-        const val MAX_ALLOWED_RETRIES: Int = 2
-
         /**
          * [deadline] 까지의 짧은 기본 budget. timeout 은 남은 시간과 [defaultTimeout] 중 작은 값으로 둔다(deadline 을
          * 넘기는 timeout 금지).
@@ -47,7 +35,6 @@ data class CloudCallBudget(
             now: Instant,
             deadline: Instant,
             defaultTimeout: Duration = Duration.ofSeconds(8),
-            maxRetries: Int = 0,
         ): CloudCallBudget {
             val remaining = Duration.between(now, deadline)
             val timeout =
@@ -58,7 +45,6 @@ data class CloudCallBudget(
                 }
             return CloudCallBudget(
                 perCallTimeout = if (timeout.isZero || timeout.isNegative) defaultTimeout else timeout,
-                maxRetries = maxRetries.coerceIn(0, MAX_ALLOWED_RETRIES),
                 deadline = deadline,
             )
         }

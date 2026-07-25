@@ -152,7 +152,6 @@ class NexaLiveSpeechService(
                     subjectPseudonym = subject,
                     trigger = SpeechTrigger.SPEAK,
                     packet = packet,
-                    seed = scenario.seed + seq,
                     budget = budget,
                 )
             } catch (e: Exception) {

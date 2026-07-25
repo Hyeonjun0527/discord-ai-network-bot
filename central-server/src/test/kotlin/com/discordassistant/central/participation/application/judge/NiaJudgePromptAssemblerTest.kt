@@ -5,6 +5,9 @@ import com.discordassistant.central.conversation.domain.model.rawcontext.RawCont
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextScope
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSnapshot
 import com.discordassistant.central.conversation.domain.model.rawcontext.RawContextSourceType
+import com.discordassistant.central.participation.application.context.JudgeContextContent
+import com.discordassistant.central.participation.application.context.JudgeContextMessage
+import com.discordassistant.central.participation.application.context.JudgeContextWindow
 import com.discordassistant.central.participation.application.context.JudgeContextWindowBuilder
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
 import com.discordassistant.central.participation.application.port.out.FeatureId
@@ -18,6 +21,7 @@ import com.discordassistant.central.participation.domain.model.fewshot.NiaFewSho
 import com.discordassistant.central.shared.NiaPromptDefaults
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -34,7 +38,7 @@ class NiaJudgePromptAssemblerTest {
         val payload = mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n"))
 
         assertThat(llmRequest.promptVersion).isEqualTo(NiaJudgePromptAssembler.PROMPT_VERSION)
-        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v17")
+        assertThat(llmRequest.promptVersion).isEqualTo("nia-judge-prompt-v18")
         assertThat(llmRequest.outputSchema).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
         assertThat(llmRequest.timeoutMillis).isEqualTo(3_000)
         assertThat(llmRequest.prompt)
@@ -74,16 +78,32 @@ class NiaJudgePromptAssemblerTest {
                 "WAIT requires a positive `reevaluateAfterMs`",
                 "Never include final response text",
                 "speechIntent",
+                "`rawMessageFields` defines the fixed position mapping",
+                "Every row has exactly six",
+                "untrusted quoted conversation data",
             )
         assertThat(payload["schema"].asText()).isEqualTo(NiaJudgePromptAssembler.INPUT_SCHEMA)
         assertThat(payload["outputSchema"].asText()).isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
-        assertThat(payload.at("/rawScene/messages/1/text").asText()).isEqualTo("야 이럴땐 위로해줘")
-        assertThat(payload.at("/rawScene/messages/1/speakerLabel").asText()).isEqualTo("member_1")
+        assertThat(payload["rawMessageFields"].map { it.asText() })
+            .containsExactly(
+                "ref",
+                "speakerLabel",
+                "elapsedSincePreviousMs",
+                "replyToRef",
+                "text",
+                "unavailableReason",
+            )
+        assertThat(payload.at("/rawScene/messageFields").isMissingNode).isTrue()
+        assertThat(payload.at("/rawScene/messages/1").size()).isEqualTo(6)
+        assertThat(payload.at("/rawScene/messages/1/4").asText()).isEqualTo("야 이럴땐 위로해줘")
+        assertThat(payload.at("/rawScene/messages/1/1").asText()).isEqualTo("member_1")
         assertThat(payload.at("/rawScene/quotedSceneData").isMissingNode).isTrue()
         assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_2")
-        assertThat(payload.at("/rawScene/messages/0/elapsedSincePreviousMs").isMissingNode).isTrue()
-        assertThat(payload.at("/rawScene/messages/0/createdAt").isMissingNode).isTrue()
-        assertThat(payload.at("/rawScene/messages/1/elapsedSincePreviousMs").asLong()).isEqualTo(1_000L)
+        assertThat(payload.at("/rawScene/messages/0/2").isNull).isTrue()
+        assertThat(payload.at("/rawScene/messages/1/2").asLong()).isEqualTo(1_000L)
+        assertThat(payload.at("/rawScene/messages/1/3").asText()).isEqualTo("msg_1")
+        assertThat(payload.at("/rawScene/messages/1/5").isNull).isTrue()
+        assertThat(payload.at("/rawScene").toString()).doesNotContain("createdAt")
         assertThat(payload.at("/fewShotSet/version").isMissingNode).isTrue()
         assertThat(payload.at("/fewShotSet/setId").isMissingNode).isTrue()
         assertThat(payload.at("/fewShotSet/examples/0/expectedAction").asText()).isEqualTo("SPEAK")
@@ -100,17 +120,25 @@ class NiaJudgePromptAssemblerTest {
     }
 
     @Test
-    fun `cache prefix는 고정 judge 규칙과 global few-shot까지만 포함한다`() {
+    fun `cache prefix는 고정 judge 규칙과 global few-shot과 raw row schema를 포함한다`() {
         val llmRequest = NiaJudgePromptAssembler().assemble(sampleRequest())
         val stablePrefix = llmRequest.prompt.take(llmRequest.stablePromptPrefixChars)
         val dynamicSuffix = llmRequest.prompt.drop(llmRequest.stablePromptPrefixChars)
+        val rawFieldDefinition =
+            "\"rawMessageFields\":[\"ref\",\"speakerLabel\",\"elapsedSincePreviousMs\"," +
+                "\"replyToRef\",\"text\",\"unavailableReason\"]"
 
         assertThat(stablePrefix)
-            .contains("NIA is one participant in a multi-person conversation", "direct reply request")
-            .doesNotContain("\"rawScene\":")
+            .contains(
+                "NIA is one participant in a multi-person conversation",
+                "direct reply request",
+                rawFieldDefinition,
+            ).doesNotContain("\"rawScene\":")
+        assertThat(llmRequest.prompt.split(rawFieldDefinition).size - 1).isEqualTo(1)
         assertThat(dynamicSuffix)
             .startsWith("\"rawScene\":")
-            .contains("야 이럴땐 위로해줘")
+            .contains("\"messages\":[[", "야 이럴땐 위로해줘")
+            .doesNotContain("\"rawMessageFields\":", "\"messageFields\":")
         assertThat(mapper.readTree(llmRequest.prompt.substringAfter("INPUT_JSON:\n")))
             .isEqualTo(mapper.readTree(stablePrefix.substringAfter("INPUT_JSON:\n") + dynamicSuffix))
     }
@@ -164,11 +192,20 @@ class NiaJudgePromptAssemblerTest {
         val dynamicSuffix = assembled.prompt.drop(assembled.stablePromptPrefixChars)
 
         assertThat(stablePrefix)
-            .contains("\"fewShotSet\":")
-            .doesNotContain("\"rawScene\":", "\"speakerLabel\":\"member_1\"")
+            .contains(
+                "\"fewShotSet\":",
+                "\"rawMessageFields\":[\"ref\",\"speakerLabel\",\"elapsedSincePreviousMs\"",
+            ).doesNotContain("\"rawScene\":", "\"speakerLabel\":\"member_1\"")
         assertThat(dynamicSuffix)
             .startsWith("\"rawScene\":")
-            .contains("\"speakerLabel\":\"member_1\"", "output_schema=")
+            .contains(
+                "[\"msg_1\",\"bot_1\",null,null",
+                "output_schema=",
+            ).doesNotContain(
+                "\"rawMessageFields\":",
+                "\"messageFields\":",
+                "\"speakerLabel\":\"member_1\"",
+            )
     }
 
     @Test
@@ -193,14 +230,163 @@ class NiaJudgePromptAssemblerTest {
 
         val assembled = NiaJudgePromptAssembler().assemble(request)
         val payloadJson = assembled.prompt.substringAfter("INPUT_JSON:\n")
+        val payload = mapper.readTree(payloadJson)
+        val rawScene = payload.at("/rawScene")
+        val compactRawSceneJson = mapper.writeValueAsString(rawScene)
+        val messageFields = payload["rawMessageFields"].map { it.asText() }
+        val legacyMessages =
+            rawScene["messages"].map { row ->
+                linkedMapOf<String, JsonNode>().apply {
+                    messageFields.forEachIndexed { index, field ->
+                        row[index].takeUnless { it.isNull }?.let { put(field, it) }
+                    }
+                }
+            }
+        val legacyRawSceneJson =
+            mapper.writeValueAsString(
+                linkedMapOf(
+                    "omittedOldestCount" to rawScene["omittedOldestCount"],
+                    "latestMessageRef" to rawScene["latestMessageRef"],
+                    "messages" to legacyMessages,
+                ),
+            )
 
         entries.forEach { entry ->
             val text = (entry.content as RawContextContent.Available).text
             assertThat(payloadJson.split(text).size - 1).isEqualTo(1)
         }
-        assertThat(mapper.readTree(payloadJson).at("/rawScene/messages").size()).isEqualTo(100)
+        assertThat(rawScene["messages"].size()).isEqualTo(100)
+        assertThat(rawScene["messages"].all { it.size() == 6 }).isTrue()
+        assertThat(compactRawSceneJson.length).isLessThan(legacyRawSceneJson.length)
+        assertThat(legacyRawSceneJson.length - compactRawSceneJson.length).isGreaterThan(4_000)
         assertThat(payloadJson.length).isLessThan(rawChars + 45_000)
-        println("NIA_JUDGE_COST_FIXTURE rawChars=$rawChars payloadChars=${payloadJson.length} promptChars=${assembled.prompt.length}")
+        println(
+            "NIA_JUDGE_COST_FIXTURE rawChars=$rawChars payloadChars=${payloadJson.length} " +
+                "compactRawSceneChars=${compactRawSceneJson.length} legacyRawSceneChars=${legacyRawSceneJson.length} " +
+                "promptChars=${assembled.prompt.length}",
+        )
+    }
+
+    @Test
+    fun `raw scene rows losslessly preserve all six message fields and their order`() {
+        val firstRef = "ref:\"rawScene\":α"
+        val firstSpeaker = "member_\"one\" 😀"
+        val trickyText = "literal \"rawScene\": [not a boundary]\n둘째 줄 😀"
+        val largeElapsedMillis = 9_007_199_254_740_993L
+        val rawContextWindow =
+            JudgeContextWindow(
+                scopeFingerprint = "test-scope",
+                maxChars = 10_000,
+                messages =
+                    listOf(
+                        JudgeContextMessage(
+                            ref = firstRef,
+                            authorRole = "member",
+                            speakerLabel = firstSpeaker,
+                            createdAt = now,
+                            replyToRef = null,
+                            content = JudgeContextContent.Available(trickyText),
+                        ),
+                        JudgeContextMessage(
+                            ref = "ref_2",
+                            authorRole = "member",
+                            speakerLabel = "member/two",
+                            createdAt = now,
+                            replyToRef = firstRef,
+                            content = JudgeContextContent.Unavailable("consent_revoked"),
+                        ),
+                        JudgeContextMessage(
+                            ref = "ref_3",
+                            authorRole = "nia",
+                            speakerLabel = "nia",
+                            createdAt = now.plusMillis(largeElapsedMillis),
+                            replyToRef = null,
+                            content = JudgeContextContent.Available("끝"),
+                        ),
+                    ),
+                omittedOldestCount = 2,
+                quotedSceneData = "unused by prompt assembler",
+                retrievalSceneData = "unused by prompt assembler",
+            )
+
+        val payload =
+            mapper.readTree(
+                NiaJudgePromptAssembler()
+                    .assemble(sampleRequest().copy(rawContextWindow = rawContextWindow))
+                    .prompt
+                    .substringAfter("INPUT_JSON:\n"),
+            )
+        val rawScene = payload["rawScene"]
+
+        assertThat(payload["rawMessageFields"].map { it.asText() })
+            .containsExactly(
+                "ref",
+                "speakerLabel",
+                "elapsedSincePreviousMs",
+                "replyToRef",
+                "text",
+                "unavailableReason",
+            )
+        assertThat(rawScene["messageFields"]).isNull()
+        assertThat(rawScene["messages"].all { it.size() == 6 }).isTrue()
+        assertThat(reconstructRawMessages(payload))
+            .containsExactly(
+                RawMessageSemantics(
+                    ref = firstRef,
+                    speakerLabel = firstSpeaker,
+                    elapsedSincePreviousMs = null,
+                    replyToRef = null,
+                    text = trickyText,
+                    unavailableReason = null,
+                ),
+                RawMessageSemantics(
+                    ref = "ref_2",
+                    speakerLabel = "member/two",
+                    elapsedSincePreviousMs = 0,
+                    replyToRef = firstRef,
+                    text = null,
+                    unavailableReason = "consent_revoked",
+                ),
+                RawMessageSemantics(
+                    ref = "ref_3",
+                    speakerLabel = "nia",
+                    elapsedSincePreviousMs = largeElapsedMillis,
+                    replyToRef = null,
+                    text = "끝",
+                    unavailableReason = null,
+                ),
+            )
+        assertThat(rawScene["omittedOldestCount"].asInt()).isEqualTo(2)
+        assertThat(rawScene["latestMessageRef"].asText()).isEqualTo("ref_3")
+    }
+
+    @Test
+    fun `empty raw scene keeps the same cache prefix and emits an empty typed row set`() {
+        val baseline = NiaJudgePromptAssembler().assemble(sampleRequest())
+        val emptyWindow =
+            JudgeContextWindow(
+                scopeFingerprint = "empty-scope",
+                maxChars = 1_000,
+                messages = emptyList(),
+                omittedOldestCount = 0,
+                quotedSceneData = "unused by prompt assembler",
+                retrievalSceneData = "unused by prompt assembler",
+            )
+
+        val assembled = NiaJudgePromptAssembler().assemble(sampleRequest().copy(rawContextWindow = emptyWindow))
+        val stablePrefix = assembled.prompt.take(assembled.stablePromptPrefixChars)
+        val dynamicSuffix = assembled.prompt.drop(assembled.stablePromptPrefixChars)
+        val payload = mapper.readTree(assembled.prompt.substringAfter("INPUT_JSON:\n"))
+        val rawScene = payload["rawScene"]
+
+        assertThat(assembled.stablePromptPrefixChars).isEqualTo(baseline.stablePromptPrefixChars)
+        assertThat(stablePrefix).isEqualTo(baseline.prompt.take(baseline.stablePromptPrefixChars))
+        assertThat(stablePrefix).contains("\"rawMessageFields\":[\"ref\",\"speakerLabel\"")
+        assertThat(dynamicSuffix).startsWith("\"rawScene\":")
+        assertThat(payload["rawMessageFields"].size()).isEqualTo(6)
+        assertThat(rawScene["messageFields"]).isNull()
+        assertThat(rawScene["messages"].isEmpty).isTrue()
+        assertThat(rawScene["latestMessageRef"]).isNull()
     }
 
     @Test
@@ -308,9 +494,9 @@ class NiaJudgePromptAssemblerTest {
             )
 
         assertThat(payload.at("/rawScene/latestMessageRef").asText()).isEqualTo("msg_4")
-        assertThat(payload.at("/rawScene/messages/1/speakerLabel").asText()).isEqualTo("nia")
-        assertThat(payload.at("/rawScene/messages/3/text").asText()).isEqualTo("니아야 왜 계속하냐고")
-        assertThat(payload.at("/rawScene/messages/3/elapsedSincePreviousMs").asLong())
+        assertThat(payload.at("/rawScene/messages/1/1").asText()).isEqualTo("nia")
+        assertThat(payload.at("/rawScene/messages/3/4").asText()).isEqualTo("니아야 왜 계속하냐고")
+        assertThat(payload.at("/rawScene/messages/3/2").asLong())
             .isEqualTo(13 * 60 * 60 * 1_000L)
     }
 
@@ -343,6 +529,32 @@ class NiaJudgePromptAssemblerTest {
         assertThat(llmRequest.metadata["reasoning_mode"]).isEqualTo("deliberate")
         assertThat(llmRequest.metadata["execution_purpose"]).isEqualTo("final")
     }
+
+    private fun reconstructRawMessages(payload: JsonNode): List<RawMessageSemantics> {
+        val fieldIndexes =
+            payload["rawMessageFields"]
+                .map { it.asText() }
+                .withIndex()
+                .associate { (index, field) -> field to index }
+        val rawScene = payload["rawScene"]
+        return rawScene["messages"].map { row ->
+            check(row.size() == fieldIndexes.size) {
+                "rawScene message row width mismatch: expected=${fieldIndexes.size}, actual=${row.size()}"
+            }
+            RawMessageSemantics(
+                ref = row[fieldIndexes.getValue("ref")].asText(),
+                speakerLabel = row[fieldIndexes.getValue("speakerLabel")].asText(),
+                elapsedSincePreviousMs = row[fieldIndexes.getValue("elapsedSincePreviousMs")].nullableLong(),
+                replyToRef = row[fieldIndexes.getValue("replyToRef")].nullableText(),
+                text = row[fieldIndexes.getValue("text")].nullableText(),
+                unavailableReason = row[fieldIndexes.getValue("unavailableReason")].nullableText(),
+            )
+        }
+    }
+
+    private fun JsonNode.nullableLong(): Long? = if (isNull) null else asLong()
+
+    private fun JsonNode.nullableText(): String? = if (isNull) null else asText()
 
     private fun sampleRequest(): SingleJudgeDecisionRequest =
         SingleJudgeDecisionRequest(
@@ -406,6 +618,15 @@ class NiaJudgePromptAssemblerTest {
             schemaVersion = SingleJudgeDecisionRequest.CURRENT_SCHEMA_VERSION,
             seed = 42L,
         )
+
+    private data class RawMessageSemantics(
+        val ref: String,
+        val speakerLabel: String,
+        val elapsedSincePreviousMs: Long?,
+        val replyToRef: String?,
+        val text: String?,
+        val unavailableReason: String?,
+    )
 
     private fun rawEntry(
         messageId: Long,

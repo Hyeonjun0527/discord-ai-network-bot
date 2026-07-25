@@ -2,6 +2,7 @@
 
 - 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0017](./0017-nia-closed-loop-social-policy.md))
 - 날짜(Date): 2026-06-30
+- 최신 개정(Amended): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527
 - 관련: [ADR 0007 사회적 행위자 모델](./0007-nexa-social-member-context.md),
   [ADR 0010 ainetwork · socialmemory 경계](./0010-ainetwork-socialmemory-boundary.md),
@@ -55,6 +56,14 @@ raw conversation window
 10. 모든 non-IGNORE 결정은 raw message refs, few-shot version, judge prompt version, reason을 남긴다.
 11. judge는 `SPEAK`와 함께 `bubbleCount=1..4`를 정한다. 일상 대화는 한 bubble, 이야기·농담처럼 전개가 필요한
     응답은 여러 bubble로 생성하고 actionruntime이 각 bubble을 별도 Discord 메시지로 전송한다.
+12. Judge 입력의 raw scene은 메시지마다 같은 JSON key를 반복하지 않는다. `rawMessageFields`가 선언한 고정폭
+    row로 직렬화하되 ref, 화자 label, 이전 메시지와의 간격, reply ref, text, unavailable reason의 값과
+    순서를 하나도 버리지 않는다. 입력 schema와 prompt version을 올려 이전 cache namespace와 분리한다.
+13. CANARY/LIVE social message는 Judge 호출 전에 channel/thread별 turn boundary를 지난다. quiet window는
+    최근 메시지 간격의 median을 2~7초로 제한해 적응시키고, 열린 boundary의 inbound typing은 최대 4초
+    연장할 수 있다. 최초 메시지 기준 30초 hard deadline은 계속되는 메시지나 typing이 판단을 무한히
+    미루지 못하게 한다. 모든 메시지는 즉시 raw context와 generation에 반영하며, boundary가 닫힐 때
+    최신 signal 하나만 Judge로 보낸다.
 
 ## 비-목표 (Non-Goals)
 
@@ -93,6 +102,8 @@ few-shot을 admin-managed SSOT로 두는 이유는 NIA의 말투와 판단 감�
 ## 되돌림 (Rollback)
 
 - judge mode를 `shadow` 또는 `off`로 낮춘다.
+- `NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED=false`로 메시지별 기존 Judge 진입 경로를 복구한다.
+- `NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED=false`로 prompt-only JSON 응답 계약을 복구한다.
 - active few-shot version을 이전 버전으로 rollback한다.
 - raw-window 저장은 retention/redaction 정책에 따라 유지하되, judge 입력 사용을 feature flag로 끈다.
 - production Discord LIVE 범위는 target guild/channel 단위로 축소한다.

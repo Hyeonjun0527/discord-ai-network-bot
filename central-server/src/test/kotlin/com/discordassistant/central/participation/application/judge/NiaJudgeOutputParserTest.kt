@@ -118,6 +118,92 @@ class NiaJudgeOutputParserTest {
     }
 
     @Test
+    fun `explicit null matches missing for optional root fields`() {
+        val nullable =
+            mutableOutput("IGNORE").also { root ->
+                listOf(
+                    "reasonCode",
+                    "evidenceRefs",
+                    "reactionCode",
+                    "speechIntent",
+                    "toneAxes",
+                    "riskFlags",
+                    "reevaluateAfterMs",
+                    "beliefUpdates",
+                ).forEach { root[it] = null }
+            }
+
+        val parsed = parser.parse(mapper.writeValueAsString(nullable)).accepted()
+
+        assertThat(parsed.evidenceRefs).isEmpty()
+        assertThat(parsed.riskFlags).isEmpty()
+        assertThat(parsed.reevaluateAfterMs).isZero()
+        assertThat(parsed.decision.reasonCode.code).isEqualTo("judge.ignore")
+        assertThat(parsed.decision.toneAxes).isEqualTo(JudgeToneAxes.NEUTRAL)
+        assertThat(parsed.decision.beliefDelta).isEqualTo(JudgeBeliefDelta.EMPTY)
+    }
+
+    @Test
+    fun `explicit null matches missing for optional nested fields`() {
+        val nullable =
+            mutableOutput("SPEAK").also { root ->
+                @Suppress("UNCHECKED_CAST")
+                val speechIntent = root["speechIntent"] as MutableMap<String, Any?>
+                listOf(
+                    "actHint",
+                    "bubbleCount",
+                    "maxBubbleChars",
+                    "interactionReading",
+                    "informationDepth",
+                    "continuityRefs",
+                ).forEach { speechIntent[it] = null }
+                root["toneAxes"] =
+                    mapOf(
+                        "warmth" to null,
+                        "playfulness" to null,
+                        "directness" to null,
+                        "emotionalIntensity" to null,
+                    )
+                root["beliefUpdates"] =
+                    mapOf(
+                        "commonGround" to null,
+                        "intentHypotheses" to null,
+                        "commitments" to null,
+                    )
+            }
+
+        val parsed = parser.parse(mapper.writeValueAsString(nullable)).accepted()
+        val speechIntent = parsed.decision.speechIntent!!
+
+        assertThat(speechIntent.actHint).isNull()
+        assertThat(speechIntent.bubbleCount).isEqualTo(JudgeSpeechIntent.MIN_BUBBLE_COUNT)
+        assertThat(speechIntent.maxBubbleChars).isEqualTo(JudgeSpeechIntent.DEFAULT_MAX_BUBBLE_CHARS)
+        assertThat(speechIntent.interactionReading).isEqualTo(speechIntent.intentSummary)
+        assertThat(speechIntent.informationDepth).isEqualTo(speechIntent.sceneDirection)
+        assertThat(speechIntent.continuityRefs).isEmpty()
+        assertThat(parsed.decision.toneAxes).isEqualTo(JudgeToneAxes.NEUTRAL)
+        assertThat(parsed.decision.beliefDelta).isEqualTo(JudgeBeliefDelta.EMPTY)
+    }
+
+    @Test
+    fun `explicit null remains invalid for required fields`() {
+        val missingReason =
+            mutableOutput("IGNORE").also { root ->
+                root["reason"] = null
+            }
+        val missingResponseTarget =
+            mutableOutput("SPEAK").also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>)["responseTargetRef"] = null
+            }
+
+        assertThat(parser.parse(mapper.writeValueAsString(missingReason)))
+            .isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat(parser.parse(mapper.writeValueAsString(missingResponseTarget)))
+            .isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+    }
+
+    @Test
     fun `parser accepts fenced provider json and normalizes uppercase reason code`() {
         val fenced =
             """
@@ -262,6 +348,10 @@ class NiaJudgeOutputParserTest {
         base.putAll(extra)
         return mapper.writeValueAsString(base)
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun mutableOutput(action: String): MutableMap<String, Any?> =
+        mapper.readValue(output(action), MutableMap::class.java) as MutableMap<String, Any?>
 
     private fun NiaJudgeOutputParseResult.accepted(): NiaJudgeParsedDecision {
         assertThat(this).isInstanceOf(NiaJudgeOutputParseResult.Accepted::class.java)

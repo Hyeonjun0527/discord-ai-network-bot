@@ -63,7 +63,7 @@ class NiaFewShotAdminControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"redactRawText":true}"""),
             ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.schema").value("nia.participation-judge-input.v3"))
+            .andExpect(jsonPath("$.schema").value("nia.participation-judge-input.v4"))
             .andExpect(jsonPath("$.fewShotSet.examples[0].rawMessages[0].text").value("[redacted]"))
             .andExpect(jsonPath("$.fewShotSet.examples[10].expectedReevaluateAfterMs").value(1_500))
             .andExpect(jsonPath("$.fewShotSet.examples[19].expectedReactionCode").value("eyes"))

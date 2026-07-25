@@ -9,6 +9,7 @@ import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonValue
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Duration
@@ -91,6 +92,7 @@ class NiaJudgePromptAssembler(
         JudgePromptPayload(
             schema = INPUT_SCHEMA,
             outputSchema = NiaJudgeLlmRequest.OUTPUT_SCHEMA,
+            rawMessageFields = RAW_MESSAGE_FIELDS,
             rawScene =
                 PromptRawScene(
                     omittedOldestCount = rawContextWindow.omittedOldestCount,
@@ -237,9 +239,18 @@ class NiaJudgePromptAssembler(
 
     companion object {
         const val EXECUTION_PURPOSE_METADATA_KEY: String = "execution_purpose"
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v17"
-        const val INPUT_SCHEMA: String = "nia.participation-judge-input.v3"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v18"
+        const val INPUT_SCHEMA: String = "nia.participation-judge-input.v4"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
+        private val RAW_MESSAGE_FIELDS: List<String> =
+            listOf(
+                "ref",
+                "speakerLabel",
+                "elapsedSincePreviousMs",
+                "replyToRef",
+                "text",
+                "unavailableReason",
+            )
         private const val RAW_SCENE_FIELD: String = "\"rawScene\":"
     }
 
@@ -253,6 +264,7 @@ private data class JudgePromptPayload(
     val schema: String,
     val outputSchema: String,
     val fewShotSet: PromptFewShotSet,
+    val rawMessageFields: List<String>,
     val rawScene: PromptRawScene,
     val conversationRag: PromptConversationRag,
     val socialMemory: List<PromptMemoryRef>,
@@ -283,7 +295,18 @@ private data class PromptRawMessage(
     val replyToRef: String?,
     val text: String?,
     val unavailableReason: String?,
-)
+) {
+    @JsonValue
+    fun asFixedWidthRow(): List<Any?> =
+        listOf(
+            ref,
+            speakerLabel,
+            elapsedSincePreviousMs,
+            replyToRef,
+            text,
+            unavailableReason,
+        )
+}
 
 private data class PromptFewShotSet(
     val examples: List<PromptFewShotExample>,

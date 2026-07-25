@@ -205,9 +205,10 @@ class NexaParticipationEmitBridge(
         )
 
     /**
-     * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예). emit 경로가
-     * 메시지마다 동기 평가하므로 능동 타이머 없이 이 상태로 타이밍(pingpong wake·min_gap debounce·dynamic_idle)을 낸다.
-     * 채널 수만큼만 자라는 경량 상태(가변 var 필드). 동시성: ConcurrentHashMap + 채널 상태 단위 동기화로 보호한다.
+     * 채널별 [ChannelAttentionGate.ChannelAttentionState] (pingpong 앵커·recent_gaps median·typing 유예).
+     * 이 내부 gate는 능동 타이머를 만들지 않는다. Discord FINAL 진입 전 burst timer는
+     * [NiaTurnBoundaryCoordinator]가 별도로 소유한다. 채널 수만큼만 자라는 경량 상태이며
+     * ConcurrentHashMap과 채널 상태 단위 동기화로 보호한다.
      */
     private val attentionStates =
         java.util.concurrent.ConcurrentHashMap<String, ChannelAttentionGate.ChannelAttentionState>()

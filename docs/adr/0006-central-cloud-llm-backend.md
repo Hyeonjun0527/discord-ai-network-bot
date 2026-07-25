@@ -2,7 +2,7 @@
 
 - 상태(Status): 채택됨 (Accepted)
 - 최초 결정(Date): 2026-06-19
-- 최신 개정(Amended): 2026-07-18
+- 최신 개정(Amended): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527
 - 관련: [ADR 0002 리버스 터널 에이전트](./0002-remote-agent-byollm.md),
   [ADR 0003 커뮤니티 로컬 AI Provider Pool](./0003-community-provider-pool.md)
@@ -51,6 +51,16 @@ Discord `/질문`과 NIA의 판단·발화는 Provider Pool 가용성과 별개�
 
 Luna 경로에는 `temperature`를 보내지 않는다. 발화 다양성은 최근 장면, 관리형 few-shot, 완전 행동 후보와
 사후 평가에서 만들며, 지원이 불명확한 샘플링 파라미터에 의존하지 않는다.
+
+NIA participation judge는 `NEXA_PARTICIPATION_JUDGE_STRUCTURED_OUTPUT_ENABLED=true`일 때
+provider-neutral JSON Schema 계약을 OpenAI `text.format`의 strict Structured Outputs로 변환한다.
+JSON Schema는 정적 타입·enum과 unknown field 차단만 소유하며, 숫자 범위, 현재 장면의 allowed action,
+최신 evidence ref, action별 필수 의미는 기존 parser와 decision guard가 계속 검증한다.
+
+Responses envelope가 `incomplete`이거나 `refusal` content를 포함하면 부분 text가 JSON처럼 보여도
+결정으로 수용하거나 unstructured 요청으로 자동 재호출하지 않는다. provider failure로 fail-closed하고,
+refusal 원문은 로그에 남기지 않는다. 운영 호환 문제가 있으면 위 flag만 내려 기존 prompt-only JSON
+경로로 되돌린다.
 
 ### Provider Agent의 외부 텍스트 LLM 제거
 

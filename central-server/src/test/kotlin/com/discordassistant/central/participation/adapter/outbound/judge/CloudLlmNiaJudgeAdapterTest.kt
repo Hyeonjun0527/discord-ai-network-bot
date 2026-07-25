@@ -1,6 +1,7 @@
 package com.discordassistant.central.participation.adapter.outbound.judge
 
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
+import com.discordassistant.central.participation.application.port.out.NiaJudgeOutputContract
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
 import com.discordassistant.central.routing.application.CloudLlmPurpose
@@ -14,6 +15,7 @@ import com.discordassistant.central.routing.application.ImageReview
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import java.time.Duration
 
 class CloudLlmNiaJudgeAdapterTest {
@@ -31,6 +33,7 @@ class CloudLlmNiaJudgeAdapterTest {
         assertThat(cloudLlm.thinking).isEqualTo(CloudThinking.DISABLED)
         assertThat(cloudLlm.options!!.purpose).isEqualTo(CloudLlmPurpose.NIA_JUDGE)
         assertThat(cloudLlm.options!!.maxOutputTokens).isEqualTo(2_048)
+        assertThat(cloudLlm.options!!.jsonSchema).isNull()
         assertThat(cloudLlm.options!!.cachePolicy!!.stablePrefixChars).isEqualTo(request.stablePromptPrefixChars)
         assertThat(cloudLlm.options!!.requestTimeout).isEqualTo(Duration.ofMillis(750))
         assertThat(cloudLlm.options!!.maxRetries).isZero()
@@ -82,6 +85,98 @@ class CloudLlmNiaJudgeAdapterTest {
     }
 
     @Test
+    fun `Spring property가 structured output flag를 주입하고 기본값은 false다`() {
+        val enabledCloudLlm = RecordingCloudLlm()
+        contextRunner(enabledCloudLlm)
+            .withPropertyValues("central.nexa.participation.judge.structured-output-enabled=true")
+            .run { context ->
+                assertThat(context.startupFailure).isNull()
+                context.getBean(CloudLlmNiaJudgeAdapter::class.java).complete(request())
+                assertThat(enabledCloudLlm.options!!.jsonSchema).isNotNull()
+            }
+
+        val defaultCloudLlm = RecordingCloudLlm()
+        contextRunner(defaultCloudLlm).run { context ->
+            assertThat(context.startupFailure).isNull()
+            context.getBean(CloudLlmNiaJudgeAdapter::class.java).complete(request())
+            assertThat(defaultCloudLlm.options!!.jsonSchema).isNull()
+        }
+    }
+
+    @Test
+    fun `structured output flag는 모든 judge 목적에 동일한 계약을 적용한다`() {
+        val cloudLlm = RecordingCloudLlm()
+        val adapter =
+            CloudLlmNiaJudgeAdapter(
+                cloudLlm = cloudLlm,
+                model = "gpt-5.6-luna",
+                structuredOutputEnabled = true,
+            )
+        val cases =
+            mapOf(
+                emptyMap<String, String>() to CloudLlmPurpose.NIA_JUDGE,
+                mapOf("execution_purpose" to "shadow") to CloudLlmPurpose.NIA_SHADOW_JUDGE,
+                mapOf("repair_attempt" to "true") to CloudLlmPurpose.NIA_JUDGE_REPAIR,
+                mapOf(
+                    "execution_purpose" to "shadow",
+                    "repair_attempt" to "true",
+                ) to CloudLlmPurpose.NIA_SHADOW_JUDGE_REPAIR,
+            )
+
+        cases.forEach { (metadata, purpose) ->
+            adapter.complete(request().copy(metadata = metadata))
+
+            assertThat(cloudLlm.options!!.purpose).isEqualTo(purpose)
+            assertThat(cloudLlm.options!!.jsonSchema!!.name).isEqualTo(NiaJudgeOutputContract.FORMAT_NAME)
+            assertThat(cloudLlm.options!!.jsonSchema!!.schemaJson).isEqualTo(NiaJudgeOutputContract.JSON_SCHEMA)
+        }
+    }
+
+    @Test
+    fun `structured output flag가 꺼지면 모든 judge 목적에서 계약을 보내지 않는다`() {
+        val cloudLlm = RecordingCloudLlm()
+        val adapter =
+            CloudLlmNiaJudgeAdapter(
+                cloudLlm = cloudLlm,
+                model = "gpt-5.6-luna",
+                structuredOutputEnabled = false,
+            )
+        val metadataByPurpose =
+            listOf(
+                emptyMap(),
+                mapOf("execution_purpose" to "shadow"),
+                mapOf("repair_attempt" to "true"),
+                mapOf("execution_purpose" to "shadow", "repair_attempt" to "true"),
+            )
+
+        metadataByPurpose.forEach { metadata ->
+            adapter.complete(request().copy(metadata = metadata))
+
+            assertThat(cloudLlm.options!!.jsonSchema).isNull()
+        }
+    }
+
+    @Test
+    fun `structured output provider 실패는 비구조화 요청으로 재시도하지 않는다`() {
+        val cloudLlm =
+            RecordingCloudLlm {
+                throw CloudLlmException("structured output failed")
+            }
+        val adapter =
+            CloudLlmNiaJudgeAdapter(
+                cloudLlm = cloudLlm,
+                structuredOutputEnabled = true,
+            )
+
+        assertThatThrownBy { adapter.complete(request()) }
+            .isInstanceOf(CloudLlmException::class.java)
+            .hasMessage("structured output failed")
+        assertThat(cloudLlm.calls).isEqualTo(1)
+        assertThat(cloudLlm.options!!.jsonSchema).isNotNull()
+        assertThat(cloudLlm.options!!.maxRetries).isZero()
+    }
+
+    @Test
     fun `request timeout cancels slow cloud call`() {
         val cloudLlm =
             RecordingCloudLlm {
@@ -103,6 +198,11 @@ class CloudLlmNiaJudgeAdapterTest {
             timeoutMillis = timeoutMillis,
             stablePromptPrefixChars = "fixed judge rules\n".length,
         )
+
+    private fun contextRunner(cloudLlm: CloudLlm): ApplicationContextRunner =
+        ApplicationContextRunner()
+            .withBean(CloudLlm::class.java, { cloudLlm })
+            .withBean(CloudLlmNiaJudgeAdapter::class.java)
 
     private class RecordingCloudLlm(
         private val enabled: Boolean = true,

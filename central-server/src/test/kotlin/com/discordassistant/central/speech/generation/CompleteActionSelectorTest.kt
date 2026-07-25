@@ -118,14 +118,16 @@ class CompleteActionSelectorTest {
     }
 
     @Test
-    fun `REQUIRED 응답의 서로 다른 후보 둘은 평가기를 정확히 한 번 호출한다`() {
+    fun `REQUIRED 다중 SEND도 우회 플래그가 꺼져 있으면 평가기를 호출한다`() {
         var evaluationCalls = 0
         val selector =
             CompleteActionSelector(
-                CompleteActionEvaluationPort {
-                    evaluationCalls++
-                    CompleteActionEvaluation("send_2", "장면에 더 자연스럽다", "BEST_COMPLETE_ACTION", 0.9)
-                },
+                evaluator =
+                    CompleteActionEvaluationPort {
+                        evaluationCalls++
+                        CompleteActionEvaluation("send_2", "장면에 더 자연스럽다", "BEST_COMPLETE_ACTION", 0.9)
+                    },
+                requiredBypassEnabled = false,
             )
         val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
 
@@ -140,6 +142,95 @@ class CompleteActionSelectorTest {
 
         assertThat(evaluationCalls).isEqualTo(1)
         assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("send_2")
+    }
+
+    @Test
+    fun `REQUIRED 다중 SEND는 우회 플래그와 임계 신뢰도를 만족하면 가장 확실한 후보를 고른다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                evaluator =
+                    CompleteActionEvaluationPort {
+                        evaluationCalls++
+                        error("신뢰도 높은 REQUIRED 후보를 다시 평가하면 안 된다")
+                    },
+                requiredBypassEnabled = true,
+                requiredBypassMinConfidence = 0.90,
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected =
+            selector.select(
+                speechCandidates =
+                    listOf(
+                        SpeechCandidate("uncertain", listOf("아마 그럴 거야"), uncertainty = 0.7),
+                        SpeechCandidate("certain", listOf("응 그게 맞아"), uncertainty = 0.1),
+                    ),
+                packet = required,
+                provisionalConfidence = 0.90,
+            )
+
+        assertThat(evaluationCalls).isZero()
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("certain")
+    }
+
+    @Test
+    fun `REQUIRED 다중 SEND라도 잠정 신뢰도가 임계값보다 낮으면 평가기를 호출한다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                evaluator =
+                    CompleteActionEvaluationPort {
+                        evaluationCalls++
+                        CompleteActionEvaluation("evaluated", "문맥상 더 낫다", "BEST_COMPLETE_ACTION", 0.9)
+                    },
+                requiredBypassEnabled = true,
+                requiredBypassMinConfidence = 0.95,
+            )
+        val required = packet.copy(responseObligation = SpeechResponseObligation.REQUIRED)
+
+        val selected =
+            selector.select(
+                speechCandidates =
+                    listOf(
+                        SpeechCandidate("fallback", listOf("확실한 후보"), uncertainty = 0.1),
+                        SpeechCandidate("evaluated", listOf("평가기가 고를 후보"), uncertainty = 0.7),
+                    ),
+                packet = required,
+                provisionalConfidence = 0.94,
+            )
+
+        assertThat(evaluationCalls).isEqualTo(1)
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("evaluated")
+    }
+
+    @Test
+    fun `OPTIONAL 다중 SEND는 우회 조건의 신뢰도가 높아도 평가기를 호출한다`() {
+        var evaluationCalls = 0
+        val selector =
+            CompleteActionSelector(
+                evaluator =
+                    CompleteActionEvaluationPort {
+                        evaluationCalls++
+                        CompleteActionEvaluation("evaluated", "선택적 응답을 비교한다", "BEST_COMPLETE_ACTION", 0.9)
+                    },
+                requiredBypassEnabled = true,
+                requiredBypassMinConfidence = 0.90,
+            )
+
+        val selected =
+            selector.select(
+                speechCandidates =
+                    listOf(
+                        SpeechCandidate("fallback", listOf("확실한 후보"), uncertainty = 0.1),
+                        SpeechCandidate("evaluated", listOf("평가기가 고를 후보"), uncertainty = 0.7),
+                    ),
+                packet = packet,
+                provisionalConfidence = 1.0,
+            )
+
+        assertThat(evaluationCalls).isEqualTo(1)
+        assertThat((selected as CompleteActionSelection.Send).candidate.candidateId).isEqualTo("evaluated")
     }
 
     @Test

@@ -8,13 +8,18 @@ import com.discordassistant.central.global.observability.NiaDispatchEvent
 import com.discordassistant.central.global.observability.NiaDispatchOutcome
 import com.discordassistant.central.global.observability.NiaIngressSource
 import com.discordassistant.central.global.observability.NiaRuntimeMetrics
+import com.discordassistant.central.global.observability.NiaTurnAddressing
+import com.discordassistant.central.global.observability.NiaTurnMetricOutcome
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
+import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryAdmission
+import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryCoordinator
 import com.discordassistant.central.platform.discord.nexa.NiaTurnGenerationTracker
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
+import com.discordassistant.central.platform.discord.nexa.ScheduledExecutorNiaTurnBoundaryScheduler
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
 import jakarta.annotation.PostConstruct
@@ -41,6 +46,7 @@ import net.dv8tion.jda.api.events.message.MessageUpdateEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.events.session.ShutdownEvent
+import net.dv8tion.jda.api.events.user.UserTypingEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.interactions.InteractionHook
@@ -50,6 +56,7 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -232,6 +239,39 @@ internal fun appendRecentPromptMessage(
     while (buffer.size > limit) buffer.removeFirst()
 }
 
+internal fun updateRecentPromptMessage(
+    buffer: ArrayDeque<DiscordRecentPromptMessage>,
+    message: DiscordRecentPromptMessage,
+): Boolean {
+    if (buffer.none { it.id == message.id }) return false
+    buffer.removeIf { it.id == message.id }
+    val ordered = (buffer + message).sortedWith(compareBy<DiscordRecentPromptMessage> { it.createdAtEpochMillis }.thenBy { it.id })
+    buffer.clear()
+    buffer.addAll(ordered)
+    return true
+}
+
+internal fun removeRecentPromptMessage(
+    buffer: ArrayDeque<DiscordRecentPromptMessage>,
+    messageId: Long,
+): Boolean = buffer.removeIf { it.id == messageId }
+
+internal data class DiscordMessageScope(
+    val channelId: Long,
+    val threadId: Long?,
+) {
+    val routingId: Long = threadId ?: channelId
+}
+
+internal fun discordMessageScope(
+    channelId: Long,
+    isThread: Boolean,
+): DiscordMessageScope =
+    DiscordMessageScope(
+        channelId = channelId,
+        threadId = channelId.takeIf { isThread },
+    )
+
 private const val SYNTHETIC_REPLY_ECHO_WINDOW_MILLIS: Long = 60_000
 
 private val DiscordChannelEventAdmission.metricOutcome: NiaDispatchOutcome
@@ -242,6 +282,22 @@ private val DiscordChannelEventAdmission.metricOutcome: NiaDispatchOutcome
             DiscordChannelEventAdmission.ACCEPTED_TO_MUTATION_OVERFLOW -> NiaDispatchOutcome.ACCEPTED_TO_MUTATION_OVERFLOW
             DiscordChannelEventAdmission.REJECTED -> NiaDispatchOutcome.REJECTED
         }
+
+internal fun NiaRuntimeMetrics.recordTurnBoundary(
+    admission: NiaTurnBoundaryAdmission,
+    explicitlyAddressed: Boolean,
+) {
+    val outcome =
+        when (admission) {
+            NiaTurnBoundaryAdmission.BYPASS -> return
+            NiaTurnBoundaryAdmission.DEFERRED -> NiaTurnMetricOutcome.ATTENTION_DEFERRED
+            NiaTurnBoundaryAdmission.FAIL_CLOSED -> NiaTurnMetricOutcome.FAILED
+        }
+    recordTurn(
+        outcome = outcome,
+        addressing = if (explicitlyAddressed) NiaTurnAddressing.EXPLICIT else NiaTurnAddressing.AMBIENT,
+    )
+}
 
 internal data class NiaTurnContinuation(
     val likely: Boolean,
@@ -413,6 +469,8 @@ class DiscordBot(
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
     @param:Value("\${central.discord.guild-id:}") private val guildId: String,
     @param:Value("\${central.discord.message-content-intent-enabled:true}") private val messageContentIntentEnabled: Boolean,
+    @param:Value("\${central.discord.typing-intent-enabled:false}") private val typingIntentEnabled: Boolean,
+    @param:Value("\${central.nexa.participation.turn-boundary.enabled:false}") private val turnBoundaryEnabled: Boolean,
     @param:Value("\${central.discord.fallback-without-message-content-on-4014:true}") private val fallbackWithoutMessageContentOn4014:
         Boolean,
 ) : BotGuildLister {
@@ -496,6 +554,16 @@ class DiscordBot(
     private val commandExecutor: ScheduledExecutorService =
         Executors.newScheduledThreadPool(8) { r -> Thread(r, "discord-cmd").apply { isDaemon = true } }
     private val channelEventDispatcher = DiscordChannelEventDispatcher()
+    private val turnBoundaryTimer: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "discord-turn-boundary").apply { isDaemon = true }
+        }
+    private val turnBoundaryCoordinator =
+        NiaTurnBoundaryCoordinator(
+            enabled = turnBoundaryEnabled,
+            clock = Clock.systemUTC(),
+            scheduler = ScheduledExecutorNiaTurnBoundaryScheduler(turnBoundaryTimer),
+        )
 
     @PostConstruct
     fun start() {
@@ -509,8 +577,8 @@ class DiscordBot(
 
     private fun launchJda(messageContentIntent: Boolean) {
         if (stopping.get()) return
-        gatewayStatus.markStarting(messageContentIntent)
-        val intents = GatewayIntentPolicy.intents(messageContentIntent)
+        gatewayStatus.markStarting(messageContentIntent, typingIntentEnabled)
+        val intents = GatewayIntentPolicy.intents(messageContentIntent, typingIntentEnabled)
         val builder = JDABuilder.createLight(token, intents)
         val listener =
             Listener(
@@ -535,9 +603,11 @@ class DiscordBot(
                 channelAllowList,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
+                typingIntentEnabled = typingIntentEnabled,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
                 slowCommandExecutor = commandExecutor,
                 channelEventDispatcher = channelEventDispatcher,
+                turnBoundaryCoordinator = turnBoundaryCoordinator,
             )
         val instance = builder.addEventListeners(listener).build()
         val accepted =
@@ -617,6 +687,8 @@ class DiscordBot(
     @PreDestroy
     fun stop() {
         if (!stopping.compareAndSet(false, true)) return
+        turnBoundaryCoordinator.close()
+        turnBoundaryTimer.shutdownNow()
         val restart = synchronized(lifecycleLock) { restartThread }
         val instance = synchronized(lifecycleLock) { jda }
         instance?.shutdown()
@@ -699,9 +771,11 @@ class DiscordBot(
         private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
+        private val typingIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
         private val slowCommandExecutor: ScheduledExecutorService,
         private val channelEventDispatcher: DiscordChannelEventDispatcher,
+        private val turnBoundaryCoordinator: NiaTurnBoundaryCoordinator,
     ) : ListenerAdapter() {
         // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션·설정 마법사를 협력자로 위임한다.
         // 동일 의존성 인스턴스를 그대로 넘겨 동작을 구조적으로 보존한다(로직 불변).
@@ -1111,7 +1185,7 @@ class DiscordBot(
         }
 
         override fun onReady(event: ReadyEvent) {
-            gatewayStatus.markReady(mentionAskEnabled)
+            gatewayStatus.markReady(messageContentIntentEnabled, typingIntentEnabled)
             log.info(
                 "Discord gateway ready — guilds available={} unavailable={} mentionAskEnabled={}",
                 event.guildAvailableCount,
@@ -1308,12 +1382,14 @@ class DiscordBot(
 
         /** 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/설정을 정리한다. */
         override fun onGuildLeave(event: GuildLeaveEvent) {
+            turnBoundaryCoordinator.cancelGuild(event.guild.idLong)
             participationEmitBridge.onGuildDisabled(event.guild.idLong)
             guildCleanup.cleanup(event.guild.idLong)
         }
 
         /** 프로바이더 유저가 서버를 떠나면 해당 서버의 provider 상태만 정리한다. 기여 로그는 유지한다. */
         override fun onGuildMemberRemove(event: GuildMemberRemoveEvent) {
+            turnBoundaryCoordinator.cancelUser(guildId = event.guild.idLong, userId = event.user.idLong)
             participationEmitBridge.onUserOptedOut(guildId = event.guild.idLong, userId = event.user.idLong)
             reconciliation.cleanupMember(event.guild.idLong, event.user.idLong)
         }
@@ -1321,6 +1397,9 @@ class DiscordBot(
         /** 채널 삭제 이벤트가 오면 허용 채널 정책과 채널 AI 프로필을 같이 정리한다. */
         override fun onChannelDelete(event: ChannelDeleteEvent) {
             if (event.isFromGuild) {
+                val routingId = event.channel.idLong
+                niaTurnGenerations.invalidateCurrent(routingId)
+                turnBoundaryCoordinator.cancel(routingId)
                 participationEmitBridge.onChannelDisabled(guildId = event.guild.idLong, channelId = event.channel.idLong)
                 reconciliation.cleanupChannel(event.guild.idLong, event.channel.idLong)
             }
@@ -1331,13 +1410,17 @@ class DiscordBot(
             if (!event.isFromGuild) return
             niaRuntimeMetrics.recordIngress(NiaIngressSource.DELETE)
             val guildId = event.guild.idLong
-            val channelId = event.channel.idLong
+            val scope = discordMessageScope(event.channel.idLong, event.channel.type.isThread)
             val messageId = event.messageIdLong
-            submitRawContextMutation(event = NiaDispatchEvent.DELETE, channelId = channelId) {
+            niaTurnGenerations.invalidateCurrent(scope.routingId)
+            turnBoundaryCoordinator.cancel(scope.routingId)
+            submitRawContextMutation(event = NiaDispatchEvent.DELETE, channelId = scope.routingId) {
+                removeRecentMessage(scope.routingId, messageId)
                 participationEmitBridge.onMessageDeleted(
                     com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
                         guildId = guildId,
-                        channelId = channelId,
+                        channelId = scope.channelId,
+                        threadId = scope.threadId,
                         messageId = messageId,
                     ),
                 )
@@ -1351,21 +1434,32 @@ class DiscordBot(
             val occurredAt =
                 (event.message.timeEdited ?: event.message.timeCreated)
                     .toInstant()
+            val scope = discordMessageScope(event.channel.idLong, event.channel.type.isThread)
+            niaTurnGenerations.invalidateCurrent(scope.routingId)
+            turnBoundaryCoordinator.cancel(scope.routingId)
             val signal =
                 com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
                     guildId = event.guild.idLong,
-                    channelId = event.channel.idLong,
+                    channelId = scope.channelId,
                     messageId = event.messageIdLong,
                     userId = event.author.idLong,
-                    threadId = event.message.startedThread?.idLong,
+                    threadId = scope.threadId,
                     replyToMessageId = event.message.referencedMessage?.idLong,
                     sourceType = participationSourceTypeOf(event),
                     rawText = event.message.contentRaw.trim(),
                     occurredAt = occurredAt,
                 )
-            submitRawContextMutation(event = NiaDispatchEvent.EDIT, channelId = signal.channelId) {
+            submitRawContextMutation(event = NiaDispatchEvent.EDIT, channelId = scope.routingId) {
+                updateRecentMessage(event, scope.routingId)
                 participationEmitBridge.onMessageEdited(signal)
             }
+        }
+
+        override fun onUserTyping(event: UserTypingEvent) {
+            if (!typingIntentEnabled || !event.type.isGuild) return
+            if (event.user.isBot || event.user.idLong == event.jda.selfUser.idLong) return
+            val scope = discordMessageScope(event.channel.idLong, event.channel.type.isThread)
+            turnBoundaryCoordinator.onTyping(scope.routingId)
         }
 
         /**
@@ -1502,7 +1596,8 @@ class DiscordBot(
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild) return
             niaRuntimeMetrics.recordIngress(NiaIngressSource.MESSAGE)
-            val channelId = event.channel.idLong
+            val scope = discordMessageScope(event.channel.idLong, event.channel.type.isThread)
+            val channelId = scope.routingId
             val sourceType = participationSourceTypeOf(event)
             val rawContextPreCaptured = AtomicBoolean(false)
             if (sourceType == com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.HUMAN) {
@@ -1511,10 +1606,10 @@ class DiscordBot(
                 val rawSignal =
                     com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
                         guildId = event.guild.idLong,
-                        channelId = channelId,
+                        channelId = scope.channelId,
                         messageId = event.messageIdLong,
                         userId = event.author.idLong,
-                        threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
+                        threadId = scope.threadId,
                         replyToMessageId = event.message.referencedMessage?.idLong,
                         sourceType = sourceType,
                         rawText = event.message.contentRaw.trim(),
@@ -1530,7 +1625,7 @@ class DiscordBot(
             val admission =
                 channelEventDispatcher.submit(channelId) {
                     runChannelEvent("receive_evaluation", channelId) {
-                        processMessageReceived(event, rawContextPreCaptured.get())
+                        processMessageReceived(event, scope, rawContextPreCaptured.get())
                     }
                 }
             niaRuntimeMetrics.recordAdmission(NiaDispatchEvent.RECEIVE_EVALUATION, admission.metricOutcome)
@@ -1541,19 +1636,20 @@ class DiscordBot(
 
         private fun processMessageReceived(
             event: MessageReceivedEvent,
+            scope: DiscordMessageScope,
             rawContextPreCaptured: Boolean,
         ) {
-            rememberRecentMessage(event)
+            rememberRecentMessage(event, scope.routingId)
             val selfId = event.jda.selfUser.idLong
             if (event.author.isBot) {
                 if (event.author.idLong == selfId && !event.message.isWebhookMessage) {
                     participationEmitBridge.onAssistantMessageObserved(
                         com.discordassistant.central.platform.discord.nexa.ParticipationRawContextEditSignal(
                             guildId = event.guild.idLong,
-                            channelId = event.channel.idLong,
+                            channelId = scope.channelId,
                             messageId = event.messageIdLong,
                             userId = selfId,
-                            threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
+                            threadId = scope.threadId,
                             replyToMessageId = event.message.referencedMessage?.idLong,
                             sourceType = com.discordassistant.central.platform.discord.nexa.ParticipationMessageSourceType.BOT,
                             rawText = event.message.contentRaw.trim(),
@@ -1571,7 +1667,13 @@ class DiscordBot(
             // The bridge captures rollout mode once with its social decision. Shadow preserves legacy behavior;
             // CANARY/LIVE owns the turn only through FINAL, and a non-final misconfiguration fails closed rather than
             // allowing an unjudged legacy response.
-            val participationTurn = forwardToParticipation(event, mentioned || directlyAddressed, rawContextPreCaptured)
+            val participationTurn =
+                forwardToParticipation(
+                    event = event,
+                    scope = scope,
+                    mentioned = mentioned || directlyAddressed,
+                    rawContextPreCaptured = rawContextPreCaptured,
+                )
             if (participationTurn.ownsTurn) return
 
             // OFF/SHADOW 및 final judge가 아직 real-send가 아닌 채널은 기존 명시 호출/자동응답 계약을 유지한다.
@@ -1599,6 +1701,7 @@ class DiscordBot(
          */
         private fun forwardToParticipation(
             event: MessageReceivedEvent,
+            scope: DiscordMessageScope,
             mentioned: Boolean,
             rawContextPreCaptured: Boolean,
         ): ParticipationTurnOutcome =
@@ -1611,7 +1714,7 @@ class DiscordBot(
                     event.message.timeCreated
                         .toInstant()
                         .toEpochMilli()
-                val recentMessages = recentMessagesSnapshot(event.channel.idLong)
+                val recentMessages = recentMessagesSnapshot(scope.routingId)
                 val recentTurns = recentParticipationTurns(recentMessages, selfId)
                 val recentRawMessages = recentParticipationRawMessages(recentMessages, selfId)
                 // core 결정론 규칙([CoreInterventionRules])용 raw 신호: 트리거 원문(짧게)·화자 라벨·니아 발화 reply 여부.
@@ -1649,7 +1752,8 @@ class DiscordBot(
                 val mentionsNiaInTrigger = mentioned || contentRaw.nfc().contains("니아")
                 val derived =
                     participationSignals.deriveAndRecord(
-                        channelId = event.channel.idLong,
+                        channelId = scope.channelId,
+                        contextBoundaryId = scope.threadId,
                         trigger =
                             com.discordassistant.central.platform.discord.nexa.ParticipationSignalDeriver
                                 .HumanMessage(
@@ -1660,47 +1764,116 @@ class DiscordBot(
                                 ),
                     )
 
-                val participationTurn =
-                    participationEmitBridge.onMessageTurn(
-                        com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
-                            guildId = event.guild.idLong,
-                            channelId = event.channel.idLong,
-                            messageId = messageId,
-                            userId = event.author.idLong,
-                            threadId = event.channel.idLong.takeIf { event.channel.type.isThread },
-                            replyToMessageId = event.message.referencedMessage?.idLong,
-                            sourceType = participationSourceTypeOf(event),
-                            mentioned = mentioned,
-                            recentTurns = recentTurns,
-                            recentRawMessages = recentRawMessages,
-                            triggerText = contentRaw.take(500),
-                            rawText = contentRaw,
-                            speakerLabel = speakerLabel,
-                            replyToNia = replyToNia,
-                            replyToHuman = replyToHuman,
-                            niaRecentTokens = niaRecentTokens,
-                            withinContinuationTtl = withinContinuationTtl,
-                            duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
-                            burstIncomplete = derived.burstIncomplete,
-                            priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
-                            firstMessageText = derived.firstMessageText,
-                            conversationMentionsNia = derived.conversationMentionsNia,
-                            lastNiaSpokeAgeSeconds = niaTurnContinuation.lastNiaSpokeAgeSeconds,
-                            niaTurnContinuationLikely = niaTurnContinuation.likely,
-                            tsMs = tsMs,
-                            // 실제 값은 participation bridge가 conversation projection read-after-write 결과로 덮어쓴다.
-                            sceneSeq = 0,
-                            contextVersion = 0,
-                            seed = messageId,
-                            turnGeneration = messageId,
-                            rawContextPreCaptured = rawContextPreCaptured,
-                        ),
+                val signal =
+                    com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal(
+                        guildId = event.guild.idLong,
+                        channelId = scope.routingId,
+                        messageId = messageId,
+                        userId = event.author.idLong,
+                        threadId = scope.threadId,
+                        replyToMessageId = event.message.referencedMessage?.idLong,
+                        sourceType = participationSourceTypeOf(event),
+                        mentioned = mentioned,
+                        recentTurns = recentTurns,
+                        recentRawMessages = recentRawMessages,
+                        triggerText = contentRaw.take(500),
+                        rawText = contentRaw,
+                        speakerLabel = speakerLabel,
+                        replyToNia = replyToNia,
+                        replyToHuman = replyToHuman,
+                        niaRecentTokens = niaRecentTokens,
+                        withinContinuationTtl = withinContinuationTtl,
+                        duplicateOfPrevHuman = derived.duplicateOfPrevHuman,
+                        burstIncomplete = derived.burstIncomplete,
+                        priorHumanSpeakerLabels = derived.priorHumanSpeakerLabels,
+                        firstMessageText = derived.firstMessageText,
+                        conversationMentionsNia = derived.conversationMentionsNia,
+                        lastNiaSpokeAgeSeconds = niaTurnContinuation.lastNiaSpokeAgeSeconds,
+                        niaTurnContinuationLikely = niaTurnContinuation.likely,
+                        tsMs = tsMs,
+                        // 실제 값은 participation bridge가 conversation projection read-after-write 결과로 덮어쓴다.
+                        sceneSeq = 0,
+                        contextVersion = 0,
+                        seed = messageId,
+                        turnGeneration = messageId,
+                        rawContextPreCaptured = rawContextPreCaptured,
                     )
-                participationTurn
+                deferOrEvaluateParticipation(signal, selfId)
             } catch (e: Exception) {
                 log.debug("NEXA participation 신호 구성 실패(channel={}) — fail-closed 여부를 브리지 모드로 결정: {}", event.channel.idLong, e.message)
                 participationEmitBridge.failedMessageTurn(guildId = event.guild.idLong, channelId = event.channel.idLong)
             }
+
+        private fun deferOrEvaluateParticipation(
+            signal: com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal,
+            selfId: Long,
+        ): ParticipationTurnOutcome {
+            val admission =
+                turnBoundaryCoordinator.onMessage(
+                    realSendAtIngress = participationFlags.allowsRealSend(signal.guildId, signal.channelId),
+                    routingId = signal.channelId,
+                    generation = signal.turnGeneration,
+                    signal = signal,
+                    callbacks =
+                        NiaTurnBoundaryCoordinator.Callbacks(
+                            stillRealSendEnabled = {
+                                participationFlags.allowsRealSend(signal.guildId, signal.channelId)
+                            },
+                            isLatestGeneration = { routingId, generation ->
+                                niaTurnGenerations.isLatest(routingId, generation)
+                            },
+                            enqueueOnDispatcher = { routingId, task ->
+                                channelEventDispatcher.submit(routingId, task).accepted
+                            },
+                            judge = judge@{ delayedSignal ->
+                                val refreshed = refreshDelayedParticipationSignal(delayedSignal, selfId) ?: return@judge
+                                participationEmitBridge.onMessageTurn(refreshed)
+                            },
+                            onFailClosed = {
+                                niaRuntimeMetrics.recordTurnBoundary(
+                                    NiaTurnBoundaryAdmission.FAIL_CLOSED,
+                                    explicitlyAddressed = signal.mentioned,
+                                )
+                            },
+                        ),
+                )
+            niaRuntimeMetrics.recordTurnBoundary(admission, explicitlyAddressed = signal.mentioned)
+            return when (admission) {
+                NiaTurnBoundaryAdmission.BYPASS -> participationEmitBridge.onMessageTurn(signal)
+                NiaTurnBoundaryAdmission.DEFERRED ->
+                    ParticipationTurnOutcome(
+                        outcome =
+                            com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.AttentionDeferred(
+                                "turn-boundary:${signal.channelId}",
+                            ),
+                        ownsTurn = true,
+                    )
+                NiaTurnBoundaryAdmission.FAIL_CLOSED ->
+                    ParticipationTurnOutcome(
+                        outcome = com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.Failed,
+                        ownsTurn = true,
+                    )
+            }
+        }
+
+        private fun refreshDelayedParticipationSignal(
+            signal: com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal,
+            selfId: Long,
+        ): com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal? {
+            val recentMessages = recentMessagesSnapshot(signal.channelId)
+            val trigger = recentMessages.firstOrNull { it.id == signal.messageId } ?: return null
+            val rawText = trigger.content.trim()
+            val mentioned =
+                Regex("<@!?$selfId>").containsMatchIn(rawText) ||
+                    niaDirectAddressPrompt(rawText) != null
+            return signal.copy(
+                mentioned = mentioned,
+                recentTurns = recentParticipationTurns(recentMessages, selfId),
+                recentRawMessages = recentParticipationRawMessages(recentMessages, selfId),
+                triggerText = rawText.take(500),
+                rawText = rawText,
+            )
+        }
 
         private fun participationSourceTypeOf(
             event: MessageReceivedEvent,
@@ -1933,8 +2106,10 @@ class DiscordBot(
                     )
                 }
 
-        private fun rememberRecentMessage(event: MessageReceivedEvent) {
-            val channelId = event.channel.idLong
+        private fun rememberRecentMessage(
+            event: MessageReceivedEvent,
+            routingId: Long,
+        ) {
             val message =
                 DiscordRecentPromptMessage(
                     id = event.messageIdLong,
@@ -1948,7 +2123,36 @@ class DiscordBot(
                             .toEpochMilli(),
                     replyToMessageId = event.message.referencedMessage?.idLong,
                 )
-            rememberRecentMessage(channelId, message)
+            rememberRecentMessage(routingId, message)
+        }
+
+        private fun updateRecentMessage(
+            event: MessageUpdateEvent,
+            routingId: Long,
+        ) {
+            val buffer = recentMessagesByChannel[routingId] ?: return
+            val message =
+                DiscordRecentPromptMessage(
+                    id = event.messageIdLong,
+                    authorId = event.author.idLong,
+                    authorLabel = event.member?.effectiveName ?: event.author.name,
+                    bot = event.author.isBot,
+                    content = event.message.contentRaw,
+                    createdAtEpochMillis =
+                        event.message.timeCreated
+                            .toInstant()
+                            .toEpochMilli(),
+                    replyToMessageId = event.message.referencedMessage?.idLong,
+                )
+            synchronized(buffer) { updateRecentPromptMessage(buffer, message) }
+        }
+
+        private fun removeRecentMessage(
+            routingId: Long,
+            messageId: Long,
+        ) {
+            val buffer = recentMessagesByChannel[routingId] ?: return
+            synchronized(buffer) { removeRecentPromptMessage(buffer, messageId) }
         }
 
         private fun rememberNiaReply(

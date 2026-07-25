@@ -23,6 +23,49 @@ class NiaTurnGenerationTrackerTest {
     }
 
     @Test
+    fun `edit delete는 같은 generation을 무효화하고 외부 snowflake를 바꾸지 않은 채 다음 메시지에서 복구한다`() {
+        val tracker = NiaTurnGenerationTracker()
+        tracker.observe(channelId = 3L, generation = 10L)
+
+        assertThat(tracker.invalidateCurrent(channelId = 3L)).isTrue()
+        assertThat(tracker.isLatest(channelId = 3L, generation = 10L)).isFalse()
+        assertThat(tracker.current(channelId = 3L))
+            .isEqualTo(10L xor Long.MIN_VALUE)
+        assertThat(tracker.observe(channelId = 3L, generation = 10L)).isEqualTo(10L)
+        assertThat(tracker.isLatest(channelId = 3L, generation = 10L)).isFalse()
+
+        assertThat(tracker.observe(channelId = 3L, generation = 11L)).isEqualTo(11L)
+        assertThat(tracker.isLatest(channelId = 3L, generation = 11L)).isTrue()
+        assertThat(tracker.current(channelId = 3L)).isEqualTo(11L)
+    }
+
+    @Test
+    fun `과거 메시지의 edit delete도 그 원문을 읽은 최신 turn을 무효화한다`() {
+        val tracker = NiaTurnGenerationTracker()
+        tracker.observe(channelId = 3L, generation = 12L)
+
+        assertThat(tracker.invalidateCurrent(channelId = 3L)).isTrue()
+
+        assertThat(tracker.isLatest(channelId = 3L, generation = 12L)).isFalse()
+        assertThat(tracker.current(channelId = 3L)).isNotEqualTo(12L)
+    }
+
+    @Test
+    fun `채널 삭제는 현재 generation과 이미 예약된 action context를 함께 stale로 만든다`() {
+        val tracker = NiaTurnGenerationTracker()
+        val adapter = NiaLatestSceneActionReevaluationAdapter(tracker, InMemoryConversationSceneIngress())
+        val target = ReevaluationTarget("guild", "channel-pseudonym", "thread", routingChannelId = "3")
+        tracker.observe(channelId = 3L, generation = 12L)
+
+        assertThat(tracker.invalidateCurrent(channelId = 3L)).isTrue()
+        val invalidatedVersion = adapter.currentContextVersion(target)!!
+
+        assertThat(tracker.isLatest(channelId = 3L, generation = 12L)).isFalse()
+        assertThat(invalidatedVersion).isNotEqualTo(12L)
+        assertThat(adapter.stillValid("decision", target, 12L, invalidatedVersion)).isFalse()
+    }
+
+    @Test
     fun `actionruntime adapter는 추적 채널의 새 장면만 stale 취소하고 미추적 행동은 보존한다`() {
         val tracker = NiaTurnGenerationTracker()
         val adapter = NiaLatestSceneActionReevaluationAdapter(tracker, InMemoryConversationSceneIngress())

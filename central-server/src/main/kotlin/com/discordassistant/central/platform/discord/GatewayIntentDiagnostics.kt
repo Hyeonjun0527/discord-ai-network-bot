@@ -6,10 +6,9 @@ import net.dv8tion.jda.api.requests.GatewayIntent
  * Gateway intent 설정 진단(NEXA-P03-T021). 부팅 시 구독한 [GatewayIntent] 집합을 NEXA 수집 기능이 요구하는
  * intent 와 대조해, 누락이 있으면 **조용히 오작동하지 않고** 그 기능을 DEGRADED 로 드러낸다.
  *
- * 배경(jda-ingestion.md): 현재 `GatewayIntentPolicy.intents()` 는 `GUILD_MESSAGES` + `GUILD_MESSAGE_REACTIONS`
- * (+선택 `MESSAGE_CONTENT`)만 구독한다. typing 수집(T005, `GUILD_MESSAGE_TYPING`)은 인텐트 자체가 부재해
- * `onUserTyping` 이 호출되지 않는데, 코드만 보면 "타이핑이 안 온다" 가 침묵으로 묻힌다. 이 진단은 각 수집 기능의
- * 필수 intent 를 명시하고, 부재 시 [FeatureGatewayHealth.DEGRADED] 로 노출해 운영자가 원인을 즉시 안다.
+ * `GatewayIntentPolicy.intents()` 는 메시지 콘텐츠와 typing intent를 각각 설정으로 구독한다. typing 수집(T005,
+ * `GUILD_MESSAGE_TYPING`) 설정이 꺼졌거나 실제 구독 intent에서 빠지면 `onUserTyping` 이 호출되지 않는다. 이 진단은
+ * 각 수집 기능의 필수 intent 를 명시하고, 부재 시 [FeatureGatewayHealth.DEGRADED] 로 노출해 운영자가 원인을 즉시 안다.
  *
  * 순수성: JDA enum([GatewayIntent])만 보고 Spring/JPA 를 참조하지 않는다(어댑터-로컬 순수 진단 — 단위 테스트 가능).
  * 운영 게이트웨이에 연결하지 않는다 — **구독 의도(intent 집합)** 만 검사한다.
@@ -72,7 +71,7 @@ enum class IngestionFeature(
         consequence = "리액션 add/remove 이벤트가 수집되지 않습니다",
     ),
 
-    /** 타이핑 수집 — GUILD_MESSAGE_TYPING 필요(현재 미구독, jda-ingestion.md). */
+    /** 타이핑 수집 — GUILD_MESSAGE_TYPING 필요. */
     TYPING_CAPTURE(
         label = "타이핑 수집",
         requiredIntents = setOf(GatewayIntent.GUILD_MESSAGE_TYPING),

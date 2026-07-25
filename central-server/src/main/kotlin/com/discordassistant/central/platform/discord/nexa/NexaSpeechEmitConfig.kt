@@ -22,6 +22,7 @@ import com.discordassistant.central.speech.application.port.out.SpeechInputTrace
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -95,13 +96,22 @@ class NexaSpeechEmitConfig {
         generationGate: SpeechGenerationGate,
         decisionLog: SpeechDecisionLogPort,
         completeActionEvaluation: CompleteActionEvaluationPort,
+        @Value("\${central.nexa.speech.action-evaluator.required-bypass-enabled:false}")
+        requiredBypassEnabled: Boolean,
+        @Value("\${central.nexa.speech.action-evaluator.required-bypass-min-confidence:0.90}")
+        requiredBypassMinConfidence: Double,
     ): NexaSpeechPipelineService =
         NexaSpeechPipelineService(
             consentGate = consentGate,
             generationGate = generationGate,
             candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
             decisionLog = decisionLog,
-            completeActionSelector = CompleteActionSelector(completeActionEvaluation),
+            completeActionSelector =
+                CompleteActionSelector(
+                    evaluator = completeActionEvaluation,
+                    requiredBypassEnabled = requiredBypassEnabled,
+                    requiredBypassMinConfidence = requiredBypassMinConfidence,
+                ),
         )
 
     /** speech decision log 미바인딩 환경 기본값(Noop) — 실제 sink 어댑터가 있으면 그쪽이 우선. */

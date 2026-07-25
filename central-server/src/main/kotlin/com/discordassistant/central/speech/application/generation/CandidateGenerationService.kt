@@ -4,8 +4,10 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
+import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
+import com.discordassistant.central.speech.application.port.out.SpeechGenerationFailureReason
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -15,6 +17,7 @@ import com.discordassistant.central.speech.application.prompt.BurstPromptCompile
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
+import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
 
@@ -58,11 +61,31 @@ class CandidateGenerationService(
         packet: SpeechScenePacket,
         budget: GenerationBudget = GenerationBudget.DEFAULT,
     ): SpeechGenerationResult {
+        packet.localSpeechTemplate?.let { return localSpeechResult(it) }
         val grounding = retrieveGrounding(packet)
         val request = assembleRequest(packet, budget, grounding)
         packet.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.userPrompt) }
-        return generationPort.generate(request)
+        val generated = generationPort.generate(request)
+        return if (generated.failureReason == SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED) {
+            localSpeechResult(LocalSpeechTemplate.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
+        } else {
+            generated
+        }
     }
+
+    private fun localSpeechResult(template: LocalSpeechTemplate): SpeechGenerationResult =
+        SpeechGenerationResult(
+            candidates =
+                listOf(
+                    SpeechCandidate(
+                        candidateId = "local-${template.name.lowercase()}",
+                        bubbles = listOf(template.text),
+                        styleTags = listOf("local", "capability-boundary"),
+                        uncertainty = 0.0,
+                    ),
+                ),
+            modelMetadata = "local-policy",
+        )
 
     private fun retrieveGrounding(packet: SpeechScenePacket): SpeechFactualGrounding =
         if (packet.groundingNeed == SpeechGroundingNeed.WEB_VERIFY) {
@@ -93,6 +116,8 @@ class CandidateGenerationService(
             reasoningMode = reasoningModeSelector.select(packet),
             maxOutputTokens = budget.clampOutputTokens(budget.maxOutputTokens),
             stableSystemPromptChars = systemPrompt.stablePrefixChars,
+            channelTokenBudgetKey = packet.channelTokenBudgetKey,
+            speechImageInput = packet.speechImageInput,
         )
     }
 
@@ -128,16 +153,22 @@ class CandidateGenerationService(
             } else {
                 ""
             }
-        return NiaPromptTemplate.render(
-            promptSource.text(NiaPromptKey.SPEECH_USER_TEMPLATE),
-            mapOf(
-                "payload" to payloadSerializer.serialize(packet),
-                "quotedScene" to quotedScene,
-                "rawContext" to packet.rawContextSceneData.orEmpty(),
-                "responseTarget" to target,
-                "grounding" to groundingBlock,
-            ),
-        )
+        val textPayload =
+            NiaPromptTemplate.render(
+                promptSource.text(NiaPromptKey.SPEECH_USER_TEMPLATE),
+                mapOf(
+                    "payload" to payloadSerializer.serialize(packet),
+                    "quotedScene" to quotedScene,
+                    "rawContext" to packet.rawContextSceneData.orEmpty(),
+                    "responseTarget" to target,
+                    "grounding" to groundingBlock,
+                ),
+            )
+        return if (packet.speechImageInput == null) {
+            textPayload
+        } else {
+            "$textPayload\n\n[별도 이미지 입력]\n사용자가 현재 니아 턴에 보여 준 이미지 한 장을 직접 보고 최신 요청에 답한다."
+        }
     }
 
     /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */

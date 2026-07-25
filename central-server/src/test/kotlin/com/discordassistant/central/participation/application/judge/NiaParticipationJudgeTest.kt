@@ -11,10 +11,12 @@ import com.discordassistant.central.participation.application.port.out.FeatureVe
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmResponse
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
@@ -85,6 +87,17 @@ class NiaParticipationJudgeTest {
 
         assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(llm.calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `channel token budget rejection is not retried`() {
+        val llm = BudgetExceededJudgeLlm()
+
+        assertThrows(NiaJudgeTokenBudgetExceededException::class.java) {
+            judge(llm).decide(sampleRequest())
+        }
+
+        assertThat(llm.calls).isEqualTo(1)
     }
 
     @Test
@@ -348,6 +361,15 @@ class NiaParticipationJudgeTest {
         override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
             calls++
             throw IllegalStateException("provider unavailable")
+        }
+    }
+
+    private class BudgetExceededJudgeLlm : NiaJudgeLlmPort {
+        var calls: Int = 0
+
+        override fun complete(request: NiaJudgeLlmRequest): NiaJudgeLlmResponse {
+            calls++
+            throw NiaJudgeTokenBudgetExceededException()
         }
     }
 }

@@ -21,8 +21,11 @@ import com.discordassistant.central.platform.discord.nexa.NiaTurnGenerationTrack
 import com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import com.discordassistant.central.platform.discord.nexa.ScheduledExecutorNiaTurnBoundaryScheduler
+import com.discordassistant.central.platform.discord.nexa.UnsupportedAttachmentRequest
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
+import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
@@ -96,6 +99,13 @@ private val NIA_DIRECT_ADDRESS_DECORATION = Regex("""^[\s.!?~,，。！？]*$"""
 private val NIA_DIRECT_ADDRESS_LEADING_PUNCTUATION = setOf('!', '?', '.', ',', '~', '！', '？', '。', '，')
 private val NIA_DIRECT_ADDRESS_NON_VOCATIVE_PREFIX_ENDINGS = listOf("은", "는", "이", "가", "을", "를")
 private val NIA_SENTENCE_PERIOD_RUN = Regex("""(?<!\d)\.+(?!\d)(?=\s|$)""")
+private val NIA_PDF_TERM = Regex("""(?i)(?:\bpdf\b|피디에프)""")
+private val NIA_PDF_READ_ACTION =
+    Regex(
+        """(?:읽어|읽을\s*수|읽어\s*줄|읽어줄|봐\s*줘|봐줄|요약(?:해|할)|설명(?:해|할)|분석(?:해|할)|""" +
+            """정리(?:해|할)|핵심.{0,12}(?:뽑|알려)|내용.{0,12}(?:알려|답))""",
+    )
+private val NIA_ATTACHED_FILE_INSPECTION = Regex("""(?:이거|이\s*파일|첨부(?:한|된)?\s*(?:거|파일)?).{0,12}(?:뭐야|뭔지)""")
 
 /**
  * 한글 자모 분리(NFD)로 들어온 입력을 음절(NFC)로 합친다. macOS 등 일부 클라이언트는 "니아야"를
@@ -218,7 +228,48 @@ internal data class DiscordRecentPromptMessage(
     val content: String,
     val createdAtEpochMillis: Long,
     val replyToMessageId: Long? = null,
+    /** 파일명·URL·본문은 저장하지 않고 PDF 존재 여부만 보존한다. */
+    val hasPdfAttachment: Boolean = false,
 )
+
+internal fun unsupportedPdfRequest(
+    messages: List<DiscordRecentPromptMessage>,
+    currentMessageId: Long,
+): UnsupportedAttachmentRequest? {
+    val currentIndex = messages.indexOfFirst { it.id == currentMessageId }
+    if (currentIndex < 0) return null
+    val current = messages[currentIndex]
+    if (current.bot) return null
+    val text =
+        current.content
+            .nfc()
+            .trim()
+            .lowercase()
+    if (text.isBlank()) return null
+
+    val explicitPdfRequest = NIA_PDF_TERM.containsMatchIn(text) && NIA_PDF_READ_ACTION.containsMatchIn(text)
+    if (explicitPdfRequest) return UnsupportedAttachmentRequest.PDF_READ
+
+    val immediatelyPreviousHuman =
+        messages
+            .subList(0, currentIndex)
+            .lastOrNull { !it.bot }
+            ?.takeIf { previous ->
+                previous.authorId == current.authorId &&
+                    previous.hasPdfAttachment &&
+                    (current.createdAtEpochMillis - previous.createdAtEpochMillis) in 0..NIA_TURN_CONTINUATION_MAX_AGE_MILLIS
+            }
+    val attachedPdfContext = current.hasPdfAttachment || immediatelyPreviousHuman != null
+    if (!attachedPdfContext) return null
+    return if (
+        NIA_PDF_READ_ACTION.containsMatchIn(text) ||
+        NIA_ATTACHED_FILE_INSPECTION.containsMatchIn(text)
+    ) {
+        UnsupportedAttachmentRequest.PDF_READ
+    } else {
+        null
+    }
+}
 
 internal fun refreshDelayedTriggerSignal(
     signal: ParticipationMessageSignal,
@@ -485,6 +536,7 @@ class DiscordBot(
     private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
     private val niaTurnGenerations: NiaTurnGenerationTracker,
     private val participationFlags: NexaParticipationFlagService,
+    private val imageAttachmentPreparer: DiscordImageAttachmentPreparer,
     // 니아 채널 자동 만들기 시 ai채팅·ai그림을 LLM 채널 허용 목록에 등록(자동응답↔LLM 정책 불일치 방지). PolicyService 빈.
     private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
@@ -623,6 +675,7 @@ class DiscordBot(
                 participationEmitBridge,
                 niaTurnGenerations,
                 participationFlags,
+                imageAttachmentPreparer,
                 channelAllowList,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
@@ -791,6 +844,7 @@ class DiscordBot(
         private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
         private val niaTurnGenerations: NiaTurnGenerationTracker,
         private val participationFlags: NexaParticipationFlagService,
+        private val imageAttachmentPreparer: DiscordImageAttachmentPreparer,
         private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
@@ -1694,6 +1748,43 @@ class DiscordBot(
                     .any { it.idLong == selfId }
             val directNamePrompt = niaDirectAddressPrompt(event.message.contentRaw)
             val directlyAddressed = directNamePrompt != null
+            val recentMessages = recentMessagesSnapshot(scope.routingId)
+            val replyToNia =
+                event.message.referencedMessage
+                    ?.author
+                    ?.idLong == selfId
+            val replyToHuman = event.message.referencedMessage?.let { !it.author.isBot && it.author.idLong != selfId } ?: false
+            val niaTurnContinuation =
+                deriveNiaTurnContinuation(
+                    messages = recentMessages,
+                    currentMessageId = event.messageIdLong,
+                    botUserId = selfId,
+                    currentRepliesToHuman = replyToHuman,
+                )
+            val attachmentShownToNia =
+                isAttachmentShownToNia(
+                    directlyAddressed = mentioned || directlyAddressed,
+                    replyToNia = replyToNia,
+                    niaTurnContinuationLikely = niaTurnContinuation.likely,
+                )
+            val unsupportedAttachmentRequest =
+                unsupportedPdfRequest(
+                    messages = recentMessages,
+                    currentMessageId = event.messageIdLong,
+                ).takeIf { attachmentShownToNia }
+            val speechImageInput =
+                if (attachmentShownToNia && unsupportedAttachmentRequest == null) {
+                    when (val prepared = imageAttachmentPreparer.prepare(event.message.attachments)) {
+                        TargetedImagePreparation.NoImage -> null
+                        is TargetedImagePreparation.Ready -> prepared.image
+                        is TargetedImagePreparation.Rejected -> {
+                            respondLocallyInChannel(event, prepared.template)
+                            return
+                        }
+                    }
+                } else {
+                    null
+                }
             // The bridge captures rollout mode once with its social decision. Shadow preserves legacy behavior;
             // CANARY/LIVE owns the turn only through FINAL, and a non-final misconfiguration fails closed rather than
             // allowing an unjudged legacy response.
@@ -1703,25 +1794,48 @@ class DiscordBot(
                     scope = scope,
                     mentioned = mentioned || directlyAddressed,
                     rawContextPreCaptured = rawContextPreCaptured,
+                    unsupportedAttachmentRequest = unsupportedAttachmentRequest,
+                    speechImageInput = speechImageInput,
                 )
             if (participationTurn.ownsTurn) return
 
             // OFF/SHADOW 및 final judge가 아직 real-send가 아닌 채널은 기존 명시 호출/자동응답 계약을 유지한다.
+            if (speechImageInput != null) {
+                respondLocallyInChannel(event, LocalSpeechTemplate.IMAGE_FEATURE_UNAVAILABLE)
+                return
+            }
             if (mentioned) {
-                handleMentionAsk(event, selfId)
+                if (unsupportedAttachmentRequest == UnsupportedAttachmentRequest.PDF_READ) {
+                    respondLocallyInChannel(event, LocalSpeechTemplate.PDF_UNSUPPORTED)
+                } else {
+                    handleMentionAsk(event, selfId)
+                }
                 return
             }
             if (directNamePrompt != null) {
-                handleDirectNameAsk(event, directNamePrompt)
+                if (unsupportedAttachmentRequest == UnsupportedAttachmentRequest.PDF_READ) {
+                    respondLocallyInChannel(event, LocalSpeechTemplate.PDF_UNSUPPORTED)
+                } else {
+                    handleDirectNameAsk(event, directNamePrompt)
+                }
                 return
             }
             val continuationPrompt = niaContinuationPrompt(event)
             if (continuationPrompt != null) {
-                metrics.record("name-ask-continuation")
-                respondInChannel(event, continuationPrompt, fastResponse = false)
+                if (unsupportedAttachmentRequest == UnsupportedAttachmentRequest.PDF_READ) {
+                    respondLocallyInChannel(event, LocalSpeechTemplate.PDF_UNSUPPORTED)
+                } else {
+                    metrics.record("name-ask-continuation")
+                    respondInChannel(event, continuationPrompt, fastResponse = false)
+                }
                 return
             }
-            handleAutoRespond(event)
+            handleAutoRespond(
+                event,
+                localSpeechTemplate =
+                    LocalSpeechTemplate.PDF_UNSUPPORTED
+                        .takeIf { unsupportedAttachmentRequest == UnsupportedAttachmentRequest.PDF_READ },
+            )
         }
 
         /**
@@ -1734,6 +1848,8 @@ class DiscordBot(
             scope: DiscordMessageScope,
             mentioned: Boolean,
             rawContextPreCaptured: Boolean,
+            unsupportedAttachmentRequest: UnsupportedAttachmentRequest?,
+            speechImageInput: SpeechImageInput?,
         ): ParticipationTurnOutcome =
             try {
                 val messageId = event.messageIdLong
@@ -1808,6 +1924,8 @@ class DiscordBot(
                         recentRawMessages = recentRawMessages,
                         triggerText = contentRaw.take(500),
                         rawText = contentRaw,
+                        unsupportedAttachmentRequest = unsupportedAttachmentRequest,
+                        speechImageInput = speechImageInput,
                         speakerLabel = speakerLabel,
                         replyToNia = replyToNia,
                         replyToHuman = replyToHuman,
@@ -1970,7 +2088,10 @@ class DiscordBot(
          * per-user ask 쿨다운은 관리자가 우회하지만, 이 **채널 단위 분당 상한은 누구도(관리자 포함) 우회하지 못한다**.
          * 한도를 넘으면 채널에 안내를 도배하지 않고 조용히 드롭(⏳ 리액션만) — 일반 /ask 의 쿨다운 안내는 그대로 유지된다.
          */
-        private fun handleAutoRespond(event: MessageReceivedEvent) {
+        private fun handleAutoRespond(
+            event: MessageReceivedEvent,
+            localSpeechTemplate: LocalSpeechTemplate? = null,
+        ) {
             val guildId = event.guild.idLong
             val channelId = event.channel.idLong
             if (!autoRespondChannels.isAutoRespond(guildId, channelId)) return
@@ -1982,7 +2103,38 @@ class DiscordBot(
                 return
             }
             metrics.record("auto-respond")
-            respondInChannel(event, buildNiaAutoRespondPrompt(content))
+            if (localSpeechTemplate == null) {
+                respondInChannel(event, buildNiaAutoRespondPrompt(content))
+            } else {
+                respondLocallyInChannel(event, localSpeechTemplate)
+            }
+        }
+
+        /** PDF 미지원처럼 모델 판단이 필요 없는 고정 정책 응답. OpenAI/provider 경로는 호출하지 않는다. */
+        private fun respondLocallyInChannel(
+            event: MessageReceivedEvent,
+            template: LocalSpeechTemplate,
+        ) {
+            metrics.record("local-${template.name.lowercase()}")
+            val ctx =
+                buildCtx(
+                    event.guild.idLong,
+                    event.member,
+                    event.channel.idLong,
+                    event.author.idLong,
+                )
+            val reply = Reply(content = template.text, ephemeral = false).withNiaChatStyle()
+            if (channelProfiles.get(ctx.guildId, ctx.channelId) != null && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
+                event.message.addReaction(Emoji.fromUnicode("✅")).queue({}, {})
+            } else {
+                answers.replyToMessageWithPseudoStream(event.message, reply)
+            }
+            rememberNiaReply(
+                channelId = event.channel.idLong,
+                botUserId = event.jda.selfUser.idLong,
+                content = reply.content,
+                replyToMessageId = event.messageIdLong,
+            )
         }
 
         /** 멘션/자동응답 공통: /ask → (프로필 있으면 웹훅 페르소나, 없으면 답장 스트림). 에러는 동일 처리. */
@@ -2145,6 +2297,11 @@ class DiscordBot(
                             .toInstant()
                             .toEpochMilli(),
                     replyToMessageId = event.message.referencedMessage?.idLong,
+                    hasPdfAttachment =
+                        event.message.attachments.any { attachment ->
+                            attachment.contentType.equals("application/pdf", ignoreCase = true) ||
+                                attachment.fileName.endsWith(".pdf", ignoreCase = true)
+                        },
                 )
             rememberRecentMessage(routingId, message)
         }
@@ -2166,6 +2323,11 @@ class DiscordBot(
                             .toInstant()
                             .toEpochMilli(),
                     replyToMessageId = event.message.referencedMessage?.idLong,
+                    hasPdfAttachment =
+                        event.message.attachments.any { attachment ->
+                            attachment.contentType.equals("application/pdf", ignoreCase = true) ||
+                                attachment.fileName.endsWith(".pdf", ignoreCase = true)
+                        },
                 )
             synchronized(buffer) { updateRecentPromptMessage(buffer, message) }
         }

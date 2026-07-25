@@ -12,6 +12,7 @@ import com.discordassistant.central.speech.application.port.out.ReasoningMode
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
+import com.discordassistant.central.speech.application.port.out.SpeechGenerationFailureReason
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -21,8 +22,11 @@ import com.discordassistant.central.speech.application.prompt.BurstPromptCompile
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
+import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
+import com.discordassistant.central.speech.domain.model.SpeechImageInput
+import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -39,6 +43,86 @@ class CandidateGenerationServiceTest {
             val candidates = (1..request.candidateCount).map { SpeechCandidate("c$it", listOf("버블 $it")) }
             return SpeechGenerationResult(candidates, modelMetadata = "fake-model")
         }
+    }
+
+    @Test
+    fun `PDF 미지원 안내는 generation port를 호출하지 않고 지정 문구를 만든다`() {
+        val port = CapturingPort()
+        val packet = SpeechGenerationFixtures.packet().copy(localSpeechTemplate = LocalSpeechTemplate.PDF_UNSUPPORTED)
+
+        val result = service(port).generate(packet)
+
+        assertThat(port.callCount).isZero()
+        assertThat(result.modelMetadata).isEqualTo("local-policy")
+        assertThat(
+            result.candidates
+                .single()
+                .bubbles
+                .single(),
+        ).isEqualTo("ㅠㅜ 미안. 난 PDF는 못 읽어. 그거 읽게 하면 토큰을 엄청 써서 개발자 파산함 ㅠ")
+    }
+
+    @Test
+    fun `speech 토큰 예산 거절은 재호출 없이 로컬 한도 안내로 바꾼다`() {
+        var calls = 0
+        val blockedPort =
+            object : SpeechGenerationPort {
+                override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
+                    calls++
+                    return SpeechGenerationResult.failed(SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
+                }
+            }
+
+        val result = service(blockedPort).generate(SpeechGenerationFixtures.packet())
+
+        assertThat(calls).isEqualTo(1)
+        assertThat(result.modelMetadata).isEqualTo("local-policy")
+        assertThat(
+            result.candidates
+                .single()
+                .bubbles
+                .single(),
+        ).contains("개발자 파산 방지")
+    }
+
+    @Test
+    fun `채널 토큰 가명 키는 prompt에 넣지 않고 provider 옵션으로만 전달한다`() {
+        val port = CapturingPort()
+        val packet = SpeechGenerationFixtures.packet().copy(channelTokenBudgetKey = "channel-pseudonym")
+
+        service(port).generate(packet)
+
+        val request = port.lastRequest!!
+        assertThat(request.channelTokenBudgetKey).isEqualTo("channel-pseudonym")
+        assertThat(request.systemPrompt).doesNotContain("channel-pseudonym")
+        assertThat(request.userPrompt).doesNotContain("channel-pseudonym")
+    }
+
+    @Test
+    fun `이미지는 별도 provider 입력으로만 전달하고 prompt와 trace에는 base64를 남기지 않는다`() {
+        val port = CapturingPort()
+        val imageBase64 = "c2VjcmV0LWltYWdlLWJ5dGVz"
+        var captured: Triple<String, String, String>? = null
+        val trace = SpeechInputTracePort { traceId, systemPrompt, userPrompt -> captured = Triple(traceId, systemPrompt, userPrompt) }
+        val image =
+            SpeechImageInput(
+                mediaType = SpeechImageMediaType.PNG,
+                base64Data = imageBase64,
+                width = 1_024,
+                height = 768,
+            )
+
+        service(port, inputTrace = trace).generate(
+            SpeechGenerationFixtures.packet(inputTraceId = "trace-image").copy(speechImageInput = image),
+        )
+
+        val request = port.lastRequest!!
+        assertThat(request.speechImageInput).isEqualTo(image)
+        assertThat(request.userPrompt).contains("별도 이미지 입력")
+        assertThat(request.systemPrompt).doesNotContain(imageBase64)
+        assertThat(request.userPrompt).doesNotContain(imageBase64)
+        assertThat(captured?.second).doesNotContain(imageBase64)
+        assertThat(captured?.third).doesNotContain(imageBase64)
     }
 
     private fun service(

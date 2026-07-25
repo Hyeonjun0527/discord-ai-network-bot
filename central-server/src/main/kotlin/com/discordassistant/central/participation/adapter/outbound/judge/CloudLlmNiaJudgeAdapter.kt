@@ -5,6 +5,8 @@ import com.discordassistant.central.participation.application.port.out.NiaJudgeL
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmResponse
 import com.discordassistant.central.participation.application.port.out.NiaJudgeOutputContract
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
+import com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmCachePolicy
 import com.discordassistant.central.routing.application.CloudLlmException
@@ -44,7 +46,12 @@ class CloudLlmNiaJudgeAdapter(
         }
 
         val startedAtNanos = System.nanoTime()
-        val result = completeWithin(request)
+        val result =
+            try {
+                completeWithin(request)
+            } catch (_: ChannelTokenBudgetExceededException) {
+                throw NiaJudgeTokenBudgetExceededException()
+            }
         val latencyMillis =
             TimeUnit.NANOSECONDS.toMillis(
                 (System.nanoTime() - startedAtNanos).coerceAtLeast(0L),
@@ -99,6 +106,7 @@ class CloudLlmNiaJudgeAdapter(
                                         } else {
                                             CloudLlmCachePolicy.disabled()
                                         },
+                                    channelTokenBudgetKey = request.channelTokenBudgetKey,
                                 ),
                         )
                     },

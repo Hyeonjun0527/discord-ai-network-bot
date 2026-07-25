@@ -1,7 +1,9 @@
 package com.discordassistant.central.speech.adapter.outbound.routing
 
+import com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmCachePolicy
+import com.discordassistant.central.routing.application.CloudLlmImageInput
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmResult
@@ -9,6 +11,7 @@ import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
+import com.discordassistant.central.speech.application.port.out.SpeechGenerationFailureReason
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
@@ -19,6 +22,7 @@ import java.time.Clock
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -80,6 +84,8 @@ class RoutingCloudSpeechGenerationAdapter(
             val result =
                 try {
                     generateBounded(request, prompt, timeout)
+                } catch (_: ChannelTokenBudgetExceededException) {
+                    return SpeechGenerationResult.failed(SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
                     log.warn("발화 생성 호출 중단: {}", e.javaClass.simpleName)
@@ -134,17 +140,35 @@ class RoutingCloudSpeechGenerationAdapter(
         val future: Future<CloudLlmResult> =
             CALL_EXECUTOR.submit(
                 Callable {
-                    cloudLlm.generateSampled(
-                        prompt.text,
-                        modelConfig.model,
-                        modelConfig.temperature,
+                    val options =
                         CloudLlmRequestOptions(
                             purpose = CloudLlmPurpose.NIA_SPEECH,
                             maxOutputTokens = generationRequest.maxOutputTokens,
                             cachePolicy = cachePolicy,
                             requestTimeout = upstreamTimeout(timeout),
                             maxRetries = 0,
-                        ),
+                            channelTokenBudgetKey = generationRequest.channelTokenBudgetKey,
+                        )
+                    generationRequest.speechImageInput?.let { image ->
+                        cloudLlm.generateSampledWithImage(
+                            prompt = prompt.text,
+                            image =
+                                CloudLlmImageInput(
+                                    mimeType = image.mediaType.mimeType,
+                                    base64Data = image.base64Data,
+                                    width = image.width,
+                                    height = image.height,
+                                    estimatedInputTokens = image.estimatedInputTokens,
+                                ),
+                            model = modelConfig.model,
+                            temperature = modelConfig.temperature,
+                            options = options,
+                        )
+                    } ?: cloudLlm.generateSampled(
+                        prompt.text,
+                        modelConfig.model,
+                        modelConfig.temperature,
+                        options,
                     )
                 },
             )
@@ -152,6 +176,10 @@ class RoutingCloudSpeechGenerationAdapter(
             future.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true) // 매달린 호출을 끊어 스레드 누수를 줄인다(HTTP 는 인터럽트에 즉시 반응 안 할 수 있음).
+            throw e
+        } catch (e: ExecutionException) {
+            val cause = e.cause ?: e
+            if (cause is ChannelTokenBudgetExceededException) throw cause
             throw e
         }
     }

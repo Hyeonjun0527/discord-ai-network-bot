@@ -1,7 +1,11 @@
 package com.discordassistant.central.routing
 
+import com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException
+import com.discordassistant.central.routing.application.ChannelTokenBudgetLimits
+import com.discordassistant.central.routing.application.ChannelTokenBudgetPort
 import com.discordassistant.central.routing.application.CloudLlmCachePolicy
 import com.discordassistant.central.routing.application.CloudLlmException
+import com.discordassistant.central.routing.application.CloudLlmImageInput
 import com.discordassistant.central.routing.application.CloudLlmJsonSchema
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
@@ -175,6 +179,69 @@ class OpenAiCloudLlmTest {
             assertEquals(32, result.usage.cacheWritePromptTokens)
             assertEquals(CloudLlmPurpose.NIA_JUDGE, observed.get().first)
             assertEquals(result.usage, observed.get().second)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `Vision 입력은 동적 이미지 블록으로 보내고 base64를 채널 text token으로 예약하지 않는다`() {
+        val capturedBody = AtomicReference<String>()
+        val budget = RecordingChannelTokenBudget()
+        val response = responseBody("사진을 봤어").toByteArray()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/") { exchange ->
+                    capturedBody.set(String(exchange.requestBody.readBytes()))
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val prompt = "고정 발화 규칙\n동적 장면"
+            val prefixChars = "고정 발화 규칙\n".length
+            val imageBase64 = "A".repeat(200_000)
+            val image =
+                CloudLlmImageInput(
+                    mimeType = "image/png",
+                    base64Data = imageBase64,
+                    width = 1_024,
+                    height = 768,
+                    estimatedInputTokens = 768,
+                )
+            assertFalse(image.toString().contains(imageBase64))
+
+            client(
+                server,
+                promptCacheNiaSpeechEnabled = true,
+                channelTokenBudget = budget,
+            ).generateSampledWithImage(
+                prompt = prompt,
+                image = image,
+                model = "gpt-5.6-luna",
+                temperature = 0.9,
+                options =
+                    CloudLlmRequestOptions(
+                        purpose = CloudLlmPurpose.NIA_SPEECH,
+                        maxOutputTokens = 128,
+                        cachePolicy = CloudLlmCachePolicy.stablePrefix("nia-speech:test", prompt, prefixChars),
+                        channelTokenBudgetKey = "channel-pseudonym",
+                    ),
+            )
+
+            val payload = mapper.readTree(capturedBody.get())
+            val blocks = payload.path("input").single().path("content")
+            assertEquals(3, blocks.size())
+            assertEquals(prompt.take(prefixChars), blocks[0].path("text").asText())
+            assertEquals("explicit", blocks[0].path("prompt_cache_breakpoint").path("mode").asText())
+            assertEquals(prompt.drop(prefixChars), blocks[1].path("text").asText())
+            assertEquals("input_image", blocks[2].path("type").asText())
+            assertEquals("high", blocks[2].path("detail").asText())
+            assertEquals("data:image/png;base64,$imageBase64", blocks[2].path("image_url").asText())
+            assertTrue(budget.estimatedTokens in 896..5_000)
+            assertTrue(budget.estimatedTokens < imageBase64.length)
+            assertEquals(7, budget.actualTokens)
         } finally {
             server.stop(0)
         }
@@ -453,6 +520,77 @@ class OpenAiCloudLlmTest {
     }
 
     @Test
+    fun `채널 토큰은 HTTP 전에 최대량을 예약하고 성공 usage의 실제 합계로 정산한다`() {
+        val attempts = AtomicInteger()
+        val budget = RecordingChannelTokenBudget()
+        val response = responseBody("응").toByteArray()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/") { exchange ->
+                    attempts.incrementAndGet()
+                    exchange.requestBody.readBytes()
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            client(server, channelTokenBudget = budget).generate(
+                prompt = "니아야",
+                model = "gpt-5.6-luna",
+                history = emptyList(),
+                thinking = null,
+                options =
+                    CloudLlmRequestOptions(
+                        purpose = CloudLlmPurpose.NIA_JUDGE,
+                        maxOutputTokens = 128,
+                        channelTokenBudgetKey = "channel-pseudonym",
+                    ),
+            )
+
+            assertEquals(1, attempts.get())
+            assertEquals("channel-pseudonym", budget.channelKey)
+            assertTrue(budget.estimatedTokens > 128)
+            assertEquals(7, budget.actualTokens)
+            assertEquals(1_000_000, budget.limits?.perChannel)
+            assertEquals(86_400L, budget.limits?.windowSeconds)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `채널 토큰 예약이 거절되면 provider HTTP 요청을 보내지 않는다`() {
+        val attempts = AtomicInteger()
+        val budget = RecordingChannelTokenBudget(allowReserve = false)
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/") { exchange ->
+                    attempts.incrementAndGet()
+                    exchange.sendResponseHeaders(500, -1)
+                    exchange.close()
+                }
+                start()
+            }
+        try {
+            assertThrows(ChannelTokenBudgetExceededException::class.java) {
+                client(server, channelTokenBudget = budget).generate(
+                    prompt = "니아야",
+                    model = "gpt-5.6-luna",
+                    history = emptyList(),
+                    thinking = null,
+                    options = CloudLlmRequestOptions(channelTokenBudgetKey = "channel-pseudonym"),
+                )
+            }
+
+            assertEquals(0, attempts.get())
+            assertEquals(null, budget.actualTokens)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
     fun `chat function schema is converted to Responses tool schema`() {
         val capturedBody = AtomicReference<String>()
         val observed = AtomicReference<Pair<CloudLlmPurpose, CloudLlmUsage>>()
@@ -552,6 +690,7 @@ class OpenAiCloudLlmTest {
         promptCacheNiaJudgeEnabled: Boolean = false,
         promptCacheNiaSpeechEnabled: Boolean = false,
         usageObserver: CloudLlmUsageObserver = CloudLlmUsageObserver.NOOP,
+        channelTokenBudget: ChannelTokenBudgetPort = ChannelTokenBudgetPort.Unlimited,
     ) = OpenAiCloudLlm(
         apiKey = "test-key",
         baseUrl = "http://127.0.0.1:${server.address.port}",
@@ -560,7 +699,37 @@ class OpenAiCloudLlmTest {
         promptCacheNiaJudgeEnabled = promptCacheNiaJudgeEnabled,
         promptCacheNiaSpeechEnabled = promptCacheNiaSpeechEnabled,
         usageObserver = usageObserver,
+        channelTokenBudget = channelTokenBudget,
     )
+
+    private class RecordingChannelTokenBudget(
+        private val allowReserve: Boolean = true,
+    ) : ChannelTokenBudgetPort {
+        var channelKey: String? = null
+        var estimatedTokens: Int = 0
+        var actualTokens: Int? = null
+        var limits: ChannelTokenBudgetLimits? = null
+
+        override fun reserve(
+            reservationId: String,
+            channelKey: String,
+            estimatedTokens: Int,
+            limits: ChannelTokenBudgetLimits,
+        ): Boolean {
+            this.channelKey = channelKey
+            this.estimatedTokens = estimatedTokens
+            this.limits = limits
+            return allowReserve
+        }
+
+        override fun settle(
+            reservationId: String,
+            actualTokens: Int,
+        ): Boolean {
+            this.actualTokens = actualTokens
+            return true
+        }
+    }
 
     private fun delayedServer(
         delaysBeforeResponse: Int,

@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.application.judge
 
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmPort
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
 
 class NiaParticipationJudge(
@@ -26,16 +27,16 @@ class NiaParticipationJudge(
     }
 
     private fun attempt(prompt: NiaJudgeLlmRequest): NiaJudgeOutputParseResult =
-        runCatching { llmPort.complete(prompt) }
-            .fold(
-                onSuccess = outputParser::parse,
-                onFailure = { error ->
-                    NiaJudgeOutputParseResult.Rejected(
-                        code = JUDGE_LLM_ERROR_CODE,
-                        message = error.message ?: error::class.simpleName.orEmpty(),
-                    )
-                },
+        try {
+            outputParser.parse(llmPort.complete(prompt))
+        } catch (e: NiaJudgeTokenBudgetExceededException) {
+            throw e
+        } catch (error: Exception) {
+            NiaJudgeOutputParseResult.Rejected(
+                code = JUDGE_LLM_ERROR_CODE,
+                message = error.message ?: error::class.simpleName.orEmpty(),
             )
+        }
 
     private fun degradedDecision(
         request: SingleJudgeDecisionRequest,

@@ -221,7 +221,7 @@ class NexaArchitectureTest {
         val participationForward = onMessageReceived.indexOf("forwardToParticipation(", participationTurn)
         val participationOwnershipReturn = onMessageReceived.indexOf("if (participationTurn.ownsTurn) return")
         val mentionResponse = onMessageReceived.indexOf("if (mentioned)")
-        val autoRespond = onMessageReceived.indexOf("handleAutoRespond(event)")
+        val autoRespond = onMessageReceived.indexOf("handleAutoRespond(")
 
         assertThat(participationTurn).isGreaterThan(botFilter)
         assertThat(participationForward).isGreaterThan(participationTurn)

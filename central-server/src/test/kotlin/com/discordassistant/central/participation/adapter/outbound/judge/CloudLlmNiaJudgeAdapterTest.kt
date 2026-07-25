@@ -2,6 +2,8 @@ package com.discordassistant.central.participation.adapter.outbound.judge
 
 import com.discordassistant.central.participation.application.port.out.NiaJudgeLlmRequest
 import com.discordassistant.central.participation.application.port.out.NiaJudgeOutputContract
+import com.discordassistant.central.participation.application.port.out.NiaJudgeTokenBudgetExceededException
+import com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
 import com.discordassistant.central.routing.application.CloudLlmPurpose
@@ -161,6 +163,18 @@ class CloudLlmNiaJudgeAdapterTest {
         assertThat(cloudLlm.calls).isEqualTo(1)
         assertThat(cloudLlm.options!!.jsonSchema).isNotNull()
         assertThat(cloudLlm.options!!.maxRetries).isZero()
+    }
+
+    @Test
+    fun `channel token budget rejection preserves its cause for the judge flow`() {
+        val cloudLlm =
+            RecordingCloudLlm {
+                throw ChannelTokenBudgetExceededException()
+            }
+
+        assertThatThrownBy { CloudLlmNiaJudgeAdapter(cloudLlm).complete(request()) }
+            .isInstanceOf(NiaJudgeTokenBudgetExceededException::class.java)
+        assertThat(cloudLlm.calls).isEqualTo(1)
     }
 
     @Test

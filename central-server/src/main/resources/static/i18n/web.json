@@ -55,6 +55,171 @@
     "en": "Add the bot to Discord",
     "ja": "Discordにボットを追加"
   },
+  "heroCtaTryNia": {
+    "ko": "니아와 지금 대화해보기",
+    "en": "Chat with Nia now",
+    "ja": "今すぐニアと話してみる"
+  },
+  "demoTitle": {
+    "ko": "니아와 잠깐 대화해봐",
+    "en": "Have a quick chat with Nia",
+    "ja": "ニアと少し話してみよう"
+  },
+  "demoSubtitle": {
+    "ko": "초대하기 전에 직접 만나보는 웹 체험",
+    "en": "Meet her here before inviting her",
+    "ja": "招待する前にウェブでお試し"
+  },
+  "demoChecking": {
+    "ko": "로그인 확인 중",
+    "en": "CHECKING LOGIN",
+    "ja": "ログイン確認中"
+  },
+  "demoCheckingBody": {
+    "ko": "Discord 로그인 상태를 확인하고 있어요.",
+    "en": "Checking your Discord login.",
+    "ja": "Discordのログイン状態を確認しています。"
+  },
+  "demoClose": {
+    "ko": "닫기",
+    "en": "Close",
+    "ja": "閉じる"
+  },
+  "demoLoginTitle": {
+    "ko": "Discord 로그인 후 대화할 수 있어",
+    "en": "Sign in with Discord to chat",
+    "ja": "Discordログイン後に話せます"
+  },
+  "demoLoginBody": {
+    "ko": "아무나 무제한으로 쓰지 못하게 계정별 한도를 적용해요. 서버 참여 권한은 요구하지 않아요.",
+    "en": "Account limits prevent unlimited use. You do not need to join a server.",
+    "ja": "無制限利用を防ぐためアカウントごとに上限を設けています。サーバー参加権限は不要です。"
+  },
+  "demoLoginCta": {
+    "ko": "Discord로 로그인",
+    "en": "Sign in with Discord",
+    "ja": "Discordでログイン"
+  },
+  "demoLoginBadge": {
+    "ko": "로그인 필요",
+    "en": "LOGIN REQUIRED",
+    "ja": "ログインが必要"
+  },
+  "demoUnavailableTitle": {
+    "ko": "지금은 잠깐 쉬는 중이야",
+    "en": "Taking a short break",
+    "ja": "今は少し休憩中"
+  },
+  "demoUnavailableBody": {
+    "ko": "비용 보호 장치나 AI 연결을 확인한 뒤 다시 열게요.",
+    "en": "The demo will reopen after its cost guard or AI connection is checked.",
+    "ja": "コスト保護機能またはAI接続を確認してから再開します。"
+  },
+  "demoOfflineBadge": {
+    "ko": "일시 중지",
+    "en": "TEMPORARILY OFFLINE",
+    "ja": "一時停止中"
+  },
+  "demoLoginUnavailable": {
+    "ko": "지금은 Discord 로그인을 받을 수 없어 웹 체험을 닫아두었어요.",
+    "en": "The web demo is closed because Discord login is currently unavailable.",
+    "ja": "現在Discordログインを利用できないため、ウェブ体験を停止しています。"
+  },
+  "demoConnectionError": {
+    "ko": "연결이 잠깐 끊겼어. 조금 뒤 다시 말해줘.",
+    "en": "The connection dropped for a moment. Please try again shortly.",
+    "ja": "一時的に接続が切れました。少ししてからもう一度話しかけてください。"
+  },
+  "demoReadyBadge": {
+    "ko": "니아 · 온라인",
+    "en": "NIA · ONLINE",
+    "ja": "ニア · オンライン"
+  },
+  "demoLimitLabel": {
+    "ko": "텍스트 전용 · {hours}시간 최대 {limit}회",
+    "en": "Text only · up to {limit} chats per {hours}h",
+    "ja": "テキストのみ · {hours}時間に最大{limit}回"
+  },
+  "demoLimitApplied": {
+    "ko": "계정 한도 적용",
+    "en": "ACCOUNT LIMIT ON",
+    "ja": "アカウント上限あり"
+  },
+  "demoRemaining": {
+    "ko": "{count}회 남음",
+    "en": "{count} left",
+    "ja": "残り{count}回"
+  },
+  "demoGreeting": {
+    "ko": "안녕, 니아야. 여기서는 짧게 이야기해볼 수 있어. 뭐가 궁금해?",
+    "en": "Hi, I'm Nia. We can chat for a bit here. What's on your mind?",
+    "ja": "こんにちは、ニアだよ。ここで少しお話しできるよ。何が気になる？"
+  },
+  "demoInviteTitle": {
+    "ko": "마음에 들면 Discord에서도 같이 놀자",
+    "en": "Like our chat? Let's hang out on Discord",
+    "ja": "気に入ったらDiscordでも一緒に遊ぼう"
+  },
+  "demoInviteBody": {
+    "ko": "서버에 초대하면 채널 대화 속에서 니아를 만날 수 있어요.",
+    "en": "Invite Nia to meet her right inside your server conversations.",
+    "ja": "サーバーに招待すると、チャンネルの会話の中でニアに会えます。"
+  },
+  "demoInviteCta": {
+    "ko": "내 Discord 서버에 니아 초대",
+    "en": "Invite Nia to my Discord",
+    "ja": "自分のDiscordにニアを招待"
+  },
+  "demoPlaceholder": {
+    "ko": "니아에게 한마디 해봐",
+    "en": "Say something to Nia",
+    "ja": "ニアに話しかけてみて"
+  },
+  "demoSend": {
+    "ko": "보내기",
+    "en": "Send",
+    "ja": "送信"
+  },
+  "demoPrivacy": {
+    "ko": "대화 문맥은 DB에 저장하지 않고 서버 메모리에서 최대 30분만 유지합니다. 민감정보는 입력하지 마세요.",
+    "en": "Chat context is not stored in the database and stays in server memory for up to 30 minutes. Do not enter sensitive information.",
+    "ja": "会話の文脈はDBに保存せず、サーバーメモリに最大30分だけ保持します。機密情報は入力しないでください。"
+  },
+  "demoThinking": {
+    "ko": "니아가 생각 중",
+    "en": "Nia is thinking",
+    "ja": "ニアが考え中"
+  },
+  "demoErrorInvalid": {
+    "ko": "메시지를 확인해줘. 너무 길거나 대화 연결이 끊긴 것 같아.",
+    "en": "Please check your message. It may be too long or the chat session may have expired.",
+    "ja": "メッセージを確認してね。長すぎるか、会話セッションが切れたようです。"
+  },
+  "demoErrorRate": {
+    "ko": "조금만 천천히 말해줘. 이전 답변이 끝난 뒤 다시 보내면 돼.",
+    "en": "A little slower, please. Try again after the previous reply finishes.",
+    "ja": "少しゆっくり話してね。前の返事が終わってからもう一度送ってください。"
+  },
+  "demoErrorDaily": {
+    "ko": "이번 24시간 체험 횟수를 다 썼어. 다음에 또 만나자.",
+    "en": "You've used all your chats for this 24-hour period. See you next time.",
+    "ja": "この24時間分のお試し回数を使い切りました。また会おうね。"
+  },
+  "demoErrorCapacity": {
+    "ko": "오늘 준비한 전체 체험 한도가 찼어. 비용 폭주를 막기 위해 여기서 멈출게.",
+    "en": "Today's shared demo capacity is full. The cost guard has stopped new chats.",
+    "ja": "本日用意した全体のお試し上限に達しました。費用急増を防ぐため、ここで停止します。"
+  },
+  "demoErrorProtected": {
+    "ko": "한도를 안전하게 확인할 수 없어 비용 보호를 위해 이번 요청을 막았어.",
+    "en": "The limit could not be verified safely, so the cost guard blocked this request.",
+    "ja": "上限を安全に確認できなかったため、コスト保護機能が今回のリクエストを止めました。"
+  },
+  "demoErrorGeneric": {
+    "ko": "문제가 생겨서 여기서 멈췄어. 괜히 여러 번 다시 불러서 돈 쓰지 않을게. 조금 뒤 다시 말해줘.",
+    "en": "Something went wrong, so I stopped here instead of spending money on repeated retries. Please try again shortly.",
+    "ja": "問題が起きたので、費用のかかる再試行を何度もせず、ここで止めました。少ししてからもう一度話しかけてください。"
+  },
   "heroCtaSecondary": {
     "ko": "작동 방식 알아보기",
     "en": "See how it works",

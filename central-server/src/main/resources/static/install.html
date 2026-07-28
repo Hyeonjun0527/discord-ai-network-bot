@@ -284,6 +284,150 @@
     footer .footer-legal a { color: #9aa6bf; text-decoration: none; }
     footer .footer-legal a:hover { color: #fff; text-decoration: underline; }
 
+    /* ── 로그인 기반 니아 웹 체험 ── */
+    body.nia-demo-open { overflow: hidden; }
+    .nia-demo-dialog {
+      width: min(440px, calc(100vw - 32px)); max-width: none;
+      height: calc(100dvh - 32px); max-height: 820px;
+      margin: 16px 16px 16px auto; padding: 0; overflow: hidden;
+      color: var(--text); border: 1px solid color-mix(in srgb, var(--c-violet) 34%, transparent);
+      border-radius: 24px; background: #08111f;
+      box-shadow: -24px 0 80px rgba(0,0,0,.52), 0 0 50px color-mix(in srgb, var(--c-purple) 14%, transparent);
+    }
+    .nia-demo-dialog::backdrop { background: rgba(2, 6, 13, .68); backdrop-filter: blur(7px); }
+    .nia-demo-dialog[open] {
+      display: grid; grid-template-rows: auto minmax(0, 1fr);
+      animation: nia-demo-enter .22s ease-out;
+    }
+    .nia-demo-dialog [hidden] { display: none !important; }
+    @keyframes nia-demo-enter {
+      from { opacity: 0; transform: translateX(24px) scale(.985); }
+      to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    .nia-demo-head {
+      display: flex; align-items: center; gap: 12px; padding: 16px 17px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(91,140,255,.13), rgba(139,91,255,.08));
+    }
+    .nia-demo-avatar {
+      width: 48px; height: 48px; flex: 0 0 auto; overflow: hidden; border-radius: 15px;
+      border: 1px solid color-mix(in srgb, var(--c-violet) 42%, transparent);
+      background: #10192a;
+      box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    }
+    .nia-demo-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .nia-demo-heading { min-width: 0; flex: 1; }
+    .nia-demo-heading h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .nia-demo-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; }
+    .nia-demo-status {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+      color: #b8c6dd; font: 700 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+    }
+    .nia-demo-status::before {
+      content: ""; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--c-cyan); box-shadow: 0 0 9px var(--c-cyan);
+    }
+    .nia-demo-close {
+      width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center;
+      padding: 0; border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+      color: #cdd7e7; background: rgba(255,255,255,.025); font-size: 22px; line-height: 1;
+    }
+    .nia-demo-close:hover { color: #fff; background: rgba(255,255,255,.07); }
+    .nia-demo-state {
+      min-height: 0; display: grid; align-content: center; justify-items: center;
+      gap: 14px; padding: 28px; text-align: center;
+      background: radial-gradient(circle at 50% 18%, rgba(91,140,255,.10), transparent 42%);
+    }
+    .nia-demo-state-mark {
+      width: 58px; height: 58px; display: grid; place-items: center; border-radius: 18px;
+      color: #dfe8ff; font-size: 25px; font-weight: 800;
+      background: linear-gradient(145deg, rgba(91,140,255,.22), rgba(139,91,255,.18));
+      border: 1px solid color-mix(in srgb, var(--c-violet) 30%, transparent);
+    }
+    .nia-demo-state h3 { margin: 4px 0 0; font-size: 21px; letter-spacing: -.025em; }
+    .nia-demo-state p { max-width: 330px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .nia-demo-state .btn { width: 100%; max-width: 310px; margin-top: 6px; }
+    .nia-demo-chat {
+      min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto;
+      background:
+        linear-gradient(rgba(112,139,188,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(112,139,188,.035) 1px, transparent 1px),
+        #07101d;
+      background-size: 26px 26px;
+    }
+    .nia-demo-limit {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      padding: 10px 16px; color: #91a0b8; font-size: 11.5px;
+      border-bottom: 1px solid rgba(255,255,255,.045); background: rgba(8,17,31,.88);
+    }
+    .nia-demo-limit strong { color: #d2dded; }
+    .nia-demo-messages {
+      min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 13px;
+      padding: 18px 16px 22px; scroll-behavior: smooth;
+    }
+    .nia-demo-message { display: flex; gap: 9px; align-items: flex-end; max-width: 92%; }
+    .nia-demo-message.user { align-self: flex-end; flex-direction: row-reverse; }
+    .nia-demo-mini-avatar {
+      width: 27px; height: 27px; flex: 0 0 auto; overflow: hidden; border-radius: 9px;
+      border: 1px solid color-mix(in srgb, var(--c-violet) 30%, transparent);
+    }
+    .nia-demo-mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .nia-demo-bubble {
+      padding: 10px 12px; border-radius: 15px 15px 15px 5px;
+      border: 1px solid rgba(126,151,202,.13); color: #e4eaf4;
+      background: rgba(19,31,50,.94); font-size: 14px; line-height: 1.55;
+      white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .nia-demo-message.user .nia-demo-bubble {
+      border-radius: 15px 15px 5px 15px; color: #fff;
+      background: linear-gradient(135deg, rgba(91,140,255,.88), rgba(125,87,226,.9));
+    }
+    .nia-demo-message.thinking .nia-demo-bubble { color: #94a4bd; }
+    .nia-demo-dots span {
+      display: inline-block; width: 5px; height: 5px; margin: 0 2px; border-radius: 50%;
+      background: currentColor; animation: nia-demo-dot 1.1s infinite ease-in-out;
+    }
+    .nia-demo-dots span:nth-child(2) { animation-delay: .14s; }
+    .nia-demo-dots span:nth-child(3) { animation-delay: .28s; }
+    @keyframes nia-demo-dot { 0%, 65%, 100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
+    .nia-demo-invite {
+      margin: 0 14px 12px; padding: 13px 14px; border-radius: 15px;
+      border: 1px solid color-mix(in srgb, var(--c-violet) 25%, transparent);
+      background: linear-gradient(135deg, rgba(91,140,255,.1), rgba(139,91,255,.1));
+    }
+    .nia-demo-invite strong { display: block; font-size: 13.5px; }
+    .nia-demo-invite p { margin: 5px 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .nia-demo-invite .btn { min-height: 39px; width: 100%; padding: 0 14px; border-radius: 11px; font-size: 12.5px; }
+    .nia-demo-composer {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: end;
+      padding: 12px 14px 8px; border-top: 1px solid rgba(255,255,255,.055);
+      background: rgba(8,17,31,.96);
+    }
+    .nia-demo-input-wrap {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end;
+      border: 1px solid rgba(131,155,207,.18); border-radius: 14px; background: rgba(255,255,255,.035);
+    }
+    .nia-demo-input-wrap:focus-within { border-color: color-mix(in srgb, var(--c-blue) 55%, transparent); }
+    .nia-demo-input {
+      width: 100%; min-height: 47px; max-height: 118px; resize: none; overflow-y: auto;
+      padding: 13px 5px 11px 13px; border: 0; outline: 0; color: #eef3fb;
+      background: transparent; font: inherit; font-size: 14px; line-height: 1.5;
+    }
+    .nia-demo-input::placeholder { color: #687891; }
+    .nia-demo-count { padding: 0 10px 10px 5px; color: #687891; font-size: 10.5px; white-space: nowrap; }
+    .nia-demo-send {
+      width: 47px; height: 47px; padding: 0; display: grid; place-items: center;
+      border: 0; border-radius: 14px; color: #fff; cursor: pointer;
+      background: var(--grad-cta); box-shadow: 0 8px 22px rgba(91,100,235,.28);
+    }
+    .nia-demo-send:disabled, .nia-demo-input:disabled { cursor: not-allowed; opacity: .45; }
+    .nia-demo-send svg { width: 20px; height: 20px; }
+    .nia-demo-privacy {
+      margin: 0; padding: 0 16px 12px; color: #66758c; background: rgba(8,17,31,.96);
+      font-size: 10.5px; line-height: 1.45; text-align: center;
+    }
+
     @media (max-width: 1024px) {
       .hero { grid-template-columns: 1fr; gap: 28px; }
       .hero-art { order: -1; }
@@ -304,6 +448,10 @@
       .tab:last-child { border-bottom: 0; }
       .install { border-top: 1px solid var(--line); border-radius: 18px; margin-top: 12px; }
       .install-head { flex-direction: column; } footer { padding-bottom: 26px; }
+      .nia-demo-dialog {
+        width: 100vw; height: 100dvh; max-height: none; margin: 0;
+        border: 0; border-radius: 0;
+      }
     }
   </style>
 </head>
@@ -344,10 +492,10 @@
           <h1 data-i18n="heroHeadline">당신의<br>디스코드 서버에<br>AI 멤버를 <span class="accent">초대하세요.</span></h1>
           <p data-i18n="heroBody">대화하고, 명령을 수행하고, 서버를 관리하는<br>지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.</p>
           <div class="hero-actions">
-            <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
+            <button class="btn primary" id="niaDemoOpen" type="button">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
-              <span data-i18n="heroCtaPrimary">디스코드에 봇 추가</span>
-            </a>
+              <span data-i18n="heroCtaTryNia">니아와 지금 대화해보기</span>
+            </button>
           </div>
         </div>
 
@@ -452,6 +600,64 @@
     </footer>
   </div>
 
+  <dialog class="nia-demo-dialog" id="niaDemoDialog" aria-labelledby="niaDemoTitle">
+    <header class="nia-demo-head">
+      <div class="nia-demo-avatar"><img src="/img/mascot-ai.png" alt="" /></div>
+      <div class="nia-demo-heading">
+        <h2 id="niaDemoTitle" data-i18n="demoTitle">니아와 잠깐 대화해봐</h2>
+        <p data-i18n="demoSubtitle">초대하기 전에 직접 만나보는 웹 체험</p>
+        <span class="nia-demo-status" id="niaDemoStatus" data-i18n="demoChecking">로그인 확인 중</span>
+      </div>
+      <button class="nia-demo-close" id="niaDemoClose" type="button" aria-label="닫기" data-i18n-aria-label="demoClose">×</button>
+    </header>
+
+    <section class="nia-demo-state" id="niaDemoLoading" aria-live="polite">
+      <div class="nia-demo-state-mark">···</div>
+      <p data-i18n="demoCheckingBody">Discord 로그인 상태를 확인하고 있어요.</p>
+    </section>
+
+    <section class="nia-demo-state" id="niaDemoLogin" hidden>
+      <div class="nia-demo-state-mark">D</div>
+      <h3 data-i18n="demoLoginTitle">Discord 로그인 후 대화할 수 있어</h3>
+      <p data-i18n="demoLoginBody">아무나 무제한으로 쓰지 못하게 계정별 한도를 적용해요. 서버 참여 권한은 요구하지 않아요.</p>
+      <a class="btn primary" id="niaDemoLoginButton" href="/oauth2/authorization/discord" data-i18n="demoLoginCta">Discord로 로그인</a>
+    </section>
+
+    <section class="nia-demo-state" id="niaDemoUnavailable" hidden>
+      <div class="nia-demo-state-mark">!</div>
+      <h3 data-i18n="demoUnavailableTitle">지금은 잠깐 쉬는 중이야</h3>
+      <p id="niaDemoUnavailableMessage" data-i18n="demoUnavailableBody">비용 보호 장치나 AI 연결을 확인한 뒤 다시 열게요.</p>
+    </section>
+
+    <section class="nia-demo-chat" id="niaDemoChat" hidden>
+      <div class="nia-demo-limit">
+        <span id="niaDemoLimitLabel">텍스트 전용 · 24시간 최대 5회</span>
+        <strong id="niaDemoRemaining">계정 한도 적용</strong>
+      </div>
+      <div class="nia-demo-messages" id="niaDemoMessages" role="log" aria-live="polite">
+        <div class="nia-demo-message assistant">
+          <div class="nia-demo-mini-avatar"><img src="/img/mascot-ai.png" alt="" /></div>
+          <div class="nia-demo-bubble" data-i18n="demoGreeting">안녕, 니아야. 여기서는 짧게 이야기해볼 수 있어. 뭐가 궁금해?</div>
+        </div>
+      </div>
+      <aside class="nia-demo-invite" id="niaDemoInvite" hidden>
+        <strong data-i18n="demoInviteTitle">마음에 들면 Discord에서도 같이 놀자</strong>
+        <p data-i18n="demoInviteBody">서버에 초대하면 채널 대화 속에서 니아를 만날 수 있어요.</p>
+        <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener" data-i18n="demoInviteCta">내 Discord 서버에 니아 초대</a>
+      </aside>
+      <form class="nia-demo-composer" id="niaDemoForm">
+        <div class="nia-demo-input-wrap">
+          <textarea class="nia-demo-input" id="niaDemoInput" rows="1" maxlength="500" data-i18n-placeholder="demoPlaceholder" placeholder="니아에게 한마디 해봐"></textarea>
+          <span class="nia-demo-count" id="niaDemoCount">0 / 500</span>
+        </div>
+        <button class="nia-demo-send" id="niaDemoSend" type="submit" aria-label="보내기" data-i18n-aria-label="demoSend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        </button>
+      </form>
+      <p class="nia-demo-privacy" data-i18n="demoPrivacy">대화 문맥은 DB에 저장하지 않고 서버 메모리에서 최대 30분만 유지합니다. 민감정보는 입력하지 마세요.</p>
+    </section>
+  </dialog>
+
   <script>
     // 문구 i18n(ko/en/ja): SSOT 는 repo i18n/messages.json(web 섹션) → 생성본 /i18n/web.json 을 가져와 적용.
     // data-i18n="key" 요소의 innerHTML 을 교체. 언어는 저장된 선택 → 브라우저 언어 → ko 순. 데스크톱 앱·봇과 동일 SSOT.
@@ -475,8 +681,17 @@
           const t = dict[el.dataset.i18n];
           if (t && t[lang]) el.innerHTML = t[lang];
         });
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+          const t = dict[el.dataset.i18nPlaceholder];
+          if (t && t[lang]) el.setAttribute('placeholder', t[lang]);
+        });
+        document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+          const t = dict[el.dataset.i18nAriaLabel];
+          if (t && t[lang]) el.setAttribute('aria-label', t[lang]);
+        });
         document.documentElement.lang = lang;
         if (window.__renderGuide) window.__renderGuide(); // 설치 코드블록 주석/힌트도 현재 언어로 다시 렌더
+        window.dispatchEvent(new CustomEvent('nia:i18n'));
       }
       // JS 동적 문구(예: 복사 피드백)도 같은 SSOT 를 쓰도록 접근자 노출.
       window.__t = (k) => (dict && dict[k] && dict[k][lang]) || '';
@@ -580,6 +795,289 @@
     }
     document.getElementById('copyBtn').addEventListener('click', copyCode);
     document.getElementById('copyBtn2').addEventListener('click', copyCode);
+  </script>
+
+  <script>
+    (function setupNiaDemo() {
+      const dialog = document.getElementById('niaDemoDialog');
+      const openButton = document.getElementById('niaDemoOpen');
+      const closeButton = document.getElementById('niaDemoClose');
+      const loginButton = document.getElementById('niaDemoLoginButton');
+      const loadingPanel = document.getElementById('niaDemoLoading');
+      const loginPanel = document.getElementById('niaDemoLogin');
+      const unavailablePanel = document.getElementById('niaDemoUnavailable');
+      const unavailableMessage = document.getElementById('niaDemoUnavailableMessage');
+      const chatPanel = document.getElementById('niaDemoChat');
+      const statusLabel = document.getElementById('niaDemoStatus');
+      const limitLabel = document.getElementById('niaDemoLimitLabel');
+      const remainingLabel = document.getElementById('niaDemoRemaining');
+      const messages = document.getElementById('niaDemoMessages');
+      const invite = document.getElementById('niaDemoInvite');
+      const form = document.getElementById('niaDemoForm');
+      const input = document.getElementById('niaDemoInput');
+      const count = document.getElementById('niaDemoCount');
+      const sendButton = document.getElementById('niaDemoSend');
+      if (!dialog || !openButton || !form || !input) return;
+
+      const state = {
+        ready: false,
+        sending: false,
+        conversationId: null,
+        maxChars: 500,
+        limit: 5,
+        windowHours: 24,
+        remaining: null,
+        statusKey: 'demoChecking',
+        unavailableKey: 'demoUnavailableBody',
+      };
+      const panels = [loadingPanel, loginPanel, unavailablePanel, chatPanel];
+      const errorKeys = {
+        invalid_request: 'demoErrorInvalid',
+        invalid_conversation: 'demoErrorInvalid',
+        invalid_message: 'demoErrorInvalid',
+        request_in_progress: 'demoErrorRate',
+        rate_limit: 'demoErrorRate',
+        daily_limit: 'demoErrorDaily',
+        capacity_limit: 'demoErrorCapacity',
+        quota_unavailable: 'demoErrorProtected',
+        demo_disabled: 'demoUnavailableBody',
+        temporarily_unavailable: 'demoErrorGeneric',
+      };
+
+      function translate(key, fallback, values) {
+        let value = (window.__t && window.__t(key)) || fallback || '';
+        Object.entries(values || {}).forEach(([name, replacement]) => {
+          value = value.replaceAll(`{${name}}`, String(replacement));
+        });
+        return value;
+      }
+
+      function showPanel(panel) {
+        panels.forEach(candidate => { candidate.hidden = candidate !== panel; });
+      }
+
+      function setStatus(key, fallback) {
+        state.statusKey = key;
+        statusLabel.textContent = translate(key, fallback);
+      }
+
+      function showLogin() {
+        state.ready = false;
+        setStatus('demoLoginBadge', 'LOGIN REQUIRED');
+        showPanel(loginPanel);
+      }
+
+      function showUnavailable(key) {
+        state.ready = false;
+        state.unavailableKey = key || 'demoUnavailableBody';
+        setStatus('demoOfflineBadge', 'TEMPORARILY OFFLINE');
+        unavailableMessage.textContent = translate(state.unavailableKey, '잠시 뒤 다시 확인해 주세요.');
+        showPanel(unavailablePanel);
+      }
+
+      function makeConversationId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+          const random = Math.floor(Math.random() * 16);
+          const value = character === 'x' ? random : (random & 3) | 8;
+          return value.toString(16);
+        });
+      }
+
+      function renderLimits() {
+        limitLabel.textContent = translate(
+          'demoLimitLabel',
+          `텍스트 전용 · ${state.windowHours}시간 최대 ${state.limit}회`,
+          { hours: state.windowHours, limit: state.limit },
+        );
+        remainingLabel.textContent = state.remaining === null
+          ? translate('demoLimitApplied', '계정 한도 적용')
+          : translate('demoRemaining', `${state.remaining}회 남음`, { count: state.remaining });
+      }
+
+      function refreshComposer() {
+        const length = input.value.length;
+        count.textContent = `${length} / ${state.maxChars}`;
+        input.style.height = 'auto';
+        input.style.height = `${Math.min(input.scrollHeight, 118)}px`;
+        const blocked = !state.ready || state.sending || state.remaining === 0;
+        input.disabled = blocked;
+        sendButton.disabled = blocked || input.value.trim().length === 0;
+      }
+
+      function showChat(info) {
+        state.ready = true;
+        state.limit = Number(info.perUserWindowLimit) || 5;
+        state.maxChars = Number(info.messageMaxChars) || 500;
+        state.windowHours = Math.max(1, Math.round((Number(info.windowSeconds) || 86400) / 3600));
+        state.conversationId = state.conversationId || makeConversationId();
+        input.maxLength = state.maxChars;
+        setStatus('demoReadyBadge', 'NIA · ONLINE');
+        renderLimits();
+        showPanel(chatPanel);
+        refreshComposer();
+        window.setTimeout(() => input.focus(), 40);
+      }
+
+      async function loadDemo() {
+        showPanel(loadingPanel);
+        setStatus('demoChecking', '로그인 확인 중');
+        try {
+          const meResponse = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+          if (!meResponse.ok) throw new Error('me_unavailable');
+          const me = await meResponse.json();
+          if (!me.authenticated) {
+            if (me.oauthEnabled === false) {
+              showUnavailable('demoLoginUnavailable');
+              return;
+            }
+            showLogin();
+            return;
+          }
+          const statusResponse = await fetch('/api/nia-demo/status', { credentials: 'same-origin', cache: 'no-store' });
+          if (statusResponse.status === 401) {
+            showLogin();
+            return;
+          }
+          if (!statusResponse.ok) throw new Error('status_unavailable');
+          const info = await statusResponse.json();
+          if (!info.enabled) {
+            showUnavailable('demoUnavailableBody');
+            return;
+          }
+          showChat(info);
+        } catch (_) {
+          showUnavailable('demoConnectionError');
+        }
+      }
+
+      function openDemo() {
+        if (!dialog.open) dialog.showModal();
+        document.body.classList.add('nia-demo-open');
+        if (state.ready) {
+          showPanel(chatPanel);
+          refreshComposer();
+          return;
+        }
+        loadDemo();
+      }
+
+      function closeDemo() {
+        if (dialog.open) dialog.close();
+        document.body.classList.remove('nia-demo-open');
+      }
+
+      function appendMessage(role, text) {
+        const row = document.createElement('div');
+        row.className = `nia-demo-message ${role}`;
+        if (role === 'assistant') {
+          const avatar = document.createElement('div');
+          avatar.className = 'nia-demo-mini-avatar';
+          const image = document.createElement('img');
+          image.src = '/img/mascot-ai.png';
+          image.alt = '';
+          avatar.appendChild(image);
+          row.appendChild(avatar);
+        }
+        const bubble = document.createElement('div');
+        bubble.className = 'nia-demo-bubble';
+        bubble.textContent = text;
+        row.appendChild(bubble);
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+        return row;
+      }
+
+      function appendThinking() {
+        const row = appendMessage('assistant', '');
+        row.classList.add('thinking');
+        const bubble = row.querySelector('.nia-demo-bubble');
+        bubble.setAttribute('aria-label', translate('demoThinking', '니아가 생각 중'));
+        const dots = document.createElement('span');
+        dots.className = 'nia-demo-dots';
+        for (let index = 0; index < 3; index += 1) dots.appendChild(document.createElement('span'));
+        bubble.appendChild(dots);
+        return row;
+      }
+
+      async function sendMessage(message) {
+        state.sending = true;
+        appendMessage('user', message);
+        input.value = '';
+        refreshComposer();
+        const thinking = appendThinking();
+        try {
+          const response = await fetch('/api/nia-demo/messages', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Nia-Web-Demo': '1',
+            },
+            body: JSON.stringify({ conversationId: state.conversationId, message }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          thinking.remove();
+          if (response.status === 401 || payload.code === 'login_required') {
+            showLogin();
+            return;
+          }
+          if (!response.ok) {
+            if (payload.code === 'daily_limit') state.remaining = 0;
+            else state.remaining = null;
+            renderLimits();
+            if (payload.code === 'capacity_limit' || payload.code === 'demo_disabled') state.ready = false;
+            appendMessage('assistant', translate(errorKeys[payload.code] || 'demoErrorGeneric', '잠깐 문제가 생겼어. 조금 뒤 다시 말해줘.'));
+            return;
+          }
+          state.remaining = Number.isInteger(payload.remaining) ? payload.remaining : null;
+          renderLimits();
+          appendMessage('assistant', String(payload.answer || '').trim());
+          invite.hidden = false;
+        } catch (_) {
+          thinking.remove();
+          state.remaining = null;
+          renderLimits();
+          appendMessage('assistant', translate('demoConnectionError', '연결이 잠깐 끊겼어. 조금 뒤 다시 말해줘.'));
+        } finally {
+          state.sending = false;
+          refreshComposer();
+          if (!input.disabled) input.focus();
+        }
+      }
+
+      openButton.addEventListener('click', openDemo);
+      closeButton.addEventListener('click', closeDemo);
+      dialog.addEventListener('cancel', event => { event.preventDefault(); closeDemo(); });
+      dialog.addEventListener('close', () => document.body.classList.remove('nia-demo-open'));
+      loginButton.addEventListener('click', () => sessionStorage.setItem('niaDemoLoginPending', '1'));
+      input.addEventListener('input', refreshComposer);
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          if (!sendButton.disabled) form.requestSubmit();
+        }
+      });
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message || message.length > state.maxChars || sendButton.disabled) return;
+        sendMessage(message);
+      });
+      window.addEventListener('nia:i18n', () => {
+        setStatus(state.statusKey);
+        renderLimits();
+        if (!unavailablePanel.hidden) unavailableMessage.textContent = translate(state.unavailableKey);
+        refreshComposer();
+      });
+
+      refreshComposer();
+      if (sessionStorage.getItem('niaDemoLoginPending') === '1') {
+        sessionStorage.removeItem('niaDemoLoginPending');
+        openDemo();
+      }
+    })();
   </script>
 
   <!-- 브랜드 워드마크 단일 소스. SSOT(of record): packaging/assets.json {brandName, brandTagline}.

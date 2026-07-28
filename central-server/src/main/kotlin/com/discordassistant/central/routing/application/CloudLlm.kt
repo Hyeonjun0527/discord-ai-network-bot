@@ -34,6 +34,7 @@ enum class CloudLlmPurpose {
     NIA_JUDGE,
     NIA_SPEECH,
     NIA_SHADOW_JUDGE,
+    NIA_WEB_DEMO,
 }
 
 /**

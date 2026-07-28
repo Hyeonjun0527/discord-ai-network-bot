@@ -244,13 +244,23 @@ class RequestOrchestrator(
                 quotaReservationUnits = 1,
             )
 
-        // 2.5) 웹검색 증강: 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
-        //      web:true 명시 OR **시간 민감 질의(최신/연도/뉴스 등)면 자동**으로 검색한다(유저가 web 옵션을
-        //      안 줘도 필요할 때 최신 정보를 끌어옴). 비활성/미설정/실패면 원본 그대로(루프 밖 1회 — fallback 시 재검색 안함).
-        val wantWeb = input.webSearch || WebRecency.isTimeSensitive(input.prompt)
+        // 검색어에는 정체성·안전 지시를 섞지 않는다. 필수 검색 실패는 사전 지식으로 메우지 못하게 닫는다.
+        val searchQuery = input.webSearchQuery?.trim()?.takeIf(String::isNotEmpty) ?: input.prompt
+        val wantWeb = input.webSearch || input.webSearchRequired || WebRecency.isTimeSensitive(searchQuery)
         val augmentation =
-            if (wantWeb && webSearch.isEnabled()) webSearch.augment(input.prompt) else WebAugmentation(input.prompt, emptyList())
-        val effectivePrompt = augmentation.prompt
+            if (wantWeb && webSearch.isEnabled()) {
+                webSearch.augment(prompt = input.prompt, searchQuery = searchQuery)
+            } else {
+                WebAugmentation(input.prompt, emptyList())
+            }
+        val effectivePrompt =
+            when {
+                input.webSearchRequired && augmentation.sources.isEmpty() ->
+                    requiredWebSearchFailurePrompt(input.prompt)
+                input.webSearchRequired ->
+                    augmentation.prompt + REQUIRED_WEB_SEARCH_RESPONSE_STYLE
+                else -> augmentation.prompt
+            }
 
         // 2.7) 무료질문 클라우드 직결(ADR 0006): 정책(차단·일일한도·채널·부담) 검사를 **모두 통과한 뒤**에만
         //       분기하므로 차단 사용자·한도 초과·금지 채널은 클라우드 경로에서도 동일하게 거부된다(정책 우회 0).
@@ -445,6 +455,10 @@ class RequestOrchestrator(
         return OrchestrationResult(RequestState.FAILED, failReason = noProviderActionableReason(lastReason))
     }
 
+    private fun requiredWebSearchFailurePrompt(prompt: String): String =
+        "$prompt\n\n[실시간 확인]\n" +
+            "웹 검색 결과를 얻지 못했다. 기억으로 대신하지 말고 지금은 확인할 수 없다고 자연스럽게 답한다."
+
     private fun isDirectCloudModel(model: String?): Boolean {
         val normalized = model?.trim()?.lowercase() ?: return false
         return normalized.startsWith("gpt-")
@@ -482,6 +496,9 @@ class RequestOrchestrator(
         )
 
     companion object {
+        private const val REQUIRED_WEB_SEARCH_RESPONSE_STYLE =
+            "\n\n[대화 방식]\n검색 과정이나 출처 번호를 말하지 말고 확인한 내용으로 자연스럽게 답한다."
+
         // 무료질문 클라우드 직결(ADR 0006)의 사용량 기록용 합성 providerId. 실제 풀 프로바이더(Discord
         // user id, 양수)와 절대 겹치지 않게 음수 sentinel 을 쓴다 — 통계상 "central 직결"을 구분.
         const val CLOUD_PROVIDER_ID = -1L

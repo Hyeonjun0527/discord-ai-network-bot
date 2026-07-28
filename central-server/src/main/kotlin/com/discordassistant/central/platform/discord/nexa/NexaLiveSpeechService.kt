@@ -8,11 +8,10 @@ import com.discordassistant.central.participation.domain.service.sim.SimEventTyp
 import com.discordassistant.central.participation.domain.service.sim.SimScenario
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
-import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.context.ConversationContextSelector
+import com.discordassistant.central.speech.application.context.defaultNiaSpeechIdentity
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
 import com.discordassistant.central.speech.application.port.out.RawThreadTurn
@@ -248,20 +247,7 @@ class NexaLiveSpeechService(
         private val PREDEFINED: Map<String, SimScenario> = LiveDemoScenarios.all().associateBy { it.scenarioId }
     }
 
-    private fun demoIdentity(): IdentityKernelSection =
-        IdentityKernelSection.of(
-            personaName = NexaIdentity.NIA_NAME,
-            personaBlock = promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
-            prohibitions =
-                promptSource
-                    .text(
-                        NiaPromptKey.IDENTITY_PROHIBITIONS,
-                    ).lineSequence()
-                    .map(String::trim)
-                    .filter(String::isNotBlank)
-                    .toList(),
-            interests = setOf("개발", "디스코드"),
-        )
+    private fun demoIdentity(): IdentityKernelSection = promptSource.defaultNiaSpeechIdentity()
 }
 
 /** 컨텍스트 주입을 실제로 [ConversationContextSelector] 로 태우기 위한 in-memory scene reader(데모 전용·전송 0). */

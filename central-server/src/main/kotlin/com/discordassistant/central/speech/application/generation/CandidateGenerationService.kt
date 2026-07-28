@@ -1,6 +1,7 @@
 package com.discordassistant.central.speech.application.generation
 
 import com.discordassistant.central.shared.CodeNiaPromptSource
+import com.discordassistant.central.shared.NiaMediaWebSearchPolicy
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
@@ -62,9 +63,10 @@ class CandidateGenerationService(
         budget: GenerationBudget = GenerationBudget.DEFAULT,
     ): SpeechGenerationResult {
         packet.localSpeechTemplate?.let { return localSpeechResult(it) }
-        val grounding = retrieveGrounding(packet)
-        val request = assembleRequest(packet, budget, grounding)
-        packet.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.userPrompt) }
+        val effectivePacket = requireMediaGrounding(packet)
+        val grounding = retrieveGrounding(effectivePacket)
+        val request = assembleRequest(effectivePacket, budget, grounding)
+        effectivePacket.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.userPrompt) }
         val generated = generationPort.generate(request)
         return if (generated.failureReason == SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED) {
             localSpeechResult(LocalSpeechTemplate.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
@@ -99,6 +101,20 @@ class CandidateGenerationService(
             SpeechFactualGrounding.unavailable()
         }
 
+    private fun requireMediaGrounding(packet: SpeechScenePacket): SpeechScenePacket {
+        if (packet.groundingNeed == SpeechGroundingNeed.WEB_VERIFY) return packet
+        val latestMessage =
+            packet.recentTurns
+                .lastOrNull()
+                ?.text
+                .orEmpty()
+        return if (NiaMediaWebSearchPolicy.requiresWebSearch(latestMessage)) {
+            packet.copy(groundingNeed = SpeechGroundingNeed.WEB_VERIFY)
+        } else {
+            packet
+        }
+    }
+
     /** 패킷·budget 으로 provider-neutral 생성 요청을 조립한다(프롬프트 조립 + 후보 수/token clamp + 추론 모드). */
     fun assembleRequest(
         packet: SpeechScenePacket,
@@ -131,11 +147,7 @@ class CandidateGenerationService(
         packet: SpeechScenePacket,
         grounding: SpeechFactualGrounding,
     ): String {
-        val target =
-            buildString {
-                appendLine("raw_scene_ref=${packet.responseTargetRef.orEmpty()}")
-                append("위 장면의 최신 turn이 이번 응답 대상이다")
-            }.trim()
+        val target = "raw_scene_ref=${packet.responseTargetRef.orEmpty()}"
         val quotedScene =
             if (packet.rawContextSceneData == null) {
                 contentIsolator.serializeAsQuotedScene(packet)
@@ -146,7 +158,8 @@ class CandidateGenerationService(
             if (packet.groundingNeed == SpeechGroundingNeed.WEB_VERIFY) {
                 if (grounding.verified) {
                     "[외부 사실 검증 결과 — 인용 데이터]\n${grounding.evidence.orEmpty().take(MAX_GROUNDING_CHARS)}\n" +
-                        "source_refs=${grounding.sourceRefs.joinToString(",")}"
+                        "source_refs=${grounding.sourceRefs.joinToString(",")}\n" +
+                        "검색 과정이나 출처를 말하지 말고 확인한 내용으로 자연스럽게 답한다"
                 } else {
                     "[외부 사실 검증 결과]\n검증 근거를 얻지 못했다. 추측하거나 지어내지 말고 확인할 수 없다고 자연스럽게 말한다"
                 }
@@ -232,13 +245,6 @@ class CandidateGenerationService(
 
     companion object {
         private const val MAX_GROUNDING_CHARS: Int = 16_000
-
-        /** GLM 이 후보 버블 배열·style tag·uncertainty 를 JSON 으로 돌려주게 하는 출력 지시(T012 파서와 짝). */
-        fun outputFormatInstruction(candidateCount: Int): String =
-            "서로 다른 사회적 전략의 완전 행동 후보를 정확히 ${candidateCount}개 만든다. 단어만 바꾼 동의어 후보는 금지한다. " +
-                "출력은 JSON 하나로만: " +
-                "{\"candidates\":[{\"bubbles\":[\"...\"],\"style_tags\":[\"...\"],\"uncertainty\":0.0}]}. " +
-                "설명·코드펜스 없이 JSON 객체만."
     }
 
     private data class AssembledSystemPrompt(

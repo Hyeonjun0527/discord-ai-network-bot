@@ -18,19 +18,19 @@ enum class NiaPromptKey(
         "identity_persona",
         "정체성",
         "기본 정체성",
-        "니아가 누구이며 어떤 태도로 대화하는지 정하는 기본 원문",
+        "모든 니아 답변에 공통인 정체성과 사실 원칙. 말투·출력 형식은 각 경로 문서에서 관리",
     ),
     VOICE_PRINCIPLES(
         "voice_principles",
         "정체성",
-        "대화 말투 원칙",
-        "니아의 /ask 및 채널 대화에 공통으로 들어가는 말투 원칙",
+        "/ask 대화 원칙",
+        "니아 /ask와 채널 AI 답변에만 들어가는 장면·말투 원칙",
     ),
     SPEECH_PERSONA_RULES(
         "speech_persona_rules",
         "정체성",
         "자발 대화 추가 원칙",
-        "니아가 Discord 대화에 스스로 참여할 때 정체성 뒤에 추가되는 원칙",
+        "니아가 Discord 대화에 스스로 참여할 때만 들어가는 말투·완결 원칙",
     ),
     IDENTITY_PROHIBITIONS(
         "identity_prohibitions",
@@ -127,6 +127,23 @@ fun interface NiaPromptSource {
 }
 
 fun NiaPromptSource.niaIdentityPersona(): String = NexaIdentity.withCharacterProfile(text(NiaPromptKey.IDENTITY_PERSONA))
+
+fun NiaPromptSource.renderNiaAskPrompt(
+    userMessage: String,
+    relation: String = "",
+    managedFewShot: String = "",
+): String =
+    NiaPromptTemplate.render(
+        text(NiaPromptKey.ASK_NIA_TEMPLATE),
+        mapOf(
+            "safety" to text(NiaPromptKey.SAFETY_GUARDRAIL),
+            "persona" to niaIdentityPersona(),
+            "voicePrinciples" to text(NiaPromptKey.VOICE_PRINCIPLES),
+            "managedFewShot" to managedFewShot,
+            "relation" to relation,
+            "userMessage" to userMessage,
+        ),
+    )
 
 object CodeNiaPromptSource : NiaPromptSource {
     override fun documents(): Map<NiaPromptKey, String> = NiaPromptDefaults.documents

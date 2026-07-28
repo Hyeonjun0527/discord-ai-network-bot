@@ -26,6 +26,10 @@ data class AiRequestInput(
     val preferredModel: String? = null,
     val responseMode: String = "balanced",
     val webSearch: Boolean = false,
+    /** 검색에는 정체성·안전 프롬프트를 제외한 원질의를 사용한다. null이면 [prompt]를 그대로 검색한다. */
+    val webSearchQuery: String? = null,
+    /** 검색 결과가 없을 때 모델의 사전 지식으로 대신하지 않고 확인 불가로 답해야 하는 요청이다. */
+    val webSearchRequired: Boolean = false,
     /**
      * 요청 무게(부담 수준) 판단에 쓰는 길이. 비우면 [prompt] 길이를 쓴다. /ask 는 사용자의 실제 질문 길이를
      * 넘겨, 항상 주입되는 시스템 프롬프트(안전 가드레일·정체성·few-shot)가 부담 수준을 부풀려 정상 질문이

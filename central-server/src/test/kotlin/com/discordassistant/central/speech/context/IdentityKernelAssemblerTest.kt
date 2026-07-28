@@ -27,20 +27,21 @@ class IdentityKernelAssemblerTest {
             CodeNiaPromptSource.niaIdentityPersona() + "\n\n" +
                 CodeNiaPromptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
         )
-        assertThat(section.personaBlock).contains("실제 내용을 그 턴에 완결한다")
-        assertThat(section.personaBlock).contains("미래 행동만 약속하고 끝내지 않는다")
-        assertThat(section.personaBlock).contains("친구 단톡방의 한 사람", "확실히 모르면 단정하지 않는다")
-        assertThat(section.personaBlock).contains("조사와 어순이 자연스러운 한국어 구어체")
+        assertThat(section.personaBlock).contains("이번 응답에서 실제로 끝낸다")
+        assertThat(section.personaBlock).contains("예고하지 말고")
+        assertThat(section.personaBlock).contains("친구 단톡방의 한 사람", "확실히 모르는 사실")
+        assertThat(section.personaBlock).contains("자연스러운 한국어 구어체")
         assertThat(section.personaBlock).contains(NexaIdentity.NIA_CHARACTER_PROFILE)
         assertThat(section.personaBlock).doesNotContain("와이파이 비번", "커피 먼저 주문하셔야 돼요", "그만 좀 해라 ㅋㅋ")
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
+        assertThat(section.interests).isEmpty()
     }
 
     @Test
     fun `default nia persona follows core traits without assistant greeting boilerplate`() {
         val prompt = NexaIdentity.NIA_DEFAULT_PERSONA + "\n" + NexaIdentity.NIA_FEWSHOT
 
-        assertThat(prompt).contains("친구 단톡방", "친근함", "장난스러움", "솔직함")
+        assertThat(prompt).contains("친구 단톡방", "친근하고", "장난스럽고", "솔직하다")
         assertThat(prompt).doesNotContain(
             "사용자: 안녕?",
             "니아: 안녕하세요",
@@ -57,7 +58,7 @@ class IdentityKernelAssemblerTest {
             assembler(IdentityKernelMeta.of("아리", setOf("음악"), administratorApproved = true)).assemble(7L)
         assertThat(section.personaName).isEqualTo("아리")
         assertThat(section.personaBlock).contains("아리")
-        assertThat(section.personaBlock).isNotEqualTo(NexaIdentity.NIA_SPEECH_PERSONA)
+        assertThat(section.personaBlock).isNotEqualTo(CodeNiaPromptSource.niaIdentityPersona())
         assertThat(section.personaBlock).doesNotContain(NexaIdentity.NIA_CHARACTER_PROFILE)
         assertThat(section.interests).containsExactly("음악")
     }

@@ -30,12 +30,12 @@ import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
+import com.discordassistant.central.shared.NiaMediaWebSearchPolicy
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.shared.RequestState
 import com.discordassistant.central.shared.ResponseMode
-import com.discordassistant.central.shared.niaIdentityPersona
+import com.discordassistant.central.shared.renderNiaAskPrompt
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -165,6 +165,8 @@ class AskCommandHandler(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, guards.lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
+        val mediaWebSearchRequired = NiaMediaWebSearchPolicy.requiresWebSearch(prompt)
+        val effectiveWebSearch = webSearch || mediaWebSearchRequired
         val guildDefaultModel = policy.guildDefaultModel(ctx.guildId) // 1회 조회 후 재사용(중복 SELECT 제거)
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, guildDefaultModel)
         val modelChoice =
@@ -202,9 +204,10 @@ class AskCommandHandler(
                     prompt,
                     selectedModel,
                     responseMode,
-                    webSearch,
+                    effectiveWebSearch,
                     routingPolicy.maxCandidates,
                     toneDirective = toneDirective,
+                    webSearchRequired = mediaWebSearchRequired,
                 )
             if (local.state == RequestState.COMPLETED) {
                 return completedAskReply(
@@ -239,7 +242,7 @@ class AskCommandHandler(
                 prompt,
                 cloudModel,
                 responseMode,
-                webSearch,
+                effectiveWebSearch,
                 routingPolicy.maxCandidates,
                 // 로컬 우선(preferLocal) 폴백 2차 호출만 dedup=false(1차에서 이미 멱등성 통과, 같은 프롬프트 재차단 방지).
                 // 클라우드가 1차/유일 호출이면 dedup 을 켠다(중복 요청 멱등 보호).
@@ -247,6 +250,7 @@ class AskCommandHandler(
                 history = history,
                 thinking = thinking,
                 toneDirective = toneDirective,
+                webSearchRequired = mediaWebSearchRequired,
             )
         return when (cloud.state) {
             RequestState.COMPLETED -> {
@@ -282,6 +286,7 @@ class AskCommandHandler(
         history: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
         thinking: com.discordassistant.central.routing.application.CloudThinking? = null,
         toneDirective: String = "",
+        webSearchRequired: Boolean = false,
     ): com.discordassistant.central.routing.domain.model.OrchestrationResult {
         val run = startRuntimeMultiResponseObservation(ctx, prompt, responseMode, maxCandidates)
         val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode, toneDirective)
@@ -298,6 +303,8 @@ class AskCommandHandler(
                     preferredModel = model,
                     responseMode = responseMode,
                     webSearch = webSearch && webSearchAugmenter.isEnabled(),
+                    webSearchQuery = prompt.takeIf { webSearch || webSearchRequired },
+                    webSearchRequired = webSearchRequired,
                     // 부담 수준은 사용자 실제 질문 길이로 — 항상 주입되는 시스템 프롬프트(정체성·few-shot)가 등급을 부풀리지 않게.
                     weighChars = prompt.length,
                 ),
@@ -698,16 +705,10 @@ class AskCommandHandler(
         ctx: CommandContext,
         message: String,
     ): String =
-        NiaPromptTemplate.render(
-            niaPromptSource.text(NiaPromptKey.ASK_NIA_TEMPLATE),
-            mapOf(
-                "safety" to niaPromptSource.text(NiaPromptKey.SAFETY_GUARDRAIL),
-                "persona" to niaPromptSource.niaIdentityPersona(),
-                "voicePrinciples" to niaPromptSource.text(NiaPromptKey.VOICE_PRINCIPLES),
-                "managedFewShot" to managedNiaFewShot(ctx).orEmpty(),
-                "relation" to affinityRelationLine(ctx),
-                "userMessage" to message,
-            ),
+        niaPromptSource.renderNiaAskPrompt(
+            userMessage = message,
+            managedFewShot = managedNiaFewShot(ctx).orEmpty(),
+            relation = affinityRelationLine(ctx),
         )
 
     private fun String.withCustomChannelAiBehavior(profile: ChannelAiProfile): String =

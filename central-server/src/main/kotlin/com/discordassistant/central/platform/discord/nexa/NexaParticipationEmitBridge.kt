@@ -91,9 +91,7 @@ import com.discordassistant.central.participation.domain.service.ChannelAttentio
 import com.discordassistant.central.participation.domain.service.CoreInterventionRules
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
-import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.socialmemory.application.port.out.PendingIntentStore
 import com.discordassistant.central.socialmemory.domain.model.VisibilityScope
 import com.discordassistant.central.socialmemory.domain.model.intent.IntentActivation
@@ -114,6 +112,7 @@ import com.discordassistant.central.socialpolicy.domain.model.RecentInteractionO
 import com.discordassistant.central.socialpolicy.domain.model.RecentNiaActionBelief
 import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefDelta
 import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefState
+import com.discordassistant.central.speech.application.context.defaultNiaSpeechIdentity
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
@@ -227,8 +226,8 @@ class NexaParticipationEmitBridge(
     fun onMessage(signal: ParticipationMessageSignal): ParticipationEmitOutcome = onMessageTurn(signal).outcome
 
     /**
-     * Captures the effective rollout mode exactly once and returns both the decision and ownership derived from that
-     * same snapshot. The Discord adapter must use this result rather than re-reading mutable rollout state.
+     * 유효 rollout 모드를 한 번만 읽고, 같은 스냅샷에서 판단 결과와 턴 소유권을 함께 계산한다.
+     * Discord 어댑터는 변경 가능한 rollout 상태를 다시 읽지 말고 이 결과를 사용해야 한다.
      */
     fun onMessageTurn(signal: ParticipationMessageSignal): ParticipationTurnOutcome {
         val mode = flags.effectiveMode(guildId = signal.guildId, channelId = signal.channelId)
@@ -289,8 +288,7 @@ class NexaParticipationEmitBridge(
         }
         if (!effectiveSignal.reevaluationWake) rememberLastHumanSignal(effectiveSignal)
         if (mode.allowsRealSend && judgeMode != NexaJudgeMode.FINAL) {
-            // Rollout guard, not social-policy logic: a non-final judge mode may collect comparison data in shadow,
-            // but it must never use core/baseline or legacy behavior to emit in CANARY/LIVE.
+            // 비최종 judge는 shadow 비교 자료만 모을 수 있다. CANARY/LIVE에서는 core·baseline·legacy 판단으로 전송하지 않는다.
             log.error(
                 "NEXA participation real-send lane requires final judge mode(channel={}, mode={}); fail-closing this turn",
                 effectiveSignal.channelId,
@@ -522,7 +520,7 @@ class NexaParticipationEmitBridge(
                 },
         )
 
-    /** Construct an outcome for a failure before a [ParticipationMessageSignal] could be built. */
+    /** [ParticipationMessageSignal]을 만들기 전에 실패한 메시지의 결과를 만든다. */
     fun failedMessageTurn(
         guildId: Long,
         channelId: Long,
@@ -541,8 +539,8 @@ class NexaParticipationEmitBridge(
     ): ParticipationTurnOutcome =
         ParticipationTurnOutcome(
             outcome = outcome,
-            // A real-send lane is configured to use FINAL. If that invariant is broken, the mode guard above returns
-            // a silent failure and still owns the turn, so an unjudged legacy path cannot bypass it.
+            // 실제 전송 경로는 FINAL만 사용한다. 이 불변식이 깨져도 위 가드가 조용히 실패하면서 턴을 소유해
+            // judge를 거치지 않은 legacy 경로의 우회를 막는다.
             ownsTurn = mode.allowsRealSend && outcome !== ParticipationEmitOutcome.Inactive,
         )
 
@@ -1353,20 +1351,7 @@ class NexaParticipationEmitBridge(
         )
     }
 
-    private fun niaIdentity(): IdentityKernelSection =
-        IdentityKernelSection.of(
-            personaName = NexaIdentity.NIA_NAME,
-            personaBlock = promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
-            prohibitions =
-                promptSource
-                    .text(
-                        NiaPromptKey.IDENTITY_PROHIBITIONS,
-                    ).lineSequence()
-                    .map(String::trim)
-                    .filter(String::isNotBlank)
-                    .toList(),
-            interests = setOf("개발", "디스코드"),
-        )
+    private fun niaIdentity(): IdentityKernelSection = promptSource.defaultNiaSpeechIdentity()
 
     private fun List<ConversationRagMatch>.toJudgePayload(): JudgeConversationRagPayload =
         JudgeConversationRagPayload(
@@ -2808,7 +2793,7 @@ private fun ParticipationMessageSourceType.toRawContextSourceType(): RawContextS
 
 private fun ParticipationMessageSignal.isParticipationCommandLike(): Boolean = rawText.trimStart().startsWith(".")
 
-/** A participation decision and the routing ownership derived from the same effective rollout snapshot. */
+/** 같은 유효 rollout 스냅샷에서 계산한 participation 결과와 라우팅 소유권. */
 data class ParticipationTurnOutcome(
     val outcome: ParticipationEmitOutcome,
     val ownsTurn: Boolean,

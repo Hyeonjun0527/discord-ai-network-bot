@@ -46,7 +46,7 @@ data class SpeechScenePacket(
     val responseTargetRef: String? = null,
     /** AI judge가 정한 현재 턴의 응답 의무. 후보가 없을 때 REQUIRED를 임의 리액션으로 대체하지 않는 데 쓴다. */
     val responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
-    /** AI judge가 정한 외부 사실 검증 요구. */
+    /** Judge 또는 결정론 정책이 정한 외부 사실 검증 요구. */
     val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,
 ) {
     init {

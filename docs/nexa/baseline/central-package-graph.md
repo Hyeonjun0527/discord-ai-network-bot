@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 26 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 819
-- Cross-node import edges: 889
+- Kotlin files scanned: 824
+- Cross-node import edges: 898
 
 ## Nodes
 
@@ -24,7 +24,7 @@
 | `licensing` | 19 |
 | `multiresponse` | 24 |
 | `niaprompt` | 3 |
-| `onboarding` | 15 |
+| `onboarding` | 20 |
 | `participation` | 146 |
 | `platform` | 74 |
 | `preset` | 25 |
@@ -99,8 +99,8 @@
 | `onboarding` | `knowledge` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildHistoryBackfillService.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
 | `onboarding` | `platform` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildHistoryBackfillService.kt` | `com.discordassistant.central.platform.discord.DiscordBot` |
 | `onboarding` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/ProviderConnectOnboardingService.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
-| `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
-| `onboarding` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.shared.RequestState` |
+| `onboarding` | `routing` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/NiaWebDemoConversationStore.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
+| `onboarding` | `shared` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/NiaWebDemoService.kt` | `com.discordassistant.central.shared.NiaPromptSource` |
 | `participation` | `actionruntime` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/rollout/ActionRuntimePendingCancellationAdapter.kt` | `com.discordassistant.central.actionruntime.application.port.inbound.RevocationScope` |
 | `participation` | `conversation` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/participation/application/SceneParticipationConnector.kt` | `com.discordassistant.central.conversation.domain.event.SceneUpdated` |
 | `participation` | `global` | 6 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/ConversationRagAdminController.kt` | `com.discordassistant.central.global.security.DashboardActor` |
@@ -203,7 +203,7 @@ Incoming:
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `global` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/global/observability/OpenAiTokenUsageMetrics.kt` | `com.discordassistant.central.routing.application.CloudLlmPurpose` |
 | `guild` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt` | `com.discordassistant.central.routing.application.port.RoutingPolicy` |
-| `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
+| `onboarding` | `routing` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/NiaWebDemoConversationStore.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
 | `participation` | `routing` | 13 | `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/judge/CloudLlmNiaJudgeAdapter.kt` | `com.discordassistant.central.routing.application.ChannelTokenBudgetExceededException` |
 | `platform` | `routing` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.routing.application.CloudTurn` |
 | `quota` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt` | `com.discordassistant.central.routing.application.port.BlocklistChecker` |

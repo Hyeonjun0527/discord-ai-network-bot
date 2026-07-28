@@ -51,6 +51,10 @@ services:
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       RELAY_PUBLIC_URL_FILE: /run/secrets/central.relay.public-url
       SERVER_PORT: ${SERVER_PORT:-8085}
+      # 공개 Discord OAuth 세션은 HTTPS에서만 전송한다. Lax는 Discord 콜백(top-level GET)을 허용한다.
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      SERVER_SERVLET_SESSION_COOKIE_HTTP_ONLY: "true"
+      SERVER_SERVLET_SESSION_COOKIE_SAME_SITE: Lax
       CENTRAL_DEV_ENABLED: "false"
       CENTRAL_DURABLE_SECRET_FILE: /run/secrets/central.durable.secret
       NEXA_FIELD_ENC_KEY_FILE: /run/secrets/nexa.field-enc-key
@@ -72,6 +76,19 @@ services:
       # 빠른 채팅/무료질문/니아 speech 기본 모델.
       OPENAI_FREE_MODEL: ${OPENAI_FREE_MODEL:-gpt-5.6-luna}
       OPENAI_FAST_MODEL: ${OPENAI_FAST_MODEL:-gpt-5.6-luna}
+      # 랜딩 웹 체험은 Discord 로그인 후 계정별 5회/24h, 전체 200회/24h로 제한한다.
+      # Redis 장애 시 fail-closed하며 이 스위치 하나로 비용 호출을 즉시 멈출 수 있다.
+      NIA_WEB_DEMO_ENABLED: ${NIA_WEB_DEMO_ENABLED:-true}
+      NIA_WEB_DEMO_PER_MINUTE: ${NIA_WEB_DEMO_PER_MINUTE:-2}
+      NIA_WEB_DEMO_PER_USER_WINDOW: ${NIA_WEB_DEMO_PER_USER_WINDOW:-5}
+      NIA_WEB_DEMO_GLOBAL_WINDOW: ${NIA_WEB_DEMO_GLOBAL_WINDOW:-200}
+      NIA_WEB_DEMO_WINDOW_SECONDS: ${NIA_WEB_DEMO_WINDOW_SECONDS:-86400}
+      NIA_WEB_DEMO_MESSAGE_MAX_CHARS: ${NIA_WEB_DEMO_MESSAGE_MAX_CHARS:-500}
+      NIA_WEB_DEMO_HISTORY_TURNS: ${NIA_WEB_DEMO_HISTORY_TURNS:-4}
+      NIA_WEB_DEMO_HISTORY_TTL_SECONDS: ${NIA_WEB_DEMO_HISTORY_TTL_SECONDS:-1800}
+      NIA_WEB_DEMO_MAX_OUTPUT_TOKENS: ${NIA_WEB_DEMO_MAX_OUTPUT_TOKENS:-320}
+      NIA_WEB_DEMO_TIMEOUT_SECONDS: ${NIA_WEB_DEMO_TIMEOUT_SECONDS:-15}
+      NIA_WEB_DEMO_REDIS_ENABLED: ${NIA_WEB_DEMO_REDIS_ENABLED:-true}
       # provider 내부 중첩 재시도는 끈다. Judge/Speech가 실패 시 각각 한 번만 재시도한다.
       OPENAI_LLM_MAX_RETRIES: "0"
       # Judge의 고정 지시와 active few-shot prefix만 캐시한다. raw scene/RAG/상태는 breakpoint 뒤라

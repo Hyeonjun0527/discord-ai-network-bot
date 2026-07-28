@@ -129,6 +129,19 @@ central:
     runpod-endpoint-id: ${RUNPOD_ENDPOINT_ID:}
     runpod-timeout-seconds: ${RUNPOD_TIMEOUT_SECONDS:300}
     runpod-base-url: ${RUNPOD_BASE_URL:https://api.runpod.ai/v2}
+  nia-web-demo:
+    enabled: ${NIA_WEB_DEMO_ENABLED:false}
+    per-minute: ${NIA_WEB_DEMO_PER_MINUTE:2}
+    per-user-window: ${NIA_WEB_DEMO_PER_USER_WINDOW:5}
+    global-window: ${NIA_WEB_DEMO_GLOBAL_WINDOW:200}
+    window-seconds: ${NIA_WEB_DEMO_WINDOW_SECONDS:86400}
+    message-max-chars: ${NIA_WEB_DEMO_MESSAGE_MAX_CHARS:500}
+    history-turns: ${NIA_WEB_DEMO_HISTORY_TURNS:4}
+    history-ttl-seconds: ${NIA_WEB_DEMO_HISTORY_TTL_SECONDS:1800}
+    max-output-tokens: ${NIA_WEB_DEMO_MAX_OUTPUT_TOKENS:320}
+    timeout-seconds: ${NIA_WEB_DEMO_TIMEOUT_SECONDS:15}
+    # 운영은 Redis에서 계정별·전체 한도를 원자 처리하고 장애 시 AI 호출 전에 닫는다.
+    redis-enabled: ${NIA_WEB_DEMO_REDIS_ENABLED:true}
   speech:
     # NEXA 발화 생성(SPEAK 이후 문장 생성, ADR 0006 anti-corruption) 모델·budget 외부화(P14-T003).
     # endpoint/api-key 는 위 cloud.openai-* 가 SSOT — speech 는 모델 라벨·호출 budget 만 외부화한다.

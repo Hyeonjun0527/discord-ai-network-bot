@@ -119,6 +119,7 @@ tasks.withType<Test> {
         // Docker 가 필요한 BDD/Testcontainers 계약만 실행해 GitHub runner 메모리 고갈을 방지한다.
         include("**/RunCucumberBddTest.class")
         include("**/PostgresFlywayIntegrationTest.class")
+        include("**/NiaWebDemoRedisQuotaIntegrationTest.class")
         maxHeapSize = "2048m"
     } else {
         // Cucumber BDD 스위트는 Testcontainers Postgres(실 DB) 필요 → 기본 빌드에서 클래스 단위 제외(실행: -PdockerTests).
@@ -165,6 +166,7 @@ kover {
                     "*.DevController\$*",
                     // Redis 백엔드(분산 rate limit 옵트인 인프라) — 미사용 시 비활성, 인프라 의존.
                     "*RedisRateLimitStore",
+                    "*RedisNiaWebDemoQuotaAdapter",
                 )
             }
         }

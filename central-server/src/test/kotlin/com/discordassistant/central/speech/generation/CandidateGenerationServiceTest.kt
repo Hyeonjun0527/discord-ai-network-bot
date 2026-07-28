@@ -1,10 +1,12 @@
 package com.discordassistant.central.speech.generation
 
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotSpeechPromptRenderer
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptDefaults
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
+import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -224,22 +226,20 @@ class CandidateGenerationServiceTest {
         assertThat(req.systemPrompt).contains("니아")
         assertThat(req.systemPrompt).contains("하지 않을 것")
         assertThat(req.systemPrompt).contains("정확히 1개")
-        assertThat(req.systemPrompt).contains("서로 다른 사회적 전략의 완전 행동 후보를 정확히 2개")
+        assertThat(req.systemPrompt).contains("후보를 정확히 2개 출력한다")
         assertThat(req.systemPrompt).contains(
             "interaction_reading",
             "information_depth",
             "continuity_refs",
-            "서로 다른 완전 행동이어야 한다",
-            "교과서식 정의→절차→예외→복잡도 구조를 매번 반복하지 않는다",
-            "표면 질문의 장문 답안까지 억지로 붙이는 것이 완결은 아니다",
-            "갑작스러운 전환에 대한 웃음과 피해 사실을 웃음거리로 만드는 태도를 구분",
+            "서로 다른 완전 행동 후보를 만든다",
+            "장면이 요구하지 않는 교과서식 답안 구조를 반복하지 않는다",
         )
         assertThat(req.systemPrompt).doesNotContain("니아 기능채널 ai채팅")
         assertThat(req.maxOutputTokens).isEqualTo(1024)
         assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
         val cachePrefix = req.systemPrompt.take(req.stableSystemPromptChars)
         assertThat(cachePrefix)
-            .contains("니아", "[지금 장면 지침]")
+            .contains("니아", "[발화 생성 지침]")
             .doesNotContain("[participation 결정]", "질문 연타가 시험으로 바뀜")
         assertThat(req.systemPrompt.drop(req.stableSystemPromptChars))
             .contains("[participation 결정]", "interaction_reading=질문 연타가 시험으로 바뀜")
@@ -249,30 +249,44 @@ class CandidateGenerationServiceTest {
     }
 
     @Test
-    fun `니아 speech persona와 생성 규칙은 중복·출력 형식 충돌 없이 한 번씩 조립된다`() {
+    fun `운영 기본 니아 speech는 중복 규칙 없이 입력 예산을 지킨다`() {
         val port = CapturingPort()
+        val basePersona =
+            CodeNiaPromptSource.niaIdentityPersona() + "\n\n" +
+                CodeNiaPromptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES)
+        val baselineExamples = NiaFewShotSpeechPromptRenderer.renderForParticipation(null)
         val identity =
             IdentityKernelSection.of(
                 personaName = NexaIdentity.NIA_NAME,
-                personaBlock = NexaIdentity.NIA_SPEECH_PERSONA,
+                personaBlock = "$basePersona\n\n$baselineExamples",
+                prohibitions =
+                    CodeNiaPromptSource
+                        .text(NiaPromptKey.IDENTITY_PROHIBITIONS)
+                        .lineSequence()
+                        .map(String::trim)
+                        .filter(String::isNotBlank)
+                        .toList(),
             )
 
         service(port).generate(SpeechGenerationFixtures.packet(identity = identity), GenerationBudget.DEFAULT)
 
         val prompt = port.lastRequest!!.systemPrompt
-        assertThat(prompt).contains(
-            "친구 단톡방의 한 사람",
-            "최근 원문 장면 전체",
-            "준비해볼게",
-            "출력은 JSON 하나로만",
-        )
-        assertThat(prompt).doesNotContain("니아가 지금 할 말 자체만 말한다")
-        assertThat(prompt.split("최근 원문 장면 전체").size - 1).isEqualTo(1)
-        assertThat(prompt.split("준비해볼게").size - 1).isEqualTo(1)
-        assertThat(prompt.split("ASCII 마침표(.)로 끝내지 않는다").size - 1).isEqualTo(1)
-        assertThat(NexaIdentity.NIA_SPEECH_PERSONA.length).isLessThan(500)
+        assertThat(prompt)
+            .contains(
+                "공식 인물 설정",
+                "니아 대화 대조 예시",
+                "[하지 않을 것]",
+                "최근 원문 전체",
+                "오프라인 신체 경험",
+                "JSON 하나로만",
+            ).containsOnlyOnce("최근 원문 전체")
+            .containsOnlyOnce("오프라인 신체 경험")
+            .containsOnlyOnce("ASCII 마침표(.)로 끝내지 않는다")
+            .doesNotContain("[관심사]", "개발, 디스코드")
+        assertThat(identity.personaBlock.length).isLessThan(2_100)
+        assertThat(prompt.length).isLessThan(3_500)
         println(
-            "NIA_SPEECH_COST_FIXTURE personaChars=${NexaIdentity.NIA_SPEECH_PERSONA.length} " +
+            "NIA_PRODUCTION_SPEECH_COST_FIXTURE personaChars=${identity.personaBlock.length} " +
                 "systemPromptChars=${prompt.length}",
         )
     }
@@ -338,10 +352,9 @@ class CandidateGenerationServiceTest {
         assertThat(stablePrefix)
             .contains(
                 "고정 정체성",
-                "[지금 장면 지침]",
+                "[발화 생성 지침]",
             ).doesNotContain(
-                "최근 원문 장면 전체를 보고 실제 문구만 만든다",
-                "ASCII 마침표(.)로 끝내지 않는다",
+                "최근 원문 전체를 참고하되 [현재 응답 대상]에 답하고 이전 질문으로 바꾸지 않는다",
                 "상대 말을 가볍게 받아 주는 결",
                 "친한 사이의 가벼운 장난 결",
                 "정확히 1개",
@@ -351,7 +364,7 @@ class CandidateGenerationServiceTest {
         assertThat(first.systemPrompt.drop(first.stableSystemPromptChars))
             .contains(
                 "상대 말을 가볍게 받아 주는 결",
-                "최근 원문 장면 전체를 보고 실제 문구만 만든다",
+                "최근 원문 전체를 참고하되 [현재 응답 대상]에 답하고 이전 질문으로 바꾸지 않는다",
                 "정확히 1개",
                 "짧게 받아주기",
             )
@@ -547,12 +560,11 @@ class CandidateGenerationServiceTest {
 
         val request = port.lastRequest!!
         assertThat(request.userPrompt).contains(
-            "[현재 응답 대상]",
+            "[현재 응답 대상 — 최신 turn]",
             "raw_scene_ref=msg_3",
-            "위 장면의 최신 turn이 이번 응답 대상이다",
         )
         assertThat(request.userPrompt.split("토큰없냐")).hasSize(2)
-        assertThat(request.systemPrompt).contains("이전 미응답 질문을 최신 질문 대신 답하지 않는다")
+        assertThat(request.systemPrompt).contains("이전 질문으로 바꾸지 않는다")
     }
 
     @Test

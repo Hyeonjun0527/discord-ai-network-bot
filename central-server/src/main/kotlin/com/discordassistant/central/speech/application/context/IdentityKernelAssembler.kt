@@ -2,9 +2,7 @@ package com.discordassistant.central.speech.application.context
 
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.NexaIdentity
-import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.port.out.IdentityKernelBridgePort
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 
@@ -29,37 +27,16 @@ class IdentityKernelAssembler(
     fun assemble(guildId: Long): IdentityKernelSection {
         val meta = bridge.identityMeta(guildId)
         val personaName = meta.personaName.ifBlank { NexaIdentity.NIA_NAME }
+        if (personaName == NexaIdentity.NIA_NAME) {
+            return promptSource.defaultNiaSpeechIdentity(meta.interestTags)
+        }
         return IdentityKernelSection.of(
             personaName = personaName,
-            personaBlock = personaBlockFor(personaName),
-            prohibitions = prohibitionsFor(personaName),
+            personaBlock = "당신은 「$personaName」 입니다. 이 정체성으로, 1인칭으로, 처음부터 끝까지 일관되게 말하세요.",
+            prohibitions = DEFAULT_PROHIBITIONS,
             interests = meta.interestTags,
         )
     }
-
-    /**
-     * persona 본문을 NexaIdentity SSOT 에서 조립한다(복제 금지 — 상수 재정의 없이 SSOT 를 읽는다). 기본 니아면
-     * speech 전용 SSOT persona 전문을, 길드가 다른 이름을 지정했으면 이름만 치환한 짧은 정체성 헤더를 쓴다.
-     */
-    private fun personaBlockFor(personaName: String): String =
-        if (personaName == NexaIdentity.NIA_NAME) {
-            promptSource.niaIdentityPersona() + "\n\n" + promptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES)
-        } else {
-            // 길드 지정 정체성: SSOT 전문을 강제하지 않고 이름·상징 문장만 짧게 둔다(니아 전문 복제 금지).
-            "당신은 「$personaName」 입니다. 이 정체성으로, 1인칭으로, 처음부터 끝까지 일관되게 말하세요."
-        }
-
-    private fun prohibitionsFor(personaName: String): List<String> =
-        if (personaName == NexaIdentity.NIA_NAME) {
-            promptSource
-                .text(NiaPromptKey.IDENTITY_PROHIBITIONS)
-                .lineSequence()
-                .map(String::trim)
-                .filter(String::isNotBlank)
-                .toList()
-        } else {
-            DEFAULT_PROHIBITIONS
-        }
 
     companion object {
         /** 어느 정체성에도 적용되는 기본 금지사항(assistant 기본문·메타 발화 금지). */

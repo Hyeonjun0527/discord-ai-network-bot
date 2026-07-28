@@ -9,6 +9,7 @@ class NexaIdentityTest {
         assertThat(NexaIdentity.NIA_CHARACTER_PROFILE).contains("20세 성인", "158cm", "46kg")
         assertThat(NexaIdentity.NIA_DEFAULT_PERSONA)
             .containsOnlyOnce(NexaIdentity.NIA_CHARACTER_PROFILE)
+            .doesNotContain("ASCII 마침표", "최근 원문", "출력:", "행위 수행:")
     }
 
     @Test

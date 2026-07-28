@@ -131,11 +131,7 @@ class CandidateGenerationService(
         packet: SpeechScenePacket,
         grounding: SpeechFactualGrounding,
     ): String {
-        val target =
-            buildString {
-                appendLine("raw_scene_ref=${packet.responseTargetRef.orEmpty()}")
-                append("위 장면의 최신 turn이 이번 응답 대상이다")
-            }.trim()
+        val target = "raw_scene_ref=${packet.responseTargetRef.orEmpty()}"
         val quotedScene =
             if (packet.rawContextSceneData == null) {
                 contentIsolator.serializeAsQuotedScene(packet)
@@ -232,13 +228,6 @@ class CandidateGenerationService(
 
     companion object {
         private const val MAX_GROUNDING_CHARS: Int = 16_000
-
-        /** GLM 이 후보 버블 배열·style tag·uncertainty 를 JSON 으로 돌려주게 하는 출력 지시(T012 파서와 짝). */
-        fun outputFormatInstruction(candidateCount: Int): String =
-            "서로 다른 사회적 전략의 완전 행동 후보를 정확히 ${candidateCount}개 만든다. 단어만 바꾼 동의어 후보는 금지한다. " +
-                "출력은 JSON 하나로만: " +
-                "{\"candidates\":[{\"bubbles\":[\"...\"],\"style_tags\":[\"...\"],\"uncertainty\":0.0}]}. " +
-                "설명·코드펜스 없이 JSON 객체만."
     }
 
     private data class AssembledSystemPrompt(

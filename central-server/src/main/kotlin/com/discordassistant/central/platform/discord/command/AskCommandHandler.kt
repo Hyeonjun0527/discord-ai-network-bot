@@ -32,10 +32,9 @@ import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.NiaPromptTemplate
 import com.discordassistant.central.shared.RequestState
 import com.discordassistant.central.shared.ResponseMode
-import com.discordassistant.central.shared.niaIdentityPersona
+import com.discordassistant.central.shared.renderNiaAskPrompt
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -698,16 +697,10 @@ class AskCommandHandler(
         ctx: CommandContext,
         message: String,
     ): String =
-        NiaPromptTemplate.render(
-            niaPromptSource.text(NiaPromptKey.ASK_NIA_TEMPLATE),
-            mapOf(
-                "safety" to niaPromptSource.text(NiaPromptKey.SAFETY_GUARDRAIL),
-                "persona" to niaPromptSource.niaIdentityPersona(),
-                "voicePrinciples" to niaPromptSource.text(NiaPromptKey.VOICE_PRINCIPLES),
-                "managedFewShot" to managedNiaFewShot(ctx).orEmpty(),
-                "relation" to affinityRelationLine(ctx),
-                "userMessage" to message,
-            ),
+        niaPromptSource.renderNiaAskPrompt(
+            userMessage = message,
+            managedFewShot = managedNiaFewShot(ctx).orEmpty(),
+            relation = affinityRelationLine(ctx),
         )
 
     private fun String.withCustomChannelAiBehavior(profile: ChannelAiProfile): String =

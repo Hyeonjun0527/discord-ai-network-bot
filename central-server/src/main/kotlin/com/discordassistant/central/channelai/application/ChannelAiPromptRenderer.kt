@@ -6,10 +6,8 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
-import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
-import com.discordassistant.central.shared.NiaPromptTemplate
-import com.discordassistant.central.shared.niaIdentityPersona
+import com.discordassistant.central.shared.renderNiaAskPrompt
 import org.springframework.stereotype.Component
 
 /**
@@ -124,16 +122,9 @@ class ChannelAiPromptRenderer(
                 add("user_message")
             }
         val fullPrompt =
-            NiaPromptTemplate.render(
-                niaPromptSource.text(NiaPromptKey.ASK_NIA_TEMPLATE),
-                mapOf(
-                    "safety" to niaPromptSource.text(NiaPromptKey.SAFETY_GUARDRAIL),
-                    "persona" to niaPromptSource.niaIdentityPersona(),
-                    "voicePrinciples" to niaPromptSource.text(NiaPromptKey.VOICE_PRINCIPLES),
-                    "managedFewShot" to if (includeRag) "[채널 지식/RAG]\n${rag.orEmpty()}" else "",
-                    "relation" to "",
-                    "userMessage" to sanitizedQuestion,
-                ),
+            niaPromptSource.renderNiaAskPrompt(
+                userMessage = sanitizedQuestion,
+                managedFewShot = if (includeRag) "[채널 지식/RAG]\n${rag.orEmpty()}" else "",
             )
         val systemPrompt = fullPrompt.substringBefore("[상대 발화]").trim()
         val userPrompt = "[상대 발화]\n$sanitizedQuestion"

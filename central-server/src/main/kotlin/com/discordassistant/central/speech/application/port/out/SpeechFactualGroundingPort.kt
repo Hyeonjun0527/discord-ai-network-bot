@@ -1,6 +1,6 @@
 package com.discordassistant.central.speech.application.port.out
 
-/** AI judge가 외부 검증을 요구한 발화만 웹 근거로 보강하는 speech 아웃바운드 경계다. */
+/** Judge 또는 결정론 정책이 외부 검증을 요구한 발화를 웹 근거로 보강하는 speech 아웃바운드 경계다. */
 fun interface SpeechFactualGroundingPort {
     fun verify(query: String): SpeechFactualGrounding
 

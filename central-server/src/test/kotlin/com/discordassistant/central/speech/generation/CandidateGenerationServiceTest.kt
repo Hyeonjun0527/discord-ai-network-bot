@@ -617,4 +617,34 @@ class CandidateGenerationServiceTest {
         assertThat(port.lastRequest!!.userPrompt).contains("검증 근거를 얻지 못했다", "추측하거나 지어내지 말고")
         assertThat(port.lastRequest!!.systemPrompt).contains("먹어봤다·가봤다·직접 봤다는 말은 실제 근거가 있을 때만")
     }
+
+    @Test
+    fun `애니와 유튜브 질문은 judge 선택과 무관하게 웹 검증한다`() {
+        val port = CapturingPort()
+        var searchedQuery: String? = null
+        val grounding =
+            SpeechFactualGroundingPort { query ->
+                searchedQuery = query
+                SpeechFactualGrounding(
+                    evidence = "공식 채널과 작품 소개를 확인했다",
+                    sourceRefs = listOf("https://example.test/anime"),
+                )
+            }
+
+        service(port, grounding).generate(
+            SpeechGenerationFixtures.packet(
+                turns =
+                    listOf(
+                        com.discordassistant.central.speech.domain.model
+                            .ConversationTurn("member", "요즘 볼 만한 애니 추천해줘"),
+                    ),
+                groundingNeed = SpeechGroundingNeed.NONE,
+            ),
+        )
+
+        assertThat(searchedQuery).isEqualTo("요즘 볼 만한 애니 추천해줘")
+        assertThat(port.lastRequest!!.userPrompt)
+            .contains("공식 채널과 작품 소개를 확인했다")
+            .contains("검색 과정이나 출처를 말하지 말고")
+    }
 }

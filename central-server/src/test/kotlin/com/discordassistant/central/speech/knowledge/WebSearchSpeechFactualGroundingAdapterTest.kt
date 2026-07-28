@@ -14,8 +14,10 @@ class WebSearchSpeechFactualGroundingAdapterTest {
                 object : WebSearchAugmenter {
                     override fun isEnabled(): Boolean = true
 
-                    override fun augment(prompt: String): WebAugmentation =
-                        WebAugmentation("검색 근거: $prompt", listOf("https://example.test/official"))
+                    override fun augment(
+                        prompt: String,
+                        searchQuery: String,
+                    ): WebAugmentation = WebAugmentation("검색 근거: $prompt", listOf("https://example.test/official"))
                 },
             )
 
@@ -33,7 +35,10 @@ class WebSearchSpeechFactualGroundingAdapterTest {
                 object : WebSearchAugmenter {
                     override fun isEnabled(): Boolean = false
 
-                    override fun augment(prompt: String): WebAugmentation = error("호출되면 안 됨")
+                    override fun augment(
+                        prompt: String,
+                        searchQuery: String,
+                    ): WebAugmentation = error("호출되면 안 됨")
                 },
             )
 

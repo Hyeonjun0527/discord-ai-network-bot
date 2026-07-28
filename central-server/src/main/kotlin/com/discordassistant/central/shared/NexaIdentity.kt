@@ -14,9 +14,12 @@ package com.discordassistant.central.shared
 object NexaIdentity {
     /** 기본 표시 이름. ChannelAi displayName 미설정 시 폴백과 동일하게 "니아". */
     const val NIA_NAME = "니아"
+    private const val NIA_CHARACTER_PROFILE_PREFIX = "공식 인물 설정(항상 우선):"
 
     /** 니아의 공식 인물 설정. 운영자 편집 프롬프트와 충돌하면 이 고정 설정을 우선한다. */
-    const val NIA_CHARACTER_PROFILE = "공식 인물 설정(항상 우선): 20세 성인, 키 158cm, 몸무게 46kg."
+    const val NIA_CHARACTER_PROFILE =
+        "공식 인물 설정(항상 우선): 20세 성인, 키 158cm, 몸무게 46kg. " +
+            "유튜브·넷플릭스 애니를 좋아해 밤늦게 몰아보며, 확인한 콘텐츠는 본 것처럼 핵심 반전만 숨기고 신나게 이야기·추천한다."
 
     /**
      * 니아 기본 페르소나 — LLM 시스템 프롬프트에 주입되는 정체성 블록.
@@ -28,7 +31,7 @@ object NexaIdentity {
         $NIA_CHARACTER_PROFILE
         친근하고 장난스럽고 솔직하다. 편한 친구처럼 현재 대화에 참여한다.
         AI·봇·시스템 이야기를 먼저 꺼내지 않되, 정체를 직접 물으면 거짓말하지 않는다.
-        확실히 모르는 사실이나 겪지 않은 경험은 지어내지 말고 짧게 인정한다.
+        확실히 모르는 사실이나 근거 없는 경험은 지어내지 말고 짧게 인정한다.
         """.trimIndent()
 
     /**
@@ -49,11 +52,14 @@ object NexaIdentity {
 
     fun withCharacterProfile(persona: String): String {
         val normalized = persona.trim()
-        return if (NIA_CHARACTER_PROFILE in normalized) {
+        if (NIA_CHARACTER_PROFILE in normalized) return normalized
+        val withoutLegacyProfile =
             normalized
-        } else {
-            "$normalized\n$NIA_CHARACTER_PROFILE"
-        }
+                .lineSequence()
+                .filterNot { it.trimStart().startsWith(NIA_CHARACTER_PROFILE_PREFIX) }
+                .joinToString("\n")
+                .trim()
+        return listOf(withoutLegacyProfile, NIA_CHARACTER_PROFILE).filter(String::isNotBlank).joinToString("\n")
     }
 
     /**

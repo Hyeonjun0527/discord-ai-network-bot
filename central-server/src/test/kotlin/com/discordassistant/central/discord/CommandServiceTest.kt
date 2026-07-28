@@ -924,6 +924,34 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 미디어 질문은 검색이 꺼져 있어도 근거 없이는 아는 척하지 않는다`() {
+            val guildId = 90_210L
+            val channelId = 90_211L
+            val conn = EchoConn()
+            val session = ProviderSession(conn, providerId = 90_212L, guildId = guildId)
+            conn.session = session
+            registry.register(session)
+            try {
+                val reply =
+                    commands.ask(
+                        CommandContext(
+                            guildId = guildId,
+                            channelId = channelId,
+                            userId = 90_213L,
+                            roleIds = setOf(1L),
+                            isAdmin = true,
+                        ),
+                        "요즘 볼 만한 애니 추천해줘",
+                    )
+
+                assertTrue(reply.content.contains("웹 검색 결과를 얻지 못했다"), reply.content)
+                assertTrue(reply.content.contains("기억으로 대신하지 말고"), reply.content)
+            } finally {
+                registry.unregister(session)
+            }
+        }
+
+        @Test
         fun `ask — 새 채널 AI 미리보기 renderer 와 실제 실행 prompt 가 일치한다`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 83, guildId = 100)

@@ -183,7 +183,10 @@ class RequestOrchestratorTest {
         object : WebSearchAugmenter {
             override fun isEnabled() = true
 
-            override fun augment(prompt: String) = WebAugmentation("[웹] $prompt", listOf("https://e.com"))
+            override fun augment(
+                prompt: String,
+                searchQuery: String,
+            ) = WebAugmentation("[웹] $prompt", listOf("https://e.com"))
         }
 
     @Test
@@ -222,6 +225,90 @@ class RequestOrchestratorTest {
             )
         orch.handle(input) // webSearch 기본 false
         assertEquals("안녕", (s.connection as EchoConnection).lastInfer?.prompt)
+    }
+
+    @Test
+    fun `검색 질의는 시스템 프롬프트와 분리해 전달한다`() {
+        val reg = newRegistry()
+        val s = register(reg, 1, "ok")
+        var searchedQuery: String? = null
+        val search =
+            object : WebSearchAugmenter {
+                override fun isEnabled() = true
+
+                override fun augment(
+                    prompt: String,
+                    searchQuery: String,
+                ): WebAugmentation {
+                    searchedQuery = searchQuery
+                    return WebAugmentation("[웹 근거]\n$prompt", listOf("https://e.com/anime"))
+                }
+            }
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                webSearch = search,
+            )
+
+        val result =
+            orch.handle(
+                input.copy(
+                    prompt = "[니아 정체성]\n[상대 발화]\n애니 추천해줘",
+                    webSearch = true,
+                    webSearchQuery = "애니 추천해줘",
+                    webSearchRequired = true,
+                ),
+            )
+
+        assertEquals("애니 추천해줘", searchedQuery)
+        val sentPrompt = (s.connection as EchoConnection).lastInfer?.prompt.orEmpty()
+        assertTrue(sentPrompt.contains("[웹 근거]\n[니아 정체성]"))
+        assertTrue(sentPrompt.contains("검색 과정이나 출처 번호를 말하지 말고"))
+        assertEquals(listOf("https://e.com/anime"), result.sources)
+    }
+
+    @Test
+    fun `필수 웹 검색 결과가 없으면 기억으로 답하지 못하게 닫는다`() {
+        val reg = newRegistry()
+        val s = register(reg, 1, "ok")
+        val noResultSearch =
+            object : WebSearchAugmenter {
+                override fun isEnabled() = true
+
+                override fun augment(
+                    prompt: String,
+                    searchQuery: String,
+                ) = WebAugmentation(prompt, emptyList())
+            }
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                webSearch = noResultSearch,
+            )
+
+        orch.handle(
+            input.copy(
+                prompt = "[니아 정체성]\n[상대 발화]\n애니 추천해줘",
+                webSearchQuery = "애니 추천해줘",
+                webSearchRequired = true,
+            ),
+        )
+
+        val sentPrompt = (s.connection as EchoConnection).lastInfer?.prompt.orEmpty()
+        assertTrue(sentPrompt.contains("웹 검색 결과를 얻지 못했다"))
+        assertTrue(sentPrompt.contains("기억으로 대신하지 말고"))
     }
 
     @Test

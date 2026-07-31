@@ -1,6 +1,6 @@
 # ADR 0018: NIA bounded LLM retry budget
 
-- 상태(Status): 승인됨 (Accepted)
+- 상태(Status): [ADR 0019](./0019-nia-two-paid-call-ceiling.md)에 의해 대체됨 (Superseded)
 - 날짜(Date): 2026-07-25
 - 결정자(Deciders): Hyeonjun0527
 - 대체 범위: [ADR 0017](./0017-nia-closed-loop-social-policy.md)의 Cloud 완전 행동 평가와

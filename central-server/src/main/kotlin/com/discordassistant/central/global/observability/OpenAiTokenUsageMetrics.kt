@@ -1,6 +1,5 @@
 package com.discordassistant.central.global.observability
 
-import com.discordassistant.central.participation.application.port.out.ConversationEmbeddingUsageObserver
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmUsage
 import com.discordassistant.central.routing.application.CloudLlmUsageObserver
@@ -11,8 +10,7 @@ import org.springframework.stereotype.Component
 @Component
 class OpenAiTokenUsageMetrics(
     private val meter: MeterRegistry,
-) : CloudLlmUsageObserver,
-    ConversationEmbeddingUsageObserver {
+) : CloudLlmUsageObserver {
     override fun recordAttempt(
         model: String,
         purpose: CloudLlmPurpose,
@@ -39,16 +37,6 @@ class OpenAiTokenUsageMetrics(
             ).increment()
     }
 
-    override fun recordAttempt(model: String) = recordRequest(model, EMBEDDING_PURPOSE)
-
-    override fun recordAttempt(
-        model: String,
-        requestPayloadChars: Int,
-    ) {
-        recordRequest(model, EMBEDDING_PURPOSE)
-        recordPayloadSize(model, EMBEDDING_PURPOSE, requestPayloadChars)
-    }
-
     override fun record(
         model: String,
         purpose: CloudLlmPurpose,
@@ -65,14 +53,6 @@ class OpenAiTokenUsageMetrics(
         record(model, normalizedPurpose, "output", usage.completionTokens)
         record(model, normalizedPurpose, "cached_input", usage.cachedPromptTokens)
         record(model, normalizedPurpose, "cache_write", usage.cacheWritePromptTokens)
-    }
-
-    override fun record(
-        model: String,
-        promptTokens: Int,
-    ) {
-        record(model, EMBEDDING_PURPOSE, "input_total", promptTokens)
-        record(model, EMBEDDING_PURPOSE, "uncached_input", promptTokens)
     }
 
     private fun recordRequest(
@@ -122,9 +102,5 @@ class OpenAiTokenUsageMetrics(
                 "category",
                 category,
             ).increment(tokens.toDouble())
-    }
-
-    companion object {
-        const val EMBEDDING_PURPOSE: String = "nia_rag_embedding"
     }
 }

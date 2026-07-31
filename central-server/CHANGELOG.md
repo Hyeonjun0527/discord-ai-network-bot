@@ -10,10 +10,12 @@
 - 관리자 콘솔을 `대화 데이터`와 `실행 기록` 두 화면으로 단순화하고, 서버·채널별 NIA 실행에서 모델이 본
   최근 대화와 최종 선택 답변을 함께 확인할 수 있게 했다. 대화 에피소드 검색 결과는 런타임 연결 이후 최대 2개까지
   같은 실행 상세에 표시한다.
-- OpenAI 직접 호출을 `judge`·`speech`·`action evaluator`·RAG embedding 등 목적별 요청 수, payload 크기,
+- OpenAI 직접 호출을 `judge`·`speech` 등 목적별 요청 수, payload 크기,
   input/cache-write/cached/output token으로 집계하고 운영 Prometheus가 365일 동안 수집하도록 연결했다.
 
 ### Fixed
+- NIA Conversation RAG의 OpenAI embedding 호출과 Judge·Speech 자동 재시도를 제거해, 한 턴의 유료 OpenAI
+  요청을 비발화 1회·발화 2회로 제한했다. RAG 관리·검색은 로컬 텍스트 점수만 사용한다.
 - NIA가 응답 의무가 있는 장면에서도 후속 후보 평가에서 침묵으로 뒤집히던 문제를 막고, 현재 메시지를 응답 대상으로
   끝까지 보존해 새 질문 대신 이전 질문에 뒤늦게 답하지 않도록 수정했다.
 - 외부 검증이 필요한 사실은 AI 판단 결과에 따라 운영 SearXNG 근거를 발화 생성에 연결하고, 근거를 얻지 못했을 때

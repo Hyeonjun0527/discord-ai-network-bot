@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 26 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 824
-- Cross-node import edges: 898
+- Kotlin files scanned: 823
+- Cross-node import edges: 897
 
 ## Nodes
 
@@ -25,7 +25,7 @@
 | `multiresponse` | 24 |
 | `niaprompt` | 3 |
 | `onboarding` | 20 |
-| `participation` | 146 |
+| `participation` | 145 |
 | `platform` | 74 |
 | `preset` | 25 |
 | `provider` | 15 |
@@ -66,7 +66,6 @@
 | `dev` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `dev` | `relay` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
-| `global` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/global/observability/OpenAiTokenUsageMetrics.kt` | `com.discordassistant.central.participation.application.port.out.ConversationEmbeddingUsageObserver` |
 | `global` | `relay` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/global/health/PoolHealthIndicator.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `global` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/global/observability/OpenAiTokenUsageMetrics.kt` | `com.discordassistant.central.routing.application.CloudLlmPurpose` |
 | `global` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/global/i18n/I18n.kt` | `com.discordassistant.central.shared.SupportedLanguage` |

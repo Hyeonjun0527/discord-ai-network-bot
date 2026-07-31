@@ -12,18 +12,11 @@ class NiaParticipationJudge(
 ) : SingleParticipationJudgePort {
     override fun decide(request: SingleJudgeDecisionRequest): SingleJudgeDecision {
         val prompt = request.preparedLlmRequest ?: promptAssembler.assemble(request)
-        var lastRejection: NiaJudgeOutputParseResult.Rejected? = null
-        repeat(MAX_ATTEMPTS) {
-            when (val result = attempt(prompt)) {
-                is NiaJudgeOutputParseResult.Accepted ->
-                    return SingleJudgeDecisionGuard.apply(request, result.parsed.decision).finalDecision
-                is NiaJudgeOutputParseResult.Rejected -> {
-                    lastRejection = result
-                    if (Thread.currentThread().isInterrupted) return degradedDecision(request, result)
-                }
-            }
+        return when (val result = attempt(prompt)) {
+            is NiaJudgeOutputParseResult.Accepted ->
+                SingleJudgeDecisionGuard.apply(request, result.parsed.decision).finalDecision
+            is NiaJudgeOutputParseResult.Rejected -> degradedDecision(request, result)
         }
-        return degradedDecision(request, requireNotNull(lastRejection))
     }
 
     private fun attempt(prompt: NiaJudgeLlmRequest): NiaJudgeOutputParseResult =
@@ -31,6 +24,12 @@ class NiaParticipationJudge(
             outputParser.parse(llmPort.complete(prompt))
         } catch (e: NiaJudgeTokenBudgetExceededException) {
             throw e
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            NiaJudgeOutputParseResult.Rejected(
+                code = JUDGE_LLM_ERROR_CODE,
+                message = e.message ?: e::class.simpleName.orEmpty(),
+            )
         } catch (error: Exception) {
             NiaJudgeOutputParseResult.Rejected(
                 code = JUDGE_LLM_ERROR_CODE,
@@ -154,7 +153,6 @@ class NiaParticipationJudge(
 
     companion object {
         const val DEFAULT_DEGRADED_DELAY_MILLIS: Long = 1_000
-        private const val MAX_ATTEMPTS: Int = 2
         private const val JUDGE_LLM_ERROR_CODE: String = "judge_llm_error"
         private const val MAX_CONTEXTUAL_FALLBACK_PRESSURE: Double = 0.8
     }

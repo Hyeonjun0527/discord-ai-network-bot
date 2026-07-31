@@ -149,7 +149,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
         assertThat(cloud.lastOptions!!.maxOutputTokens).isEqualTo(256)
         val cachePolicy = cloud.lastOptions!!.cachePolicy
         assertThat(cloud.lastPrompt!!.take(cachePolicy.stablePrefixChars)).isEqualTo("너는 니아야\n\n")
-        assertThat(cloud.lastOptions!!.requestTimeout).isEqualTo(Duration.ofMillis(7_750))
+        assertThat(cloud.lastOptions!!.requestTimeout!!.toMillis()).isBetween(7_000L, 7_750L)
         assertThat(cloud.lastOptions!!.maxRetries).isZero()
     }
 
@@ -211,22 +211,22 @@ class RoutingCloudSpeechGenerationAdapterTest {
             RoutingCloudSpeechGenerationAdapter(fake, config)
 
         assertThat(adapter.generate(request()).isEmpty).isTrue()
-        assertThat(fake.calls).isEqualTo(2)
+        assertThat(fake.calls).isEqualTo(1)
     }
 
     @Test
-    fun `transient failure is retried once`() {
+    fun `transient failure is not retried`() {
         val fake = FakeCloudLlm(throwOnce = true)
         val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
         val result = adapter.generate(request())
 
-        assertThat(result.isEmpty).isFalse()
-        assertThat(fake.calls).isEqualTo(2)
+        assertThat(result.isEmpty).isTrue()
+        assertThat(fake.calls).isEqualTo(1)
         assertThat(fake.lastOptions!!.maxRetries).isZero()
     }
 
     @Test
-    fun `malformed first response is retried once`() {
+    fun `malformed first response is not retried`() {
         val fake =
             FakeCloudLlm(
                 responseSequence =
@@ -239,18 +239,17 @@ class RoutingCloudSpeechGenerationAdapterTest {
 
         val result = adapter.generate(request())
 
-        assertThat(result.isEmpty).isFalse()
-        assertThat(result.candidates.single().bubbles).containsExactly("다시 성공")
-        assertThat(fake.calls).isEqualTo(2)
+        assertThat(result.isEmpty).isTrue()
+        assertThat(fake.calls).isEqualTo(1)
     }
 
     @Test
-    fun `persistent provider failure stops after two attempts`() {
+    fun `persistent provider failure stops after one attempt`() {
         val fake = FakeCloudLlm(throwAlways = true)
         val adapter = RoutingCloudSpeechGenerationAdapter(fake, config)
 
         assertThat(adapter.generate(request()).isEmpty).isTrue()
-        assertThat(fake.calls).isEqualTo(2)
+        assertThat(fake.calls).isEqualTo(1)
     }
 
     @Test
@@ -265,7 +264,7 @@ class RoutingCloudSpeechGenerationAdapterTest {
     }
 
     @Test
-    fun `speech does not start its retry after the overall deadline`() {
+    fun `speech starts no call when the overall deadline is already reached`() {
         val startedAt = Instant.parse("2026-06-22T00:00:00Z")
         val deadline = startedAt.plusSeconds(8)
         val clock = SequenceClock(listOf(startedAt, deadline))

@@ -136,8 +136,9 @@ sequenceDiagram
     end
 ```
 
-Judge와 Speech의 첫 호출이 실패하면 해당 단계만 한 번 재시도한다. provider 내부 retry는 0이고 별도
-Evaluator 호출도 없으므로 정상 발화는 2회, 두 단계가 모두 실패하는 최악의 복구 경로는 최대 4회다.
+Judge와 Speech는 각각 최대 1회만 호출한다. provider 내부 retry, 별도 Evaluator, OpenAI RAG
+embedding은 없다. 비발화는 최대 1회, 발화는 실패 경로까지 포함해도 최대 2회다. 실패하면 추가 모델
+호출 없이 로컬 하강 또는 무발화한다.
 
 ---
 

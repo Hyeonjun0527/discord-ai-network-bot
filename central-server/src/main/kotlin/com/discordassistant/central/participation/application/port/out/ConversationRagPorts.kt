@@ -24,32 +24,3 @@ data class ConversationRagStoredEntry(
     val indexedAt: Instant,
     val createdAt: Instant? = null,
 )
-
-interface ConversationEmbeddingPort {
-    val model: String
-
-    fun isConfigured(): Boolean
-
-    fun embed(texts: List<String>): List<FloatArray>
-}
-
-/** Conversation RAG embedding API가 보고한 실제 입력 토큰을 원문 없이 관측한다. */
-fun interface ConversationEmbeddingUsageObserver {
-    /** 실제 embedding HTTP 요청 직전에 호출한다. */
-    fun recordAttempt(model: String) = Unit
-
-    /** 원문 없이 직렬화된 embedding payload 크기까지 함께 기록한다. */
-    fun recordAttempt(
-        model: String,
-        requestPayloadChars: Int,
-    ) = recordAttempt(model)
-
-    fun record(
-        model: String,
-        promptTokens: Int,
-    )
-
-    companion object {
-        val NOOP = ConversationEmbeddingUsageObserver { _, _ -> }
-    }
-}

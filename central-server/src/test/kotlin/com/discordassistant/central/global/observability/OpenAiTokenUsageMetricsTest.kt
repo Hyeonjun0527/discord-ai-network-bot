@@ -1,6 +1,5 @@
 package com.discordassistant.central.global.observability
 
-import com.discordassistant.central.participation.adapter.outbound.embedding.OpenAiConversationEmbeddingAdapter
 import com.discordassistant.central.routing.application.CloudLlmPurpose
 import com.discordassistant.central.routing.application.CloudLlmRequestOptions
 import com.discordassistant.central.routing.application.CloudLlmUsage
@@ -22,19 +21,12 @@ class OpenAiTokenUsageMetricsTest {
             .withBean(SimpleMeterRegistry::class.java)
             .withBean(OpenAiTokenUsageMetrics::class.java)
             .withBean(OpenAiCloudLlm::class.java)
-            .withBean(OpenAiConversationEmbeddingAdapter::class.java)
             .withPropertyValues("central.cloud.openai-api-key=test-key")
             .run { context ->
                 assertThat(context.startupFailure).isNull()
                 val metrics = context.getBean(OpenAiTokenUsageMetrics::class.java)
                 assertThat(
                     ReflectionTestUtils.getField(context.getBean(OpenAiCloudLlm::class.java), "usageObserver"),
-                ).isSameAs(metrics)
-                assertThat(
-                    ReflectionTestUtils.getField(
-                        context.getBean(OpenAiConversationEmbeddingAdapter::class.java),
-                        "usageObserver",
-                    ),
                 ).isSameAs(metrics)
             }
     }
@@ -78,40 +70,6 @@ class OpenAiTokenUsageMetricsTest {
         assertThat(
             counter(registry, "central_openai_cache_policy_requests_total", "policy", "disabled"),
         ).isEqualTo(1.0)
-    }
-
-    @Test
-    fun `conversation RAG embedding 호출과 입력 토큰도 목적별로 기록한다`() {
-        val registry = SimpleMeterRegistry()
-        val metrics = OpenAiTokenUsageMetrics(registry)
-
-        metrics.recordAttempt("text-embedding-3-small", requestPayloadChars = 87)
-        metrics.record(model = "text-embedding-3-small", promptTokens = 321)
-
-        assertThat(
-            counter(
-                registry,
-                "central_openai_requests_total",
-                "purpose",
-                OpenAiTokenUsageMetrics.EMBEDDING_PURPOSE,
-            ),
-        ).isEqualTo(1.0)
-        assertThat(
-            registry
-                .get("central_openai_tokens_total")
-                .tag("purpose", OpenAiTokenUsageMetrics.EMBEDDING_PURPOSE)
-                .tag("category", "input_total")
-                .counter()
-                .count(),
-        ).isEqualTo(321.0)
-        assertThat(
-            registry
-                .get("central_openai_tokens_total")
-                .tag("purpose", OpenAiTokenUsageMetrics.EMBEDDING_PURPOSE)
-                .tag("category", "uncached_input")
-                .counter()
-                .count(),
-        ).isEqualTo(321.0)
     }
 
     @Test

@@ -89,7 +89,7 @@ services:
       NIA_WEB_DEMO_MAX_OUTPUT_TOKENS: ${NIA_WEB_DEMO_MAX_OUTPUT_TOKENS:-320}
       NIA_WEB_DEMO_TIMEOUT_SECONDS: ${NIA_WEB_DEMO_TIMEOUT_SECONDS:-15}
       NIA_WEB_DEMO_REDIS_ENABLED: ${NIA_WEB_DEMO_REDIS_ENABLED:-true}
-      # provider 내부 중첩 재시도는 끈다. Judge/Speech가 실패 시 각각 한 번만 재시도한다.
+      # provider 내부·Judge·Speech 자동 재시도를 모두 끈다. 한 턴은 최대 Judge 1회 + Speech 1회다.
       OPENAI_LLM_MAX_RETRIES: "0"
       # Judge의 고정 지시와 active few-shot prefix만 캐시한다. raw scene/RAG/상태는 breakpoint 뒤라
       # 매 요청 새로 전달되고, active few-shot이 바뀌면 prefix hash도 바뀐다. 운영 환경변수로 즉시 OFF

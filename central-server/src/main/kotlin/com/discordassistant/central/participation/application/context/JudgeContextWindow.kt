@@ -57,8 +57,8 @@ class JudgeContextWindowBuilder(
         }.trim()
 
     /**
-     * RAG 검색은 명령을 실행하지 않는 embedding/text-similarity 입력이다. LLM용 injection 경계 문구와 message ref를
-     * 다시 embedding하면 비용과 검색 잡음만 늘어나므로, 같은 원문을 화자/답글 관계와 함께 간결하게 직렬화한다.
+     * RAG 검색은 명령을 실행하지 않는 로컬 text-similarity 입력이다. LLM용 injection 경계 문구와
+     * message ref는 검색 잡음만 늘리므로, 같은 원문을 화자/답글 관계와 함께 간결하게 직렬화한다.
      */
     private fun serializeForRetrieval(messages: List<JudgeContextMessage>): String =
         messages.joinToString("\n") { message ->

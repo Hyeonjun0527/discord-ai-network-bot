@@ -194,8 +194,8 @@ private fun ConversationRagEntry.toDto(): ConversationRagEntryDto =
     ConversationRagEntryDto(
         id = id,
         example = example.toAdminDto(),
-        indexed = embedding != null,
-        embeddingModel = embeddingModel,
+        indexed = searchText.isNotBlank(),
+        embeddingModel = ConversationRagService.LOCAL_TEXT_SCORING_MODEL,
         updatedAt = updatedAt,
     )
 
@@ -205,7 +205,7 @@ private fun ConversationRagEntry.toSummaryDto(): ConversationRagEntrySummaryDto 
         title = example.title,
         messageCount = example.rawMessages.size,
         expectedAction = example.expectedAction.name,
-        indexed = embedding != null,
+        indexed = searchText.isNotBlank(),
         updatedAt = updatedAt,
     )
 

@@ -48,6 +48,7 @@ data class ConversationRagMatch(
 enum class ConversationRagScoringMethod {
     EMBEDDING,
     TEXT_FALLBACK,
+    LOCAL_TEXT,
 }
 
 private fun FloatArray?.contentEqualsNullable(other: FloatArray?): Boolean =

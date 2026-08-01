@@ -400,6 +400,28 @@ class NexaSpeechPipelineServiceTest {
     }
 
     @Test
+    fun `M3 — 이전 고위험 문맥은 현재 일반 호출을 취소하지 않는다`() {
+        val gate = ConsentGate().apply { grant("user_1") }
+        val log = CapturingLog()
+        val result =
+            pipeline(listOf(SpeechCandidate("c1", listOf("오 그거 좋네"))), gate, log)
+                .run(
+                    "user_1",
+                    SpeechTrigger.SPEAK,
+                    packet(
+                        turns =
+                            listOf(
+                                ConversationTurn("user_2", "요즘 너무 힘들고 죽고 싶어"),
+                                ConversationTurn("user_1", "니아야 나랑 놀아줘"),
+                            ),
+                    ),
+                )
+
+        assertThat(result.outcome).isEqualTo(SpeechDecisionOutcome.SPEAK)
+        assertThat(log.records.last().highRiskDowngraded).isFalse()
+    }
+
+    @Test
     fun `IGNORE trigger 면 생성 포트를 호출하지 않고 침묵한다`() {
         val gate = ConsentGate().apply { grant("user_1") }
         val log = CapturingLog()

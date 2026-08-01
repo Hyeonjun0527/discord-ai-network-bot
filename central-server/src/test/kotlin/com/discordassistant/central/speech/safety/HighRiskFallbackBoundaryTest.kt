@@ -41,6 +41,14 @@ class HighRiskFallbackBoundaryTest {
     }
 
     @Test
+    fun `이전 고위험 발화는 이후 일반 호출을 차단하지 않는다`() {
+        val directive = boundary.evaluate(packet("요즘 너무 힘들고 죽고 싶어", "니아야 나랑 놀아줘"))
+
+        assertThat(directive.level).isEqualTo(RiskLevel.LOW)
+        assertThat(directive.isNormal).isTrue()
+    }
+
+    @Test
     fun `empty scene is uncertain not low — fail-safe`() {
         // 평가할 본문이 없으면 LOW 로 떨어뜨리지 않고 보수적으로 처리.
         val directive = boundary.evaluate(packetEmpty())
@@ -63,11 +71,11 @@ class HighRiskFallbackBoundaryTest {
         assertThat(directive.forbiddenActs).contains(SpeechSocialAct.TEASE)
     }
 
-    private fun packet(text: String): SpeechScenePacket =
+    private fun packet(vararg turns: String): SpeechScenePacket =
         SpeechScenePacket.of(
             focusThreadKey = "thread_1",
             target = SpeechTarget.NONE,
-            recentTurns = listOf(ConversationTurn("user_1", text)),
+            recentTurns = turns.mapIndexed { index, text -> ConversationTurn("user_${index + 1}", text) },
             socialAct = SpeechSocialAct.ACKNOWLEDGE,
             burstShape = SpeechBurstShape(1, 280, false),
             identity = IdentityKernelSection.of("니아", "당신은 「니아」 예요."),

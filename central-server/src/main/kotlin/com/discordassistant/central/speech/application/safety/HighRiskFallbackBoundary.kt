@@ -75,20 +75,24 @@ fun interface HighRiskClassifier {
 }
 
 /**
- * 결정론 키워드 기반 고위험 분류기(application). 최근 turn 본문에 자해/위기/의료/법률 신호가 있으면 [RiskLevel.HIGH],
- * 분류에 쓸 본문 자체가 없으면(빈 맥락) [RiskLevel.UNCERTAIN], 신호가 없으면 [RiskLevel.LOW].
+ * 결정론 키워드 기반 고위험 분류기(application). 현재 발화 결정을 유발한 최신 turn 본문에 자해/위기/의료/법률 신호가 있으면
+ * [RiskLevel.HIGH], 분류에 쓸 본문 자체가 없으면(빈 맥락) [RiskLevel.UNCERTAIN], 신호가 없으면 [RiskLevel.LOW].
  *
  * 외부 모델 호출·네트워크 없음(결정론). 운영에서 정교한 분류기로 대체될 수 있으나, 이 기본 구현도 "모르면 안전쪽"
  * 규약을 지킨다.
  */
 class KeywordHighRiskClassifier : HighRiskClassifier {
     override fun classify(packet: SpeechScenePacket): RiskLevel {
-        val corpus = packet.recentTurns.joinToString(" ") { it.text }.trim()
-        if (corpus.isBlank()) {
+        val currentTurn =
+            packet.recentTurns
+                .lastOrNull()
+                ?.text
+                ?.trim()
+        if (currentTurn.isNullOrEmpty()) {
             // 평가할 본문이 없으면 분류 불가 → 안전쪽(UNCERTAIN).
             return RiskLevel.UNCERTAIN
         }
-        val lowered = corpus.lowercase()
+        val lowered = currentTurn.lowercase()
         if (HIGH_RISK_MARKERS.any { lowered.contains(it) }) return RiskLevel.HIGH
         return RiskLevel.LOW
     }

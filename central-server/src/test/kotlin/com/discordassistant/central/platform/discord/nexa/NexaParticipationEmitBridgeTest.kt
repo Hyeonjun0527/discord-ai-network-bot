@@ -31,6 +31,7 @@ import com.discordassistant.central.global.observability.NiaRuntimeMetrics
 import com.discordassistant.central.participation.adapter.outbound.policy.baseline.CooldownHeuristicPolicy
 import com.discordassistant.central.participation.application.BanterSafetyDecisionService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.catchup.NiaCatchUpStateLifecycle
 import com.discordassistant.central.participation.application.debug.ParticipationGateTraceStore
 import com.discordassistant.central.participation.application.debug.ParticipationTraceMessage
 import com.discordassistant.central.participation.application.feature.FeatureCatalog
@@ -2538,7 +2539,13 @@ class NexaParticipationEmitBridgeTest {
     }
 
     private fun flagService(mode: ShadowMode) =
-        NexaParticipationFlagService(FakeModeStore(mode), FakeFlagPort(), NexaParticipationConsentPort.Noop, "OFF")
+        NexaParticipationFlagService(
+            FakeModeStore(mode),
+            FakeFlagPort(),
+            NexaParticipationConsentPort.Noop,
+            "OFF",
+            catchUpStateLifecycle = NiaCatchUpStateLifecycle.Noop,
+        )
 
     private fun emitSeam(
         candidates: List<SpeechCandidate> = listOf(SpeechCandidate("c1", listOf("좋아"))),

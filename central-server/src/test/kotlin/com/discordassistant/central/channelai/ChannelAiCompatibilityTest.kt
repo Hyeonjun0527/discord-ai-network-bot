@@ -124,6 +124,7 @@ class ChannelAiCompatibilityTest {
                 EmptyFlagPort(),
                 NexaParticipationConsentPort.Noop,
                 "OFF",
+                catchUpStateLifecycle = com.discordassistant.central.participation.application.catchup.NiaCatchUpStateLifecycle.Noop,
             )
 
         assertThat(service.effectiveMode(guildId = 123L, channelId = 456L)).isEqualTo(ShadowMode.OFF)

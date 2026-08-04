@@ -7,6 +7,7 @@ import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleExample
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -45,7 +46,23 @@ class HumanSpeechStyleRagImportServiceTest {
             .contains("앞 대화")
     }
 
-    private fun runtimeCardJson(responseText: String): String =
+    @Test
+    fun `formal curation approval 없는 candidate artifact는 import하지 않는다`() {
+        val file = temporaryDirectory.resolve("candidate-cards.jsonl")
+        Files.writeString(file, runtimeCardJson("candidate-response", quality = "USER_AUTHORIZED_CANDIDATE"))
+        val store = CapturingStore()
+        val embedding = SpeechStyleEmbeddingPort { texts -> texts.map { floatArrayOf(1f, 0f) } }
+
+        assertThatThrownBy { HumanSpeechStyleRagImportService(store, embedding).importJsonLines(file) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("invalid at line 1")
+        assertThat(store.examples).isEmpty()
+    }
+
+    private fun runtimeCardJson(
+        responseText: String,
+        quality: String = "CURATION_APPROVED",
+    ): String =
         jacksonObjectMapper().writeValueAsString(
             mapOf(
                 "schema" to "nia-human-speech-style-import-card.v1",
@@ -55,9 +72,9 @@ class HumanSpeechStyleRagImportServiceTest {
                 "style_signals" to listOf("짧게"),
                 "context_bubbles" to listOf(mapOf("speaker" to "가명1", "text" to "오늘 좀 답답하네")),
                 "response_bubbles" to listOf(mapOf("speaker" to "가명2", "text" to responseText)),
-                "quality" to "USER_AUTHORIZED_CANDIDATE",
+                "quality" to quality,
                 "source_fingerprint" to "sha256:${"a".repeat(64)}",
-                "consent_revision" to "2026-08-04-user-authorized-candidate",
+                "consent_revision" to "2026-08-04-curation-approved",
                 "combined_chars" to 70,
                 "embedding_model" to "text-embedding-3-small",
             ),

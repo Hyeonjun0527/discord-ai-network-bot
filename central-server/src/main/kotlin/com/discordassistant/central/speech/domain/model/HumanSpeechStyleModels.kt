@@ -15,9 +15,9 @@ enum class HumanSpeechResponseMode {
     COORDINATION,
 }
 
-/** 운영자가 명시적으로 허용한 후보 카드 묶음의 품질 출처. 정식 검수 승인과 혼동하지 않는다. */
+/** fresh verifier가 모든 기준을 통과시킨 private curation 승인 카드만 runtime에 허용한다. */
 enum class HumanSpeechStyleQuality {
-    USER_AUTHORIZED_CANDIDATE,
+    CURATION_APPROVED,
 }
 
 /** 사람 말투 참고 카드 안의 한 말풍선. 원문 추적 정보는 이 타입에 넣지 않는다. */

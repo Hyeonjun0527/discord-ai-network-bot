@@ -3,7 +3,6 @@ package com.discordassistant.central.speech.application.humanstyle
 import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleExampleStorePort
 import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechStyleEmbeddingPort
-import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleExample
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleMatch
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
@@ -13,10 +12,11 @@ import org.springframework.stereotype.Service
 import kotlin.math.sqrt
 
 /**
- * 현재 Speech 장면과 사람 말투 카드의 vector 유사도를 계산하는 실제 Speech-only RAG.
+ * 현재 Speech 장면과 같은 반응 방식의 사람 말투 카드 사이에서 vector 유사도를 계산하는 실제 Speech-only RAG.
  *
  * 현재 private corpus 규모에서는 DB vector extension 없이 암호화된 벡터를 메모리에서 cosine으로 비교하는 편이 단순하고
- * 운영상 충분하다. 외부 embedding이 실패하거나 Judge 말투 enum이 없으면 사람 카드 없이 기존 Speech 생성으로 계속한다.
+ * 운영상 충분하다. Judge의 말투 enum은 후보를 정확히 제한하고, 그 안에서만 현재 장면의 의미 유사도로 순위를 정한다.
+ * 외부 embedding이 실패하거나 해당 enum의 승인 카드가 없으면 사람 카드 없이 기존 Speech 생성으로 계속한다.
  */
 @Service
 class HumanSpeechStyleRagService(
@@ -27,18 +27,18 @@ class HumanSpeechStyleRagService(
     override fun retrieve(packet: SpeechScenePacket): HumanSpeechStyleSelection {
         if (!enabled) return HumanSpeechStyleSelection.EMPTY
         val requestedMode = packet.styleResponseMode ?: return HumanSpeechStyleSelection.EMPTY
-        val examples = store.listEnabled()
+        val examples = store.listEnabled().filter { it.responseMode == requestedMode }
         if (examples.isEmpty()) return HumanSpeechStyleSelection.EMPTY
 
         val queryEmbedding =
-            embeddingPort.embedAll(listOf(queryText(packet, requestedMode)))?.singleOrNull()
+            embeddingPort.embedAll(listOf(queryText(packet)))?.singleOrNull()
                 ?: return HumanSpeechStyleSelection.EMPTY
         if (queryEmbedding.isEmpty()) return HumanSpeechStyleSelection.EMPTY
 
         return HumanSpeechStyleSelection(
             examples
                 .asSequence()
-                .mapNotNull { example -> score(example, queryEmbedding, requestedMode) }
+                .mapNotNull { example -> score(example, queryEmbedding) }
                 .filter { it.score >= MIN_SCORE }
                 .sortedWith(compareByDescending<HumanSpeechStyleMatch> { it.score }.thenBy { it.example.exampleId })
                 .take(HumanSpeechStyleSelection.MAX_MATCHES)
@@ -49,22 +49,16 @@ class HumanSpeechStyleRagService(
     private fun score(
         example: HumanSpeechStyleExample,
         queryEmbedding: FloatArray,
-        requestedMode: HumanSpeechResponseMode,
     ): HumanSpeechStyleMatch? {
         val semantic = cosineSimilarity(queryEmbedding, example.embedding) ?: return null
-        val responseModeBonus = if (requestedMode == example.responseMode) 1.0 else 0.0
         return HumanSpeechStyleMatch(
             example = example,
-            score = (semantic * (1.0 - DIRECT_MODE_WEIGHT) + responseModeBonus * DIRECT_MODE_WEIGHT).coerceIn(0.0, 1.0),
+            score = semantic,
         )
     }
 
-    private fun queryText(
-        packet: SpeechScenePacket,
-        requestedMode: HumanSpeechResponseMode,
-    ): String =
+    private fun queryText(packet: SpeechScenePacket): String =
         buildString {
-            appendLine("현재 필요한 반응 방식: ${requestedMode.name}")
             packet.speechIntent?.let { appendLine("현재 발화 방향: ${it.take(MAX_INTENT_CHARS)}") }
             appendLine("현재 대화:")
             packet.recentTurns.takeLast(MAX_QUERY_TURNS).forEach { turn ->
@@ -95,7 +89,6 @@ class HumanSpeechStyleRagService(
         const val MAX_QUERY_TURNS: Int = 6
         const val MAX_TURN_CHARS: Int = 420
         const val MAX_INTENT_CHARS: Int = 800
-        const val DIRECT_MODE_WEIGHT: Double = 0.20
         const val MIN_SCORE: Double = 0.28
     }
 }

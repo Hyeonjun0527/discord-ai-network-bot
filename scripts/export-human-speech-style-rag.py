@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Export the private human-review card set into the Speech-only runtime JSONL contract.
+"""Export formally approved private Speech-style cards into the runtime JSONL contract.
 
-The source cards remain the private curation SSOT. This exporter deliberately omits original paths, message IDs,
-ordinals, and provenance traces: the runtime needs only minimally generalized bubbles, response-style metadata, and a
-non-reversible source fingerprint. It strips parser event/media metadata, normalizes machine speaker labels, and drops
-cards left without usable context or a usable human response. It never prints dialogue text.
+The curation contract, not a preview/month-plan, is the source of truth. This exporter deliberately omits original
+paths, message IDs, ordinals, and provenance traces: the runtime needs only minimally generalized bubbles,
+response-style metadata, and a non-reversible source fingerprint. It strips parser event/media metadata and
+normalizes machine speaker labels. A formally approved card that becomes unusable after sanitization fails the export
+instead of being silently included or discarded. It never prints dialogue text.
 """
 
 from __future__ import annotations
@@ -16,15 +17,16 @@ import os
 import re
 import stat
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
 
 IMPORT_SCHEMA = "nia-human-speech-style-import-card.v1"
-SOURCE_SCHEMA = "nia-human-speech-card-preview.v1"
-QUALITY = "USER_AUTHORIZED_CANDIDATE"
-CONSENT_REVISION = "2026-08-04-user-authorized-candidate"
+SOURCE_SCHEMA = "nia-human-speech-card.v2"
+REVIEW_SCHEMA = "nia-human-speech-card-review.v1"
+QUALITY = "CURATION_APPROVED"
+CONSENT_REVISION = "2026-08-04-curation-approved"
 ALLOWED_DECISIONS = {"STYLE_ONLY", "USE"}
 ALLOWED_MODES = {
     "REACTION",
@@ -35,12 +37,11 @@ ALLOWED_MODES = {
     "CARE",
     "COORDINATION",
 }
-DEFAULT_SOURCE_ROOTS = (
-    Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/curation/month-plans"),
-    Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/curation/source-month-plans"),
-)
+DEFAULT_SOURCE_ROOTS = (Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/curation/approved"),)
 DEFAULT_INPUT_MANIFEST = Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/manifest.json")
-CARD_FILENAME = re.compile(r"card-[0-9]+\.json")
+DEFAULT_CURATION_STATE = Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/CURATION_STATE.json")
+DEFAULT_REVIEW_ROOT = Path("data/private/nia-human-dialogue/2026-08-01-manual-v2/curation/reviews")
+CARD_FILENAME = re.compile(r"human-speech-card-[0-9]{6}\.json")
 RUNTIME_SPEAKER_ALIASES = {
     "A": "서진",
     "B": "지우",
@@ -55,8 +56,9 @@ RUNTIME_EVENT_ONLY_LINE = re.compile(
     r")$",
 )
 RUNTIME_INLINE_REACTION = re.compile(r"(?:\u2764\ufe0f?|👍)\s*참여자\s*[AB]\b")
+RUNTIME_INLINE_EVENT_METADATA = re.compile(r"\s*\[반응 시점\]")
 RUNTIME_LEGACY_MARKER = re.compile(
-    r"참여자\s*[AB]\b|\[인물\s*\d*\]|\[외부 링크\]|\[내용 없음 또는 만료된 첨부물\]|Reacted .+ to your message",
+    r"참여자\s*[AB]\b|\[인물\s*\d*\]|\[외부 링크\]|\[내용 없음 또는 만료된 첨부물\]|\[반응 시점\]|Reacted .+ to your message",
 )
 
 
@@ -64,18 +66,19 @@ def main() -> int:
     args = parse_args()
     source_roots = [root.resolve() for root in args.source_roots or DEFAULT_SOURCE_ROOTS]
     input_manifest = args.input_manifest.resolve()
+    curation_state = args.curation_state.resolve()
+    review_root = args.review_root.resolve()
     output_dir = args.output_dir.resolve()
     expected_sources = read_expected_sources(input_manifest)
-    cards = read_cards(source_roots)
-    validate_source_coverage(cards, expected_sources)
+    validate_curation_state(curation_state)
+    reviews_by_card = read_reviews(review_root)
+    cards = read_cards(source_roots, expected_sources, reviews_by_card)
     records: list[dict[str, Any]] = []
-    excluded_non_dialogue_cards = 0
     for card in cards:
         record = to_runtime_record(card, len(records) + 1)
         if record is None:
-            excluded_non_dialogue_cards += 1
-        else:
-            records.append(record)
+            raise ValueError("formally approved private card has no usable dialogue after runtime sanitization")
+        records.append(record)
     validate_runtime_records(records)
 
     output_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -93,16 +96,16 @@ def main() -> int:
             "quality": QUALITY,
             "consent_revision": CONSENT_REVISION,
             "response_mode_counts": dict(sorted(Counter(record["response_mode"] for record in records).items())),
-            "source_count": len(expected_sources),
+            "approved_card_count": len(cards),
+            "source_count": len({record["source_fingerprint"] for record in records}),
             "source_fingerprint_count": len({record["source_fingerprint"] for record in records}),
-            "excluded_non_dialogue_card_count": excluded_non_dialogue_cards,
             "input_manifest_sha256": sha256_file(input_manifest),
-            "all_expected_sources_present": True,
+            "all_cards_formally_approved": True,
         },
     )
     print(
         "human-speech-style export complete "
-        f"records={len(records)} excluded_non_dialogue={excluded_non_dialogue_cards} "
+        f"records={len(records)} formally_approved=true "
         f"sha256={digest} modes={dict(sorted(Counter(record['response_mode'] for record in records).items()))}",
     )
     return 0
@@ -121,7 +124,19 @@ def parse_args() -> argparse.Namespace:
         "--input-manifest",
         type=Path,
         default=DEFAULT_INPUT_MANIFEST,
-        help="private source manifest used to fail closed on missing source coverage",
+        help="private source manifest used to validate approved-card source fingerprints",
+    )
+    parser.add_argument(
+        "--curation-state",
+        type=Path,
+        default=DEFAULT_CURATION_STATE,
+        help="private curation state used to enforce formal export gates",
+    )
+    parser.add_argument(
+        "--review-root",
+        type=Path,
+        default=DEFAULT_REVIEW_ROOT,
+        help="private fresh-verifier review directory",
     )
     parser.add_argument(
         "--output-dir",
@@ -131,14 +146,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_cards(source_roots: list[Path]) -> list[dict[str, Any]]:
+def read_cards(
+    source_roots: list[Path],
+    expected_sources: dict[str, str],
+    reviews_by_card: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
     paths: list[Path] = []
     for source_root in source_roots:
         if not source_root.is_dir():
-            raise ValueError("private human-review card source directory does not exist")
-        paths.extend(path for path in source_root.rglob("card-*.json") if CARD_FILENAME.fullmatch(path.name))
+            raise ValueError("formally approved private card directory does not exist")
+        paths.extend(path for path in source_root.rglob("*.json") if CARD_FILENAME.fullmatch(path.name))
     if not paths:
-        raise ValueError("no private human-review cards found")
+        raise ValueError("no formally approved private cards found")
     cards: list[dict[str, Any]] = []
     card_ids: set[str] = set()
     for path in sorted(set(paths)):
@@ -146,40 +165,43 @@ def read_cards(source_roots: list[Path]) -> list[dict[str, Any]]:
             with path.open(encoding="utf-8") as handle:
                 card = json.load(handle)
         except (OSError, json.JSONDecodeError) as error:
-            raise ValueError("private human-review card could not be read") from error
-        validate_source_card(card)
+            raise ValueError("formally approved private card could not be read") from error
+        validate_source_card(card, expected_sources, reviews_by_card)
         card_id = card["card_id"]
         if card_id in card_ids:
-            raise ValueError("private human-review card id is duplicated")
+            raise ValueError("formally approved private card id is duplicated")
         card_ids.add(card_id)
         cards.append(card)
-    return sorted(
-        cards,
-        key=lambda card: (card["source_id"], card["month"], int(card["preview_sequence"]), card["card_id"]),
-    )
+    return sorted(cards, key=lambda card: card["card_id"])
 
 
-def validate_source_card(card: dict[str, Any]) -> None:
+def validate_source_card(
+    card: dict[str, Any],
+    expected_sources: dict[str, str],
+    reviews_by_card: dict[str, list[dict[str, Any]]],
+) -> None:
     if card.get("schema") != SOURCE_SCHEMA:
-        raise ValueError("private human-review card schema is unsupported")
-    if card.get("candidate_decision") not in ALLOWED_DECISIONS:
-        raise ValueError("private human-review card decision is unsupported")
+        raise ValueError("formally approved private card schema is unsupported")
+    if card.get("status") != "APPROVED":
+        raise ValueError("private card is not formally approved")
+    if card.get("decision") not in ALLOWED_DECISIONS:
+        raise ValueError("formally approved private card decision is unsupported")
     if card.get("response_mode") not in ALLOWED_MODES:
-        raise ValueError("private human-review card response mode is unsupported")
+        raise ValueError("formally approved private card response mode is unsupported")
     if not isinstance(card.get("context_messages"), list) or not isinstance(card.get("actual_human_reply"), list):
-        raise ValueError("private human-review card bubbles are missing")
+        raise ValueError("formally approved private card bubbles are missing")
     if not card.get("situation") or not isinstance(card.get("style_signals"), list):
-        raise ValueError("private human-review card metadata is missing")
+        raise ValueError("formally approved private card metadata is missing")
     if not isinstance(card.get("combined_chars"), int) or not 1 <= card["combined_chars"] <= 350:
-        raise ValueError("private human-review card size is invalid")
+        raise ValueError("formally approved private card size is invalid")
     if not isinstance(card.get("card_id"), str) or not card["card_id"].strip():
-        raise ValueError("private human-review card id is missing")
+        raise ValueError("formally approved private card id is missing")
     if not isinstance(card.get("source_id"), str) or not card["source_id"].strip():
-        raise ValueError("private human-review card source id is missing")
-    if not isinstance(card.get("month"), str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", card["month"]):
-        raise ValueError("private human-review card month is invalid")
-    if not isinstance(card.get("preview_sequence"), int) or card["preview_sequence"] < 1:
-        raise ValueError("private human-review card preview sequence is invalid")
+        raise ValueError("formally approved private card source id is missing")
+    source_sha256 = card.get("source_trace", {}).get("source_sha256")
+    if source_sha256 != expected_sources.get(card["source_id"]):
+        raise ValueError("formally approved private card source trace does not match the source manifest")
+    validate_latest_fresh_review(card["card_id"], reviews_by_card.get(card["card_id"], []))
 
 
 def read_expected_sources(path: Path) -> dict[str, str]:
@@ -208,14 +230,47 @@ def read_expected_sources(path: Path) -> dict[str, str]:
     return source_hashes
 
 
-def validate_source_coverage(cards: list[dict[str, Any]], expected_sources: dict[str, str]) -> None:
-    card_source_ids = {card["source_id"] for card in cards}
-    if card_source_ids != set(expected_sources):
-        raise ValueError("private human-review card source coverage does not match the input manifest")
-    for card in cards:
-        source_sha256 = card.get("source_trace", {}).get("source_sha256")
-        if source_sha256 != expected_sources[card["source_id"]]:
-            raise ValueError("private human-review card source fingerprint does not match the input manifest")
+def validate_curation_state(path: Path) -> None:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("private curation state could not be read") from error
+    if state.get("style_rag_contract", {}).get("pre_contract_approved_cards_reaudit_required") is not False:
+        raise ValueError("private curation re-audit is incomplete")
+    if state.get("style_rag_reaudit", {}).get("active_card_id") is not None:
+        raise ValueError("private curation re-audit has an active card")
+
+
+def read_reviews(root: Path) -> dict[str, list[dict[str, Any]]]:
+    if not root.is_dir():
+        raise ValueError("private fresh-verifier review directory does not exist")
+    reviews_by_card: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for path in sorted(root.rglob("*.json")):
+        try:
+            with path.open(encoding="utf-8") as handle:
+                review = json.load(handle)
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError("private fresh-verifier review could not be read") from error
+        if review.get("schema") != REVIEW_SCHEMA:
+            raise ValueError("private fresh-verifier review schema is unsupported")
+        card_id = review.get("card_id")
+        if isinstance(card_id, str) and card_id:
+            reviews_by_card[card_id].append(review)
+    return reviews_by_card
+
+
+def validate_latest_fresh_review(card_id: str, reviews: list[dict[str, Any]]) -> None:
+    if not reviews:
+        raise ValueError("formally approved private card has no fresh-verifier review")
+    latest = max(reviews, key=lambda review: (str(review.get("reviewed_at", "")), str(review.get("review_id", ""))))
+    criteria = latest.get("criteria")
+    if latest.get("fresh_context") is not True:
+        raise ValueError("formally approved private card latest review is not fresh-context")
+    if latest.get("verdict") != "PASS":
+        raise ValueError("formally approved private card latest review did not pass")
+    if not isinstance(criteria, dict) or any(criteria.get(key) != "PASS" for key in "ABCDEF"):
+        raise ValueError("formally approved private card latest review does not pass every criterion")
 
 
 def to_runtime_record(card: dict[str, Any], ordinal: int) -> dict[str, Any] | None:
@@ -267,6 +322,7 @@ def sanitize_runtime_bubble_text(value: Any) -> str:
         if RUNTIME_EVENT_ONLY_LINE.fullmatch(line):
             continue
         line = RUNTIME_INLINE_REACTION.sub("", line).strip()
+        line = RUNTIME_INLINE_EVENT_METADATA.sub("", line).strip()
         if not line or RUNTIME_EVENT_ONLY_LINE.fullmatch(line):
             continue
         retained_lines.append(line)
@@ -277,6 +333,9 @@ def validate_runtime_records(records: list[dict[str, Any]]) -> None:
     if not records:
         raise ValueError("no usable private human-review cards remain after runtime sanitization")
     for record in records:
+        metadata = [record["situation"], *record["style_signals"]]
+        if any(RUNTIME_LEGACY_MARKER.search(value) for value in metadata):
+            raise ValueError("runtime human-review card metadata retains parser metadata")
         for bubble in [*record["context_bubbles"], *record["response_bubbles"]]:
             if bubble["speaker"] in RUNTIME_SPEAKER_ALIASES:
                 raise ValueError("runtime human-review card has a machine speaker label")

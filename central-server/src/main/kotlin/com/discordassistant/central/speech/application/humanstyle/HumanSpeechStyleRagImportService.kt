@@ -116,7 +116,7 @@ private data class HumanSpeechStyleImportCard(
 ) {
     fun validated(): HumanSpeechStyleImportCard {
         require(schema == IMPORT_SCHEMA) { "human speech style import schema is unsupported" }
-        require(quality == HumanSpeechStyleQuality.USER_AUTHORIZED_CANDIDATE.name) {
+        require(quality == HumanSpeechStyleQuality.CURATION_APPROVED.name) {
             "human speech style import quality is unsupported"
         }
         require(sourceFingerprint.matches(SOURCE_FINGERPRINT)) { "human speech style source fingerprint is invalid" }
@@ -128,7 +128,7 @@ private data class HumanSpeechStyleImportCard(
             styleSignals = styleSignals,
             contextBubbles = contextBubbles.map(HumanSpeechStyleImportBubble::toDomain),
             responseBubbles = responseBubbles.map(HumanSpeechStyleImportBubble::toDomain),
-            quality = HumanSpeechStyleQuality.USER_AUTHORIZED_CANDIDATE,
+            quality = HumanSpeechStyleQuality.CURATION_APPROVED,
             sourceFingerprint = sourceFingerprint,
             consentRevision = consentRevision,
             combinedChars = combinedChars,
@@ -158,7 +158,7 @@ private data class HumanSpeechStyleImportCard(
             styleSignals = styleSignals,
             contextBubbles = contextBubbles.map(HumanSpeechStyleImportBubble::toDomain),
             responseBubbles = responseBubbles.map(HumanSpeechStyleImportBubble::toDomain),
-            quality = HumanSpeechStyleQuality.USER_AUTHORIZED_CANDIDATE,
+            quality = HumanSpeechStyleQuality.CURATION_APPROVED,
             sourceFingerprint = sourceFingerprint,
             consentRevision = consentRevision,
             combinedChars = combinedChars,

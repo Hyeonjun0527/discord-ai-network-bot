@@ -9,6 +9,7 @@ import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.generation.SpeechGenerationFixtures
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -24,7 +25,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * 로컬에서만 opt-in하는 private corpus 검증이다. CI에는 source file/시스템 속성이 없으므로 실행되지 않는다.
+ * 로컬에서만 opt-in하는 formally approved private corpus 검증이다. CI에는 source file/시스템 속성이 없으므로 실행되지 않는다.
  *
  * 전체 private JSONL의 retrieval fields만 embedding API에 보내고, 하나의 현재 장면을 검색한 결과가 Speech payload에는
  * 붙되 trace에는 붙지 않는지를 검증한다. Discord/Judge/생성 모델 호출은 하지 않는다.
@@ -32,7 +33,7 @@ import java.nio.file.Path
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Import(JpaHumanSpeechStyleExampleStore::class)
-@EnabledIfEnvironmentVariable(named = "NIA_PRIVATE_CORPUS_FILE", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "NIA_APPROVED_PRIVATE_CORPUS_FILE", matches = ".+")
 class HumanSpeechStylePrivateCorpusIntegrationTest
     @Autowired
     constructor(
@@ -51,7 +52,7 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
 
         @Test
         fun `private human review corpus imports embeds retrieves and stays out of traces`() {
-            val sourceFile = Path.of(System.getenv("NIA_PRIVATE_CORPUS_FILE"))
+            val sourceFile = Path.of(System.getenv("NIA_APPROVED_PRIVATE_CORPUS_FILE"))
             val apiKey = System.getenv("OPENAI_API_KEY").orEmpty()
             assumeTrue(Files.isRegularFile(sourceFile), "private corpus JSONL is unavailable")
             assumeTrue(apiKey.isNotBlank(), "OPENAI_API_KEY is unavailable")
@@ -89,8 +90,8 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
         }
 
         @Test
-        fun `private corpus retrieves the expected response mode for unseen everyday scenes`() {
-            val sourceFile = Path.of(System.getenv("NIA_PRIVATE_CORPUS_FILE"))
+        fun `private corpus returns only the Judge-selected response mode for unseen everyday scenes`() {
+            val sourceFile = Path.of(System.getenv("NIA_APPROVED_PRIVATE_CORPUS_FILE"))
             val apiKey = System.getenv("OPENAI_API_KEY").orEmpty()
             assumeTrue(Files.isRegularFile(sourceFile), "private corpus JSONL is unavailable")
             assumeTrue(apiKey.isNotBlank(), "OPENAI_API_KEY is unavailable")
@@ -104,8 +105,11 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
                 )
             HumanSpeechStyleRagImportService(store, embedding).importJsonLines(sourceFile)
             val rag = HumanSpeechStyleRagService(store, embedding)
+            val availableModes = store.listEnabled().map { it.responseMode }.toSet()
+            val eligibleProbes = retrievalProbes.filter { it.expectedMode in availableModes }
+            assumeTrue(eligibleProbes.isNotEmpty(), "approved private corpus has no response-mode cards")
             val results =
-                retrievalProbes.map { probe ->
+                eligibleProbes.map { probe ->
                     val selection =
                         rag.retrieve(
                             SpeechGenerationFixtures.packet(
@@ -116,43 +120,105 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
                             ),
                         )
                     RetrievalResult(
-                        id = probe.id,
                         expectedMode = probe.expectedMode,
                         returnedModes = selection.matches.map { it.example.responseMode },
-                        returnedExampleIds = selection.matches.map { it.example.exampleId },
                     )
                 }
-            val hitAtOne = results.count { it.returnedModes.firstOrNull() == it.expectedMode }
-            val hitAtTwo = results.count { it.expectedMode in it.returnedModes }
-            val missedModes = results.filterNot { it.expectedMode in it.returnedModes }.map(RetrievalResult::expectedMode)
+            val exactModeMatches = results.count { result -> result.returnedModes.all { it == result.expectedMode } }
             val byMode =
                 HumanSpeechResponseMode.entries.joinToString(",") { mode ->
-                    val matches = results.count { it.expectedMode == mode && mode in it.returnedModes }
+                    val matches = results.count { result -> result.expectedMode == mode && result.returnedModes.all { it == mode } }
                     val probes = results.count { it.expectedMode == mode }
                     "$mode:$matches/$probes"
                 }
 
-            println("LIVE_HUMAN_SPEECH_STYLE_RAG probes=${results.size} hit_at_1=$hitAtOne hit_at_2=$hitAtTwo by_mode=$byMode")
             println(
-                "LIVE_HUMAN_SPEECH_STYLE_RAG_DETAILS " +
-                    results.joinToString("|") { result ->
-                        "${result.id}:${result.expectedMode}>${result.returnedModes.joinToString("/")}" +
-                            " examples=${result.returnedExampleIds.joinToString("/")}"
-                    },
+                "LIVE_HUMAN_SPEECH_STYLE_RAG_MODE_GUARD " +
+                    "probes=${results.size} exact_mode=$exactModeMatches by_mode=$byMode",
             )
             assertThat(results).allSatisfy { result ->
                 assertThat(result.returnedModes).isNotEmpty().hasSizeLessThanOrEqualTo(2)
             }
-            assertThat(missedModes)
-                .withFailMessage("Expected response mode was absent from top-2 for: $missedModes")
-                .isEmpty()
-            assertThat(hitAtOne)
-                .withFailMessage("Expected response mode was absent from top-1 for ${results.size - hitAtOne}/${results.size} probes")
-                .isEqualTo(results.size)
+            assertThat(exactModeMatches)
+                .withFailMessage(
+                    "Judge-selected response mode was not preserved for " +
+                        "${results.size - exactModeMatches}/${results.size} probes",
+                ).isEqualTo(results.size)
+        }
+
+        @Test
+        fun `independently labeled private retrieval benchmark meets semantic ranking gate`() {
+            val sourceFile = Path.of(System.getenv("NIA_APPROVED_PRIVATE_CORPUS_FILE"))
+            val evaluationFile = Path.of(System.getenv("NIA_APPROVED_PRIVATE_RETRIEVAL_EVAL_FILE").orEmpty())
+            val apiKey = System.getenv("OPENAI_API_KEY").orEmpty()
+            assumeTrue(Files.isRegularFile(sourceFile), "private corpus JSONL is unavailable")
+            assumeTrue(Files.isRegularFile(evaluationFile), "independently labeled private retrieval benchmark is unavailable")
+            assumeTrue(apiKey.isNotBlank(), "OPENAI_API_KEY is unavailable")
+
+            val evaluationCases = readRetrievalEvaluationCases(evaluationFile)
+            require(evaluationCases.size >= MIN_EVALUATION_CASES) {
+                "private retrieval benchmark needs at least $MIN_EVALUATION_CASES independently labeled cases"
+            }
+            val embedding =
+                OpenAiSpeechStyleEmbeddingAdapter(
+                    apiKey = apiKey,
+                    baseUrl = System.getenv("OPENAI_BASE_URL").orEmpty().ifBlank { "https://api.openai.com/v1" },
+                    model = "text-embedding-3-small",
+                    timeoutSeconds = 20,
+                )
+            HumanSpeechStyleRagImportService(store, embedding).importJsonLines(sourceFile)
+            val importedModesById = store.listEnabled().associate { it.exampleId to it.responseMode }
+            require(
+                evaluationCases.all { evaluation ->
+                    evaluation.acceptedExampleIds.all { exampleId -> importedModesById[exampleId] == evaluation.expectedMode }
+                },
+            ) {
+                "private retrieval benchmark refers to an absent or wrong-mode approved example"
+            }
+            val rag = HumanSpeechStyleRagService(store, embedding)
+            val results =
+                evaluationCases.map { evaluation ->
+                    val selection =
+                        rag.retrieve(
+                            SpeechGenerationFixtures.packet(
+                                socialAct = evaluation.socialAct,
+                                styleResponseMode = evaluation.expectedMode,
+                                turns = evaluation.recentTurns,
+                                speechIntent = evaluation.speechIntent,
+                            ),
+                        )
+                    RetrievalQualityResult(
+                        expectedMode = evaluation.expectedMode,
+                        acceptedExampleIds = evaluation.acceptedExampleIds,
+                        returnedExampleIds = selection.matches.map { it.example.exampleId },
+                        returnedModes = selection.matches.map { it.example.responseMode },
+                    )
+                }
+
+            val exactModeMatches =
+                results.count { result ->
+                    result.returnedModes.isNotEmpty() &&
+                        result.returnedModes.all { it == result.expectedMode }
+                }
+            val hitAtOne = results.count { result -> result.returnedExampleIds.firstOrNull() in result.acceptedExampleIds }
+            val hitAtTwo = results.count { result -> result.returnedExampleIds.any(result.acceptedExampleIds::contains) }
+            val hitAtOneRate = hitAtOne.toDouble() / results.size
+            val hitAtTwoRate = hitAtTwo.toDouble() / results.size
+
+            println(
+                "LIVE_HUMAN_SPEECH_STYLE_RAG_SEMANTIC_EVAL " +
+                    "cases=${results.size} exact_mode=$exactModeMatches hit_at_1=$hitAtOne hit_at_2=$hitAtTwo",
+            )
+            assertThat(exactModeMatches).isEqualTo(results.size)
+            assertThat(hitAtOneRate)
+                .withFailMessage("semantic retrieval hit@1 was $hitAtOneRate, below $MIN_HIT_AT_ONE")
+                .isGreaterThanOrEqualTo(MIN_HIT_AT_ONE)
+            assertThat(hitAtTwoRate)
+                .withFailMessage("semantic retrieval hit@2 was $hitAtTwoRate, below $MIN_HIT_AT_TWO")
+                .isGreaterThanOrEqualTo(MIN_HIT_AT_TWO)
         }
 
         private data class RetrievalProbe(
-            val id: String,
             val expectedMode: HumanSpeechResponseMode,
             val socialAct: SpeechSocialAct,
             val memberMessage: String,
@@ -160,13 +226,79 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
         )
 
         private data class RetrievalResult(
-            val id: String,
             val expectedMode: HumanSpeechResponseMode,
             val returnedModes: List<HumanSpeechResponseMode>,
-            val returnedExampleIds: List<String>,
         )
 
+        private data class RetrievalQualityCase(
+            val expectedMode: HumanSpeechResponseMode,
+            val socialAct: SpeechSocialAct,
+            val recentTurns: List<ConversationTurn>,
+            val speechIntent: String,
+            val acceptedExampleIds: Set<String>,
+        )
+
+        private data class RetrievalQualityResult(
+            val expectedMode: HumanSpeechResponseMode,
+            val acceptedExampleIds: Set<String>,
+            val returnedExampleIds: List<String>,
+            val returnedModes: List<HumanSpeechResponseMode>,
+        )
+
+        private fun readRetrievalEvaluationCases(path: Path): List<RetrievalQualityCase> {
+            val mapper = jacksonObjectMapper()
+            val seenProbeIds = mutableSetOf<String>()
+            return Files
+                .readAllLines(path)
+                .filter(String::isNotBlank)
+                .mapIndexed { index, line ->
+                    val row = mapper.readTree(line)
+                    require(row.path("schema").asText() == RETRIEVAL_EVALUATION_SCHEMA) {
+                        "private retrieval benchmark schema is invalid at line ${index + 1}"
+                    }
+                    val probeId = row.path("probe_id").asText()
+                    require(probeId.matches(PROBE_ID)) { "private retrieval benchmark probe id is invalid at line ${index + 1}" }
+                    require(seenProbeIds.add(probeId)) { "private retrieval benchmark probe id is duplicated" }
+                    val turns =
+                        row.path("recent_turns").map { turn ->
+                            val speaker = turn.path("speaker").asText().trim()
+                            val text = turn.path("text").asText().trim()
+                            require(speaker.isNotEmpty() && text.isNotEmpty()) {
+                                "private retrieval benchmark turn is invalid at line ${index + 1}"
+                            }
+                            ConversationTurn(speaker, text)
+                        }
+                    require(turns.isNotEmpty() && turns.size <= 6) {
+                        "private retrieval benchmark turn count is invalid at line ${index + 1}"
+                    }
+                    val acceptedExampleIds =
+                        row
+                            .path("accepted_example_ids")
+                            .map { it.asText() }
+                            .toSet()
+                    require(acceptedExampleIds.isNotEmpty() && acceptedExampleIds.all { it.matches(EXAMPLE_ID) }) {
+                        "private retrieval benchmark accepted example ids are invalid at line ${index + 1}"
+                    }
+                    val speechIntent = row.path("speech_intent").asText().trim()
+                    require(speechIntent.isNotEmpty()) { "private retrieval benchmark speech intent is invalid at line ${index + 1}" }
+                    RetrievalQualityCase(
+                        expectedMode = HumanSpeechResponseMode.valueOf(row.path("response_mode").asText()),
+                        socialAct = SpeechSocialAct.valueOf(row.path("social_act").asText()),
+                        recentTurns = turns,
+                        speechIntent = speechIntent,
+                        acceptedExampleIds = acceptedExampleIds,
+                    )
+                }
+        }
+
         private companion object {
+            const val RETRIEVAL_EVALUATION_SCHEMA = "nia-human-speech-style-retrieval-eval.v1"
+            const val MIN_EVALUATION_CASES = 30
+            const val MIN_HIT_AT_ONE = 0.70
+            const val MIN_HIT_AT_TWO = 0.90
+            val PROBE_ID = Regex("human-style-eval-[0-9]{4}")
+            val EXAMPLE_ID = Regex("human-style-[0-9]{6}")
+
             val retrievalProbes =
                 buildList {
                     addAll(
@@ -253,9 +385,8 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
                 socialAct: SpeechSocialAct,
                 vararg scenes: Pair<String, String>,
             ): List<RetrievalProbe> =
-                scenes.mapIndexed { index, (memberMessage, intentSummary) ->
+                scenes.map { (memberMessage, intentSummary) ->
                     probe(
-                        id = "${expectedMode}_${index + 1}",
                         expectedMode = expectedMode,
                         socialAct = socialAct,
                         memberMessage = memberMessage,
@@ -264,14 +395,12 @@ class HumanSpeechStylePrivateCorpusIntegrationTest
                 }
 
             private fun probe(
-                id: String,
                 expectedMode: HumanSpeechResponseMode,
                 socialAct: SpeechSocialAct,
                 memberMessage: String,
                 intentSummary: String,
             ): RetrievalProbe =
                 RetrievalProbe(
-                    id = id,
                     expectedMode = expectedMode,
                     socialAct = socialAct,
                     memberMessage = memberMessage,

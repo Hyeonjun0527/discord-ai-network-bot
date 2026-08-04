@@ -63,36 +63,58 @@ expected_modes = {"REACTION", "ALIGNMENT", "PLAY", "FOLLOW_UP", "SPECULATION", "
 
 if manifest.get("schema") != "nia-human-speech-style-import-manifest.v1":
     raise SystemExit("unsupported private import manifest")
+if manifest.get("quality") != "CURATION_APPROVED":
+    raise SystemExit("private import manifest is not formally approved")
 if manifest.get("record_count") != len(records) or len(records) == 0:
     raise SystemExit("private import record count mismatch")
 if manifest.get("source_count") != len({record.get("source_fingerprint") for record in records}):
     raise SystemExit("private import source fingerprint count mismatch")
 if manifest.get("source_fingerprint_count") != manifest.get("source_count"):
     raise SystemExit("private import source manifest mismatch")
-if manifest.get("all_expected_sources_present") is not True:
-    raise SystemExit("private import source coverage is incomplete")
+if manifest.get("approved_card_count") != len(records):
+    raise SystemExit("private import formal approval count mismatch")
+if manifest.get("all_cards_formally_approved") is not True:
+    raise SystemExit("private import formal approval gate is missing")
 if hashlib.sha256(artifact.read_bytes()).hexdigest() != manifest.get("jsonl_sha256"):
     raise SystemExit("private import JSONL digest mismatch")
 if len({record.get("example_id") for record in records}) != len(records):
     raise SystemExit("private import example ids are duplicated")
-if {record.get("response_mode") for record in records} != expected_modes:
+record_modes = {record.get("response_mode") for record in records}
+if not record_modes or not record_modes <= expected_modes:
     raise SystemExit("private import response mode coverage is invalid")
+forbidden_provenance_fields = {
+    "source_id",
+    "source_trace",
+    "month",
+    "preview_sequence",
+    "message_id",
+    "original_path",
+    "source_path",
+    "ordinal",
+}
 for record in records:
     if record.get("schema") != "nia-human-speech-style-import-card.v1":
         raise SystemExit("private import card schema is invalid")
+    if record.get("quality") != "CURATION_APPROVED":
+        raise SystemExit("private import card is not formally approved")
+    if record.get("consent_revision") != manifest.get("consent_revision"):
+        raise SystemExit("private import consent revision is inconsistent")
+    if forbidden_provenance_fields & set(record):
+        raise SystemExit("private import retains source provenance")
     if not record.get("context_bubbles") or not record.get("response_bubbles"):
         raise SystemExit("private import card bubbles are incomplete")
     if not re.fullmatch(r"human-style-[0-9]{6}", str(record.get("example_id"))):
         raise SystemExit("private import example id is invalid")
 
-print(len(records), manifest["source_count"])
+print(len(records), manifest["source_count"], len(record_modes))
 PY
 )"
-read -r EXPECTED_COUNT EXPECTED_SOURCE_COUNT <<<"$artifact_metadata"
+read -r EXPECTED_COUNT EXPECTED_SOURCE_COUNT EXPECTED_MODE_COUNT <<<"$artifact_metadata"
 
 [[ "$EXPECTED_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "private import expected count is invalid"
 [[ "$EXPECTED_SOURCE_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "private import expected source count is invalid"
-echo "▶ private artifact verified: cards=$EXPECTED_COUNT sources=$EXPECTED_SOURCE_COUNT"
+[[ "$EXPECTED_MODE_COUNT" =~ ^[1-7]$ ]] || fail "private import expected mode count is invalid"
+echo "▶ private artifact verified: cards=$EXPECTED_COUNT sources=$EXPECTED_SOURCE_COUNT modes=$EXPECTED_MODE_COUNT"
 
 compose=(docker compose --env-file /dev/null -f "$COMPOSE_FILE")
 "${compose[@]}" ps --status running "$DB_SERVICE" | grep -q "$DB_SERVICE" || fail "database service is not running"
@@ -124,6 +146,6 @@ EOF
 [ "$ENCRYPTED_PAYLOADS" = "$EXPECTED_COUNT" ] || fail "plaintext payload rows detected"
 [ "$ENCRYPTED_VECTORS" = "$EXPECTED_COUNT" ] || fail "plaintext embedding rows detected"
 [ "$SOURCE_COUNT" = "$EXPECTED_SOURCE_COUNT" ] || fail "imported source count mismatch"
-[ "$MODE_COUNT" = "7" ] || fail "imported response mode coverage mismatch"
+[ "$MODE_COUNT" = "$EXPECTED_MODE_COUNT" ] || fail "imported response mode coverage mismatch"
 
 echo "✅ Speech-style RAG import complete: cards=$IMPORTED_COUNT sources=$SOURCE_COUNT encrypted_payloads=$ENCRYPTED_PAYLOADS encrypted_vectors=$ENCRYPTED_VECTORS"

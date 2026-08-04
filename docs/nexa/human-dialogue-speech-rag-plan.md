@@ -3,9 +3,10 @@
 상태: **역사적 초기 설계안 — 현재 runtime 계약은 [human-dialogue-speech-rag-runtime.md](human-dialogue-speech-rag-runtime.md)를 따른다**
 작성일: 2026-08-01
 
-> 2026-08-04 갱신: 사용자는 Speech-only 단일 embedding 조회와 `USER_AUTHORIZED_CANDIDATE` 카드의 runtime
-> import 구현을 승인했다. 따라서 이 문서의 “운영 연결 전”, “OpenAI embedding 0회”, “발화 2회 절대 상한”은 현재
-> 정책이 아니다. Judge/Conversation RAG에는 여전히 private 카드나 OpenAI embedding을 연결하지 않는다.
+> 2026-08-04 정정: Speech-only 단일 embedding 조회 구현은 허용됐지만, `USER_AUTHORIZED_CANDIDATE` preview
+> 카드는 formal curation approval을 대체하지 못한다. runtime export/import는 최신 runtime 계약의
+> `CURATION_APPROVED` gate를 통과한 카드만 허용한다. Judge/Conversation RAG에는 여전히 private 카드나 OpenAI
+> embedding을 연결하지 않는다.
 
 ## 1. 결론
 

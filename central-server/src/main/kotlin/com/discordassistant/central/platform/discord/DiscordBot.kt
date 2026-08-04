@@ -14,6 +14,9 @@ import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.participation.application.NexaParticipationFlagService
+import com.discordassistant.central.participation.application.catchup.NiaCatchUpAdmission
+import com.discordassistant.central.participation.application.catchup.NiaCatchUpCadence
+import com.discordassistant.central.participation.application.catchup.NiaCatchUpScope
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryAdmission
 import com.discordassistant.central.platform.discord.nexa.NiaTurnBoundaryCoordinator
@@ -22,6 +25,8 @@ import com.discordassistant.central.platform.discord.nexa.ParticipationMessageSi
 import com.discordassistant.central.platform.discord.nexa.ParticipationTurnOutcome
 import com.discordassistant.central.platform.discord.nexa.ScheduledExecutorNiaTurnBoundaryScheduler
 import com.discordassistant.central.platform.discord.nexa.UnsupportedAttachmentRequest
+import com.discordassistant.central.platform.discord.nexa.toNiaCatchUpJudgeResult
+import com.discordassistant.central.platform.discord.nexa.toNiaCatchUpMessage
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
@@ -535,6 +540,7 @@ class DiscordBot(
     // NEXA participation 자발 발화 wiring(단계 1). flag 활성 채널에서만 평가·emit. 기본 OFF(회귀 0)·SHADOW_PREDICT 전송 0.
     private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
     private val niaTurnGenerations: NiaTurnGenerationTracker,
+    private val niaCatchUpCadence: NiaCatchUpCadence,
     private val participationFlags: NexaParticipationFlagService,
     private val imageAttachmentPreparer: DiscordImageAttachmentPreparer,
     // 니아 채널 자동 만들기 시 ai채팅·ai그림을 LLM 채널 허용 목록에 등록(자동응답↔LLM 정책 불일치 방지). PolicyService 빈.
@@ -674,6 +680,7 @@ class DiscordBot(
                 adminAssistant,
                 participationEmitBridge,
                 niaTurnGenerations,
+                niaCatchUpCadence,
                 participationFlags,
                 imageAttachmentPreparer,
                 channelAllowList,
@@ -843,6 +850,7 @@ class DiscordBot(
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
         private val participationEmitBridge: com.discordassistant.central.platform.discord.nexa.NexaParticipationEmitBridge,
         private val niaTurnGenerations: NiaTurnGenerationTracker,
+        private val niaCatchUpCadence: NiaCatchUpCadence,
         private val participationFlags: NexaParticipationFlagService,
         private val imageAttachmentPreparer: DiscordImageAttachmentPreparer,
         private val channelAllowList: com.discordassistant.central.guild.application.ChannelAllowListPort,
@@ -1460,6 +1468,7 @@ class DiscordBot(
         /** 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/설정을 정리한다. */
         override fun onGuildLeave(event: GuildLeaveEvent) {
             turnBoundaryCoordinator.cancelGuild(event.guild.idLong)
+            niaCatchUpCadence.clearGuild(event.guild.idLong)
             participationEmitBridge.onGuildDisabled(event.guild.idLong)
             guildCleanup.cleanup(event.guild.idLong)
         }
@@ -1477,6 +1486,7 @@ class DiscordBot(
                 val routingId = event.channel.idLong
                 niaTurnGenerations.invalidateCurrent(routingId)
                 turnBoundaryCoordinator.cancel(routingId)
+                niaCatchUpCadence.clearChannel(guildId = event.guild.idLong, channelId = event.channel.idLong)
                 participationEmitBridge.onChannelDisabled(guildId = event.guild.idLong, channelId = event.channel.idLong)
                 reconciliation.cleanupChannel(event.guild.idLong, event.channel.idLong)
             }
@@ -1493,6 +1503,7 @@ class DiscordBot(
             turnBoundaryCoordinator.cancel(scope.routingId)
             submitRawContextMutation(event = NiaDispatchEvent.DELETE, channelId = scope.routingId) {
                 removeRecentMessage(scope.routingId, messageId)
+                niaCatchUpCadence.clearScope(scope.toNiaCatchUpScope(guildId))
                 participationEmitBridge.onMessageDeleted(
                     com.discordassistant.central.platform.discord.nexa.ParticipationRawContextRedactionSignal(
                         guildId = guildId,
@@ -1528,6 +1539,7 @@ class DiscordBot(
                 )
             submitRawContextMutation(event = NiaDispatchEvent.EDIT, channelId = scope.routingId) {
                 updateRecentMessage(event, scope.routingId)
+                niaCatchUpCadence.clearScope(scope.toNiaCatchUpScope(event.guild.idLong))
                 participationEmitBridge.onMessageEdited(signal)
             }
         }
@@ -1957,6 +1969,24 @@ class DiscordBot(
             signal: com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal,
             selfId: Long,
         ): ParticipationTurnOutcome {
+            if (!participationFlags.isNexaActive(signal.guildId, signal.channelId)) {
+                return participationEmitBridge.onMessageTurn(signal)
+            }
+            when (niaCatchUpCadence.admit(signal.toNiaCatchUpMessage())) {
+                NiaCatchUpAdmission.DEFERRED ->
+                    return ParticipationTurnOutcome(
+                        outcome =
+                            com.discordassistant.central.platform.discord.nexa.ParticipationEmitOutcome.AttentionDeferred(
+                                "catch-up:${signal.channelId}",
+                            ),
+                        ownsTurn = participationFlags.allowsRealSend(signal.guildId, signal.channelId),
+                    )
+                NiaCatchUpAdmission.WAKE_NOW -> {
+                    turnBoundaryCoordinator.cancel(signal.channelId)
+                    return evaluateParticipationAndRecord(signal)
+                }
+                NiaCatchUpAdmission.EVALUATE_NOW -> Unit
+            }
             val admission =
                 turnBoundaryCoordinator.onMessage(
                     realSendAtIngress = participationFlags.allowsRealSend(signal.guildId, signal.channelId),
@@ -1976,7 +2006,7 @@ class DiscordBot(
                             },
                             judge = judge@{ delayedSignal ->
                                 val refreshed = refreshDelayedParticipationSignal(delayedSignal, selfId)
-                                participationEmitBridge.onMessageTurn(refreshed)
+                                evaluateParticipationAndRecord(refreshed)
                             },
                             onFailClosed = {
                                 niaRuntimeMetrics.recordTurnBoundary(
@@ -1988,7 +2018,7 @@ class DiscordBot(
                 )
             niaRuntimeMetrics.recordTurnBoundary(admission, explicitlyAddressed = signal.mentioned)
             return when (admission) {
-                NiaTurnBoundaryAdmission.BYPASS -> participationEmitBridge.onMessageTurn(signal)
+                NiaTurnBoundaryAdmission.BYPASS -> evaluateParticipationAndRecord(signal)
                 NiaTurnBoundaryAdmission.DEFERRED ->
                     ParticipationTurnOutcome(
                         outcome =
@@ -2004,6 +2034,19 @@ class DiscordBot(
                     )
             }
         }
+
+        private fun evaluateParticipationAndRecord(signal: ParticipationMessageSignal): ParticipationTurnOutcome {
+            val outcome = participationEmitBridge.onMessageTurn(signal)
+            runCatching {
+                niaCatchUpCadence.recordEvaluation(signal.toNiaCatchUpMessage(), outcome.outcome.toNiaCatchUpJudgeResult())
+            }.onFailure { error ->
+                log.warn("NIA CATCH_UP 상태 기록 실패(channel={}) — 기존 Judge 결과는 유지: {}", signal.channelId, error.message)
+            }
+            return outcome
+        }
+
+        private fun DiscordMessageScope.toNiaCatchUpScope(guildId: Long): NiaCatchUpScope =
+            NiaCatchUpScope(guildId = guildId, channelId = routingId, threadId = threadId)
 
         private fun refreshDelayedParticipationSignal(
             signal: com.discordassistant.central.platform.discord.nexa.ParticipationMessageSignal,

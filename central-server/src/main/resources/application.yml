@@ -212,6 +212,21 @@ central:
         # FINAL real-send 턴만 2~7초 적응형 quiet window로 합친다. 30초 hard cap과 generation 검사는
         # 계속되는 메시지/typing이 판단을 무한 지연하거나 낡은 발화를 보내지 못하게 한다.
         enabled: ${NEXA_PARTICIPATION_TURN_BOUNDARY_ENABLED:false}
+      catch-up:
+        # 연속 IGNORE 뒤 같은 Judge 호출 주기만 낮춘다. 기본 OFF라 replay 검증 전 기존 동작을 보존한다.
+        enabled: ${NEXA_PARTICIPATION_CATCH_UP_ENABLED:false}
+        # 이 횟수만큼 실제 Judge가 IGNORE를 반환하면 채널을 절전 감시 상태로 전환한다.
+        consecutive-ignore-threshold: ${NEXA_PARTICIPATION_CATCH_UP_CONSECUTIVE_IGNORE_THRESHOLD:10}
+        # CATCH_UP에서 누적 장면을 같은 Judge에 다시 보여주는 최소 간격(ms).
+        interval-millis: ${NEXA_PARTICIPATION_CATCH_UP_INTERVAL_MILLIS:300000}
+        # due 상태를 여러 서버가 중복 처리하지 않도록 보유하는 lease와 실패 재시도 간격(ms).
+        lease-millis: ${NEXA_PARTICIPATION_CATCH_UP_LEASE_MILLIS:30000}
+        retry-millis: ${NEXA_PARTICIPATION_CATCH_UP_RETRY_MILLIS:10000}
+        # 일시 오류만 다시 시도한다. 한도를 넘으면 경고를 남기고 다음 새 메시지부터 ACTIVE로 시작한다.
+        max-retry-count: ${NEXA_PARTICIPATION_CATCH_UP_MAX_RETRY_COUNT:3}
+        # DB poll 간격. worker-id는 운영 식별용이고 claim마다 별도 lease token을 발급한다.
+        poll-interval-millis: ${NEXA_PARTICIPATION_CATCH_UP_POLL_INTERVAL_MILLIS:5000}
+        worker-id: ${NEXA_PARTICIPATION_CATCH_UP_WORKER_ID:central}
       judge:
         # 니아 participation 판단 모델. 발화와 같은 Luna none 경로를 사용한다.
         model: ${NEXA_PARTICIPATION_JUDGE_MODEL:gpt-5.6-luna}
@@ -224,6 +239,14 @@ central:
       speech:
         raw-context:
           max-chars: ${NEXA_PARTICIPATION_SPEECH_RAW_CONTEXT_MAX_CHARS:12000}
+    speech-style-rag:
+      # 사용자 승인 private human-review 카드의 말투 참고. Judge에는 절대 연결하지 않고, SPEAK 확정 후만 조회한다.
+      enabled: ${NEXA_SPEECH_STYLE_RAG_ENABLED:true}
+      embedding-model: ${NEXA_SPEECH_STYLE_RAG_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-timeout-seconds: ${NEXA_SPEECH_STYLE_RAG_EMBEDDING_TIMEOUT_SECONDS:8}
+      # 명시적으로 켠 프로세스만 private JSONL을 DB에 적재한다. 일반 부팅은 기존 적재본만 읽는다.
+      import-on-startup: ${NEXA_SPEECH_STYLE_RAG_IMPORT_ON_STARTUP:false}
+      import-file: ${NEXA_SPEECH_STYLE_RAG_IMPORT_FILE:}
 
 # 원문 문자 수가 0인 첨부/삭제 메시지도 행과 직렬화 메타데이터를 소비하므로 개수 상한을 별도로 둔다.
 # 100개 burst 원문은 그대로 보존하면서 비어 있는 행이 무한히 쌓여 judge 입력 상한을 우회하는 것만 막는다.

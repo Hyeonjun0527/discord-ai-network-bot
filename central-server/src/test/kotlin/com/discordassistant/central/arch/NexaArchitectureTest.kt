@@ -240,6 +240,22 @@ class NexaArchitectureTest {
             "rawText = contentRaw",
             "sourceType = participationSourceTypeOf(event)",
         )
+
+        val catchUpAdmission = forwardToParticipation.indexOf("niaCatchUpCadence.admit(signal.toNiaCatchUpMessage())")
+        val deferred = forwardToParticipation.indexOf("NiaCatchUpAdmission.DEFERRED")
+        val wake = forwardToParticipation.indexOf("NiaCatchUpAdmission.WAKE_NOW")
+        val boundaryCoordinator = forwardToParticipation.indexOf("turnBoundaryCoordinator.onMessage(")
+        val recordedEvaluation = forwardToParticipation.indexOf("niaCatchUpCadence.recordEvaluation(")
+
+        assertThat(catchUpAdmission).isGreaterThan(0)
+        assertThat(catchUpAdmission).isLessThan(boundaryCoordinator)
+        assertThat(deferred).isGreaterThan(catchUpAdmission)
+        assertThat(forwardToParticipation.substring(deferred, wake)).contains("catch-up:\${signal.channelId}")
+        assertThat(forwardToParticipation.substring(wake, boundaryCoordinator)).contains(
+            "turnBoundaryCoordinator.cancel(signal.channelId)",
+            "evaluateParticipationAndRecord(signal)",
+        )
+        assertThat(recordedEvaluation).isGreaterThan(boundaryCoordinator)
     }
 
     companion object {

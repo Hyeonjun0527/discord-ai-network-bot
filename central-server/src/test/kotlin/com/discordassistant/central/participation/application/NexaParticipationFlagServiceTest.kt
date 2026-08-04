@@ -1,6 +1,7 @@
 package com.discordassistant.central.participation.application
 
 import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.participation.application.catchup.NiaCatchUpStateLifecycle
 import com.discordassistant.central.participation.application.port.out.NexaParticipationConsentPort
 import com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort
 import com.discordassistant.central.participation.application.port.out.ShadowModeState
@@ -111,9 +112,10 @@ class NexaParticipationFlagServiceTest {
     }
 
     @Test
-    fun `채널 LIVE 활성화와 비활성화는 consent 범위를 함께 갱신한다`() {
+    fun `채널 LIVE 활성화와 비활성화는 consent 범위를 갱신하고 stale CATCH_UP 상태를 비운다`() {
         val consent = RecordingConsentPort()
-        val service = service(FakeModeStore(ShadowMode.OFF), MutableFakeFlagPort(), "OFF", consent)
+        val catchUpStates = RecordingCatchUpStateLifecycle()
+        val service = service(FakeModeStore(ShadowMode.OFF), MutableFakeFlagPort(), "OFF", consent, catchUpStates)
 
         service.enableChannelLive(guildId = 7L, channelId = 100L, actorId = 42L)
         service.disableChannel(guildId = 7L, channelId = 100L)
@@ -124,6 +126,8 @@ class NexaParticipationFlagServiceTest {
         assertThat(consent.deactivations).containsExactly(7L to 100L)
         assertThat(consent.clearedChannels).containsExactly(7L to 100L)
         assertThat(consent.revokedGuilds).containsExactly(7L)
+        assertThat(catchUpStates.clearedChannels).containsExactly(7L to 100L, 7L to 100L, 7L to 100L)
+        assertThat(catchUpStates.clearedGuilds).containsExactly(7L)
     }
 
     @Test
@@ -136,6 +140,7 @@ class NexaParticipationFlagServiceTest {
                 NexaParticipationConsentPort.Noop,
                 "OFF",
                 audit,
+                NiaCatchUpStateLifecycle.Noop,
             )
 
         service.enableChannelLive(
@@ -185,7 +190,9 @@ class NexaParticipationFlagServiceTest {
         flagPort: NexaParticipationFlagPort,
         globalDefaultLane: String,
         consentPort: NexaParticipationConsentPort = NexaParticipationConsentPort.Noop,
-    ): NexaParticipationFlagService = NexaParticipationFlagService(modeStore, flagPort, consentPort, globalDefaultLane)
+        catchUpStateLifecycle: NiaCatchUpStateLifecycle = NiaCatchUpStateLifecycle.Noop,
+    ): NexaParticipationFlagService =
+        NexaParticipationFlagService(modeStore, flagPort, consentPort, globalDefaultLane, catchUpStateLifecycle = catchUpStateLifecycle)
 
     private data class Activation(
         val guildId: Long,
@@ -223,6 +230,22 @@ class NexaParticipationFlagServiceTest {
 
         override fun revokeGuild(guildId: Long) {
             revokedGuilds += guildId
+        }
+    }
+
+    private class RecordingCatchUpStateLifecycle : NiaCatchUpStateLifecycle {
+        val clearedChannels = mutableListOf<Pair<Long, Long>>()
+        val clearedGuilds = mutableListOf<Long>()
+
+        override fun clearChannel(
+            guildId: Long,
+            channelId: Long,
+        ) {
+            clearedChannels += guildId to channelId
+        }
+
+        override fun clearGuild(guildId: Long) {
+            clearedGuilds += guildId
         }
     }
 

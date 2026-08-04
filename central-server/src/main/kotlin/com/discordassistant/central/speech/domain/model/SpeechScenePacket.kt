@@ -32,6 +32,8 @@ data class SpeechScenePacket(
     val recentTurns: List<ConversationTurn>,
     /** participation 이 고른 발화 종류. */
     val socialAct: SpeechSocialAct,
+    /** Judge가 장면에서 고른 Speech 전용 말투 검색 축. 사람 카드와 RAG 검색은 participation에 노출하지 않는다. */
+    val styleResponseMode: HumanSpeechResponseMode? = null,
     /** participation 이 확정한 발화 형태(조각 수·길이·reaction-only). */
     val burstShape: SpeechBurstShape,
     /** 니아 정체성 immutable section(NexaIdentity SSOT 기반, T006 IdentityKernelAssembler 가 조립). */
@@ -102,6 +104,7 @@ data class SpeechScenePacket(
             target: SpeechTarget,
             recentTurns: List<ConversationTurn>,
             socialAct: SpeechSocialAct,
+            styleResponseMode: HumanSpeechResponseMode? = null,
             burstShape: SpeechBurstShape,
             identity: IdentityKernelSection,
             memoryRefs: List<MemoryRef> = emptyList(),
@@ -120,6 +123,7 @@ data class SpeechScenePacket(
                 target = target,
                 recentTurns = recentTurns.takeLast(MAX_TURNS),
                 socialAct = socialAct,
+                styleResponseMode = styleResponseMode,
                 burstShape = burstShape,
                 identity = identity,
                 memoryRefs = memoryRefs.take(MAX_MEMORY_REFS),

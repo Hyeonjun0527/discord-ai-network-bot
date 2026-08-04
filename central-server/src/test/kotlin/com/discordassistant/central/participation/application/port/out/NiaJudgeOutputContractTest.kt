@@ -32,6 +32,7 @@ class NiaJudgeOutputContractTest {
             setOf(
                 "intentSummary",
                 "sceneDirection",
+                "styleMode",
                 "actHint",
                 "bubbleCount",
                 "maxBubbleChars",
@@ -66,6 +67,8 @@ class NiaJudgeOutputContractTest {
         )
         assertThat(property("action").path("enum").map(JsonNode::asText))
             .containsExactly("IGNORE", "WAIT", "REACT", "SPEAK", "CANCEL")
+        assertThat(property("speechIntent", "styleMode").path("enum").map(JsonNode::asText))
+            .containsExactly("REACTION", "ALIGNMENT", "PLAY", "FOLLOW_UP", "SPECULATION", "CARE", "COORDINATION")
         assertThat(property("schema").path("enum").single().asText())
             .isEqualTo(NiaJudgeLlmRequest.OUTPUT_SCHEMA)
     }

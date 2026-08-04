@@ -115,6 +115,7 @@ import com.discordassistant.central.socialpolicy.domain.model.SceneBeliefState
 import com.discordassistant.central.speech.application.context.defaultNiaSpeechIdentity
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.domain.model.ConversationTurn
+import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
@@ -1539,6 +1540,7 @@ class NexaParticipationEmitBridge(
                 target = SpeechTarget.member(userPseudonym),
                 recentTurns = speechContext.recentTurns,
                 socialAct = response.selectedSpeechSocialAct(),
+                styleResponseMode = attribution.styleResponseMode,
                 burstShape = response.toSpeechBurstShape(),
                 identity = speechIdentity(signal, speechFewShotContext),
                 speechIntent = effectiveSpeechIntent,
@@ -2037,6 +2039,7 @@ class NexaParticipationEmitBridge(
             fewShotSetId = request.fewShotSet.setId?.toString(),
             fewShotVersion = request.fewShotSet.version,
             speechIntent = speechIntent?.toPromptIntent(reasonCode.code),
+            styleResponseMode = speechIntent?.styleMode?.let { HumanSpeechResponseMode.valueOf(it.name) },
             responseTargetRef = speechIntent?.responseTargetRef,
             responseObligation =
                 when (speechIntent?.responseObligation) {
@@ -2582,6 +2585,7 @@ private data class DecisionAttribution(
     val fewShotSetId: String? = null,
     val fewShotVersion: Int? = null,
     val speechIntent: String? = null,
+    val styleResponseMode: HumanSpeechResponseMode? = null,
     val responseTargetRef: String? = null,
     val responseObligation: SpeechResponseObligation = SpeechResponseObligation.OPTIONAL,
     val groundingNeed: SpeechGroundingNeed = SpeechGroundingNeed.NONE,

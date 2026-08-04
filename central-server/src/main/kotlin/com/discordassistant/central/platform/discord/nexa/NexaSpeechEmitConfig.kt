@@ -14,6 +14,7 @@ import com.discordassistant.central.speech.application.generation.CandidateGener
 import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
@@ -71,6 +72,7 @@ class NexaSpeechEmitConfig {
         generationPort: SpeechGenerationPort,
         factualGrounding: SpeechFactualGroundingPort,
         inputTrace: SpeechInputTracePort,
+        humanSpeechStyleRag: HumanSpeechStyleRagPort,
         promptSource: NiaPromptSource,
     ): SpeechGenerationGate =
         SpeechGenerationGate(
@@ -83,6 +85,7 @@ class NexaSpeechEmitConfig {
                 factualGrounding = factualGrounding,
                 inputTrace = inputTrace,
                 promptSource = promptSource,
+                humanSpeechStyleRag = humanSpeechStyleRag,
             ),
         )
 

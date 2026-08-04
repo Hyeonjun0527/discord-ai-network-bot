@@ -126,7 +126,7 @@ object NiaPromptDefaults {
         `confidence` must be between 0 and 1. Every action except IGNORE requires at least one raw-scene evidence ref.
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
-        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `deliveryMode`, `bubbleCount`,
+        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `styleMode`, `deliveryMode`, `bubbleCount`,
         `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, `responseTargetRef`,
         `responseObligation`, `groundingNeed`, and optional `actHint`. `deliveryMode` is `CHANNEL|REPLY`: CHANNEL sends a
         normal channel message, while REPLY visibly quotes the triggering message. Choose it from the complete social scene;
@@ -135,6 +135,12 @@ object NiaPromptDefaults {
         `interactionReading` is the
         judge's short whole-scene interpretation, not a paraphrase of the last message. `informationDepth` describes how much
         literal content belongs in this turn. `continuityRefs` names the raw message refs the speech should visibly build on.
+        `styleMode` is one Speech-only retrieval label, never final reply text and never a reason to alter the participation
+        decision. Choose exactly one: `REACTION` for short surprise/laughter/interest; `ALIGNMENT` for matching a complaint or
+        feeling and briefly adding one's own stance; `PLAY` for light exaggeration, banter, or teasing; `FOLLOW_UP` for a natural
+        question or confirmation; `SPECULATION` for a tentative guess; `CARE` for a gentle response to pain, fatigue, or a
+        sensitive state; `COORDINATION` for choosing, requesting, scheduling, or agreeing on the next action. This label is
+        consumed only after SPEAK is chosen, by the Speech pipeline's private style search; do not mention it to members.
         `actHint` is the judge's chosen social move and, when present, must be exactly one of
         `acknowledge`, `agree`, `disagree`, `tease`, `ask`, `answer`, `correct`, `self_disclose`, or `change_topic`.
         Use `answer` when the turn should actually provide requested content; use `tease` only when the scene supports playful

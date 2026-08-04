@@ -10,6 +10,7 @@ import com.discordassistant.central.shared.niaIdentityPersona
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.GenerationBudget
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.ReasoningMode
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
@@ -23,6 +24,8 @@ import com.discordassistant.central.speech.application.privacy.ExternalPayloadAl
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleMatch
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
@@ -30,6 +33,7 @@ import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
+import com.discordassistant.central.speech.humanstyle.example
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -62,6 +66,54 @@ class CandidateGenerationServiceTest {
                 .bubbles
                 .single(),
         ).isEqualTo("ㅠㅜ 미안. 난 PDF는 못 읽어. 그거 읽게 하면 토큰을 엄청 써서 개발자 파산함 ㅠ")
+    }
+
+    @Test
+    fun `Speech 전용 사람 말투 예시는 provider에만 넣고 trace에는 원문을 남기지 않는다`() {
+        val port = CapturingPort()
+        val sensitiveExampleText = "private-style-response-marker-12345"
+        val selection =
+            HumanSpeechStyleSelection(
+                listOf(
+                    HumanSpeechStyleMatch(
+                        example("human-style-000001", responseText = sensitiveExampleText),
+                        0.9,
+                    ),
+                ),
+            )
+        val styleRag =
+            HumanSpeechStyleRagPort { selection }
+        var capturedTrace: String? = null
+        val trace = SpeechInputTracePort { _, _, userPrompt -> capturedTrace = userPrompt }
+
+        service(port, inputTrace = trace, humanSpeechStyleRag = styleRag).generate(
+            SpeechGenerationFixtures.packet(inputTraceId = "style-trace"),
+        )
+
+        val request = port.lastRequest!!
+        assertThat(request.userPrompt).contains("사람 말투 참고 예시", sensitiveExampleText)
+        assertThat(request.systemPrompt).doesNotContain(sensitiveExampleText)
+        assertThat(request.traceUserPrompt).doesNotContain(sensitiveExampleText)
+        assertThat(capturedTrace).doesNotContain(sensitiveExampleText)
+        assertThat(capturedTrace).contains("private human-style examples omitted")
+    }
+
+    @Test
+    fun `로컬 고정 안내는 사람 말투 RAG도 조회하지 않는다`() {
+        val port = CapturingPort()
+        var retrievals = 0
+        val styleRag =
+            HumanSpeechStyleRagPort {
+                retrievals++
+                HumanSpeechStyleSelection.EMPTY
+            }
+
+        service(port, humanSpeechStyleRag = styleRag).generate(
+            SpeechGenerationFixtures.packet().copy(localSpeechTemplate = LocalSpeechTemplate.PDF_UNSUPPORTED),
+        )
+
+        assertThat(retrievals).isZero()
+        assertThat(port.callCount).isZero()
     }
 
     @Test
@@ -164,6 +216,7 @@ class CandidateGenerationServiceTest {
         grounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
         inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
+        humanSpeechStyleRag: HumanSpeechStyleRagPort = HumanSpeechStyleRagPort.Noop,
     ) = CandidateGenerationService(
         generationPort = port,
         socialActCompiler = SocialActPromptCompiler(),
@@ -174,6 +227,7 @@ class CandidateGenerationServiceTest {
         factualGrounding = grounding,
         inputTrace = inputTrace,
         promptSource = promptSource,
+        humanSpeechStyleRag = humanSpeechStyleRag,
     )
 
     @Test

@@ -239,7 +239,7 @@ class NiaJudgePromptAssembler(
 
     companion object {
         const val EXECUTION_PURPOSE_METADATA_KEY: String = "execution_purpose"
-        const val PROMPT_VERSION: String = "nia-judge-prompt-v18"
+        const val PROMPT_VERSION: String = "nia-judge-prompt-v19"
         const val INPUT_SCHEMA: String = "nia.participation-judge-input.v4"
         const val DEFAULT_TIMEOUT_MILLIS: Long = 18_000
         private val RAW_MESSAGE_FIELDS: List<String> =

@@ -247,6 +247,8 @@ central:
       # 명시적으로 켠 프로세스만 private JSONL을 DB에 적재한다. 일반 부팅은 기존 적재본만 읽는다.
       import-on-startup: ${NEXA_SPEECH_STYLE_RAG_IMPORT_ON_STARTUP:false}
       import-file: ${NEXA_SPEECH_STYLE_RAG_IMPORT_FILE:}
+      # one-shot 운영 import 컨테이너는 성공 후 종료한다. 일반 부팅에서는 절대 켜지 않는다.
+      import-exit-after-completion: ${NEXA_SPEECH_STYLE_RAG_IMPORT_EXIT_AFTER_COMPLETION:false}
 
 # 원문 문자 수가 0인 첨부/삭제 메시지도 행과 직렬화 메타데이터를 소비하므로 개수 상한을 별도로 둔다.
 # 100개 burst 원문은 그대로 보존하면서 비어 있는 행이 무한히 쌓여 judge 입력 상한을 우회하는 것만 막는다.

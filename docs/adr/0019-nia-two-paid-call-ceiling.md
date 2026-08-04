@@ -1,6 +1,6 @@
 # ADR 0019: NIA two paid-call ceiling
 
-- 상태(Status): 승인됨 (Accepted)
+- 상태(Status): 부분 대체됨 (Partially superseded by [ADR 0020](./0020-nia-speech-style-embedding.md))
 - 날짜(Date): 2026-08-01
 - 결정자(Deciders): Hyeonjun0527
 - 대체: [ADR 0018](./0018-nia-bounded-llm-retry-budget.md)

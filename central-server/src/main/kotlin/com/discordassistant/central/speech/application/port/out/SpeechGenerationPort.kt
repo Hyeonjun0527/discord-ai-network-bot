@@ -31,6 +31,11 @@ data class SpeechGenerationRequest(
     val systemPrompt: String,
     /** 조립된 user 맥락(최소화된 scene/turn/memory). */
     val userPrompt: String,
+    /**
+     * 실행 trace에 보관해도 되는 user 맥락. private 사람 말투 예시가 붙은 경우 실제 provider payload 대신 예시를
+     * 생략한 요약을 담아, debug API/메모리 trace가 원문 카드의 우회 경로가 되지 않게 한다.
+     */
+    val traceUserPrompt: String = userPrompt,
     /** 발화 종류(추적·모델 메타용). */
     val socialAct: SpeechSocialAct,
     /** 생성할 후보 수(T011 — 명백한 장면 1개, 모호한 장면 최대 3개). */

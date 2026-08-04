@@ -99,6 +99,7 @@ class NiaParticipationJudge(
                 JudgeSpeechIntent(
                     intentSummary = "acknowledge the current direct address",
                     sceneDirection = "one short natural reply; if asked to stop or yield, acknowledge and yield",
+                    styleMode = JudgeSpeechStyleMode.ALIGNMENT,
                     actHint = "acknowledge",
                     responseTargetRef =
                         request.rawContextWindow.messages
@@ -139,6 +140,7 @@ class NiaParticipationJudge(
                 JudgeSpeechIntent(
                     intentSummary = "answer the current conversational follow-up",
                     sceneDirection = "one short natural reply that continues NIA's immediately preceding turn",
+                    styleMode = JudgeSpeechStyleMode.FOLLOW_UP,
                     actHint = "reply",
                     responseTargetRef =
                         request.rawContextWindow.messages

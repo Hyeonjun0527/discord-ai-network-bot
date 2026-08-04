@@ -73,16 +73,17 @@
     필요하면 `DISCORD_TYPING_INTENT_ENABLED=false`
 - rawScene 고정폭 row는 `nia.participation-judge-input.v4`와 `nia-judge-prompt-v18`로 이전 cache와 분리된다.
   이 형식 자체를 되돌릴 때는 이전 이미지 태그로 롤백한다.
-- Cloud action evaluator, Judge repair, OpenAI Conversation RAG embedding은 제거 상태를 유지한다. Judge와
-  Speech는 각각 최대 1회이고 provider 내부 retry도 0이다. 비발화는 최대 1회, 발화는 실패 경로까지
-  포함해도 최대 2회다.
+- Cloud action evaluator, Judge repair, OpenAI Conversation RAG embedding은 제거 상태를 유지한다. 다만
+  Speech-style RAG는 `SPEAK` 확정 뒤에만 별도 OpenAI embedding을 최대 1회 쓴다. Judge와 Speech는 각각
+  최대 1회이고 provider 내부 retry도 0이다. 비발화는 최대 1회, 발화는 실패 경로까지 포함해도 최대 3회다.
   이 구조를 되돌릴 때는 이전 이미지로 전체 롤백한 뒤 비용·품질 근거를 재검토한다.
 - 비용 효과는 원문 로그가 아니라
   `central_openai_requests_total{purpose=...}`와
   `central_openai_tokens_total{purpose=...,category=...}`의 배포 전후 구간으로 비교한다.
 - 운영 원문을 재생하거나 유료 테스트 호출을 자동으로 만들지 않는다. 실제 트래픽에서 오류율과 결정 건수 대비
-  `nia_judge`, 발화 건수 대비 `nia_speech` 요청 비율을 관측한다. 두 비율 모두 1을 넘으면 회귀다.
-  `nia_rag_embedding`, `nia_judge_repair`, `nia_action_evaluator` 신규 시계열은 생기지 않아야 한다.
+  `nia_judge`, 발화 건수 대비 `nia_speech` 및 `nia_speech_style_embedding` 요청 비율을 관측한다. 세 비율은
+  모두 1을 넘으면 회귀다. `nia_rag_embedding`, `nia_judge_repair`, `nia_action_evaluator` 신규 시계열은
+  생기지 않아야 한다.
 
 ### 7) 폐루프 테이블 보존 정리
 - WAIT outbox와 행동-결과 관측 행은 기본 30일 보존 후 매일 UTC 03:55에 정리된다.
@@ -136,3 +137,25 @@
   bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
     central-server/scripts/ops_runtime_secret_audit.sh central-server/scripts/ops_nia_turn_trace.sh
   ```
+
+## NIA Speech-style RAG private import
+
+이 작업은 별도 운영 승인 대상이다. 현재 서비스에 카드를 자동으로 넣지 않는다.
+
+1. `V91__nia_human_speech_style_rag.sql`을 포함한 이미지가 먼저 production에 배포되어 있는지 확인한다.
+2. 로컬 private JSONL과 같은 폴더의 manifest만 host protected directory로 복사한다. 복사 전·후 권한은 directory 0700,
+   file 0600이어야 하며 Git/이미지/로그에 넣지 않는다.
+
+   ```bash
+   ssh ssh.yeon.world 'install -d -m 700 ~/deploy/central-server/private'
+   scp -p data/private/nia-human-dialogue/2026-08-01-manual-v2/style-rag-runtime-import/human-speech-style-cards.jsonl \
+     ssh.yeon.world:~/deploy/central-server/private/
+   scp -p data/private/nia-human-dialogue/2026-08-01-manual-v2/style-rag-runtime-import/manifest.json \
+     ssh.yeon.world:~/deploy/central-server/private/
+   ssh ssh.yeon.world 'chmod 600 ~/deploy/central-server/private/human-speech-style-cards.jsonl ~/deploy/central-server/private/manifest.json'
+   ```
+
+3. GitHub Actions의 `central Speech-style RAG import`를 manual dispatch한다. `production` approval 후 one-shot
+   container가 import하고 종료한다. 이 컨테이너는 Discord, autonomous send, web server를 전부 끈다.
+4. workflow 출력에서 카드 수·source 수·7개 enum·payload/vector 암호화만 확인한다. 원문 카드 내용은 절대 출력하지 않는다.
+   실패하면 live `central-server`는 그대로 두고 import container만 종료된다.

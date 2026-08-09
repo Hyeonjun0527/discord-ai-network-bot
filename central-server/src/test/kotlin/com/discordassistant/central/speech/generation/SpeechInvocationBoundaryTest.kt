@@ -12,7 +12,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -41,7 +40,6 @@ class SpeechInvocationBoundaryTest {
         val service =
             CandidateGenerationService(
                 generationPort = port,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
                 humanSpeechStyleRag = humanSpeechStyleRag,

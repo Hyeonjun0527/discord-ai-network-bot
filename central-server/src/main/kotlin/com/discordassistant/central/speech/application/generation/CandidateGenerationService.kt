@@ -19,7 +19,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechInputTrace
 import com.discordassistant.central.speech.application.privacy.ExternalPayloadAllowlistSerializer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
@@ -30,7 +29,7 @@ import org.slf4j.LoggerFactory
 /**
  * 발화 후보 생성 유스케이스(NEXA-P14-T011, application).
  *
- * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
+ * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 정체성·burst 지침을 system 프롬프트로, 최소화된 장면을 user
  * 프롬프트로 조립하고([assembleRequest]) [SpeechGenerationPort] 로 생성한다. budget(T015)이 후보 수·token 상한을,
  * ReasoningModeSelector(T013)가 추론 모드를 정한다.
  *
@@ -42,7 +41,6 @@ import org.slf4j.LoggerFactory
  */
 class CandidateGenerationService(
     private val generationPort: SpeechGenerationPort,
-    private val socialActCompiler: SocialActPromptCompiler,
     private val burstCompiler: BurstPromptCompiler,
     private val reasoningModeSelector: ReasoningModeSelector,
     /**
@@ -209,7 +207,7 @@ class CandidateGenerationService(
         }
     }
 
-    /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
+    /** 정체성 + burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
     private fun assembleSystemPrompt(
         packet: SpeechScenePacket,
         candidateCount: Int,
@@ -220,7 +218,6 @@ class CandidateGenerationService(
             mapOf(
                 "identity" to identity,
                 "participationDecision" to packet.speechIntent.orEmpty(),
-                "socialActInstruction" to socialActCompiler.compile(packet.socialAct),
                 "burstInstruction" to burstCompiler.compile(packet.burstShape),
                 "outputContract" to
                     NiaPromptTemplate.render(

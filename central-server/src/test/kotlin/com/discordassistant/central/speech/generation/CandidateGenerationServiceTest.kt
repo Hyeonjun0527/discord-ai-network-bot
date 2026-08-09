@@ -23,7 +23,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechInputTrace
 import com.discordassistant.central.speech.application.privacy.ExternalPayloadAllowlistSerializer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleMatch
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
@@ -231,7 +230,6 @@ class CandidateGenerationServiceTest {
         humanSpeechStyleRag: HumanSpeechStyleRagPort = HumanSpeechStyleRagPort.Noop,
     ) = CandidateGenerationService(
         generationPort = port,
-        socialActCompiler = SocialActPromptCompiler(),
         burstCompiler = BurstPromptCompiler(),
         reasoningModeSelector = ReasoningModeSelector(),
         payloadSerializer = ExternalPayloadAllowlistSerializer(),
@@ -297,9 +295,9 @@ class CandidateGenerationServiceTest {
             "interaction_reading",
             "information_depth",
             "continuity_refs",
-            "서로 다른 완전 행동 후보를 만든다",
-            "장면이 요구하지 않는 교과서식 답안 구조를 반복하지 않는다",
+            "서로 다른 후보를 만든다",
         )
+        assertThat(req.systemPrompt).doesNotContain("서로 다른 완전 행동 후보", "교과서식 답안 구조")
         assertThat(req.systemPrompt).doesNotContain("니아 기능채널 ai채팅")
         assertThat(req.maxOutputTokens).isEqualTo(1024)
         assertThat(req.systemPrompt).doesNotContain("왜 자꾸 불러 ㅋㅋ", "시큰둥하게")
@@ -340,17 +338,20 @@ class CandidateGenerationServiceTest {
         assertThat(prompt)
             .contains(
                 "공식 인물 설정",
-                "니아 대화 대조 예시",
+                "실제 사람처럼 대화하세요.",
+                "[장면 예시 1]",
+                "니아: 음...",
                 "[하지 않을 것]",
-                "최근 원문 전체",
+                "[현재 응답 대상]에 답한다",
                 "오프라인 신체 경험",
                 "JSON 하나로만",
-            ).containsOnlyOnce("최근 원문 전체")
-            .containsOnlyOnce("오프라인 신체 경험")
-            .containsOnlyOnce("ASCII 마침표(.)로 끝내지 않는다")
+            ).containsOnlyOnce("오프라인 신체 경험")
+            .containsOnlyOnce("실제 사람처럼 대화하세요.")
+            .doesNotContain("ASCII 마침표(.)로 끝내지 않는다", "반복이 누적되면")
+            .doesNotContain("좋은 니아 답변", "피해야 할 니아 답변", "문장을 그대로 복사하지 말고")
             .doesNotContain("[관심사]", "개발, 디스코드")
-        assertThat(identity.personaBlock.length).isLessThan(2_100)
-        assertThat(prompt.length).isLessThan(3_500)
+        assertThat(identity.personaBlock.length).isLessThan(5_000)
+        assertThat(prompt.length).isLessThan(6_500)
         println(
             "NIA_PRODUCTION_SPEECH_COST_FIXTURE personaChars=${identity.personaBlock.length} " +
                 "systemPromptChars=${prompt.length}",
@@ -381,7 +382,7 @@ class CandidateGenerationServiceTest {
     }
 
     @Test
-    fun `social act와 burst와 후보 수가 달라도 고정 speech prefix만 cache 대상으로 남는다`() {
+    fun `social act는 발화 문구를 지시하지 않고 burst와 후보 수만 동적 speech 지침이 된다`() {
         val port = CapturingPort()
         val candidateService = service(port)
         val identity =
@@ -429,13 +430,13 @@ class CandidateGenerationServiceTest {
             )
         assertThat(first.systemPrompt.drop(first.stableSystemPromptChars))
             .contains(
-                "상대 말을 가볍게 받아 주는 결",
-                "최근 원문 전체를 참고하되 [현재 응답 대상]에 답하고 이전 질문으로 바꾸지 않는다",
+                "[현재 응답 대상]에 답한다",
                 "정확히 1개",
                 "짧게 받아주기",
-            )
+            ).doesNotContain("상대 말을 받아 준다", "ACKNOWLEDGE")
         assertThat(second.systemPrompt.drop(second.stableSystemPromptChars))
-            .contains("친한 사이의 가벼운 장난 결", "정확히 3개", "장난스럽게 패턴 짚기")
+            .contains("정확히 3개", "장난스럽게 패턴 짚기")
+            .doesNotContain("친한 사이의 장난을 되받는다", "TEASE")
     }
 
     @Test
@@ -449,7 +450,6 @@ class CandidateGenerationServiceTest {
             {{participationDecision}}
 
             이 고정 문장은 동적 participation보다 뒤라 cache prefix가 될 수 없다.
-            {{socialActInstruction}}
             {{burstInstruction}}
             {{outputContract}}
             """.trimIndent()
@@ -587,7 +587,7 @@ class CandidateGenerationServiceTest {
         assertThat(request.systemPrompt).contains(
             "알고리즘 구술시험처럼 이어지는 장면",
             "패턴을 짚은 뒤 한 문장 핵심만",
-            "마지막 문장의 표면 요청을 자동 완수하지 말고",
+            "interaction_reading·information_depth·continuity_refs에 맞는 서로 다른 후보를 만든다",
         )
         assertThat(request.userPrompt).contains(
             "다익스트라 알고리즘 말해봐",
@@ -630,7 +630,7 @@ class CandidateGenerationServiceTest {
             "raw_scene_ref=msg_3",
         )
         assertThat(request.userPrompt.split("토큰없냐")).hasSize(2)
-        assertThat(request.systemPrompt).contains("이전 질문으로 바꾸지 않는다")
+        assertThat(request.systemPrompt).contains("[현재 응답 대상]에 답한다")
     }
 
     @Test

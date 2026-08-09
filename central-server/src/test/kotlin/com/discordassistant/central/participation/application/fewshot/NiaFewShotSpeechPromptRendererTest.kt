@@ -12,7 +12,7 @@ import java.time.Instant
 
 class NiaFewShotSpeechPromptRendererTest {
     @Test
-    fun `published speak examples render scene and expected replies`() {
+    fun `managed speak examples follow the global scenes without labels or instructions`() {
         val prompt =
             NiaFewShotSpeechPromptRenderer.renderForParticipation(
                 version(
@@ -25,38 +25,48 @@ class NiaFewShotSpeechPromptRendererTest {
 
         assertThat(prompt)
             .contains(
+                "[장면 예시 1]",
+                "현준: 야 니아",
                 "서연아 내 고민 좀 들어줘",
-                "좋은 니아 답변: 그건 서연이한테 말해",
-                "피해야 할 니아 답변: 뭐가 궁금한데 ㅋㅋ",
-            ).doesNotContain("알고리즘 질문이 구술시험처럼 이어진 장면")
+                "니아: 그건 서연이한테 말해",
+            ).doesNotContain(
+                "좋은 니아 답변",
+                "피해야 할 니아 답변",
+                "문장을 그대로 복사하지 말고",
+                "뭐가 궁금한데 ㅋㅋ",
+            )
     }
 
     @Test
-    fun `participation-only managed examples do not silently restore code speech examples`() {
+    fun `participation-only managed examples still keep the global scenes`() {
         val prompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(version(example(expectedReplies = emptyList())))
 
         assertThat(prompt)
             .doesNotContain("서연아 내 고민 좀 들어줘")
-            .doesNotContain("다익스트라 알고리즘 말해봐")
-            .contains("니아 대화 대조 예시")
+            .contains("현준: 야 니아", "니아: ㅇㅇ")
     }
 
     @Test
     fun `baseline examples are available without an admin version`() {
         val prompt = NiaFewShotSpeechPromptRenderer.renderForParticipation(null)
 
-        assertThat(prompt).contains(
-            "관리자 예시는 해당 서버의 말투와 밈에 우선",
-            "플로이드 워셜은 모든 정점 사이 거리를 한 번에 갱신하는 방식이야",
-            "들켰네 ㅋㅋ 그래도 이렇게 말 잘 통하는 AI면 꽤 괜찮지 않냐",
-            "아니야 나 진짜 사람이야",
-        )
+        assertThat(prompt)
+            .contains(
+                "[장면 예시 1]",
+                "현준: ㅋㅋ 두개씩 붙이는거 고쳐",
+                "니아: ㅈㅅ",
+                "니아: 음...",
+                "[장면 예시 4]",
+                "니아: 오늘 혼나서 그렇게 느끼는거 아냐?",
+            ).doesNotContain("좋은 니아 답변", "피해야 할 니아 답변", "문장을 그대로 복사하지 말고")
     }
 
     @Test
-    fun `managed-only renderer does not inject participation baselines into ask mode`() {
-        assertThat(NiaFewShotSpeechPromptRenderer.render(null)).isNull()
-        assertThat(NiaFewShotSpeechPromptRenderer.render(version(example(expectedReplies = emptyList())))).isNull()
+    fun `ask mode uses the same baseline speech examples when no admin version exists`() {
+        assertThat(NiaFewShotSpeechPromptRenderer.render(null))
+            .contains("[장면 예시 1]", "현준: 야 니아", "니아: ㅇㅇ")
+        assertThat(NiaFewShotSpeechPromptRenderer.render(version(example(expectedReplies = emptyList()))))
+            .contains("[장면 예시 1]", "현준: 야 니아", "니아: ㅇㅇ")
     }
 
     @Test
@@ -73,8 +83,12 @@ class NiaFewShotSpeechPromptRendererTest {
         val prompt = NiaFewShotSpeechPromptRenderer.renderRetrieved(listOf(first, ignored, second, third))
 
         assertThat(prompt)
-            .contains("현재 장면과 가까운 대화 RAG", "첫 장면 답변", "둘째 장면 답변")
-            .doesNotContain("셋째 장면 답변", "다익스트라 알고리즘 말해봐")
+            .contains(
+                "[비슷한 장면 예시 1]",
+                "니아: 첫 장면 답변",
+                "[비슷한 장면 예시 2]",
+                "니아: 둘째 장면 답변",
+            ).doesNotContain("셋째 장면 답변", "현준: 야 니아", "좋은 니아 답변")
     }
 
     @Test
@@ -93,8 +107,8 @@ class NiaFewShotSpeechPromptRendererTest {
 
         assertThat(prompt)
             .hasSizeLessThanOrEqualTo(16_000)
-            .doesNotContain("oversized-managed-example")
-            .contains("알고리즘 질문이 구술시험처럼 이어진 장면")
+            .doesNotContain("관리자 답변", "x".repeat(4_000))
+            .contains("[장면 예시 1]", "현준: 야 니아")
     }
 
     private fun example(

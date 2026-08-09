@@ -19,6 +19,11 @@ class NexaBuiltInFewShotCatalogAdapterTest {
             .allMatch { reason -> reason.any { it in '가'..'힣' } }
         assertThat(catalog.judgeExamples.map { it.badAlternative.whyBad })
             .allMatch { whyBad -> whyBad.any { it in '가'..'힣' } }
-        assertThat(catalog.speechExamples.map { it.title }).contains("알고리즘 질문이 구술시험처럼 이어진 장면")
+        assertThat(catalog.speechExamples.map { it.title })
+            .contains(
+                "잡담에서 기술 설명으로 넘어가는 장면",
+                "여러 명이 저녁 메뉴를 정하는 장면",
+                "힘든 일을 말하는 친구와 차분히 이야기하는 장면",
+            )
     }
 }

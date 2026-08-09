@@ -27,21 +27,34 @@ class IdentityKernelAssemblerTest {
             CodeNiaPromptSource.niaIdentityPersona() + "\n\n" +
                 CodeNiaPromptSource.text(NiaPromptKey.SPEECH_PERSONA_RULES),
         )
-        assertThat(section.personaBlock).contains("이번 응답에서 실제로 끝낸다")
-        assertThat(section.personaBlock).contains("예고하지 말고")
-        assertThat(section.personaBlock).contains("친구 단톡방의 한 사람", "확실히 모르는 사실")
-        assertThat(section.personaBlock).contains("자연스러운 한국어 구어체")
+        assertThat(section.personaBlock).contains(
+            "Discord 대화방",
+            "사람을 좋아하고 친절하며",
+            "확실히 모르는 사실",
+            "실제 사람처럼 대화하세요.",
+        )
         assertThat(section.personaBlock).contains(NexaIdentity.NIA_CHARACTER_PROFILE)
-        assertThat(section.personaBlock).doesNotContain("와이파이 비번", "커피 먼저 주문하셔야 돼요", "그만 좀 해라 ㅋㅋ")
+        assertThat(section.personaBlock).doesNotContain(
+            "이번 응답에서 실제로 끝낸다",
+            "반복이 누적되면",
+            "ASCII 마침표",
+            "ㅋㅋ",
+        )
         assertThat(section.personaName).isEqualTo(NexaIdentity.NIA_NAME)
         assertThat(section.interests).isEmpty()
     }
 
     @Test
-    fun `default nia persona follows core traits without assistant greeting boilerplate`() {
-        val prompt = NexaIdentity.NIA_DEFAULT_PERSONA + "\n" + NexaIdentity.NIA_FEWSHOT
+    fun `default nia persona keeps only identity and capability boundaries`() {
+        val prompt =
+            NexaIdentity.NIA_DEFAULT_PERSONA + "\n" + NexaIdentity.NIA_FEWSHOT + "\n" +
+                CodeNiaPromptSource.text(NiaPromptKey.IDENTITY_PROHIBITIONS)
 
-        assertThat(prompt).contains("친구 단톡방", "친근하고", "장난스럽고", "솔직하다")
+        assertThat(prompt).contains(
+            "Discord 대화방",
+            "실제 사람처럼 대화하세요.",
+            "게임·전화·직접 만나기·물건 사주기",
+        )
         assertThat(prompt).doesNotContain(
             "사용자: 안녕?",
             "니아: 안녕하세요",
@@ -49,6 +62,9 @@ class IdentityKernelAssemblerTest {
             "오늘은 어떤 걸 도와드릴까요",
             "제가 길을 찾아볼게요",
             "충실하게 답하세요",
+            "친절하게",
+            "자연스럽게 말한다",
+            "마침표",
         )
     }
 
@@ -69,6 +85,6 @@ class IdentityKernelAssemblerTest {
             assembler(IdentityKernelMeta.of("니아", emptySet(), administratorApproved = false)).assemble(1L)
         // IdentityKernelSection 은 persona/금지/관심만 — 기억 필드가 타입에 없다(컴파일 보증). 금지사항은 채워진다.
         assertThat(section.prohibitions).isNotEmpty()
-        assertThat(section.prohibitions).anyMatch { it.contains("비서") || it.contains("AI") }
+        assertThat(section.prohibitions).anyMatch { it.contains("다른 인물인 척하지 않는다") }
     }
 }

@@ -192,10 +192,8 @@ class NiaMessageContextTest {
         val prompt = buildNiaAddressedPrompt("니아야?", "니아야?")
 
         assertThat(prompt).contains("[현재 트리거 원문]\n니아야?")
-        assertThat(prompt).contains("최근 채널 대화 원문 전체를 1차 소스")
-        assertThat(prompt).contains("앞 요구에 답한다")
-        assertThat(prompt).contains("그 말의 뜻을 설명하거나")
-        assertThat(prompt).contains("문장 끝에 ASCII 마침표(.)를 붙이지 않는다")
+        assertThat(prompt).contains("최근 채널 대화와 현재 요청을 이어서 답한다")
+        assertThat(prompt).doesNotContain("[응답 계약]", "[대화 장면 few-shot]", "ASCII 마침표")
         assertThat(prompt).doesNotContain("왜 불렀는지 되물으세요")
         assertThat(prompt).doesNotContain("최근 10번 연속")
     }
@@ -205,9 +203,8 @@ class NiaMessageContextTest {
         val prompt = buildNiaContinuationPrompt("??? 어휘력 없음이 뭔말이야")
 
         assertThat(prompt).contains("[현재 트리거 원문]\n??? 어휘력 없음이 뭔말이야")
-        assertThat(prompt).contains("사용자가 니아의 직전 말을 되묻거나 따지면")
-        assertThat(prompt).contains("같은 말을 반복하지 말고")
-        assertThat(prompt).contains("오타·짧은 말·거친 말")
+        assertThat(prompt).contains("최근 채널 대화와 현재 요청을 이어서 답한다")
+        assertThat(prompt).doesNotContain("같은 말을 반복하지 말고", "오타·짧은 말·거친 말")
     }
 
     @Test
@@ -232,7 +229,7 @@ class NiaMessageContextTest {
 
         assertThat(prompt).isNotNull
         assertThat(prompt!!).contains("[현재 트리거 원문]\n??? 어휘력 없음이 뭔말이야")
-        assertThat(prompt).contains("표현 의도를 설명")
+        assertThat(prompt).contains("최근 채널 대화와 현재 요청을 이어서 답한다")
     }
 
     @Test
@@ -377,7 +374,7 @@ class NiaMessageContextTest {
         val prompt = buildNiaAutoRespondPrompt("돈들어")
 
         assertThat(prompt).contains("[트리거 출처]\nauto-respond-channel")
-        assertThat(prompt).contains("마지막 트리거 하나만 보지 말고")
+        assertThat(prompt).contains("최근 채널 대화와 현재 요청을 이어서 답한다")
     }
 
     @Test
@@ -422,7 +419,7 @@ class NiaMessageContextTest {
         assertThat(turns[2].content).contains("speaker=yeon")
         assertThat(turns[2].content).contains("content:\n니아야 싸가지가 없네")
         assertThat(turns.joinToString("\n") { it.content }).doesNotContain("CURRENT_TRIGGER_니아야")
-        assertThat(turns.last().content).contains("최근 채널 대화 원문을 그대로 참고")
+        assertThat(turns.last().content).isEqualTo("위 최근 채널 대화 원문을 현재 요청의 맥락으로 사용한다.")
     }
 
     @Test

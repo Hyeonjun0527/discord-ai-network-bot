@@ -16,7 +16,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.support.deterministicCompleteActionSelector
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -54,7 +53,6 @@ class NexaLiveSpeechServiceTest {
         val generationService =
             CandidateGenerationService(
                 generationPort = port,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
             )

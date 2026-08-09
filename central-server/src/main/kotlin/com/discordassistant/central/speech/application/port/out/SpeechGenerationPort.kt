@@ -27,7 +27,7 @@ interface SpeechGenerationPort {
  * 모델 식별자 문자열은 담지 않는다 — 모델 선택은 routing adapter(T003 설정)가 정한다(provider-neutral).
  */
 data class SpeechGenerationRequest(
-    /** 조립된 system 지시(정체성 + socialAct/burst 장면 지침 + 안전). */
+    /** 조립된 system 지시(정체성 + burst 장면 지침 + 안전). */
     val systemPrompt: String,
     /** 조립된 user 맥락(최소화된 scene/turn/memory). */
     val userPrompt: String,
@@ -36,7 +36,7 @@ data class SpeechGenerationRequest(
      * 생략한 요약을 담아, debug API/메모리 trace가 원문 카드의 우회 경로가 되지 않게 한다.
      */
     val traceUserPrompt: String = userPrompt,
-    /** 발화 종류(추적·모델 메타용). */
+    /** Judge가 분류한 발화 종류. 생성 지시가 아닌 추적·모델 메타용이다. */
     val socialAct: SpeechSocialAct,
     /** 생성할 후보 수(T011 — 명백한 장면 1개, 모호한 장면 최대 3개). */
     val candidateCount: Int,

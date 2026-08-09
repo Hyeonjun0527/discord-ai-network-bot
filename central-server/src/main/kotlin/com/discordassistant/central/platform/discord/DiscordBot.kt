@@ -175,23 +175,12 @@ internal fun buildNiaSceneResponsePrompt(
         appendLine(currentRaw)
         appendLine()
         appendLine("[현재 트리거에서 분리한 직접 요청]")
-        appendLine(currentCore.ifBlank { "(비어 있음: 이 메시지만 용건 없음으로 단정하지 말고 최근 원문 장면에서 이미 나온 요구·불만·질문을 찾는다)" })
+        appendLine(currentCore.ifBlank { "(없음)" })
         appendLine()
         appendLine("[트리거 출처]")
         appendLine(triggerSource)
         appendLine()
-        appendLine("[응답 계약]")
-        appendLine("- 마지막 트리거 하나만 보지 말고, 함께 제공되는 최근 채널 대화 원문 전체를 1차 소스로 판단한다.")
-        appendLine("- 사용자가 이전부터 답변·반응을 요구했으면 마지막이 단순 호명이어도 그 이전 요구에 이어 짧게 답한다.")
-        appendLine("- 사용자가 니아의 직전 말을 되묻거나 따지면, 같은 말을 반복하지 말고 그 말의 뜻을 설명하거나 이상했으면 짧게 인정하고 수습한다.")
-        appendLine("- 오타·짧은 말·거친 말은 능력 비난으로 받아치지 말고, 전체 흐름상 의도를 먼저 추정한다. 불확실하면 짧게 확인한다.")
-        appendLine("- 없는 사건·소란·관계를 지어내지 않는다. 감정지원 같은 라벨을 먼저 붙이지 말고 원문에 실제로 이어지는 말을 고른다.")
-        appendLine("- 문장 끝에 ASCII 마침표(.)를 붙이지 않는다.")
-        appendLine()
-        appendLine("[대화 장면 few-shot]")
-        appendLine("1. 앞 원문에 '대답해줘', '심심하다'가 있고 마지막 트리거가 '니아야'뿐이면, '왜 불러'가 아니라 앞 요구에 답한다.")
-        appendLine("2. 니아가 이상한 표현을 한 뒤 사용자가 '그게 뭔말이야'라고 물으면, '내가 먼저 한 말인데'를 반복하지 말고 표현 의도를 설명하거나 수습한다.")
-        append("3. 사용자가 거칠게 말해도 상대 말을 그대로 반사하지 말고, 장면에 맞는 짧은 한마디로 받아친다.")
+        append("최근 채널 대화와 현재 요청을 이어서 답한다.")
     }
 
 internal fun buildNiaContinuationPrompt(raw: String): String =
@@ -450,7 +439,7 @@ internal fun buildDiscordRecentContextTurns(
     return contextTurns +
         CloudTurn(
             "user",
-            "위 최근 채널 대화 원문을 그대로 참고하세요. 원문을 요약하거나 바꿔 읽지 말고, 반복 호출·불만·답변 누락 같은 흐름을 전체 맥락으로 삼아 자연스럽게 이어 답하세요.",
+            "위 최근 채널 대화 원문을 현재 요청의 맥락으로 사용한다.",
         )
 }
 

@@ -115,6 +115,7 @@ class NiaPromptConfigurationService(
 
     companion object {
         private const val MAX_DOCUMENT_CHARS = 120_000
-        private val RETIRED_PROMPT_KEYS = setOf("judge_repair_template", "action_evaluator_template")
+        private val RETIRED_PROMPT_KEYS =
+            setOf("judge_repair_template", "action_evaluator_template", "social_act_instructions")
     }
 }

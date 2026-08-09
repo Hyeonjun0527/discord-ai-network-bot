@@ -39,6 +39,7 @@ require_private_permissions() {
 [ -n "$IMPORT_ARTIFACT" ] || fail "IMPORT_ARTIFACT is required"
 IMPORT_ARTIFACT="$(realpath -e "$IMPORT_ARTIFACT")"
 IMPORT_DIRECTORY="$IMPORT_ARTIFACT"
+IMPORT_RUN_USER="$(id -u):$(id -g)"
 IMPORT_CARDS="$IMPORT_DIRECTORY/human-speech-style-cards.jsonl"
 IMPORT_MANIFEST="$IMPORT_DIRECTORY/manifest.json"
 IMPORT_CANDIDATE_MANIFEST="$IMPORT_DIRECTORY/candidate-manifest.json"
@@ -513,6 +514,7 @@ compose=(docker compose --env-file /dev/null -f "$COMPOSE_FILE")
 container_name="central-server-style-rag-import-${GITHUB_RUN_ID:-manual}"
 echo "▶ one-shot Speech-style RAG import starts (Discord and autonomous send disabled)"
 "${compose[@]}" run --rm --no-deps --name "$container_name" \
+  --user "$IMPORT_RUN_USER" \
   -v "$IMPORT_DIRECTORY:/private/human-speech-style-rag-import:ro" \
   -e SPRING_MAIN_WEB_APPLICATION_TYPE=none \
   -e CENTRAL_DISCORD_ENABLED=false \

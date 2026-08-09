@@ -1,6 +1,7 @@
 package com.discordassistant.central.speech.adapter.inbound.cli
 
 import com.discordassistant.central.speech.application.humanstyle.HumanSpeechStyleRagImportService
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleQuality
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.ApplicationArguments
@@ -24,19 +25,33 @@ import java.nio.file.Path
 )
 class HumanSpeechStyleRagImportRunner(
     private val importer: HumanSpeechStyleRagImportService,
+    private val artifactVerifier: HumanSpeechStyleRagImportArtifactVerifier,
     private val applicationContext: ConfigurableApplicationContext,
-    @param:Value("\${central.nexa.speech-style-rag.import-file:}") private val importFile: String,
+    @param:Value("\${central.nexa.speech-style-rag.import-artifact-dir:}") private val importArtifactDirectory: String,
     @param:Value("\${central.nexa.speech-style-rag.import-exit-after-completion:false}")
     private val exitAfterCompletion: Boolean = false,
+    @param:Value("\${central.nexa.speech-style-rag.import-allowed-quality:CURATION_APPROVED}")
+    private val importAllowedQuality: String = HumanSpeechStyleQuality.CURATION_APPROVED.name,
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(javaClass)
 
     override fun run(args: ApplicationArguments) {
-        require(importFile.isNotBlank()) { "NEXA_SPEECH_STYLE_RAG_IMPORT_FILE is required when import-on-startup is enabled" }
-        val report = importer.importJsonLines(Path.of(importFile))
+        require(importArtifactDirectory.isNotBlank()) {
+            "NEXA_SPEECH_STYLE_RAG_IMPORT_ARTIFACT_DIR is required when import-on-startup is enabled"
+        }
+        val allowedQuality =
+            HumanSpeechStyleQuality.entries.singleOrNull { it.name == importAllowedQuality }
+                ?: throw IllegalArgumentException("NEXA_SPEECH_STYLE_RAG_IMPORT_ALLOWED_QUALITY is unsupported")
+        val importFile = artifactVerifier.verify(Path.of(importArtifactDirectory), allowedQuality)
+        val report =
+            importer.importJsonLines(
+                file = importFile,
+                allowedQualities = setOf(allowedQuality),
+            )
         log.info(
-            "Human speech style RAG imported: count={}, responseModes={}, embeddingModel={}",
+            "Human speech style RAG imported: count={}, promptEligibleCount={}, responseModes={}, embeddingModel={}",
             report.importedCount,
+            report.promptEligibleCount,
             report.responseModeCounts,
             report.embeddingModel,
         )

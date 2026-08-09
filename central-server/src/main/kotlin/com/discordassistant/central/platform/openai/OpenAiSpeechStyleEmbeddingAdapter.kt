@@ -98,13 +98,26 @@ class OpenAiSpeechStyleEmbeddingAdapter(
                 root
                     .path("data")
                     .map { row ->
-                        row
-                            .path("embedding")
-                            .map { value -> value.floatValue() }
-                            .toFloatArray()
+                        val indexNode = row.path("index")
+                        if (!indexNode.isIntegralNumber || !indexNode.canConvertToInt()) return null
+                        IndexedEmbedding(
+                            index = indexNode.intValue(),
+                            vector =
+                                row
+                                    .path("embedding")
+                                    .map { value -> value.floatValue() }
+                                    .toFloatArray(),
+                        )
                     }
-            if (values.size == expectedSize && values.all { it.isNotEmpty() && it.all(Float::isFinite) }) {
-                ParsedEmbeddings(values, root.path("usage").path("prompt_tokens").asInt(0))
+            if (
+                values.size == expectedSize &&
+                values.map(IndexedEmbedding::index).toSet() == (0 until expectedSize).toSet() &&
+                values.all { it.vector.isNotEmpty() && it.vector.all(Float::isFinite) }
+            ) {
+                ParsedEmbeddings(
+                    values.sortedBy(IndexedEmbedding::index).map(IndexedEmbedding::vector),
+                    root.path("usage").path("prompt_tokens").asInt(0),
+                )
             } else {
                 null
             }
@@ -115,8 +128,16 @@ class OpenAiSpeechStyleEmbeddingAdapter(
 
     companion object {
         private const val CONNECT_TIMEOUT_SECONDS: Long = 5
-        private const val MAX_INPUTS_PER_REQUEST: Int = 64
+
+        // Speech runtime은 두 입력만 보내지만, one-shot private corpus import도 같은 adapter를 쓴다. 작은 batch는
+        // import 중 한 번의 느린 응답이 전체 적재를 끊는 확률을 낮추고, runtime의 요청 수에는 영향을 주지 않는다.
+        private const val MAX_INPUTS_PER_REQUEST: Int = 16
     }
+
+    private data class IndexedEmbedding(
+        val index: Int,
+        val vector: FloatArray,
+    )
 
     private data class ParsedEmbeddings(
         val vectors: List<FloatArray>,

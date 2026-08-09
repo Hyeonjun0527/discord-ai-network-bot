@@ -1,5 +1,6 @@
 package com.discordassistant.central.speech.application.port.out
 
+import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleExample
 import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
@@ -16,6 +17,9 @@ fun interface HumanSpeechStyleRagPort {
 /** 암호화된 사람 말투 카드 저장소 포트. 목록 조회와 명시적 전체 교체만 허용한다. */
 interface HumanSpeechStyleExampleStorePort {
     fun listEnabled(): List<HumanSpeechStyleExample>
+
+    fun listEnabled(responseMode: HumanSpeechResponseMode): List<HumanSpeechStyleExample> =
+        listEnabled().filter { it.responseMode == responseMode }
 
     fun replaceAll(examples: List<HumanSpeechStyleExample>): Int
 }

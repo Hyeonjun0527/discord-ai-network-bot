@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicInteger
 
 class OpenAiSpeechStyleEmbeddingAdapterTest {
     @Test
@@ -56,6 +57,87 @@ class OpenAiSpeechStyleEmbeddingAdapterTest {
             assertThat(vectors).containsExactly(floatArrayOf(1f, 0f))
             assertThat(metrics.attempts).isEqualTo(1)
             assertThat(metrics.inputTokens).isEqualTo(3)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `embedding 오류는 재시도하지 않고 호출을 중단한다`() {
+        val calls = AtomicInteger()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/embeddings") { exchange ->
+                    exchange.requestBody.readBytes()
+                    calls.incrementAndGet()
+                    val response = "{\"error\":{\"message\":\"temporary\"}}".toByteArray()
+                    exchange.responseHeaders.add("Content-Type", "application/json")
+                    exchange.sendResponseHeaders(500, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val adapter =
+                OpenAiSpeechStyleEmbeddingAdapter(
+                    apiKey = "test-key",
+                    baseUrl = "http://127.0.0.1:${server.address.port}",
+                    model = "text-embedding-3-small",
+                    timeoutSeconds = 1,
+                )
+
+            val vectors = adapter.embedAll(listOf("first", "second"))
+
+            assertThat(vectors).isNull()
+            assertThat(calls.get()).isEqualTo(1)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `대량 import 입력은 bounded batch로 나누어 순서를 보존한다`() {
+        val requestSizes = mutableListOf<Int>()
+        val server =
+            HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                createContext("/embeddings") { exchange ->
+                    val inputs = jacksonObjectMapper().readTree(exchange.requestBody.readBytes()).path("input")
+                    val inputCount = inputs.size()
+                    requestSizes += inputCount
+                    val responseRoot = jacksonObjectMapper().createObjectNode()
+                    val data = responseRoot.putArray("data")
+                    repeat(inputCount) { index ->
+                        val marker = inputs[index].asText().removePrefix("synthetic input ").toDouble()
+                        data
+                            .addObject()
+                            .put("index", index)
+                            .putArray("embedding")
+                            .add(marker)
+                            .add(0.0)
+                    }
+                    responseRoot.putObject("usage").put("prompt_tokens", inputCount)
+                    val response = responseRoot.toString().toByteArray()
+                    exchange.responseHeaders.add("Content-Type", "application/json")
+                    exchange.sendResponseHeaders(200, response.size.toLong())
+                    exchange.responseBody.use { it.write(response) }
+                }
+                start()
+            }
+        try {
+            val adapter =
+                OpenAiSpeechStyleEmbeddingAdapter(
+                    apiKey = "test-key",
+                    baseUrl = "http://127.0.0.1:${server.address.port}",
+                    model = "text-embedding-3-small",
+                    timeoutSeconds = 1,
+                )
+
+            val vectors = adapter.embedAll((1..17).map { "synthetic input $it" })
+
+            assertThat(requestSizes).containsExactly(16, 1)
+            assertThat(vectors).hasSize(17)
+            assertThat(vectors!!.first()).containsExactly(1f, 0f)
+            assertThat(vectors.last()).containsExactly(17f, 0f)
         } finally {
             server.stop(0)
         }

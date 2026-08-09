@@ -5,10 +5,18 @@ name: central Speech-style RAG import
 on:
   workflow_dispatch:
     inputs:
-      artifact_name:
-        description: protected artifact filename under ~/deploy/central-server/private
+      artifact_directory:
+        description: protected sealed artifact directory under ~/deploy/central-server/private
         required: true
-        default: human-speech-style-cards.jsonl
+        default: human-speech-style-rag-import
+      import_quality:
+        description: approval path declared by the private artifact
+        type: choice
+        required: true
+        default: CURATION_APPROVED
+        options:
+          - CURATION_APPROVED
+          - USER_RELEASED_REVIEW
 
 permissions:
   contents: read
@@ -39,12 +47,13 @@ jobs:
           CENTRAL_OAUTH_ENABLED: ${{ secrets.CENTRAL_OAUTH_ENABLED }}
           CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${{ secrets.CENTRAL_DASHBOARD_ADMIN_USER_IDS }}
           CENTRAL_METRICS_SCRAPE_TOKEN: ${{ secrets.CENTRAL_METRICS_SCRAPE_TOKEN }}
-          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          ARTIFACT_DIRECTORY: ${{ inputs.artifact_directory }}
+          IMPORT_ALLOWED_QUALITY: ${{ inputs.import_quality }}
         run: |
           set -euo pipefail
-          artifact_name="$ARTIFACT_NAME"
-          [[ "$artifact_name" =~ ^[A-Za-z0-9._-]+$ ]] || {
-            echo "❌ artifact_name must be a plain filename"
+          artifact_directory="$ARTIFACT_DIRECTORY"
+          [[ "$artifact_directory" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo "❌ artifact_directory must be a plain directory name"
             exit 1
           }
           DEPLOY_DIR="$HOME/deploy/central-server"
@@ -53,6 +62,7 @@ jobs:
             exit 1
           }
           COMPOSE_FILE="$DEPLOY_DIR/compose.yml" \
-          IMPORT_ARTIFACT="$DEPLOY_DIR/private/$artifact_name" \
+          IMPORT_ARTIFACT="$DEPLOY_DIR/private/$artifact_directory" \
+          IMPORT_ALLOWED_QUALITY="$IMPORT_ALLOWED_QUALITY" \
           GITHUB_RUN_ID="$GITHUB_RUN_ID" \
           bash "$GITHUB_WORKSPACE/central-server/scripts/ops_import_human_speech_style_rag.sh"

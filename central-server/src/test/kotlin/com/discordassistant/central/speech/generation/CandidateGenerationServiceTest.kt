@@ -69,7 +69,7 @@ class CandidateGenerationServiceTest {
     }
 
     @Test
-    fun `Speech 전용 사람 말투 예시는 provider에만 넣고 trace에는 원문을 남기지 않는다`() {
+    fun `Speech 전용 사람 말투 pattern은 provider에만 넣고 카드 원문은 어느 prompt에도 남기지 않는다`() {
         val port = CapturingPort()
         val sensitiveExampleText = "private-style-response-marker-12345"
         val selection =
@@ -91,11 +91,23 @@ class CandidateGenerationServiceTest {
         )
 
         val request = port.lastRequest!!
-        assertThat(request.userPrompt).contains("사람 말투 참고 예시", sensitiveExampleText)
+        assertThat(request.userPrompt).contains("사람 말투 리듬 참고", "비식별 추출 패턴")
+        assertThat(request.userPrompt).doesNotContain(sensitiveExampleText)
         assertThat(request.systemPrompt).doesNotContain(sensitiveExampleText)
         assertThat(request.traceUserPrompt).doesNotContain(sensitiveExampleText)
         assertThat(capturedTrace).doesNotContain(sensitiveExampleText)
         assertThat(capturedTrace).contains("private human-style examples omitted")
+    }
+
+    @Test
+    fun `예상 밖 사람 말투 RAG 오류가 있어도 Speech 생성은 예시 없이 계속한다`() {
+        val port = CapturingPort()
+        val throwingStyleRag = HumanSpeechStyleRagPort { throw IllegalStateException("embedding contract failure") }
+
+        service(port, humanSpeechStyleRag = throwingStyleRag).generate(SpeechGenerationFixtures.packet())
+
+        assertThat(port.callCount).isEqualTo(1)
+        assertThat(port.lastRequest!!.userPrompt).doesNotContain("사람 말투 참고 예시")
     }
 
     @Test

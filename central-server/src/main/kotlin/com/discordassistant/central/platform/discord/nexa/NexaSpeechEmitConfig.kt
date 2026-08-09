@@ -14,13 +14,13 @@ import com.discordassistant.central.speech.application.generation.CandidateGener
 import com.discordassistant.central.speech.application.generation.CompleteActionSelector
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechInputTracePort
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -71,18 +71,19 @@ class NexaSpeechEmitConfig {
         generationPort: SpeechGenerationPort,
         factualGrounding: SpeechFactualGroundingPort,
         inputTrace: SpeechInputTracePort,
+        humanSpeechStyleRag: HumanSpeechStyleRagPort,
         promptSource: NiaPromptSource,
     ): SpeechGenerationGate =
         SpeechGenerationGate(
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(promptSource),
                 burstCompiler = BurstPromptCompiler(promptSource),
                 reasoningModeSelector = ReasoningModeSelector(),
                 contentIsolator = ConversationContentIsolator(promptSource),
                 factualGrounding = factualGrounding,
                 inputTrace = inputTrace,
                 promptSource = promptSource,
+                humanSpeechStyleRag = humanSpeechStyleRag,
             ),
         )
 

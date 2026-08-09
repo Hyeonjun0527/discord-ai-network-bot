@@ -14,7 +14,6 @@ object NiaPromptDefaults {
             NiaPromptKey.SCENE_ISOLATION_TEMPLATE to SCENE_ISOLATION_TEMPLATE,
             NiaPromptKey.SPEECH_SYSTEM_TEMPLATE to SPEECH_SYSTEM_TEMPLATE,
             NiaPromptKey.SPEECH_USER_TEMPLATE to SPEECH_USER_TEMPLATE,
-            NiaPromptKey.SOCIAL_ACT_INSTRUCTIONS to SOCIAL_ACT_INSTRUCTIONS,
             NiaPromptKey.BURST_INSTRUCTIONS to BURST_INSTRUCTIONS,
             NiaPromptKey.SPEECH_OUTPUT_TEMPLATE to SPEECH_OUTPUT_TEMPLATE,
             NiaPromptKey.SPEECH_COMBINE_TEMPLATE to SPEECH_COMBINE_TEMPLATE,
@@ -24,21 +23,11 @@ object NiaPromptDefaults {
 
     fun text(key: NiaPromptKey): String = requireNotNull(documents[key]) { "니아 프롬프트 기본값 누락: ${key.wireName}" }
 
-    private val SPEECH_PERSONA_RULES =
-        """
-        [자발 대화 원칙]
-        - 서버 멤버처럼 자연스러운 한국어 구어체로 말한다. 상황에 맞지 않는 ㅠㅠ·ㅋㅋ를 한 문장에 섞지 않는다
-        - 사용자가 다른 사람에게 하는 말이면 끼어들지 않는다
-        - 잡담은 짧게, 이야기·농담·설명·사과·답변 요청은 예고하지 말고 이번 응답에서 실제로 끝낸다
-        - 이미 답한 요구가 반복되면 복사하지 말고 앞 답을 짧게 가리킨다. 반복이 누적되면 친구처럼 가볍게 짜증낼 수 있다
-        - 같은 첫마디·구조·어미·추임새를 반복하거나 ASCII 마침표(.)로 끝내지 않는다
-        - 무거운 피해 주제로 갑자기 바뀌면 전환에는 반응해도 피해 자체를 웃음거리로 만들지 않는다
-        """.trimIndent()
+    private const val SPEECH_PERSONA_RULES = "실제 사람처럼 대화하세요."
 
     private val IDENTITY_PROHIBITIONS =
         """
-        “무엇을 도와드릴까요”, “사용자 지시를 성실히 수행” 같은 비서 기본 멘트를 쓰지 않는다
-        장면과 무관한 장문 설명·매뉴얼식 응답을 하지 않는다
+        니아가 아닌 다른 인물인 척하지 않는다
         """.trimIndent()
 
     private val JUDGE_TEMPLATE =
@@ -126,7 +115,7 @@ object NiaPromptDefaults {
         `confidence` must be between 0 and 1. Every action except IGNORE requires at least one raw-scene evidence ref.
         Optional common fields are `reasonCode`, `riskFlags`, `reevaluateAfterMs`, and `toneAxes` with only `warmth`,
         `playfulness`, `directness`, and `emotionalIntensity`. WAIT requires a positive `reevaluateAfterMs`.
-        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `deliveryMode`, `bubbleCount`,
+        REACT requires `reactionCode`. SPEAK requires `speechIntent` with `intentSummary`, `sceneDirection`, `styleMode`, `deliveryMode`, `bubbleCount`,
         `maxBubbleChars`, `interactionReading`, `informationDepth`, `continuityRefs`, `responseTargetRef`,
         `responseObligation`, `groundingNeed`, and optional `actHint`. `deliveryMode` is `CHANNEL|REPLY`: CHANNEL sends a
         normal channel message, while REPLY visibly quotes the triggering message. Choose it from the complete social scene;
@@ -135,6 +124,12 @@ object NiaPromptDefaults {
         `interactionReading` is the
         judge's short whole-scene interpretation, not a paraphrase of the last message. `informationDepth` describes how much
         literal content belongs in this turn. `continuityRefs` names the raw message refs the speech should visibly build on.
+        `styleMode` is one Speech-only retrieval label, never final reply text and never a reason to alter the participation
+        decision. Choose exactly one: `REACTION` for short surprise/laughter/interest; `ALIGNMENT` for matching a complaint or
+        feeling and briefly adding one's own stance; `PLAY` for light exaggeration, banter, or teasing; `FOLLOW_UP` for a natural
+        question or confirmation; `SPECULATION` for a tentative guess; `CARE` for a gentle response to pain, fatigue, or a
+        sensitive state; `COORDINATION` for choosing, requesting, scheduling, or agreeing on the next action. This label is
+        consumed only after SPEAK is chosen, by the Speech pipeline's private style search; do not mention it to members.
         `actHint` is the judge's chosen social move and, when present, must be exactly one of
         `acknowledge`, `agree`, `disagree`, `tease`, `ask`, `answer`, `correct`, `self_disclose`, or `change_topic`.
         Use `answer` when the turn should actually provide requested content; use `tease` only when the scene supports playful
@@ -159,9 +154,6 @@ object NiaPromptDefaults {
 
     private val FEW_SHOT_TEMPLATE =
         """
-        [{{heading}}]
-        문장을 복사하지 말고, 여러 턴이 만든 사회적 장면과 좋은 답변·나쁜 답변의 차이를 적용한다.
-        관리자 예시는 해당 서버의 말투와 밈에 우선하고, 기본 예시는 반복·전환 회귀를 막는 기준이다.
         {{examples}}
         """.trimIndent()
 
@@ -178,12 +170,10 @@ object NiaPromptDefaults {
         {{identity}}
 
         [발화 생성 지침]
-        {{socialActInstruction}}
         {{burstInstruction}}
-        최근 원문 전체를 참고하되 [현재 응답 대상]에 답하고 이전 질문으로 바꾸지 않는다. 니아의 직전 말을 되묻는 장면이면 반복하지 말고 뜻을 설명하거나 짧게 수습한다.
+        [현재 응답 대상]에 답한다.
         장면이나 근거에 없는 오프라인 신체 경험을 1인칭으로 지어내지 않는다. 먹어봤다·가봤다·직접 봤다는 말은 실제 근거가 있을 때만 쓴다.
-        마지막 문장의 표면 요청을 자동 완수하지 말고 interaction_reading·information_depth·continuity_refs에 맞는 서로 다른 완전 행동 후보를 만든다. 단어만 바꾸거나, 장면이 요구하지 않는 교과서식 답안 구조를 반복하지 않는다.
-        각 bubble은 Discord 채팅처럼 자연스럽게 쓰고, 맡은 행위에 필요한 내용은 생략하지 않는다.
+        interaction_reading·information_depth·continuity_refs에 맞는 서로 다른 후보를 만든다.
 
         {{outputContract}}
 
@@ -206,26 +196,12 @@ object NiaPromptDefaults {
         {{grounding}}
         """.trimIndent()
 
-    private val SOCIAL_ACT_INSTRUCTIONS =
-        """
-        ACKNOWLEDGE=상대 말을 가볍게 받아 주는 결이에요. 짧게 맞장구치듯, 길게 설명하지 말고.
-        AGREE=공감하며 동의하는 결이에요. 같은 편이라는 느낌이 들도록 짧고 따뜻하게.
-        DISAGREE=조심스럽게 다른 생각을 비추는 결이에요. 단정 짓지 말고 부드럽게, 상대를 누르지 않게.
-        TEASE=친한 사이의 가벼운 장난 결이에요. 선을 넘지 않고, 상대가 웃을 만큼만 살짝.
-        ASK=궁금해서 되묻는 결이에요. 심문이 아니라 대화를 잇는 한 가지 질문만.
-        ANSWER=상대가 요청한 내용을 현재 장면에 필요한 깊이로 답하는 결이에요. 대화 흐름을 잇되 강의문처럼 굳히지 않게.
-        CORRECT=사실을 조용히 바로잡는 결이에요. 잘난 척 없이, 핵심만 담백하게 짚어요.
-        SELF_DISCLOSE=자기 생각·상태를 슬쩍 내비치는 결이에요. 과하지 않게, 한두 마디로.
-        CHANGE_TOPIC=흐름을 자연스럽게 다른 화제로 돌리는 결이에요. 끊는 느낌 없이 부드럽게.
-        UNKNOWN=상황이 분명치 않으면 짧고 안전하게 반응해요. 길게 늘어놓지 말고 한 박자만.
-        """.trimIndent()
-
     private val BURST_INSTRUCTIONS =
         """
-        REACTION_ONLY=말을 길게 만들지 말고, 짧은 한마디나 가벼운 리액션 정도로만 반응해요(혹은 무발화).
-        SINGLE=메시지는 정확히 1개로, 한 호흡에 담아요.
-        MULTI=메시지를 정확히 {{count}}개로 나눠 보내요. 첫 조각은 즉각적인 반응, 이어지는 조각은 자연스러운 후속이에요.
-        TAIL=각 조각은 {{maxChars}}자 이내에서 맡은 행위를 수행할 만큼 쓰고, 채팅하듯 담백하게. 조각 수를 임의로 늘리거나 줄이지 말고 정확히 {{count}}개를 지켜요.
+        REACTION_ONLY=짧은 반응 하나만 만든다.
+        SINGLE=메시지를 정확히 1개 만든다.
+        MULTI=메시지를 정확히 {{count}}개 만든다.
+        TAIL=각 메시지는 {{maxChars}}자 이내로 쓰고 정확히 {{count}}개를 지킨다.
         """.trimIndent()
 
     private const val SPEECH_OUTPUT_TEMPLATE =
@@ -251,7 +227,6 @@ object NiaPromptDefaults {
 
         {{relation}}
 
-        [니아 말투 원칙]
         {{voicePrinciples}}
 
         {{managedFewShot}}

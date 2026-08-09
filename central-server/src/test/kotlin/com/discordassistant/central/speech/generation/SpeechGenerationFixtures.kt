@@ -1,6 +1,7 @@
 package com.discordassistant.central.speech.generation
 
 import com.discordassistant.central.speech.domain.model.ConversationTurn
+import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.MemoryRef
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
@@ -15,6 +16,7 @@ internal object SpeechGenerationFixtures {
     fun packet(
         inputTraceId: String? = null,
         socialAct: SpeechSocialAct = SpeechSocialAct.ACKNOWLEDGE,
+        styleResponseMode: HumanSpeechResponseMode? = null,
         burstShape: SpeechBurstShape = SpeechBurstShape(1, 280, false),
         turns: List<ConversationTurn> = listOf(ConversationTurn("user_1", "안녕")),
         memoryRefs: List<MemoryRef> = emptyList(),
@@ -31,6 +33,7 @@ internal object SpeechGenerationFixtures {
             target = SpeechTarget.member("user_1"),
             recentTurns = turns,
             socialAct = socialAct,
+            styleResponseMode = styleResponseMode,
             burstShape = burstShape,
             identity = identity,
             memoryRefs = memoryRefs,

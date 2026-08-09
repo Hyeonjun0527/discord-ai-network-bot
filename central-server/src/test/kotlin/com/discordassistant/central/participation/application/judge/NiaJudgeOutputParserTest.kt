@@ -23,6 +23,8 @@ class NiaJudgeOutputParserTest {
         assertThat(parsedByAction["REACT"]!!.decision.reactionCandidate!!.reactionCode).isEqualTo("soft_ack")
         assertThat(parsedByAction["SPEAK"]!!.decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.intentSummary).contains("acknowledge")
+        assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.styleMode)
+            .isEqualTo(JudgeSpeechStyleMode.ALIGNMENT)
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.interactionReading)
             .isEqualTo("the repeated knowledge questions look like a social test")
         assertThat(parsedByAction["SPEAK"]!!.decision.speechIntent!!.informationDepth)
@@ -88,6 +90,34 @@ class NiaJudgeOutputParserTest {
 
         assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
         assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("bubbleCount")
+    }
+
+    @Test
+    fun `parser rejects an unknown speech style mode`() {
+        val invalid =
+            mapper.readValue(output("SPEAK"), MutableMap::class.java).also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>)["styleMode"] = "UNKNOWN_STYLE_MODE"
+            }
+
+        val result = parser.parse(mapper.writeValueAsString(invalid))
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("UNKNOWN_STYLE_MODE")
+    }
+
+    @Test
+    fun `parser rejects a SPEAK output without the required speech style mode`() {
+        val invalid =
+            mapper.readValue(output("SPEAK"), MutableMap::class.java).also { root ->
+                @Suppress("UNCHECKED_CAST")
+                (root["speechIntent"] as MutableMap<String, Any?>).remove("styleMode")
+            }
+
+        val result = parser.parse(mapper.writeValueAsString(invalid))
+
+        assertThat(result).isInstanceOf(NiaJudgeOutputParseResult.Rejected::class.java)
+        assertThat((result as NiaJudgeOutputParseResult.Rejected).message).contains("styleMode")
     }
 
     @Test
@@ -333,6 +363,7 @@ class NiaJudgeOutputParserTest {
                 mapOf(
                     "intentSummary" to "acknowledge direct request",
                     "sceneDirection" to "one short sentence, no over-comforting",
+                    "styleMode" to "ALIGNMENT",
                     "deliveryMode" to "CHANNEL",
                     "actHint" to "acknowledge",
                     "bubbleCount" to 3,

@@ -15,6 +15,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SKIP_DIRS = {".git", ".omx", "node_modules", "build", ".gradle", "__pycache__", ".venv", "dist"}
+PRIVATE_DATA_ROOT = ROOT / "data" / "private"
 
 
 def is_external(target: str) -> bool:
@@ -28,7 +29,7 @@ def main() -> int:
     broken: list[str] = []
     md_files = [
         p for p in ROOT.rglob("*.md")
-        if not any(part in SKIP_DIRS for part in p.parts)
+        if not any(part in SKIP_DIRS for part in p.parts) and not p.is_relative_to(PRIVATE_DATA_ROOT)
     ]
     for md in md_files:
         text = md.read_text(encoding="utf-8", errors="ignore")

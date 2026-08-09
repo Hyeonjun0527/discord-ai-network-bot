@@ -49,6 +49,7 @@ import com.discordassistant.central.participation.application.judge.JudgeIntentH
 import com.discordassistant.central.participation.application.judge.JudgeReactionCandidate
 import com.discordassistant.central.participation.application.judge.JudgeReasonCode
 import com.discordassistant.central.participation.application.judge.JudgeSpeechIntent
+import com.discordassistant.central.participation.application.judge.JudgeSpeechStyleMode
 import com.discordassistant.central.participation.application.judge.JudgeToneAxes
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecision
 import com.discordassistant.central.participation.application.judge.SingleJudgeDecisionRequest
@@ -108,6 +109,7 @@ import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
 import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
@@ -115,8 +117,9 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.ConversationTurn
+import com.discordassistant.central.speech.domain.model.HumanSpeechResponseMode
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.SpeechImageInput
 import com.discordassistant.central.speech.domain.model.SpeechImageMediaType
 import com.discordassistant.central.speech.domain.model.SpeechSocialAct
@@ -598,14 +601,14 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val request = generationPort.lastRequest!!
-        assertThat(request.systemPrompt).contains("정확히 3개", "각 조각은 1200자 이내")
+        assertThat(request.systemPrompt).contains("정확히 3개", "각 메시지는 1200자 이내")
         assertThat(request.systemPrompt).doesNotContain("bubble_count=", "max_bubble_chars=")
         assertThat(request.maxOutputTokens).isEqualTo(1024)
         assertThat(scheduler.scheduled).hasSize(1)
     }
 
     @Test
-    fun `final judge social act choice reaches speech generation without rule reinterpretation`() {
+    fun `final judge social act is logged without constraining the generated wording`() {
         val scheduler = FakeScheduler()
         val generationPort = CapturingGenerationPort()
         val bridge =
@@ -629,8 +632,40 @@ class NexaParticipationEmitBridgeTest {
 
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         assertThat(generationPort.lastRequest!!.socialAct).isEqualTo(SpeechSocialAct.TEASE)
-        assertThat(generationPort.lastRequest!!.systemPrompt).contains("친한 사이의 가벼운 장난 결")
-        assertThat(generationPort.lastRequest!!.systemPrompt).doesNotContain("act_hint=")
+        assertThat(generationPort.lastRequest!!.systemPrompt)
+            .doesNotContain("친한 사이의 장난을 되받는다", "TEASE", "act_hint=")
+    }
+
+    @Test
+    fun `final judge style mode reaches Speech-only human-style retrieval`() {
+        val scheduler = FakeScheduler()
+        var retrievedMode: HumanSpeechResponseMode? = null
+        val styleRag =
+            HumanSpeechStyleRagPort { packet ->
+                retrievedMode = packet.styleResponseMode
+                HumanSpeechStyleSelection.EMPTY
+            }
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = FixedPolicy(ignoreResponse()),
+                emit =
+                    emitSeam(
+                        consent = ConsentDecision.OBSERVE_AND_SPEAK,
+                        scheduler = scheduler,
+                        humanSpeechStyleRag = styleRag,
+                    ),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+                judgeModeName = "final",
+                singleJudge = CapturingJudge(speakDecision(styleMode = JudgeSpeechStyleMode.CARE)),
+                actionRouter = ParticipationActionRouter(scheduler),
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true, triggerText = "오늘 좀 힘들다"))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(retrievedMode).isEqualTo(HumanSpeechResponseMode.CARE)
     }
 
     @Test
@@ -1218,8 +1253,7 @@ class NexaParticipationEmitBridgeTest {
         assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
         val request = generationPort.lastRequest!!
         assertThat(request.socialAct).isEqualTo(SpeechSocialAct.ASK)
-        assertThat(request.systemPrompt).contains("대화를 잇는 한 가지 질문만")
-        assertThat(request.systemPrompt).doesNotContain("act_hint=")
+        assertThat(request.systemPrompt).doesNotContain("대화를 잇는 질문을 한다", "ASK", "act_hint=")
         assertThat(request.systemPrompt).contains("SPEAK는 참여 여부에 대한 최종 판단")
         assertThat(request.systemPrompt).doesNotContain("SPEAK는 잠정 판단")
         assertThat(request.systemPrompt).contains("정확히 2개")
@@ -2552,14 +2586,15 @@ class NexaParticipationEmitBridgeTest {
         consent: ConsentDecision,
         scheduler: FakeScheduler,
         generationPort: SpeechGenerationPort = FakeGenerationPort(candidates),
+        humanSpeechStyleRag: HumanSpeechStyleRagPort = HumanSpeechStyleRagPort.Noop,
     ): NexaSpeechEmitService {
         val consentPolicy = ConsentPolicyPort { _, _, _ -> consent }
         val generationService =
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
+                humanSpeechStyleRag = humanSpeechStyleRag,
             )
         val pipeline =
             NexaSpeechPipelineService(
@@ -2590,7 +2625,6 @@ class NexaParticipationEmitBridgeTest {
         val generationService =
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
             )
@@ -2642,6 +2676,7 @@ class NexaParticipationEmitBridgeTest {
         bubbleCount: Int = 1,
         maxBubbleChars: Int = JudgeSpeechIntent.DEFAULT_MAX_BUBBLE_CHARS,
         actHint: String = "answer",
+        styleMode: JudgeSpeechStyleMode = JudgeSpeechStyleMode.ALIGNMENT,
     ): SingleJudgeDecision =
         SingleJudgeDecision(
             action = SocialActionKind.SPEAK,
@@ -2652,6 +2687,7 @@ class NexaParticipationEmitBridgeTest {
                 JudgeSpeechIntent(
                     intentSummary = "answer direct social request",
                     sceneDirection = "deliver the requested content now",
+                    styleMode = styleMode,
                     bubbleCount = bubbleCount,
                     maxBubbleChars = maxBubbleChars,
                     actHint = actHint,

@@ -24,13 +24,13 @@ enum class NiaPromptKey(
         "voice_principles",
         "정체성",
         "/ask 대화 원칙",
-        "니아 /ask와 채널 AI 답변에만 들어가는 장면·말투 원칙",
+        "니아 /ask와 채널 AI 답변에 들어가는 최소 대화 지침",
     ),
     SPEECH_PERSONA_RULES(
         "speech_persona_rules",
         "정체성",
         "자발 대화 추가 원칙",
-        "니아가 Discord 대화에 스스로 참여할 때만 들어가는 말투·완결 원칙",
+        "니아가 Discord 대화에 스스로 참여할 때 들어가는 최소 대화 지침",
     ),
     IDENTITY_PROHIBITIONS(
         "identity_prohibitions",
@@ -50,7 +50,7 @@ enum class NiaPromptKey(
         "예시 조립",
         "대화 예시 조립 형식",
         "전역 few-shot과 검색된 RAG 대화를 발화 모델에 넣는 형식",
-        setOf("heading", "examples"),
+        setOf("examples"),
     ),
     SCENE_ISOLATION_TEMPLATE(
         "scene_isolation_template",
@@ -63,8 +63,8 @@ enum class NiaPromptKey(
         "speech_system_template",
         "발화 생성",
         "발화 후보 시스템 입력",
-        "정체성·상황 판단·행위·메시지 수·few-shot을 합쳐 실제 문장 후보를 만드는 전체 시스템 템플릿",
-        setOf("identity", "participationDecision", "socialActInstruction", "burstInstruction", "outputContract"),
+        "정체성·상황 판단·메시지 수·few-shot을 합쳐 실제 문장 후보를 만드는 전체 시스템 템플릿",
+        setOf("identity", "participationDecision", "burstInstruction", "outputContract"),
     ),
     SPEECH_USER_TEMPLATE(
         "speech_user_template",
@@ -72,12 +72,6 @@ enum class NiaPromptKey(
         "발화 후보 사용자 입력",
         "현재 대화·응답 대상·외부 사실 검증 결과를 합치는 전체 사용자 템플릿",
         setOf("payload", "quotedScene", "rawContext", "responseTarget", "grounding"),
-    ),
-    SOCIAL_ACT_INSTRUCTIONS(
-        "social_act_instructions",
-        "발화 생성",
-        "사회적 행위별 지침",
-        "ACKNOWLEDGE, AGREE 등 행위별 지침. KEY=원문 형식으로 한 줄에 하나씩 입력",
     ),
     BURST_INSTRUCTIONS(
         "burst_instructions",

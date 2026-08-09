@@ -40,6 +40,10 @@ object NiaJudgeOutputContract {
                 "sceneDirection": {
                   "type": "string"
                 },
+                "styleMode": {
+                  "type": "string",
+                  "enum": ["REACTION", "ALIGNMENT", "PLAY", "FOLLOW_UP", "SPECULATION", "CARE", "COORDINATION"]
+                },
                 "actHint": {
                   "type": ["string", "null"]
                 },
@@ -80,6 +84,7 @@ object NiaJudgeOutputContract {
               "required": [
                 "intentSummary",
                 "sceneDirection",
+                "styleMode",
                 "actHint",
                 "bubbleCount",
                 "maxBubbleChars",

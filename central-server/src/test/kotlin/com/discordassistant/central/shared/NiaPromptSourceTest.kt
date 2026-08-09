@@ -16,11 +16,11 @@ class NiaPromptSourceTest {
             .contains(
                 "[우선순위 1: 안전]",
                 NexaIdentity.NIA_CHARACTER_PROFILE,
-                "[/ask 대화 원칙]",
+                "실제 사람처럼 대화하세요.",
                 "[상대 발화]\n안녕",
-            ).containsOnlyOnce("ASCII 마침표(.)")
-            .containsOnlyOnce("비서식 자기소개")
-            .doesNotContain("[자발 대화 원칙]", "[발화 생성 지침]")
+                "실제로 수행할 수 없는 일을 제안하거나 약속하지 않는다",
+            ).doesNotContain("ASCII 마침표(.)", "비서식 자기소개")
+            .doesNotContain("[자발 대화 원칙]", "[니아 말투 원칙]", "[발화 생성 지침]")
         assertThat(prompt.length).isLessThan(1_250)
         println("NIA_ASK_COST_FIXTURE fullChars=${prompt.length}")
     }

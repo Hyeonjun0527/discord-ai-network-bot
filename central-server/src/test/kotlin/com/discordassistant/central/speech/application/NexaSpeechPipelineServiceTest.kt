@@ -16,7 +16,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechGeneration
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.port.out.SpeechTraceContext
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.SpeechBurstShape
@@ -97,7 +96,6 @@ class NexaSpeechPipelineServiceTest {
         val generationService =
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
             )
@@ -137,7 +135,6 @@ class NexaSpeechPipelineServiceTest {
         val generationService =
             CandidateGenerationService(
                 generationPort = generationPort,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
             )

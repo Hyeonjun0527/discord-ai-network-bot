@@ -3,6 +3,7 @@ package com.discordassistant.central.channelai.application
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.participation.application.fewshot.NiaFewShotSpeechPromptRenderer
 import com.discordassistant.central.shared.CodeNiaPromptSource
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
@@ -124,7 +125,11 @@ class ChannelAiPromptRenderer(
         val fullPrompt =
             niaPromptSource.renderNiaAskPrompt(
                 userMessage = sanitizedQuestion,
-                managedFewShot = if (includeRag) "[채널 지식/RAG]\n${rag.orEmpty()}" else "",
+                managedFewShot =
+                    listOfNotNull(
+                        NiaFewShotSpeechPromptRenderer.render(null, niaPromptSource),
+                        if (includeRag) "[채널 지식/RAG]\n${rag.orEmpty()}" else null,
+                    ).joinToString("\n\n"),
             )
         val systemPrompt = fullPrompt.substringBefore("[상대 발화]").trim()
         val userPrompt = "[상대 발화]\n$sanitizedQuestion"

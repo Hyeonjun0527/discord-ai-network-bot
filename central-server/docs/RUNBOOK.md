@@ -73,16 +73,17 @@
     필요하면 `DISCORD_TYPING_INTENT_ENABLED=false`
 - rawScene 고정폭 row는 `nia.participation-judge-input.v4`와 `nia-judge-prompt-v18`로 이전 cache와 분리된다.
   이 형식 자체를 되돌릴 때는 이전 이미지 태그로 롤백한다.
-- Cloud action evaluator, Judge repair, OpenAI Conversation RAG embedding은 제거 상태를 유지한다. Judge와
-  Speech는 각각 최대 1회이고 provider 내부 retry도 0이다. 비발화는 최대 1회, 발화는 실패 경로까지
-  포함해도 최대 2회다.
+- Cloud action evaluator, Judge repair, OpenAI Conversation RAG embedding은 제거 상태를 유지한다. 다만
+  Speech-style RAG는 `SPEAK` 확정 뒤에만 별도 OpenAI embedding을 최대 1회 쓴다. Judge와 Speech는 각각
+  최대 1회이고 provider 내부 retry도 0이다. 비발화는 최대 1회, 발화는 실패 경로까지 포함해도 최대 3회다.
   이 구조를 되돌릴 때는 이전 이미지로 전체 롤백한 뒤 비용·품질 근거를 재검토한다.
 - 비용 효과는 원문 로그가 아니라
   `central_openai_requests_total{purpose=...}`와
   `central_openai_tokens_total{purpose=...,category=...}`의 배포 전후 구간으로 비교한다.
 - 운영 원문을 재생하거나 유료 테스트 호출을 자동으로 만들지 않는다. 실제 트래픽에서 오류율과 결정 건수 대비
-  `nia_judge`, 발화 건수 대비 `nia_speech` 요청 비율을 관측한다. 두 비율 모두 1을 넘으면 회귀다.
-  `nia_rag_embedding`, `nia_judge_repair`, `nia_action_evaluator` 신규 시계열은 생기지 않아야 한다.
+  `nia_judge`, 발화 건수 대비 `nia_speech` 및 `nia_speech_style_embedding` 요청 비율을 관측한다. 세 비율은
+  모두 1을 넘으면 회귀다. `nia_rag_embedding`, `nia_judge_repair`, `nia_action_evaluator` 신규 시계열은
+  생기지 않아야 한다.
 
 ### 7) 폐루프 테이블 보존 정리
 - WAIT outbox와 행동-결과 관측 행은 기본 30일 보존 후 매일 UTC 03:55에 정리된다.
@@ -136,3 +137,46 @@
   bash -n central-server/scripts/ops_healthcheck.sh central-server/scripts/ops_policy_audit.sh \
     central-server/scripts/ops_runtime_secret_audit.sh central-server/scripts/ops_nia_turn_trace.sh
   ```
+
+## NIA Speech-style RAG private import
+
+이 작업은 별도 운영 승인 대상이다. 현재 서비스에 카드를 자동으로 넣지 않는다.
+
+1. `V91__nia_human_speech_style_rag.sql`을 포함한 이미지가 먼저 production에 배포되어 있는지 확인한다.
+2. **현재 candidate가 아니라**, candidate JSONL digest에 묶인 실제 OpenAI retrieval-audit `PASS`, 그 audit digest까지 묶인
+   70-case blind-quality `PASS`, 같은 audit에 묶인 fresh comparative RAG-value `PASS`가 manifest 안에 봉인된
+   `nia-human-speech-style-import-manifest.v10` private import **directory**만 host protected directory로 복사한다. directory에는
+   `human-speech-style-cards.jsonl`, `candidate-manifest.json`, `retrieval-audit.json`, `blind-quality-review.json`,
+   `rag-value-review.json`, `manifest.json`이 모두 있어야 하며, 앱 시작 경로도 이 여섯 파일의 해시·내용 결속을 다시 검사한다.
+   또한 trusted `human-speech-style-source-coverage.json`에 고정된 16개 source fingerprint 집합과 candidate/import manifest의
+   `expected_source_*` 값이 정확히 일치해야 한다. 카드 수나 source 수만 같은 다른 집합은 거절한다.
+   retrieval audit은 H2-only 검증 범위에서 실행되어야 하며 Judge·Discord·provider generation은
+   모두 꺼져 있어야 한다. 복사 전·후 권한은 directory 0700, file 0600이어야 하며 Git/이미지/로그에 넣지 않는다. 이전 v1/v2
+   manifest나 별도 `FAIL` review/audit는 import 대상이 아니다.
+
+   ```bash
+   ssh ssh.yeon.world 'install -d -m 700 ~/deploy/central-server/private'
+   scp -pr <sealed-private-import-dir> ssh.yeon.world:~/deploy/central-server/private/
+   ssh ssh.yeon.world 'chmod 700 ~/deploy/central-server/private/<sealed-private-import-dir-name> && chmod 600 ~/deploy/central-server/private/<sealed-private-import-dir-name>/*'
+   ```
+
+3. GitHub Actions의 `central Speech-style RAG import`를 manual dispatch한다. manifest의 `quality`와 같은
+   `import_quality`를 선택한다. 현재 artifact가 `USER_RELEASED_REVIEW`이면 그 값을 명시적으로 선택해야 하며,
+   `CURATION_APPROVED`로 바꿔 formal approval인 것처럼 import할 수 없다. workflow와 one-shot application은 manifest schema, JSONL
+   digest, candidate manifest, 실제 OpenAI `text-embedding-3-small` retrieval-audit의 candidate binding·80% independent holdout coverage,
+   그 audit digest에 묶인 seven-mode 70-case blind-quality threshold와 안전성 0건, 그리고 fixed mode baseline 대비 fresh comparative
+   RAG-value threshold를 다시 확인한다. `production` approval 후
+   one-shot container가 import하고 종료한다. 이 컨테이너는 Discord, autonomous send, web server를 전부 끈다.
+4. workflow 출력에서 전체 카드 수·검색 가능 카드 수·source 수·검색 가능 enum 수·payload/vector 암호화만 확인한다.
+   원문 카드 내용은 절대 출력하지 않는다.
+   실패하면 live `central-server`는 그대로 두고 import container만 종료된다.
+
+### Speech-style RAG import 롤백
+
+- import 전에는 change-control 기록과 함께 **암호화된 운영 DB 백업**을 만든다. backup 파일이나 table dump의 내용은 로그·티켓·채팅에
+  출력하지 않는다.
+- one-shot import가 schema·hash·16-source 집합·evidence binding 또는 DB 사후 집계에서 실패하면, live 서비스는 그대로 두고
+  import container만 종료한다. 이 경우 수동 row 수정이나 부분 재시도를 하지 않는다.
+- import 뒤에 rollback이 필요하면 `NEXA_SPEECH_STYLE_RAG_ENABLED=false`로 유지한 채 승인된 백업으로
+  `nia_human_speech_style_example`을 포함한 DB를 복구하고, 복구 대상의 digest·암호화 상태·source fingerprint 집합을 다시 읽기 전용으로
+  검증한다. 새 artifact를 다시 import하려면 sealed directory 전체와 v10 evidence를 처음부터 재검증한다.

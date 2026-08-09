@@ -108,6 +108,7 @@ class NiaParticipationJudgeTest {
 
         assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.speechIntent!!.sceneDirection).contains("if asked to stop or yield")
+        assertThat(decision.speechIntent!!.styleMode).isEqualTo(JudgeSpeechStyleMode.ALIGNMENT)
         assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.direct_address.judge_llm_error")
         assertThat(llm.calls).isEqualTo(1)
     }
@@ -141,6 +142,7 @@ class NiaParticipationJudgeTest {
         assertThat(decision.action).isEqualTo(SocialActionKind.SPEAK)
         assertThat(decision.reasonCode.code).isEqualTo("judge_output.degraded.contextual_follow_up.invalid_judge_output")
         assertThat(decision.speechIntent!!.intentSummary).contains("conversational follow-up")
+        assertThat(decision.speechIntent!!.styleMode).isEqualTo(JudgeSpeechStyleMode.FOLLOW_UP)
     }
 
     @Test

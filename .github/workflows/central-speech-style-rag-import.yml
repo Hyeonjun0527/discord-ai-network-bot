@@ -1,0 +1,68 @@
+# Private human-review artifact는 Git 밖의 보호된 운영 호스트 경로에 먼저 복사한다.
+# 이 수동 승인 workflow는 Discord나 autonomous send를 시작하지 않고 한 번만 적재한다.
+name: central Speech-style RAG import
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_directory:
+        description: protected sealed artifact directory under ~/deploy/central-server/private
+        required: true
+        default: human-speech-style-rag-import
+      import_quality:
+        description: approval path declared by the private artifact
+        type: choice
+        required: true
+        default: CURATION_APPROVED
+        options:
+          - CURATION_APPROVED
+          - USER_RELEASED_REVIEW
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-deploy
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: [self-hosted, yeon-arm]
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify artifact name and import privately
+        env:
+          COMPOSE_DISABLE_ENV_FILE: "1"
+          CENTRAL_DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_ENABLED: ${{ secrets.DISCORD_ENABLED }}
+          RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+          CENTRAL_DURABLE_SECRET: ${{ secrets.CENTRAL_DURABLE_SECRET }}
+          NEXA_FIELD_ENC_KEY: ${{ secrets.NEXA_FIELD_ENC_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONNECT_DISCORD_CLIENT_ID: ${{ secrets.CONNECT_DISCORD_CLIENT_ID }}
+          CONNECT_DISCORD_CLIENT_SECRET: ${{ secrets.CONNECT_DISCORD_CLIENT_SECRET }}
+          CENTRAL_OAUTH_ENABLED: ${{ secrets.CENTRAL_OAUTH_ENABLED }}
+          CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${{ secrets.CENTRAL_DASHBOARD_ADMIN_USER_IDS }}
+          CENTRAL_METRICS_SCRAPE_TOKEN: ${{ secrets.CENTRAL_METRICS_SCRAPE_TOKEN }}
+          ARTIFACT_DIRECTORY: ${{ inputs.artifact_directory }}
+          IMPORT_ALLOWED_QUALITY: ${{ inputs.import_quality }}
+        run: |
+          set -euo pipefail
+          artifact_directory="$ARTIFACT_DIRECTORY"
+          [[ "$artifact_directory" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo "❌ artifact_directory must be a plain directory name"
+            exit 1
+          }
+          DEPLOY_DIR="$HOME/deploy/central-server"
+          [ -f "$DEPLOY_DIR/compose.yml" ] || {
+            echo "❌ deployed compose file is unavailable"
+            exit 1
+          }
+          COMPOSE_FILE="$DEPLOY_DIR/compose.yml" \
+          IMPORT_ARTIFACT="$DEPLOY_DIR/private/$artifact_directory" \
+          IMPORT_ALLOWED_QUALITY="$IMPORT_ALLOWED_QUALITY" \
+          GITHUB_RUN_ID="$GITHUB_RUN_ID" \
+          bash "$GITHUB_WORKSPACE/central-server/scripts/ops_import_human_speech_style_rag.sh"

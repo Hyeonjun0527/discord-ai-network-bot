@@ -6,12 +6,13 @@ import com.discordassistant.central.speech.application.generation.ReasoningModeS
 import com.discordassistant.central.speech.application.generation.SkipReason
 import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
 import com.discordassistant.central.speech.application.generation.SpeechTrigger
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -32,13 +33,16 @@ class SpeechInvocationBoundaryTest {
         }
     }
 
-    private fun gate(port: SpeechGenerationPort): SpeechGenerationGate {
+    private fun gate(
+        port: SpeechGenerationPort,
+        humanSpeechStyleRag: HumanSpeechStyleRagPort = HumanSpeechStyleRagPort.Noop,
+    ): SpeechGenerationGate {
         val service =
             CandidateGenerationService(
                 generationPort = port,
-                socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
+                humanSpeechStyleRag = humanSpeechStyleRag,
             )
         return SpeechGenerationGate(service)
     }
@@ -88,6 +92,36 @@ class SpeechInvocationBoundaryTest {
         assertThat(port.calls).isEqualTo(1)
         assertThat(result.invokedGeneration).isTrue()
         assertThat(result.result.isEmpty).isFalse()
+    }
+
+    @Test
+    fun `SPEAK가 아닌 턴과 stale SPEAK는 사람 말투 RAG도 조회하지 않는다`() {
+        var retrievals = 0
+        val styleRag =
+            HumanSpeechStyleRagPort {
+                retrievals++
+                HumanSpeechStyleSelection.EMPTY
+            }
+
+        gate(CountingGenerationPort(), styleRag).generateIfSpeaking(SpeechTrigger.IGNORE, packet)
+        gate(CountingGenerationPort(), styleRag).generateIfSpeaking(SpeechTrigger.WAIT, packet)
+        gate(CountingGenerationPort(), styleRag).generateIfSpeaking(SpeechTrigger.SPEAK, packet, stale = true)
+
+        assertThat(retrievals).isZero()
+    }
+
+    @Test
+    fun `유효한 SPEAK는 사람 말투 RAG를 한 번만 조회한다`() {
+        var retrievals = 0
+        val styleRag =
+            HumanSpeechStyleRagPort {
+                retrievals++
+                HumanSpeechStyleSelection.EMPTY
+            }
+
+        gate(CountingGenerationPort(), styleRag).generateIfSpeaking(SpeechTrigger.SPEAK, packet)
+
+        assertThat(retrievals).isEqualTo(1)
     }
 
     @Test

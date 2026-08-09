@@ -5,6 +5,9 @@ import com.discordassistant.central.shared.NiaMediaWebSearchPolicy
 import com.discordassistant.central.shared.NiaPromptKey
 import com.discordassistant.central.shared.NiaPromptSource
 import com.discordassistant.central.shared.NiaPromptTemplate
+import com.discordassistant.central.speech.application.humanstyle.HumanSpeechStyleCopyGuard
+import com.discordassistant.central.speech.application.humanstyle.HumanSpeechStylePromptRenderer
+import com.discordassistant.central.speech.application.port.out.HumanSpeechStyleRagPort
 import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGrounding
 import com.discordassistant.central.speech.application.port.out.SpeechFactualGroundingPort
@@ -16,16 +19,17 @@ import com.discordassistant.central.speech.application.port.out.SpeechInputTrace
 import com.discordassistant.central.speech.application.privacy.ExternalPayloadAllowlistSerializer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.ConversationContentIsolator
-import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
+import com.discordassistant.central.speech.domain.model.HumanSpeechStyleSelection
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
 import com.discordassistant.central.speech.domain.model.LocalSpeechTemplate
 import com.discordassistant.central.speech.domain.model.SpeechGroundingNeed
 import com.discordassistant.central.speech.domain.model.SpeechScenePacket
+import org.slf4j.LoggerFactory
 
 /**
  * 발화 후보 생성 유스케이스(NEXA-P14-T011, application).
  *
- * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 정체성·socialAct·burst 지침을 system 프롬프트로, 최소화된 장면을 user
+ * 한 SPEAK 결정에서 비용 cap 안의 후보를 생성한다. 정체성·burst 지침을 system 프롬프트로, 최소화된 장면을 user
  * 프롬프트로 조립하고([assembleRequest]) [SpeechGenerationPort] 로 생성한다. budget(T015)이 후보 수·token 상한을,
  * ReasoningModeSelector(T013)가 추론 모드를 정한다.
  *
@@ -37,7 +41,6 @@ import com.discordassistant.central.speech.domain.model.SpeechScenePacket
  */
 class CandidateGenerationService(
     private val generationPort: SpeechGenerationPort,
-    private val socialActCompiler: SocialActPromptCompiler,
     private val burstCompiler: BurstPromptCompiler,
     private val reasoningModeSelector: ReasoningModeSelector,
     /**
@@ -53,7 +56,13 @@ class CandidateGenerationService(
     private val factualGrounding: SpeechFactualGroundingPort = SpeechFactualGroundingPort.Noop,
     private val inputTrace: SpeechInputTracePort = SpeechInputTracePort.Noop,
     private val promptSource: NiaPromptSource = CodeNiaPromptSource,
+    /** Judge와 완전히 분리된 실제 Speech 말투 RAG. */
+    private val humanSpeechStyleRag: HumanSpeechStyleRagPort = HumanSpeechStyleRagPort.Noop,
+    private val humanSpeechStylePromptRenderer: HumanSpeechStylePromptRenderer = HumanSpeechStylePromptRenderer(),
+    private val humanSpeechStyleCopyGuard: HumanSpeechStyleCopyGuard = HumanSpeechStyleCopyGuard(),
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /**
      * [packet] 으로 후보를 생성한다. [budget] 으로 후보 수·token 을 clamp 한다. 외부 실패·malformed 는 포트가 빈
      * 결과로 흡수하므로 이 메서드는 예외를 던지지 않는다 — fallback 정책(T016)이 빈 결과를 다룬다.
@@ -65,15 +74,26 @@ class CandidateGenerationService(
         packet.localSpeechTemplate?.let { return localSpeechResult(it) }
         val effectivePacket = requireMediaGrounding(packet)
         val grounding = retrieveGrounding(effectivePacket)
-        val request = assembleRequest(effectivePacket, budget, grounding)
-        effectivePacket.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.userPrompt) }
+        val styleSelection = retrieveHumanSpeechStyle(effectivePacket)
+        val request = assembleRequest(effectivePacket, budget, grounding, styleSelection)
+        effectivePacket.inputTraceId?.let { inputTrace.record(it, request.systemPrompt, request.traceUserPrompt) }
         val generated = generationPort.generate(request)
-        return if (generated.failureReason == SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED) {
+        val copySafeGenerated = humanSpeechStyleCopyGuard.removeCopiedCandidates(generated, styleSelection)
+        return if (copySafeGenerated.failureReason == SpeechGenerationFailureReason.CHANNEL_TOKEN_BUDGET_EXHAUSTED) {
             localSpeechResult(LocalSpeechTemplate.CHANNEL_TOKEN_BUDGET_EXHAUSTED)
         } else {
-            generated
+            copySafeGenerated
         }
     }
+
+    /** 사람 말투 검색은 추가 품질 계층이다. DB/embedding 장애가 기존 Speech 발화까지 멈추게 하지는 않는다. */
+    private fun retrieveHumanSpeechStyle(packet: SpeechScenePacket): HumanSpeechStyleSelection =
+        try {
+            humanSpeechStyleRag.retrieve(packet)
+        } catch (error: RuntimeException) {
+            log.warn("Human speech style RAG unavailable; continuing without references: {}", error.javaClass.simpleName)
+            HumanSpeechStyleSelection.EMPTY
+        }
 
     private fun localSpeechResult(template: LocalSpeechTemplate): SpeechGenerationResult =
         SpeechGenerationResult(
@@ -120,13 +140,16 @@ class CandidateGenerationService(
         packet: SpeechScenePacket,
         budget: GenerationBudget,
         grounding: SpeechFactualGrounding = SpeechFactualGrounding.unavailable(),
+        styleSelection: HumanSpeechStyleSelection = HumanSpeechStyleSelection.EMPTY,
     ): SpeechGenerationRequest {
         val candidateCount = budget.clampCandidateCount(budget.maxCandidates)
         val systemPrompt = assembleSystemPrompt(packet, candidateCount)
         val userPrompt = assembleUserPayload(packet, grounding)
+        val stylePrompt = humanSpeechStylePromptRenderer.appendTo(userPrompt, styleSelection)
         return SpeechGenerationRequest(
             systemPrompt = systemPrompt.text,
-            userPrompt = userPrompt,
+            userPrompt = stylePrompt.providerUserPrompt,
+            traceUserPrompt = stylePrompt.traceUserPrompt,
             socialAct = packet.socialAct,
             candidateCount = candidateCount,
             reasoningMode = reasoningModeSelector.select(packet),
@@ -184,7 +207,7 @@ class CandidateGenerationService(
         }
     }
 
-    /** 정체성 + socialAct/burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
+    /** 정체성 + burst 장면 지침 + 후보 출력 형식을 system 프롬프트로 조립한다. */
     private fun assembleSystemPrompt(
         packet: SpeechScenePacket,
         candidateCount: Int,
@@ -195,7 +218,6 @@ class CandidateGenerationService(
             mapOf(
                 "identity" to identity,
                 "participationDecision" to packet.speechIntent.orEmpty(),
-                "socialActInstruction" to socialActCompiler.compile(packet.socialAct),
                 "burstInstruction" to burstCompiler.compile(packet.burstShape),
                 "outputContract" to
                     NiaPromptTemplate.render(

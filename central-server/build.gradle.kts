@@ -133,6 +133,19 @@ tasks.withType<Test> {
     maxParallelForks = 1
     // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).
     System.getenv("DOCKER_HOST")?.let { environment("DOCKER_HOST", it) }
+    listOf(
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "NIA_PRIVATE_HUMAN_STYLE_CORPUS_FILE",
+        "NIA_PRIVATE_HUMAN_STYLE_RETRIEVAL_EVAL_FILE",
+        "NIA_PRIVATE_HUMAN_STYLE_INDEPENDENT_HOLDOUT_FILE",
+        "NIA_PRIVATE_HUMAN_STYLE_RETRIEVAL_AUDIT_FILE",
+        "NIA_PRIVATE_HUMAN_STYLE_BLIND_REVIEW_BUNDLE_FILE",
+        "NIA_PRIVATE_HUMAN_STYLE_IMPORT_ARTIFACT_DIR",
+    ).forEach { environmentName ->
+        val environmentValue = System.getenv(environmentName)
+        if (!environmentValue.isNullOrBlank()) environment(environmentName, environmentValue)
+    }
 }
 
 // 커버리지(차수 18, JaCoCo→Kover). 라인 커버리지 기준. 부트스트랩/설정 클래스는 집계 제외.

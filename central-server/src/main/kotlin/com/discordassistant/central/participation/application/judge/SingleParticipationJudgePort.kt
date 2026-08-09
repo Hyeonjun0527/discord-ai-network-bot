@@ -587,6 +587,7 @@ data class JudgeReactionCandidate(
 data class JudgeSpeechIntent(
     val intentSummary: String,
     val sceneDirection: String,
+    val styleMode: JudgeSpeechStyleMode? = null,
     val actHint: String? = null,
     val bubbleCount: Int = 1,
     val maxBubbleChars: Int = DEFAULT_MAX_BUBBLE_CHARS,
@@ -621,6 +622,17 @@ data class JudgeSpeechIntent(
         const val MAX_MAX_BUBBLE_CHARS: Int = 1_800
         const val DEFAULT_MAX_BUBBLE_CHARS: Int = 280
     }
+}
+
+/** Judge가 장면에서 고르는 작은 반응 축. 사람 카드 자체는 Judge에 전달하지 않고 Speech만 이 값을 사용한다. */
+enum class JudgeSpeechStyleMode {
+    REACTION,
+    ALIGNMENT,
+    PLAY,
+    FOLLOW_UP,
+    SPECULATION,
+    CARE,
+    COORDINATION,
 }
 
 enum class SpeechDeliveryMode {

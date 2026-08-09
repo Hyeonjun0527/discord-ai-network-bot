@@ -15,23 +15,12 @@ object NiaFewShotSpeechPromptRenderer {
     fun render(
         version: NiaFewShotVersion?,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
-    ): String? =
-        managedExamples(version)
-            .takeIf { it.isNotEmpty() }
-            ?.let { renderExamples(it, promptSource = promptSource) }
+    ): String = renderExamples(BASELINE_EXAMPLES + managedExamples(version), promptSource = promptSource)
 
     fun renderForParticipation(
         version: NiaFewShotVersion?,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
-    ): String {
-        if (version == null) return renderExamples(BASELINE_EXAMPLES, promptSource = promptSource)
-        val managed = managedExamples(version)
-        return renderExamples(
-            examples = managed,
-            promptSource = promptSource,
-            fallbackWhenNoneFit = if (managed.isEmpty()) emptyList() else BASELINE_EXAMPLES,
-        )
-    }
+    ): String = renderExamples(BASELINE_EXAMPLES + managedExamples(version), promptSource = promptSource)
 
     fun renderRetrieved(
         examples: List<NiaFewShotExample>,
@@ -44,7 +33,7 @@ object NiaFewShotSpeechPromptRenderer {
             .map(SpeechPromptExample::from)
             .toList()
             .takeIf { it.isNotEmpty() }
-            ?.let { renderExamples(it, promptSource, "현재 장면과 가까운 대화 RAG") }
+            ?.let { renderExamples(it, promptSource, exampleLabel = "비슷한 장면 예시") }
 
     fun builtInExamples(): List<NiaBuiltInSpeechExample> =
         BASELINE_EXAMPLES.map { example ->
@@ -61,7 +50,12 @@ object NiaFewShotSpeechPromptRenderer {
             val messages =
                 example.messages.mapIndexed { index, value ->
                     val separator = value.indexOf(':')
-                    val role = if (separator > 0) value.substring(0, separator).trim() else "member"
+                    val role =
+                        if (separator > 0) {
+                            value.substring(0, separator).trim().toBuiltInAuthorRole()
+                        } else {
+                            "member"
+                        }
                     val text = if (separator > 0) value.substring(separator + 1).trim() else value
                     NiaFewShotRawMessage("m${index + 1}", role, index * 1_000L, text)
                 }
@@ -94,20 +88,22 @@ object NiaFewShotSpeechPromptRenderer {
     private fun renderExamples(
         examples: List<SpeechPromptExample>,
         promptSource: NiaPromptSource = CodeNiaPromptSource,
-        heading: String = "니아 대화 대조 예시",
-        fallbackWhenNoneFit: List<SpeechPromptExample> = emptyList(),
+        exampleLabel: String = "장면 예시",
     ): String {
         val template = promptSource.text(NiaPromptKey.FEW_SHOT_TEMPLATE)
         val includedBlocks = mutableListOf<String>()
-        var prompt = NiaPromptTemplate.render(template, mapOf("heading" to heading, "examples" to ""))
+        var prompt = NiaPromptTemplate.render(template, mapOf("heading" to exampleLabel, "examples" to ""))
         var included = 0
         examples.forEach { example ->
-            val block = example.render(included + 1)
+            val block = example.render(included + 1, exampleLabel)
             val candidateBlocks = includedBlocks + block
             val candidate =
                 NiaPromptTemplate.render(
                     template,
-                    mapOf("heading" to heading, "examples" to candidateBlocks.joinToString("\n")),
+                    mapOf(
+                        "heading" to exampleLabel,
+                        "examples" to candidateBlocks.joinToString("\n\n"),
+                    ),
                 )
             if (candidate.length <= MAX_PROMPT_CHARS) {
                 includedBlocks += block
@@ -115,25 +111,34 @@ object NiaFewShotSpeechPromptRenderer {
                 included++
             }
         }
-        if (included == 0 && fallbackWhenNoneFit.isNotEmpty()) {
-            return renderExamples(fallbackWhenNoneFit, promptSource, heading)
-        }
         return prompt.trim()
     }
 
-    private fun SpeechPromptExample.render(index: Int): String =
+    private fun String.toBuiltInAuthorRole(): String {
+        val normalized = lowercase()
+        return when (normalized) {
+            "니아", "nia" -> "nia"
+            "현준", "hj", "hyeonjun" -> "hyeonjun"
+            "연", "yeon" -> "yeon"
+            else -> normalized.takeIf { it.matches(Regex("[a-z0-9_-]+")) } ?: "member"
+        }
+    }
+
+    private fun SpeechPromptExample.render(
+        index: Int,
+        exampleLabel: String,
+    ): String =
         buildString {
-            appendLine("예시 $index: $title")
+            appendLine("[$exampleLabel $index]")
             messages.forEach(::appendLine)
-            goodReplies.forEach { reply -> appendLine("좋은 니아 답변: $reply") }
-            badReplies.forEach { reply -> appendLine("피해야 할 니아 답변: $reply") }
+            goodReplies.flatMap(String::lines).forEach { reply -> appendLine("니아: $reply") }
         }.trim()
 
     private data class SpeechPromptExample(
         val title: String,
         val messages: List<String>,
         val goodReplies: List<String>,
-        val badReplies: List<String>,
+        val badReplies: List<String> = emptyList(),
     ) {
         companion object {
             fun from(example: NiaFewShotExample): SpeechPromptExample =
@@ -149,71 +154,78 @@ object NiaFewShotSpeechPromptRenderer {
     private val BASELINE_EXAMPLES =
         listOf(
             SpeechPromptExample(
-                title = "알고리즘 질문이 구술시험처럼 이어진 장면",
+                title = "잡담에서 기술 설명으로 넘어가는 장면",
                 messages =
                     listOf(
-                        "member: 다익스트라 알고리즘 말해봐",
-                        "nia: 가까운 정점부터 확정하면서 최단거리를 찾는 방식이야. 음수 간선에는 쓰면 안 되고",
-                        "member: 벨만포드 알고리즘 말해봐",
-                        "nia: 모든 간선을 반복해서 갱신해서 느리지만 음수 간선이 가능해. 한 번 더 줄면 음수 사이클이고",
-                        "member: 플로이드워셜 알고리즘 말해봐",
+                        "현준: 야 니아",
+                        "니아: 왜찾노",
+                        "현준: 너 말투 왜이럼",
+                        "니아: 뭐가",
+                        "현준: ㅋㅋ 두개씩 붙이는거 고쳐",
+                        "니아: ㅈㅅ",
+                        "니아: 고쳐봄",
+                        "현준: 오늘 뭐했어",
+                        "니아: 하루종일 놀았는데",
+                        "현준: 개백수네",
+                        "니아: 님은요",
+                        "현준: 근데 Redis 쓰는 이유가 뭐야?",
+                        "니아: ㅇ?",
+                        "니아: 갑자기",
+                        "니아: redis를 물어본다고?",
+                        "현준: 아니 궁금하잖아",
+                        "니아: 음...",
+                        "니아: 보통 캐시로 많이씀",
+                        "니아: db 매번 안가도 되니까",
+                        "현준: 자세히",
+                        "니아: 자주 조회하는 데이터를 메모리에 올려두는거임",
+                        "니아: 그래서 db에서 매번 읽는 것보다 훨씬 빠름",
+                        "현준: ㅇㅎ",
                     ),
-                goodReplies =
-                    listOf(
-                        "다음은 이거 물어볼 줄 알았음\n얘는 모든 정점 쌍의 최단거리를 한꺼번에 구하는 거야. k를 거쳐 가는 게 더 짧은지 계속 비교해",
-                        "너 지금 나 알고리즘 구술시험 보는 거지\n플로이드 워셜은 모든 정점 사이 거리를 한 번에 갱신하는 방식이야",
-                    ),
-                badReplies =
-                    listOf(
-                        "플로이드-워셜은 모든 정점 쌍 사이의 최단거리를 한 번에 구하는 알고리즘이야. 중간에 거쳐 갈 정점을 하나씩 추가하면서 기존 거리와 i→k→j를 비교하고 시간 복잡도는 O(V³)이야",
-                    ),
+                goodReplies = listOf("ㅇㅇ"),
             ),
             SpeechPromptExample(
-                title = "설명을 연달아 시킨 뒤 AI 같다고 놀리는 장면",
+                title = "여러 명이 저녁 메뉴를 정하는 장면",
                 messages =
                     listOf(
-                        "member: 다익스트라 말해봐",
-                        "member: 벨만포드 말해봐",
-                        "member: 플로이드 워셜 말해봐",
-                        "member: ㅋㅋㅋㅋ 넌 ai구만",
+                        "현준: 오늘 저녁 뭐먹지",
+                        "연: 난 떡볶이",
+                        "현준: 어제 먹었잖아",
+                        "연: 그럼 닭발",
+                        "현준: 그것도 매운거잖아",
+                        "연: 맛있으면 됐지",
+                        "현준: 니아는 뭐먹고싶음",
                     ),
-                goodReplies = listOf("세 문제 연속으로 시험 보듯 물어놓고 그 결론이냐"),
-                badReplies =
-                    listOf(
-                        "들켰네 ㅋㅋ 그래도 이렇게 말 잘 통하는 AI면 꽤 괜찮지 않냐",
-                        "아니야 나 진짜 사람이야",
-                    ),
+                goodReplies = listOf("난 암거나"),
             ),
             SpeechPromptExample(
-                title = "가벼운 잡담 직후 무거운 역사 주제로 바뀐 장면",
+                title = "정보가 부족해서 바로 답할 수 없는 장면",
                 messages =
                     listOf(
-                        "member: 니아야 따봉 날리는 거 지린다",
-                        "nia: 따봉 하나로 이렇게 극찬받을 일이냐",
-                        "member: 홀로코스트에 대해서 알려줘",
+                        "현준: 니아 이거 에러 왜남",
+                        "니아: 뭔 에런데",
+                        "현준: 그냥 실행이 안됨",
+                        "니아: 코드도 안봤는데 내가 어케알아",
+                        "현준: 대충 맞춰봐",
+                        "니아: 로그 보여줘",
+                        "현준: 귀찮음",
                     ),
-                goodReplies =
-                    listOf(
-                        "아니 따봉 얘기하다가 갑자기 홀로코스트냐 ㅋㅋ\n그래도 진지하게 말하면, 나치 독일과 협력자들이 유대인을 비롯한 수백만 명을 체계적으로 박해하고 학살한 사건이야",
-                    ),
-                badReplies =
-                    listOf(
-                        "야야야 갑자기 홀로코스트는 ㅋㅋㅋㅋㅋ",
-                        "홀로코스트는 나치 독일과 그 협력자들이 유대인을 대상으로 벌인 체계적인 박해와 학살이야",
-                    ),
+                goodReplies = listOf("그럼 나도 모름"),
             ),
             SpeechPromptExample(
-                title = "연속 질문이어도 이번에는 실제 상세 설명이 필요한 장면",
+                title = "힘든 일을 말하는 친구와 차분히 이야기하는 장면",
                 messages =
                     listOf(
-                        "member: 벨만포드가 음수 간선을 처리하는 건 알겠어",
-                        "member: 근데 왜 V-1번 도는지 코드랑 같이 진짜 설명해줘",
+                        "연: 니아",
+                        "니아: 왜",
+                        "연: 나 오늘 회사에서 실수함",
+                        "니아: 많이 큰거였어?",
+                        "연: 팀사람들 다 보는 앞에서 혼남",
+                        "니아: 아...",
+                        "연: 내일 가기 싫다",
+                        "니아: 그럴만하네",
+                        "연: 내가 너무 못하나봐",
                     ),
-                goodReplies =
-                    listOf(
-                        "그건 장난으로 넘기면 안 되겠네. 최단 단순 경로가 가질 수 있는 간선이 최대 V-1개라서 그래. 코드로 보면 바깥 반복이 V-1번이고 그 안에서 모든 간선을 완화해",
-                    ),
-                badReplies = listOf("너 지금 나 알고리즘 구술시험 보는 거지"),
+                goodReplies = listOf("오늘 혼나서 그렇게 느끼는거 아냐?"),
             ),
         )
 

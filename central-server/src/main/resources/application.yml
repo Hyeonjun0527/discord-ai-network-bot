@@ -244,9 +244,14 @@ central:
       enabled: ${NEXA_SPEECH_STYLE_RAG_ENABLED:true}
       embedding-model: ${NEXA_SPEECH_STYLE_RAG_EMBEDDING_MODEL:text-embedding-3-small}
       embedding-timeout-seconds: ${NEXA_SPEECH_STYLE_RAG_EMBEDDING_TIMEOUT_SECONDS:8}
-      # 명시적으로 켠 프로세스만 private JSONL을 DB에 적재한다. 일반 부팅은 기존 적재본만 읽는다.
+      # 명시적으로 켠 프로세스만 sealed private artifact directory를 DB에 적재한다. 일반 부팅은 기존 적재본만 읽는다.
       import-on-startup: ${NEXA_SPEECH_STYLE_RAG_IMPORT_ON_STARTUP:false}
-      import-file: ${NEXA_SPEECH_STYLE_RAG_IMPORT_FILE:}
+      # JSONL 단독 경로는 허용하지 않는다. candidate manifest·actual retrieval audit·blind review가 함께 있는 directory여야 한다.
+      import-artifact-dir: ${NEXA_SPEECH_STYLE_RAG_IMPORT_ARTIFACT_DIR:}
+      # one-shot import의 artifact quality. 기본은 fresh verifier formal 승인이고, user release는 수동 운영 승인에서만 명시한다.
+      import-allowed-quality: ${NEXA_SPEECH_STYLE_RAG_IMPORT_ALLOWED_QUALITY:CURATION_APPROVED}
+      # one-shot 운영 import 컨테이너는 성공 후 종료한다. 일반 부팅에서는 절대 켜지 않는다.
+      import-exit-after-completion: ${NEXA_SPEECH_STYLE_RAG_IMPORT_EXIT_AFTER_COMPLETION:false}
 
 # 원문 문자 수가 0인 첨부/삭제 메시지도 행과 직렬화 메타데이터를 소비하므로 개수 상한을 별도로 둔다.
 # 100개 burst 원문은 그대로 보존하면서 비어 있는 행이 무한히 쌓여 judge 입력 상한을 우회하는 것만 막는다.

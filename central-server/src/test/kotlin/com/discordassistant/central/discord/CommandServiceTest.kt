@@ -587,13 +587,16 @@ class CommandServiceTest
             try {
                 val r = commands.ask(ctx(), "코드 설명")
                 // 설정 없는 기본 서버도 NEXA 가드레일 + 기본 정체성(니아)이 항상 주입되고, 사용자 질문은 끝에 전달된다.
+                val prompt = conn.lastInfer!!.prompt
                 assertTrue(r.content.startsWith("echo:"), r.content)
-                assertTrue(r.content.endsWith("코드 설명"), r.content)
-                assertTrue(r.content.contains("[우선순위 1: 안전]"), r.content)
-                assertTrue(r.content.contains("무관용으로 거부"), r.content)
-                assertTrue(r.content.contains("니아"), r.content)
-                assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
-                assertFalse(r.content.contains("provider #"), r.content)
+                assertTrue(prompt.endsWith("코드 설명"), prompt)
+                assertTrue(prompt.contains("[우선순위 1: 안전]"), prompt)
+                assertTrue(prompt.contains("무관용으로 거부"), prompt)
+                assertTrue(prompt.contains("[장면 예시 1]"), prompt)
+                assertTrue(prompt.contains("니아: 음..."), prompt)
+                assertFalse(prompt.contains("좋은 니아 답변"), prompt)
+                assertFalse(prompt.contains("커뮤니티 풀 처리"), prompt)
+                assertFalse(prompt.contains("provider #"), prompt)
             } finally {
                 registry.unregister(s)
             }
@@ -908,16 +911,21 @@ class CommandServiceTest
                 commands.setChannelAiProfile(ctx(admin = true), name = "니아", avatarUrl = null, reset = false)
 
                 val r = commands.ask(ctx(), "야")
+                val prompt = conn.lastInfer!!.prompt
 
-                assertTrue(r.content.contains("[우선순위 2: 니아 정체성]"), r.content)
-                assertTrue(r.content.contains(NexaIdentity.NIA_DEFAULT_PERSONA), r.content)
-                assertTrue(r.content.contains("[니아 말투 원칙]"), r.content)
-                assertTrue(r.content.contains("[상대 발화]"), r.content)
-                assertTrue(r.content.endsWith("야"), r.content)
-                assertFalse(r.content.contains("[채널 AI 행동 설정]"), r.content)
-                assertFalse(r.content.contains("general_assistant"), r.content)
-                assertFalse(r.content.contains("안녕하세요, 저는 니아예요"), r.content)
-                assertFalse(r.content.contains("오늘은 어떤 걸 도와드릴까요"), r.content)
+                assertTrue(r.content.startsWith("echo:"), r.content)
+                assertTrue(prompt.contains("[우선순위 2: 니아 정체성]"), prompt)
+                assertTrue(prompt.contains(NexaIdentity.NIA_DEFAULT_PERSONA), prompt)
+                assertTrue(prompt.contains("실제 사람처럼 대화하세요."), prompt)
+                assertTrue(prompt.contains("[장면 예시 1]"), prompt)
+                assertTrue(prompt.contains("니아: 음..."), prompt)
+                assertFalse(prompt.contains("좋은 니아 답변"), prompt)
+                assertTrue(prompt.contains("[상대 발화]"), prompt)
+                assertTrue(prompt.endsWith("야"), prompt)
+                assertFalse(prompt.contains("[채널 AI 행동 설정]"), prompt)
+                assertFalse(prompt.contains("general_assistant"), prompt)
+                assertFalse(prompt.contains("안녕하세요, 저는 니아예요"), prompt)
+                assertFalse(prompt.contains("오늘은 어떤 걸 도와드릴까요"), prompt)
             } finally {
                 registry.unregister(s)
             }
@@ -944,8 +952,9 @@ class CommandServiceTest
                         "요즘 볼 만한 애니 추천해줘",
                     )
 
-                assertTrue(reply.content.contains("웹 검색 결과를 얻지 못했다"), reply.content)
-                assertTrue(reply.content.contains("기억으로 대신하지 말고"), reply.content)
+                val prompt = conn.lastInfer!!.prompt
+                assertTrue(prompt.contains("웹 검색 결과를 얻지 못했다"), prompt)
+                assertTrue(prompt.contains("기억으로 대신하지 말고"), prompt)
             } finally {
                 registry.unregister(session)
             }

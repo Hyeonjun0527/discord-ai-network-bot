@@ -145,6 +145,10 @@ class NiaJudgeOutputParser(
                 JudgeSpeechIntent(
                     intentSummary = speechIntent.requiredText("intentSummary"),
                     sceneDirection = speechIntent.requiredText("sceneDirection"),
+                    styleMode =
+                        JudgeSpeechStyleMode.valueOf(
+                            speechIntent.requiredText("styleMode").uppercase(Locale.ROOT),
+                        ),
                     actHint = speechIntent.optionalText("actHint"),
                     bubbleCount = speechIntent.optionalInt("bubbleCount", JudgeSpeechIntent.MIN_BUBBLE_COUNT),
                     maxBubbleChars =
@@ -362,6 +366,7 @@ class NiaJudgeOutputParser(
             setOf(
                 "intentSummary",
                 "sceneDirection",
+                "styleMode",
                 "actHint",
                 "bubbleCount",
                 "maxBubbleChars",

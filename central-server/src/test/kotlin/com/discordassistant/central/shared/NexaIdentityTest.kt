@@ -9,8 +9,8 @@ class NexaIdentityTest {
         assertThat(NexaIdentity.NIA_CHARACTER_PROFILE).contains("20세 성인", "158cm", "46kg")
         assertThat(NexaIdentity.NIA_DEFAULT_PERSONA)
             .containsOnlyOnce(NexaIdentity.NIA_CHARACTER_PROFILE)
-            .contains("유튜브·넷플릭스 애니", "밤늦게 몰아보며", "핵심 반전만 숨기고 신나게")
-            .doesNotContain("ASCII 마침표", "최근 원문", "출력:", "행위 수행:")
+            .contains("애니메이션 이야기를 좋아하며", "확인한 내용만", "사람을 좋아하고 친절하며")
+            .doesNotContain("밤늦게 몰아보며", "본 것처럼", "ASCII 마침표", "최근 원문", "출력:", "행위 수행:")
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.discordassistant.central.global.security
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -29,6 +30,7 @@ import org.springframework.security.web.util.matcher.AnyRequestMatcher
  * Discord OAuth2 등록은 spring.security.oauth2.client.registration.discord(client-id·secret, 런타임 시크릿).
  */
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 class SecurityConfig(
     @param:Value("\${central.oauth.enabled:false}") private val oauthEnabled: Boolean,
     @param:Value("\${central.connect.discord-client-id:}") private val discordClientId: String,

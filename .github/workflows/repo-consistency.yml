@@ -17,6 +17,9 @@ on:
       - "scripts/gen_ssot_viewer.py"
       - "scripts/ops/discord-prod-runner-job-guard.sh"
       - "scripts/ops/test-discord-prod-runner-job-guard.sh"
+      - "scripts/ops/test-central-deployment-path-contract.sh"
+      - ".github/workflows/central-ops-audit.yml"
+      - ".github/workflows/central-speech-style-rag-import.yml"
       - ".github/workflows/repo-consistency.yml"
   workflow_dispatch:
 
@@ -41,3 +44,5 @@ jobs:
         run: python3 scripts/gen_ssot_viewer.py --check
       - name: 운영 AMD64 runner 경계 검사
         run: bash scripts/ops/test-discord-prod-runner-job-guard.sh
+      - name: 중앙 서버 배포 경로 계약 검사
+        run: bash scripts/ops/test-central-deployment-path-contract.sh

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # 운영 정책 감사: 자동응답/니아 자동 채널과 LLM allow-list 사이의 불일치를 찾는다.
 #
-# 기본은 읽기 전용이다. 운영 배포 디렉터리(~/deploy/central-server)에서 실행하면 compose DB를 조회한다.
+# 기본은 읽기 전용이다. 운영 배포 디렉터리(/srv/central-server)에서 실행하면 compose DB를 조회한다.
 # Discord 채널명 대조는 DISCORD_GUILD_ID가 있을 때만 수행하며, 토큰은 출력하지 않는다.
 #
 # 사용:
-#   cd ~/deploy/central-server
+#   cd /srv/central-server
 #   DISCORD_GUILD_ID=<guild_id> ./ops_policy_audit.sh
 #   DISCORD_GUILD_ID=all ./ops_policy_audit.sh      # 봇이 들어간 모든 서버의 니아 기능 채널 대조
 #

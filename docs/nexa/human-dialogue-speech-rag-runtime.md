@@ -99,7 +99,7 @@ fingerprint 집합 digest와 source 수를 고정한다. exporter, materializer,
 1. V91과 Speech-style RAG 코드가 먼저 `main` 배포되어 있어야 한다. import workflow는 V91이 없으면 즉시 실패한다.
 2. JSONL, `candidate-manifest.json`, `retrieval-audit.json`, `blind-quality-review.json`, `rag-value-review.json`, `manifest.json`으로
    구성된 sealed import
-   directory 전체를 운영 호스트의 `~/deploy/central-server/private/`에 directory 0700/file 0600으로 복사한다. GitHub, Git,
+   directory 전체를 운영 호스트의 `/srv/central-server/private/`에 directory 0700/file 0600으로 복사한다. GitHub, Git,
    이미지, 로그에는 넣지 않는다.
 3. GitHub Actions의 **central Speech-style RAG import**를 수동 실행하고 manifest의 quality와 같은 `import_quality`를 선택한다.
    이 workflow와 one-shot runner는 `production` Environment 승인 뒤 private JSONL의 digest·정확한 16-source fingerprint 집합·enum·중복 ID·검색 가능

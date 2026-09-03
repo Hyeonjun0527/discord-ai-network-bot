@@ -7,7 +7,7 @@
 
 ```bash
 # 운영 호스트에서:
-cd ~/deploy/central-server
+cd /srv/central-server
 docker compose ps
 ./ops_runtime_secret_audit.sh
 EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh

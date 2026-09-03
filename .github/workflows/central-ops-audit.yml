@@ -22,7 +22,7 @@ jobs:
       - name: 운영 runtime-secret/health/policy 감사
         run: |
           set -euo pipefail
-          DEPLOY_DIR="$HOME/deploy/central-server"
+          DEPLOY_DIR="/srv/central-server"
           if [ ! -f "$DEPLOY_DIR/compose.yml" ]; then
             echo "❌ 배포 compose 파일이 없습니다: $DEPLOY_DIR/compose.yml"
             exit 1

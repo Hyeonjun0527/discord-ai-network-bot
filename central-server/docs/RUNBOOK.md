@@ -4,7 +4,7 @@
 - 헬스: `GET /actuator/health` (`providerPool.activeProviderConnections`).
 - 메트릭: `GET /actuator/prometheus` → Prometheus 수집 → Grafana(`docs/grafana-dashboard.json` import).
 - 로그: `docker compose logs -f central-server`.
-- 배포 위치: `ssh.yeon.world` → `~/deploy/central-server` (`central-server CI/CD (원격 배포)`의 self-hosted `yeon-arm`).
+- 배포 위치: `ssh.yeon.world` → `/srv/central-server` (`central-server CI/CD (원격 배포)`의 `discord-prod-amd64`).
 - 빠른 점검: 배포 위치에서 `./ops_runtime_secret_audit.sh`(host `.env*`/secret file/평문 env),
   `./ops_healthcheck.sh`(health+pool), `DISCORD_GUILD_ID=all ./ops_policy_audit.sh`(채널 정책).
   니아 무응답은 `./ops_nia_turn_trace.sh 30`으로 최근 30분의 정책→발화→예약→전송 상태와 종결 원인을 한 번에 본다.
@@ -18,7 +18,7 @@
 - 기본 점검:
   ```bash
   ssh ssh.yeon.world
-  cd ~/deploy/central-server
+  cd /srv/central-server
   EXTERNAL_BASE_URL=https://discord-ai.yeon.world ./ops_healthcheck.sh
   ```
 
@@ -39,7 +39,7 @@
 - 읽기 전용 감사:
   ```bash
   ssh ssh.yeon.world
-  cd ~/deploy/central-server
+  cd /srv/central-server
   DISCORD_GUILD_ID=all ./ops_policy_audit.sh      # 봇이 들어간 모든 서버 대조
   DISCORD_GUILD_ID=<guild_id> ./ops_policy_audit.sh  # 특정 서버만 볼 때
   ```
@@ -50,7 +50,7 @@
 - 최근 턴을 원문이나 Discord ID 노출 없이 한 행씩 추적한다. `verdict`가 첫 번째 확인 지점이다.
   ```bash
   ssh ssh.yeon.world
-  cd ~/deploy/central-server
+  cd /srv/central-server
   ./ops_nia_turn_trace.sh 30
   docker compose logs --since=30m central-server | grep 'NIA_TURN_'
   ```
@@ -105,7 +105,7 @@
 ## 백업 / 복구 (Postgres)
 - 현재 저장소/배포 워크플로는 운영 DB 백업을 자동 생성하지 않는다. 자동화 전까지 당직자는 배포·마이그레이션·위험 작업
   전에 수동 백업을 만들고, 암호화된 오프호스트 저장소로 옮긴 뒤 복구 리허설 여부를 기록한다.
-- 백업(배포 호스트 `~/deploy/central-server`에서 실행):
+- 백업(배포 호스트 `/srv/central-server`에서 실행):
   ```bash
   mkdir -p backups
   chmod 700 backups
@@ -155,9 +155,9 @@
    manifest나 별도 `FAIL` review/audit는 import 대상이 아니다.
 
    ```bash
-   ssh ssh.yeon.world 'install -d -m 700 ~/deploy/central-server/private'
-   scp -pr <sealed-private-import-dir> ssh.yeon.world:~/deploy/central-server/private/
-   ssh ssh.yeon.world 'chmod 700 ~/deploy/central-server/private/<sealed-private-import-dir-name> && chmod 600 ~/deploy/central-server/private/<sealed-private-import-dir-name>/*'
+   ssh ssh.yeon.world 'sudo install -d -o github-runner -g github-runner -m 700 /srv/central-server/private'
+   scp -pr <sealed-private-import-dir> ssh.yeon.world:/tmp/
+   ssh ssh.yeon.world 'sudo mv /tmp/<sealed-private-import-dir-name> /srv/central-server/private/ && sudo chown -R github-runner:github-runner /srv/central-server/private/<sealed-private-import-dir-name> && sudo chmod 700 /srv/central-server/private/<sealed-private-import-dir-name> && sudo chmod 600 /srv/central-server/private/<sealed-private-import-dir-name>/*'
    ```
 
 3. GitHub Actions의 `central Speech-style RAG import`를 manual dispatch한다. manifest의 `quality`와 같은

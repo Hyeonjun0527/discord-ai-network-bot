@@ -81,8 +81,8 @@ Provider Pool)의 관계·이관 전략.
 
 ### 278. 기존 배포(`deploy.yml`) 영향
 - **영향 없음.** `deploy.yml`(Python)은 `src/** scripts/** pyproject.toml ...` paths 로 트리거.
-  central 배포는 `central-server-image.yml`(paths: `central-server/**`)이 빌드 후
-  `central-server-deploy.yml`(workflow_run 체인)으로 이어짐. **두 체인은 트리거 경로가 겹치지 않아**
+  central 배포는 `central-deploy.yml`이 전용 AMD64 CI에서 이미지를 만든 뒤 전용 AMD64 운영 VM에
+  배포함. **두 체인은 트리거 경로가 겹치지 않아**
   한쪽 변경이 다른 쪽을 발화시키지 않음. 별도 이미지·별도 호스트 프로세스.
 
 ### 279. 폐기 대상 코드/문서
@@ -98,5 +98,5 @@ Provider Pool)의 관계·이관 전략.
 - Python 봇은 영향받지 않으므로 별도 롤백 불필요. central 이미지 롤백은 `docs/RUNBOOK.md` 참조.
 
 ## 6. 운영 메모
-- 기존 `deploy.yml`(Python) 과 `central-server-deploy.yml` 은 독립이라 상호 영향 없음.
+- 기존 `deploy.yml`(Python) 과 `central-deploy.yml` 은 독립이라 상호 영향 없음.
 - 본 결정들은 *베타 피드백*에 따라 차수 19 이후 재평가 가능(특히 272 요약 흡수).

@@ -1,7 +1,6 @@
-# central-server 자동 CI/CD → 원격 self-hosted 러너(ssh.yeon.world, ARM64) 배포.
-# Cloudflare Tunnel 뒤라 raw SSH 불가 → 원격에 설치한 self-hosted 러너에서 직접 배포.
-# build(self-hosted yeon-arm): bootJar → arm64 이미지 GHCR push(네이티브).  deploy(self-hosted yeon-arm): pull → compose up → 헬스.
-# 정책: GitHub-hosted runner 미사용 — 모든 job 은 self-hosted ARM64 러너에서만 돈다.
+# central-server 자동 CI/CD → 별도 AMD64 CI VM에서 빌드하고 AMD64 운영 VM에 배포한다.
+# build(discord-ci-amd64): bootJar → amd64 이미지 GHCR push.
+# deploy(discord-prod-amd64): pull → compose up → 헬스.
 #
 # 운영 값의 SSOT는 GitHub production Environment다. 민감 값은 Compose secrets로만 컨테이너에 전달하며,
 # self-hosted runner의 배포 디렉터리에 .env를 만들지 않는다.
@@ -24,7 +23,7 @@ permissions:
 
 concurrency:
   group: central-deploy
-  # yeon-arm runner is a single deployment lane. A newer main push must cancel
+  # discord-prod-amd64 runner is a single deployment lane. A newer main push must cancel
   # stale queued/in-flight deploy runs; otherwise old deploys hold the group and
   # the latest production deploy remains pending.
   cancel-in-progress: true
@@ -35,7 +34,7 @@ env:
 
 jobs:
   fresh-main:
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     outputs:
       should-deploy: ${{ steps.fresh.outputs.should-deploy }}
     steps:
@@ -73,8 +72,8 @@ jobs:
   build:
     needs: fresh-main
     if: needs.fresh-main.outputs.should-deploy == 'true'
-    # self-hosted ARM64(yeon-arm, Linux) — 네이티브 arm64 라 QEMU 에뮬레이션 불필요. GitHub-hosted 미사용.
-    runs-on: [self-hosted, yeon-arm]
+    # 운영 호스트와 분리된 전용 AMD64 CI runner에서 빌드한다.
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -105,7 +104,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: central-server
-          platforms: linux/arm64 # 새 서버 ARM64
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ env.IMAGE }}:latest
@@ -114,7 +113,7 @@ jobs:
   deploy:
     needs: [fresh-main, build]
     if: needs.fresh-main.outputs.should-deploy == 'true'
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-prod-amd64]
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +139,7 @@ jobs:
           CENTRAL_METRICS_SCRAPE_TOKEN: ${{ secrets.CENTRAL_METRICS_SCRAPE_TOKEN }}
         run: |
           set -euo pipefail
-          DEST="$HOME/deploy/central-server"
+          DEST="/srv/central-server"
           mkdir -p "$DEST"
           candidate_compose="$DEST/.compose.candidate-${GITHUB_RUN_ID}"
           rendered_compose="$DEST/.compose.rendered-${GITHUB_RUN_ID}"

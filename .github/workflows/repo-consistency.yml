@@ -15,6 +15,8 @@ on:
       - "scripts/check_packaging.py"
       - "scripts/gen_i18n.py"
       - "scripts/gen_ssot_viewer.py"
+      - "scripts/ops/discord-prod-runner-job-guard.sh"
+      - "scripts/ops/test-discord-prod-runner-job-guard.sh"
       - ".github/workflows/repo-consistency.yml"
   workflow_dispatch:
 
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   consistency:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -37,3 +39,5 @@ jobs:
         run: python3 scripts/gen_i18n.py --check
       - name: SSOT viewer 생성본 동기 검사
         run: python3 scripts/gen_ssot_viewer.py --check
+      - name: 운영 AMD64 runner 경계 검사
+        run: bash scripts/ops/test-discord-prod-runner-job-guard.sh

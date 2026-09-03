@@ -118,7 +118,7 @@
 - [x] 77. 테스트 리포트/커버리지 수집 — central-server-ci 에 test+jacoco 리포트 업로드(upload-artifact)
 - [x] 78. 이미지 빌드·GHCR push 워크플로(central-server-image.yml)
 - [x] 79. 버전/태그 전략(`central-v*` + sha)
-- [x] 80. CD 배포 워크플로(self-hosted, central-server-deploy.yml)
+- [x] 80. CD 배포 워크플로(self-hosted, central-deploy.yml)
 - [x] 81. 배포 시 Flyway 자동 적용(앱 기동에 포함)
 - [x] 82. 헬스체크 기반 배포 성공 판정(deploy actuator/health)
 - [x] 83. 롤백 노트(deploy workflow + 이미지 태그 되돌리기)

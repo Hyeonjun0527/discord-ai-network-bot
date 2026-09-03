@@ -34,7 +34,7 @@ services:
 
   central-server:
     image: ${CENTRAL_IMAGE:?CENTRAL_IMAGE 필요(ghcr.io/owner/central-server:tag)}
-    container_name: central-server # cloudflared 가 컨테이너명으로 라우팅(http://central-server:8085)
+    container_name: central-server
     restart: unless-stopped
     depends_on:
       db:
@@ -147,17 +147,13 @@ services:
         target: central.dashboard.admin-user-ids
       - source: METRICS_SCRAPE_TOKEN
         target: central.metrics.scrape-token
-    networks:
-      default: {}
-      yeon-edge:
-        aliases:
-          - discord-yeon-world
     volumes:
       # 에이전트 단일 실행파일 서빙(/download/**). agent-build 가 이 폴더에 바이너리 배치.
       - ./downloads:/app/downloads:ro
-    # 호스트 로컬 바인딩(헬스/디버그용). 공개는 Cloudflare Tunnel → http://central-server:8085.
+    # 호스트 점검용 loopback과 고정 서버망에만 바인딩한다. 앱 노드의 Tunnel은 10.77.0.30으로 전달한다.
     ports:
       - "127.0.0.1:8085:8085"
+      - "10.77.0.30:8085:8085"
 
   # 웹검색 백엔드(SearXNG, JSON API). 외부 검색 API 키 불필요·자체 호스팅.
   # settings.yml 은 배포 스크립트(central-deploy.yml)가 JSON 포맷·시크릿을 채워 생성한다.
@@ -187,11 +183,6 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - central-prometheus:/prometheus
-
-networks:
-  # yeon 스택의 외부 네트워크(yeon-cloudflared-1 과 공유). 컨테이너명/alias 로 터널 라우팅.
-  yeon-edge:
-    external: true
 
 secrets:
   DB_PASSWORD:

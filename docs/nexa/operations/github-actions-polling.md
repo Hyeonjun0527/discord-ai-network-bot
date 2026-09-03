@@ -26,8 +26,8 @@ GH_RUN_WATCH_ALLOW_FAST=true GH_RUN_WATCH_INTERVAL_SECONDS=60 scripts/gh-run-wat
 Prefer non-GitHub checks when possible:
 
 - central deploy health: `scripts/diagnose-central-ops.sh`
-- remote service state: `ssh ssh.yeon.world 'systemctl status actions.runner.Hyeonjun0527-discord-assistant.yeon-arm.service --no-pager'`
-- deployed image and local health: `ssh ssh.yeon.world 'cd ~/deploy/central-server && docker compose ps'`
+- remote service state: `ssh ssh.yeon.world 'systemctl status actions.runner.Hyeonjun0527-discord-ai-network-bot.discord-prod-01.service --no-pager'`
+- deployed image and local health: `ssh ssh.yeon.world 'cd /srv/central-server && docker compose ps'`
 
 If GitHub returns a 403 rate-limit or secondary-rate-limit response, stop polling and wait. Retrying
 immediately is a failure mode, not a recovery strategy.

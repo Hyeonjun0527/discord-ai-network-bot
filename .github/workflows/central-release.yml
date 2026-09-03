@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     steps:
       - uses: actions/checkout@v4
       - name: 릴리스 태그 결정

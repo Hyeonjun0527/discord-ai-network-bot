@@ -33,7 +33,7 @@ discord/web/health/policy/usage/alert/domain) 전부 소멸. 단계마다 `./gra
 
 > 대상: `central-server/` (Kotlin/Spring Boot, `com.discordassistant.central.*`, 175 소스 파일 / 101 테스트 파일)
 > 검증 게이트: `./gradlew build` = test + ktlint(1.4.1) + Kover(minBound 90%) + ArchUnit + Cucumber BDD/추적성 + springdoc OpenAPI 계약
-> CI: `central-server-ci.yml`/`central-server-deploy.yml` 이 `central-server/**` push 에 묶임 → **모듈 디렉토리·루트 패키지 불변 유지**
+> CI: `central-server-ci.yml`/`central-deploy.yml` 이 `central-server/**` push 에 묶임 → **모듈 디렉토리·루트 패키지 불변 유지**
 
 ## 0. 핵심 결론 (TL;DR)
 

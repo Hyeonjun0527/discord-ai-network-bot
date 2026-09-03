@@ -3,9 +3,9 @@ set -euo pipefail
 
 REPO="${CENTRAL_OPS_GITHUB_REPO:-Hyeonjun0527/discord-ai-network-bot}"
 SSH_HOST="${CENTRAL_OPS_SSH_HOST:-ssh.yeon.world}"
-RUNNER_NAME="${CENTRAL_OPS_RUNNER_NAME:-yeon-arm}"
-RUNNER_SERVICE="${CENTRAL_OPS_RUNNER_SERVICE:-actions.runner.Hyeonjun0527-discord-assistant.yeon-arm.service}"
-DEPLOY_DIR="${CENTRAL_OPS_DEPLOY_DIR:-\$HOME/deploy/central-server}"
+RUNNER_NAME="${CENTRAL_OPS_RUNNER_NAME:-discord-prod-01}"
+RUNNER_SERVICE="${CENTRAL_OPS_RUNNER_SERVICE:-actions.runner.Hyeonjun0527-discord-ai-network-bot.discord-prod-01.service}"
+DEPLOY_DIR="${CENTRAL_OPS_DEPLOY_DIR:-/srv/central-server}"
 APP_PORT="${CENTRAL_OPS_APP_PORT:-8085}"
 RUNNER_JOURNAL_SINCE="${CENTRAL_OPS_RUNNER_JOURNAL_SINCE:-30 min ago}"
 REPAIR_RUNNER="${CENTRAL_OPS_REPAIR_RUNNER:-false}"
@@ -109,11 +109,11 @@ set -euo pipefail
 service_state="$(sudo -n systemctl is-active "$RUNNER_SERVICE" 2>/dev/null || systemctl is-active "$RUNNER_SERVICE" 2>/dev/null || true)"
 central_listener_count="$(
   ps -eo cmd |
-    awk '/actions-runner-central\/.*Runner.Listener|actions-runner-central\/bin\/Runner.Listener/ {count++} END {print count + 0}'
+    awk '/\/opt\/actions-runner\/.*Runner.Listener|\/opt\/actions-runner\/bin\/Runner.Listener/ {count++} END {print count + 0}'
 )"
 central_worker_count="$(
   ps -eo cmd |
-    awk '/actions-runner-central\/.*Runner.Worker|actions-runner-central\/bin.*Runner.Worker/ {count++} END {print count + 0}'
+    awk '/\/opt\/actions-runner\/.*Runner.Worker|\/opt\/actions-runner\/bin.*Runner.Worker/ {count++} END {print count + 0}'
 )"
 recent_conflict_count="$(
   (sudo -n journalctl -u "$RUNNER_SERVICE" --since "$RUNNER_JOURNAL_SINCE" --no-pager 2>/dev/null ||
@@ -166,7 +166,7 @@ elif bool_true "$REPAIR_RUNNER"; then
      sudo -n systemctl restart ${RUNNER_SERVICE} || systemctl restart ${RUNNER_SERVICE}
      sleep 8
      sudo -n systemctl is-active ${RUNNER_SERVICE} || systemctl is-active ${RUNNER_SERVICE}
-     ps -eo pid,ppid,stat,etime,cmd | grep -E '[a]ctions-runner-central/.*/Runner.Listener|[a]ctions-runner-central/bin/Runner.Listener' || true"
+     ps -eo pid,ppid,stat,etime,cmd | grep -E '[/]opt/actions-runner/.*/Runner.Listener|[/]opt/actions-runner/bin/Runner.Listener' || true"
   printf '[OK] runner restart issued. Re-run this script once to verify GitHub online/busy state.\n'
   FAILED=0
 else

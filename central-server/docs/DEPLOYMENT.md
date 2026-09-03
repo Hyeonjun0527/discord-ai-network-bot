@@ -3,7 +3,7 @@
 central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(데스크톱 앱) 릴리스,
 운영 시크릿 키 레퍼런스를 한곳에 정리한다. 인프라/러너 세부는 [`DEPLOY_REMOTE.md`](./DEPLOY_REMOTE.md) 참조.
 
-공개 주소: **`https://discord-ai.yeon.world`** (Cloudflare Tunnel → 원격 우분투 `localhost:8085`).
+공개 주소: **`https://discord-ai.yeon.world`** (앱 노드 Cloudflare Tunnel → `10.77.0.30:8085`).
 
 ---
 
@@ -18,9 +18,9 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 
 - 워크플로: **`central-deploy.yml`** = "central-server CI/CD (원격 배포)".
   - 트리거: `main`의 `central-server/**` push, 또는 **수동**(`workflow_dispatch`).
-  - build(self-hosted `yeon-arm`): `gradlew bootJar` → docker build → **GHCR push**(`:latest`, `:sha`).
-  - deploy(self-hosted `yeon-arm`, `ssh.yeon.world`): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
-- 참고: `central-server-deploy.yml`은 **deprecated**(소스 빌드, `docker-compose.yml`). 실제 운영은 위 `central-deploy.yml`.
+  - build(self-hosted `discord-ci-amd64`): `gradlew bootJar` → AMD64 docker build → **GHCR push**(`:latest`, `:sha`).
+  - deploy(self-hosted `discord-prod-amd64`, `yeon-central-01`): `deploy/compose.remote.yml`로 GHCR 이미지 **pull + up**, 헬스 `:8085/actuator/health == UP`.
+- 과거 소스 직접 빌드 방식의 `central-server-deploy.yml`은 Pi 퇴역과 함께 제거했다. 운영 배포 진입점은 위 workflow 하나다.
 
 ### GitHub `production` Environment가 운영 값의 SSOT
 
@@ -127,7 +127,7 @@ curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/dashboa
 
 ```bash
 ssh ssh.yeon.world
-cd ~/deploy/central-server
+cd /srv/central-server
 DISCORD_GUILD_ID=all ./ops_policy_audit.sh
 ./ops_runtime_secret_audit.sh
 ```

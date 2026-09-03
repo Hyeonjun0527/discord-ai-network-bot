@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   audit:
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-prod-amd64]
     steps:
       - uses: actions/checkout@v4
       - name: 운영 runtime-secret/health/policy 감사

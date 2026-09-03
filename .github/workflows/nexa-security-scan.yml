@@ -31,7 +31,7 @@ concurrency:
 jobs:
   changes:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 5
     outputs:
       gradle_deps: ${{ steps.scope.outputs.gradle_deps }}
@@ -86,14 +86,14 @@ jobs:
   # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).
   exception-policy:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
+      # self-hosted AMD64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
       # uv 가 python-build-standalone 로 3.12 를 보장한다(arch·tool-cache 무관).
       # activate-environment=true 로 .venv 를 만들어 활성화 → 이후 uv pip / uv run 이 그 3.12 venv 사용.
-      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+      - name: uv 설치(self-hosted amd64 python 3.12 보장)
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
@@ -106,7 +106,7 @@ jobs:
   # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
   gradle-deps:
     if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.gradle_deps == 'true' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 15
     needs: [exception-policy, changes]
     defaults:
@@ -135,15 +135,15 @@ jobs:
   # Python 의존성 취약점(ml/social-policy, provider-agent).
   python-deps:
     if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.python_deps == 'true' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 10
     needs: [exception-policy, changes]
     steps:
       - uses: actions/checkout@v4
-      # self-hosted ARM64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
+      # self-hosted AMD64 runner 에서 OS별 setup-python tool-cache 차이를 피한다.
       # uv 가 3.12 를 보장(arch·tool-cache 무관). UV_PYTHON=3.12 가 설정되어
       # uvx 가 띄우는 pip-audit 도 3.12 런타임에서 동작한다(venv 불필요 — uvx 격리 실행).
-      - name: uv 설치(self-hosted arm64 python 3.12 보장)
+      - name: uv 설치(self-hosted amd64 python 3.12 보장)
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
@@ -163,7 +163,7 @@ jobs:
   # 이로써 redactor 바인딩(logback-spring.xml %redactedMsg)이 실제 파일 출력에서 작동함을 CI 가 강제한다.
   log-redaction-scan:
     if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && needs.changes.outputs.log_redaction == 'true' }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 10
     needs: [exception-policy, changes]
     steps:
@@ -180,7 +180,7 @@ jobs:
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:
     if: ${{ (github.event_name != 'pull_request' || github.event.action != 'closed') && (needs.changes.outputs.container_central == 'true' || needs.changes.outputs.container_provider == 'true' || needs.changes.outputs.container_rag == 'true') }}
-    runs-on: [self-hosted, ARM64]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     timeout-minutes: 10
     needs: [exception-policy, changes]
     strategy:

@@ -587,7 +587,7 @@ jobs:
   # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)
   publish-central:
     needs: build
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-prod-amd64]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -597,7 +597,7 @@ jobs:
       - name: central 다운로드 폴더에 배치
         run: |
           set -euo pipefail
-          DEST="$HOME/deploy/central-server/downloads"
+          DEST="/srv/central-server/downloads"
           mkdir -p "$DEST"
           required_assets=(
             nexa-agent-linux

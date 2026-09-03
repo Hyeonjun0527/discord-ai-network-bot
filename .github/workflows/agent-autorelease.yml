@@ -28,7 +28,7 @@ jobs:
     if: >-
       !contains(github.event.head_commit.message, '[skip ci]') &&
       !contains(github.event.head_commit.message, 'release agent-v')
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     steps:
       - uses: actions/checkout@v4
         with:

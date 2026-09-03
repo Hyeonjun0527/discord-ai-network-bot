@@ -22,7 +22,7 @@ concurrency:
 jobs:
   rebuild:
     name: AI Network RAG rebuild and eval
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-ci-amd64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +46,6 @@ jobs:
         run: printf '%s' "$ENV_FILE" > .env
 
       # build-local/eval은 Qdrant vector rebuild를 하지 않는다.
-      # self-hosted Pi의 16KB page size에서 공식 Qdrant 이미지가 jemalloc abort를 내므로
       # 불필요하게 Qdrant를 띄우지 않고, 과거 run이 남긴 helper 컨테이너만 정리한다.
       - name: Stop stale Qdrant helper
         if: steps.fresh.outputs.run == 'true'

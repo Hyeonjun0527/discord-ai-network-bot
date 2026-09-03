@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   import:
-    runs-on: [self-hosted, yeon-arm]
+    runs-on: [self-hosted, Linux, X64, discord-prod-amd64]
     environment: production
     timeout-minutes: 20
     steps:
